@@ -7,25 +7,25 @@
 	<script src="https://cdn.tailwindcss.com"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-gray-50 min-h-screen p-4 md:p-8">
-	<div class="max-w-2xl mx-auto">
+	<body class="bg-gray-50 min-h-screen p-4 md:p-8 text-gray-800">
+	<div class="max-w-2xl mx-auto flex flex-col gap-6">
 		<header class="text-center mb-8">
-			<h1 class="text-3xl md:text-4xl font-bold text-indigo-700">Bienvenido a ProfeTech</h1>
-			<p class="text-gray-600 mt-2">Vamos a configurar tu grupo y alumnos</p>
+			<h1 class="text-3xl md:text-4xl font-bold text-gray-800">Bienvenido a ProfeTech</h1>
+			<p class="text-gray-500 mt-2">Vamos a configurar tu grupo y alumnos</p>
 		</header>
 
 		<!-- PASO 1: Crear Grupo -->
-		<section id="stepGroup" class="bg-white rounded-2xl shadow p-6 md:p-8 mb-6">
-			<h2 class="text-xl font-bold text-gray-900 mb-4">Paso 1: Crear tu Grupo</h2>
+		<section id="stepGroup" class="bg-white rounded-2xl shadow-md p-6 md:p-8">
+			<h2 class="text-xl font-bold text-gray-800 mb-4">Paso 1: Crear tu Grupo</h2>
 			<form id="groupForm" class="space-y-4">
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Nombre del Grupo</label>
-					<input type="text" id="groupName" required class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: Multigrado 4º-6º" maxlength="100">
+					<label class="block text-sm font-medium text-gray-800">Nombre del Grupo</label>
+					<input type="text" id="groupName" required class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Multigrado 4º-6º" maxlength="100">
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Tipo de Organización</label>
-					<select id="groupType" required class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+					<label class="block text-sm font-medium text-gray-800">Tipo de Organización</label>
+					<select id="groupType" required class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
 						<option value="">Selecciona un tipo...</option>
 						<option value="multigrado">Multigrado (1 docente, todos los grados)</option>
 						<option value="bidocente">Bidocente (2 docentes)</option>
@@ -35,22 +35,22 @@
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Grado(s) que Atiendes</label>
-					<input type="text" id="groupGrade" required inputmode="numeric" pattern="[0-9,]*" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 4,5,6" maxlength="50">
-					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Multigrado, bidocente y tridocente: uno o mas grados (Ej: 1,2,3). Organizacion completa: solo un grado (Ej: 4).</p>
+					<label class="block text-sm font-medium text-gray-800">Grado(s) que Atiendes</label>
+					<input type="text" id="groupGrade" required inputmode="numeric" pattern="[0-9,]*" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: 4,5,6" maxlength="50">
+					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Multigrado, bidocente y tridocente: uno o mas grados de 1 a 6 (Ej: 1,2,3). Organizacion completa: solo un grado de 1 a 6 (Ej: 4).</p>
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Escuela (Opcional)</label>
-					<input type="text" id="groupSchool" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: Escuela Rural Bidocente" maxlength="100">
+					<label class="block text-sm font-medium text-gray-800">Escuela (Opcional)</label>
+					<input type="text" id="groupSchool" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Escuela Rural Bidocente" maxlength="100">
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Descripción (Opcional)</label>
-					<textarea id="groupDescription" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Información adicional sobre el grupo..." maxlength="500" rows="3"></textarea>
+					<label class="block text-sm font-medium text-gray-800">Descripción (Opcional)</label>
+					<textarea id="groupDescription" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Información adicional sobre el grupo..." maxlength="500" rows="3"></textarea>
 				</div>
 
-				<button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+				<button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
 					Crear Grupo
 				</button>
 			</form>
@@ -58,35 +58,40 @@
 		</section>
 
 		<!-- PASO 2: Agregar Alumnos -->
-		<section id="stepStudents" class="hidden bg-white rounded-2xl shadow p-6 md:p-8 mb-6">
-			<h2 class="text-xl font-bold text-gray-900 mb-4">Paso 2: Agregar Alumnos</h2>
+		<section id="stepStudents" class="hidden bg-white rounded-2xl shadow-md p-6 md:p-8">
+			<h2 class="text-xl font-bold text-gray-800 mb-4">Paso 2: Agregar Alumnos</h2>
 
-			<div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+			<div class="mb-6 p-6 bg-white border border-gray-200 rounded-2xl shadow-sm">
 				<p class="text-sm text-blue-800">Agrega alumnos uno por uno.</p>
 			</div>
 
 			<!-- Formulario para un alumno -->
-			<div class="mb-6 p-4 border border-gray-300 rounded-lg">
-				<h3 class="font-semibold text-gray-900 mb-3">Agregar Alumno Individual</h3>
+			<div class="mb-6 p-6 bg-white border border-gray-200 rounded-2xl shadow-sm">
+				<h3 class="font-semibold text-gray-800 mb-3">Agregar Alumno Individual</h3>
 				<form id="studentForm" class="space-y-3">
-					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
-							<label class="block text-sm font-medium text-gray-700">Apellido Paterno</label>
-							<input type="text" id="studentLastName1" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: Hernandez" maxlength="60" autocomplete="off">
+							<label class="block text-sm font-medium text-gray-800">Apellido Paterno</label>
+							<input type="text" id="studentLastName1" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Hernandez" maxlength="60" autocomplete="off">
 							<p class="text-xs text-gray-500 mt-1">Solo una palabra (sin espacios).</p>
 						</div>
 						<div>
-							<label class="block text-sm font-medium text-gray-700">Apellido Materno</label>
-							<input type="text" id="studentLastName2" class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: Lopez" maxlength="60" autocomplete="off">
+							<label class="block text-sm font-medium text-gray-800">Apellido Materno</label>
+							<input type="text" id="studentLastName2" class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Lopez" maxlength="60" autocomplete="off">
 							<p class="text-xs text-gray-500 mt-1">Solo una palabra (sin espacios).</p>
 						</div>
 						<div>
-							<label class="block text-sm font-medium text-gray-700">Nombre(s)</label>
-							<input type="text" id="studentFirstNames" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: Juan Carlos" maxlength="80" autocomplete="off">
+							<label class="block text-sm font-medium text-gray-800">Nombre(s)</label>
+							<input type="text" id="studentFirstNames" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Juan Carlos" maxlength="80" autocomplete="off">
 							<p class="text-xs text-gray-500 mt-1">Aqui si puedes escribir uno o varios nombres.</p>
 						</div>
+						<div id="studentGradeWrapper" class="hidden">
+							<label class="block text-sm font-medium text-gray-800">Grado del alumno</label>
+							<select id="studentGrade" class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
+							<p class="text-xs text-gray-500 mt-1">Selecciona el grado correspondiente para este alumno.</p>
+						</div>
 					</div>
-					<button type="submit" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors">
+					<button type="submit" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">
 						+ Agregar Alumno
 					</button>
 				</form>
@@ -94,17 +99,17 @@
 
 			<!-- Lista de alumnos agregados -->
 			<div id="studentsList" class="mb-6">
-				<h3 class="font-semibold text-gray-900 mb-3">Alumnos Agregados (<span id="studentCount">0</span>)</h3>
+				<h3 class="font-semibold text-gray-800 mb-3">Alumnos Agregados (<span id="studentCount">0</span>)</h3>
 				<div id="studentsContainer" class="space-y-2"></div>
 			</div>
 
 			<!-- Botón para completar -->
-			<button id="completeOnboarding" disabled class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+			<button id="completeOnboarding" disabled class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
 				Completar Configuración
 			</button>
 
 			<div class="mt-4 mb-4">
-				<button id="backToGroupStep" type="button" class="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+				<button id="backToGroupStep" type="button" class="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-800 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
 					Volver al Paso 1 (Editar Grupo)
 				</button>
 			</div>

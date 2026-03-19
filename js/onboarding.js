@@ -17,8 +17,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var studentLastName1Input = document.getElementById("studentLastName1");
 	var studentLastName2Input = document.getElementById("studentLastName2");
 	var studentFirstNamesInput = document.getElementById("studentFirstNames");
+	var studentGradeWrapper = document.getElementById("studentGradeWrapper");
+	var studentGradeSelect = document.getElementById("studentGrade");
 
 	var currentGroupId = null;
+	var currentGroupType = "";
+	var currentGroupGrades = [];
 	var students = [];
 
 	var sessionResult = await window.sb.auth.getSession();
@@ -35,14 +39,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		groupTypeSelect.addEventListener("change", function () {
 			if (groupTypeSelect.value === "normal") {
 				groupGradeHelp.textContent =
-					"Organizacion completa: captura solo un grado (Ej: 4).";
+					"Organizacion completa: captura solo un grado de 1 a 6 (Ej: 4).";
 				groupGradeInput.placeholder = "Ej: 4";
 				groupGradeInput.value = sanitizeGradesByType(groupGradeInput.value, "normal");
 				return;
 			}
 
 			groupGradeHelp.textContent =
-				"Multigrado, bidocente y tridocente: uno o mas grados (Ej: 1,2,3).";
+				"Multigrado, bidocente y tridocente: uno o mas grados de 1 a 6 (Ej: 1,2,3).";
 			groupGradeInput.placeholder = "Ej: 4,5,6";
 			groupGradeInput.value = sanitizeGradesByType(
 				groupGradeInput.value,
@@ -77,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			showMessage(
 				"groupMessage",
 				"error",
-				"Ingresa al menos un grado valido (ejemplo: 4,5,6)."
+				"Ingresa al menos un grado valido entre 1 y 6 (ejemplo: 4,5,6)."
 			);
 			return;
 		}
@@ -115,6 +119,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 
 			currentGroupId = result.data[0].id;
+			currentGroupType = groupType;
+			currentGroupGrades = gradeList.slice();
+			configureStudentGradeSelector();
 			showMessage("groupMessage", "success", "Grupo creado exitosamente.");
 
 			setTimeout(function () {
@@ -139,6 +146,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var lastName1 = normalizeSpaces(document.getElementById("studentLastName1").value);
 		var lastName2 = normalizeSpaces(document.getElementById("studentLastName2").value);
 		var firstNames = normalizeSpaces(document.getElementById("studentFirstNames").value);
+		var selectedGrade = studentGradeSelect ? parseInt(studentGradeSelect.value, 10) : null;
 
 		if (!lastName1 || !firstNames) {
 			showMessage(
@@ -167,8 +175,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
+		if (shouldCaptureStudentGrade()) {
+			if (Number.isNaN(selectedGrade) || currentGroupGrades.indexOf(selectedGrade) === -1) {
+				showMessage(
+					"studentsMessage",
+					"error",
+					"Selecciona un grado valido para el alumno."
+				);
+				return;
+			}
+		}
+
 		var fullName = buildFullName(lastName1, lastName2, firstNames);
-		var key = normalizeName(fullName);
+		var studentGrade = shouldCaptureStudentGrade() ? selectedGrade : currentGroupGrades[0] || null;
+		var key = normalizeName(fullName) + "|" + String(studentGrade || "");
 
 		var alreadyExists = students.some(function (s) {
 			return s.key === key;
@@ -185,12 +205,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		students.push({
 			nombre_completo: fullName,
+			grado: studentGrade,
 			key: key,
 		});
 
 		clearMessage("studentsMessage");
 		updateStudentsList();
 		studentForm.reset();
+		if (studentGradeSelect && studentGradeSelect.options.length > 0) {
+			studentGradeSelect.value = studentGradeSelect.options[0].value;
+		}
 		document.getElementById("studentLastName1").focus();
 	});
 
@@ -205,7 +229,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		try {
 			var orderedStudents = students.slice().sort(function (a, b) {
-				return a.key.localeCompare(b.key, "es", { sensitivity: "base" });
+				var byName = (a.nombre_completo || "").localeCompare(
+					b.nombre_completo || "",
+					"es",
+					{ sensitivity: "base" }
+				);
+				if (byName !== 0) {
+					return byName;
+				}
+
+				var aGrade = typeof a.grado === "number" ? a.grado : 999;
+				var bGrade = typeof b.grado === "number" ? b.grado : 999;
+				return aGrade - bGrade;
 			});
 
 			var studentsForDB = orderedStudents.map(function (s, index) {
@@ -213,6 +248,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					maestro_id: userId,
 					grupo_id: currentGroupId,
 					nombre_completo: s.nombre_completo,
+					grado: s.grado,
 					num_lista: index + 1,
 					estatus: "activo",
 				};
@@ -237,10 +273,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 				window.location.href = "dashboard.html";
 			}, 1500);
 		} catch (error) {
+			var msg = error.message || "Error desconocido";
+			if ((msg || "").toLowerCase().indexOf("grado") !== -1) {
+				msg +=
+					". Verifica que exista la columna public.alumnos.grado (ejecuta supabase/alumnos-grado.sql).";
+			}
 			showMessage(
 				"studentsMessage",
 				"error",
-				"Error al guardar alumnos: " + (error.message || "Error desconocido")
+				"Error al guardar alumnos: " + msg
 			);
 			completeBtn.disabled = false;
 			completeBtn.classList.remove("opacity-50", "cursor-not-allowed");
@@ -265,12 +306,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		students.forEach(function (student, index) {
 			var div = document.createElement("div");
-			div.className = "flex items-center justify-between p-3 bg-gray-100 rounded-lg";
+			div.className = "flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl shadow-sm";
+			var gradeText =
+				typeof student.grado === "number"
+					? "<span class='inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 mr-2'>" +
+					  student.grado +
+					  "</span>"
+					: "";
 			div.innerHTML =
-				"<span class='text-gray-900'>" +
+				"<span class='text-gray-800'>" +
+				gradeText +
 				student.nombre_completo +
 				"</span>" +
-				"<button type='button' class='text-red-600 hover:text-red-800 font-medium' data-index='" +
+				"<button type='button' class='text-red-600 hover:text-red-700 font-medium' data-index='" +
 				index +
 				"'>Eliminar</button>";
 
@@ -292,6 +340,32 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
+	function configureStudentGradeSelector() {
+		if (!studentGradeWrapper || !studentGradeSelect) {
+			return;
+		}
+
+		studentGradeSelect.innerHTML = "";
+
+		if (!shouldCaptureStudentGrade()) {
+			studentGradeWrapper.classList.add("hidden");
+			return;
+		}
+
+		currentGroupGrades.forEach(function (grade) {
+			var option = document.createElement("option");
+			option.value = String(grade);
+			option.textContent = String(grade);
+			studentGradeSelect.appendChild(option);
+		});
+
+		studentGradeWrapper.classList.remove("hidden");
+	}
+
+	function shouldCaptureStudentGrade() {
+		return currentGroupType !== "normal" && currentGroupGrades.length > 1;
+	}
+
 	function setLoading(btn, isLoading) {
 		btn.disabled = isLoading;
 		if (isLoading) {
@@ -309,7 +383,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		messageBox.className =
 			"rounded-lg px-4 py-3 text-sm " +
 			(type === "success"
-				? "bg-green-100 text-green-800"
+				? "bg-blue-100 text-blue-800"
 				: "bg-red-100 text-red-800");
 	}
 
@@ -338,7 +412,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return parseInt(part, 10);
 			})
 			.filter(function (value) {
-				return !Number.isNaN(value) && value >= 1 && value <= 12;
+				return !Number.isNaN(value) && value >= 1 && value <= 6;
 			});
 
 		if (parsed.length !== raw.length) {

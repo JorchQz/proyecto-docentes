@@ -1,12 +1,23 @@
 document.addEventListener("DOMContentLoaded", function () {
 	var form = document.getElementById("loginForm");
+	var teacherNameField = document.getElementById("teacherNameField");
+	var teacherNameInput = document.getElementById("teacherName");
+	var teacherSexField = document.getElementById("teacherSexField");
+	var teacherSexInput = document.getElementById("teacherSex");
 	var emailInput = document.getElementById("email");
 	var passwordInput = document.getElementById("password");
 	var submitButton = form ? form.querySelector("button[type='submit']") : null;
 	var registerLink = document.querySelector(".mt-6 a");
 	var forgotPasswordLink = document.getElementById("forgotPasswordLink");
 
-	if (!form || !emailInput || !passwordInput || !submitButton) {
+	if (
+		!form ||
+		!emailInput ||
+		!passwordInput ||
+		!submitButton ||
+		!teacherNameInput ||
+		!teacherSexInput
+	) {
 		console.error("No se encontraron los elementos del formulario de autenticacion.");
 		return;
 	}
@@ -77,6 +88,8 @@ document.addEventListener("DOMContentLoaded", function () {
 	form.addEventListener("submit", async function (event) {
 		event.preventDefault();
 
+		var teacherName = (teacherNameInput.value || "").trim();
+		var teacherSex = (teacherSexInput.value || "").trim();
 		var email = emailInput.value.trim();
 		var password = passwordInput.value;
 
@@ -85,12 +98,35 @@ document.addEventListener("DOMContentLoaded", function () {
 			return;
 		}
 
+		if (mode === "register") {
+			if (!teacherName || teacherName.length < 3) {
+				showMessage(
+					"error",
+					"Ingresa el nombre del profesor(a) con al menos 3 caracteres."
+				);
+				return;
+			}
+
+			if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]+$/.test(teacherName)) {
+				showMessage(
+					"error",
+					"El nombre del profesor(a) solo permite letras y espacios."
+				);
+				return;
+			}
+
+			if (teacherSex !== "profesor" && teacherSex !== "profesora") {
+				showMessage("error", "Selecciona si eres profesor o profesora.");
+				return;
+			}
+		}
+
 		setLoading(true);
 		clearMessage();
 
 		try {
 			if (mode === "register") {
-				await registerUser(email, password);
+				await registerUser(email, password, teacherName, teacherSex);
 			} else {
 				await loginUser(email, password);
 			}
@@ -101,10 +137,17 @@ document.addEventListener("DOMContentLoaded", function () {
 		}
 	});
 
-	async function registerUser(email, password) {
+	async function registerUser(email, password, teacherName, teacherSex) {
 		var result = await window.sb.auth.signUp({
 			email: email,
 			password: password,
+			options: {
+				data: {
+					nombre_docente: teacherName,
+					full_name: teacherName,
+					sexo_docente: teacherSex,
+				},
+			},
 		});
 
 		if (result.error) {
@@ -163,10 +206,29 @@ document.addEventListener("DOMContentLoaded", function () {
 		}
 
 		if (mode === "register") {
+			if (teacherNameField) {
+				teacherNameField.classList.remove("hidden");
+			}
+			if (teacherSexField) {
+				teacherSexField.classList.remove("hidden");
+			}
+			teacherNameInput.required = true;
+			teacherSexInput.required = true;
 			submitButton.textContent = "Crear Cuenta";
 			registerLink.textContent = "Ya tengo cuenta";
 			return;
 		}
+
+		if (teacherNameField) {
+			teacherNameField.classList.add("hidden");
+		}
+		if (teacherSexField) {
+			teacherSexField.classList.add("hidden");
+		}
+		teacherNameInput.required = false;
+		teacherSexInput.required = false;
+		teacherNameInput.value = "";
+		teacherSexInput.value = "";
 
 		submitButton.textContent = originalButtonText || "Iniciar Sesion";
 		registerLink.textContent = "Registrate aqui";
@@ -174,6 +236,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	function setLoading(isLoading) {
 		submitButton.disabled = isLoading;
+		teacherNameInput.disabled = isLoading;
+		teacherSexInput.disabled = isLoading;
 		emailInput.disabled = isLoading;
 		passwordInput.disabled = isLoading;
 
@@ -192,7 +256,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		box.className =
 			"mt-4 rounded-lg px-4 py-3 text-sm " +
 			(type === "success"
-				? "bg-green-100 text-green-800"
+				? "bg-blue-100 text-blue-800"
 				: "bg-red-100 text-red-800");
 	}
 
