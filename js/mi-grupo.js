@@ -665,6 +665,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		try {
+			var deleteAttendanceResult = await window.sb
+				.from("asistencias")
+				.delete()
+				.eq("alumno_id", student.id)
+				.eq("maestro_id", userId)
+				.eq("grupo_id", currentGroup.id);
+
+			if (deleteAttendanceResult.error) {
+				throw deleteAttendanceResult.error;
+			}
+
 			var deleteResult = await window.sb
 				.from("alumnos")
 				.delete()

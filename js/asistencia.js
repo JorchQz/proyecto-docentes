@@ -4,11 +4,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
+	var attendanceDateInput = document.getElementById("attendanceDateInput");
 	var attendanceDateEl = document.getElementById("attendanceDate");
 	var attendanceSummaryEl = document.getElementById("attendanceSummary");
 	var attendanceListEl = document.getElementById("attendanceList");
 	var attendanceMessageEl = document.getElementById("attendanceMessage");
-	var attendanceSavedStatusEl = document.getElementById("attendanceSavedStatus");
 	var markAllPresentBtn = document.getElementById("markAllPresentBtn");
 	var clearAllBtn = document.getElementById("clearAllBtn");
 
@@ -16,17 +16,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var currentGroup = null;
 	var students = [];
 	var attendanceMap = {};
-	var attendanceDateIso = getLocalDateISO(new Date());
+	var todayIso = getLocalDateISO(new Date());
+	var attendanceDateIso = todayIso;
 	var autosaveTimer = null;
 	var saveInProgress = false;
 	var hasPendingAutosave = false;
-	var lastSavedAtMs = null;
+	var minAttendanceDateIso = null;
 
+
+	if (attendanceDateInput) {
+		attendanceDateInput.value = attendanceDateIso;
+		attendanceDateInput.max = todayIso;
+		attendanceDateInput.addEventListener("change", async function () {
+			attendanceDateIso = attendanceDateInput.value;
+			if (attendanceDateEl) {
+				attendanceDateEl.textContent = formatDateForUI(attendanceDateIso);
+			}
+			attendanceListEl.innerHTML = "<div class='rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500'>Cargando alumnos...</div>";
+			attendanceMap = {}; // Limpiar mapa al cambiar de fecha
+			await loadStudents();
+			await loadAttendanceOfSelectedDate();
+			renderList();
+			updateSummary();
+		});
+	}
 	if (attendanceDateEl) {
 		attendanceDateEl.textContent = formatDateForUI(attendanceDateIso);
 	}
-	updateSavedStatus();
-	setInterval(updateSavedStatus, 1000);
 
 	try {
 		var sessionResult = await window.sb.auth.getSession();
@@ -38,8 +54,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		currentUserId = sessionResult.data.session.user.id;
 		await loadCurrentGroup();
 		await loadStudents();
+		await fetchMinAttendanceDate();
 		try {
-			await loadAttendanceOfToday();
+			await loadAttendanceOfSelectedDate();
 		} catch (attendanceError) {
 			attendanceMap = {};
 			showMessage(
@@ -50,6 +67,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 		renderList();
 		updateSummary();
 		bindActions();
+	async function fetchMinAttendanceDate() {
+		if (!currentGroup) {
+			minAttendanceDateIso = null;
+			return;
+		}
+		var result = await window.sb
+			.from("asistencias")
+			.select("fecha")
+			.eq("grupo_id", currentGroup.id)
+			.order("fecha", { ascending: true })
+			.limit(1);
+		if (result.error || !result.data || !result.data.length) {
+			minAttendanceDateIso = null;
+			return;
+		}
+		minAttendanceDateIso = result.data[0].fecha;
+	}
 	} catch (error) {
 		showMessage(
 			"error",
@@ -97,7 +131,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		students = studentsResult.data || [];
 	}
 
-	async function loadAttendanceOfToday() {
+	async function loadAttendanceOfSelectedDate() {
 		if (!students.length) {
 			attendanceMap = {};
 			return;
@@ -105,7 +139,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var attendanceResult = await window.sb
 			.from("asistencias")
-			.select("alumno_id, asistio")
+			.select("alumno_id, asistencia_estado")
 			.eq("maestro_id", currentUserId)
 			.eq("grupo_id", currentGroup.id)
 			.eq("fecha", attendanceDateIso);
@@ -115,16 +149,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		attendanceMap = {};
-		(attendanceResult.data || []).forEach(function (row) {
-			attendanceMap[row.alumno_id] = Boolean(row.asistio);
-		});
+		if (attendanceResult.data && attendanceResult.data.length > 0) {
+			(attendanceResult.data || []).forEach(function (row) {
+				attendanceMap[row.alumno_id] = row.asistencia_estado || "ausente";
+			});
+		}
+	}
+
+	function isTodaySelected() {
+		return attendanceDateIso === todayIso;
 	}
 
 	function bindActions() {
 		if (markAllPresentBtn) {
 			markAllPresentBtn.addEventListener("click", function () {
 				students.forEach(function (student) {
-					attendanceMap[student.id] = true;
+					attendanceMap[student.id] = isTodaySelected() ? "presente" : "justificada";
 				});
 				renderList();
 				updateSummary();
@@ -135,7 +175,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (clearAllBtn) {
 			clearAllBtn.addEventListener("click", function () {
 				students.forEach(function (student) {
-					attendanceMap[student.id] = false;
+					attendanceMap[student.id] = "ausente";
 				});
 				renderList();
 				updateSummary();
@@ -158,7 +198,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		students.forEach(function (student) {
-			var isPresent = Boolean(attendanceMap[student.id]);
+			var estado = (attendanceMap && Object.prototype.hasOwnProperty.call(attendanceMap, student.id)) ? attendanceMap[student.id] : "ausente";
 			var row = document.createElement("label");
 			row.className =
 				"flex items-center justify-between gap-3 rounded-xl border border-gray-200 px-4 py-3 hover:bg-gray-50 transition-colors";
@@ -183,16 +223,36 @@ document.addEventListener("DOMContentLoaded", async function () {
 			toggle.type = "checkbox";
 			toggle.className =
 				"h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500";
-			toggle.checked = isPresent;
-			toggle.setAttribute("aria-label", "Asistencia de " + (student.nombre_completo || "alumno"));
+
+			if (isTodaySelected()) {
+				toggle.checked = estado === "presente";
+				toggle.setAttribute("aria-label", "Asistencia de " + (student.nombre_completo || "alumno"));
+				row.appendChild(left);
+				row.appendChild(toggle);
+			} else {
+				toggle.checked = estado === "justificada";
+				toggle.setAttribute("aria-label", "Justificar falta de " + (student.nombre_completo || "alumno"));
+				var justifyLabel = document.createElement("span");
+				justifyLabel.className = "ml-2 text-xs text-blue-700 font-medium";
+				justifyLabel.textContent = "Justificar falta";
+				var right = document.createElement("div");
+				right.className = "flex items-center gap-2";
+				right.appendChild(toggle);
+				right.appendChild(justifyLabel);
+				row.appendChild(left);
+				row.appendChild(right);
+			}
+
 			toggle.addEventListener("change", function () {
-				attendanceMap[student.id] = toggle.checked;
+				if (isTodaySelected()) {
+					attendanceMap[student.id] = toggle.checked ? "presente" : "ausente";
+				} else {
+					attendanceMap[student.id] = toggle.checked ? "justificada" : "ausente";
+				}
 				updateSummary();
 				scheduleAutosave();
 			});
 
-			row.appendChild(left);
-			row.appendChild(toggle);
 			attendanceListEl.appendChild(row);
 		});
 	}
@@ -203,14 +263,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		var total = students.length;
-		var present = students.reduce(function (acc, student) {
-			return acc + (attendanceMap[student.id] ? 1 : 0);
-		}, 0);
-		var absent = total - present;
-
+		var present = 0, absent = 0, justified = 0;
+		students.forEach(function (student) {
+			var estado = attendanceMap[student.id] || "ausente";
+			if (estado === "presente") present++;
+			else if (estado === "justificada") justified++;
+			else absent++;
+		});
 		var groupName = currentGroup && currentGroup.nombre ? currentGroup.nombre : "Grupo activo";
-		attendanceSummaryEl.textContent =
-			groupName + " | Presentes: " + present + " | Faltas: " + absent + " | Total: " + total;
+		
+		var summaryText = groupName + " | Presentes: " + present + " | Faltas: " + absent;
+		if (!isTodaySelected()) {
+			summaryText += " | Justificadas: " + justified;
+		}
+		summaryText += " | Total: " + total;
+		attendanceSummaryEl.textContent = summaryText;
 	}
 
 	function scheduleAutosave() {
@@ -244,7 +311,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		saveInProgress = true;
-		showMessage("info", "Guardando asistencia...");
 
 		try {
 			var rows = students.map(function (student) {
@@ -253,7 +319,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					grupo_id: currentGroup.id,
 					alumno_id: student.id,
 					fecha: attendanceDateIso,
-					asistio: Boolean(attendanceMap[student.id]),
+					asistencia_estado: attendanceMap[student.id] || "ausente",
 				};
 			});
 
@@ -266,9 +332,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				throw saveResult.error;
 			}
 
-			showMessage("success", "Asistencia guardada correctamente.");
-			lastSavedAtMs = Date.now();
-			updateSavedStatus();
+			clearMessage();
 		} catch (error) {
 			showMessage(
 				"error",
@@ -306,30 +370,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 		attendanceMessageEl.classList.add("bg-red-100", "text-red-800");
 	}
 
-	function updateSavedStatus() {
-		if (!attendanceSavedStatusEl) {
+	function clearMessage() {
+		if (!attendanceMessageEl) {
 			return;
 		}
 
-		if (!lastSavedAtMs) {
-			attendanceSavedStatusEl.textContent = "Sin guardados aun.";
-			return;
-		}
-
-		var elapsedMs = Date.now() - lastSavedAtMs;
-		if (elapsedMs < 5000) {
-			attendanceSavedStatusEl.textContent = "Guardado hace unos segundos.";
-			return;
-		}
-
-		var elapsedSeconds = Math.floor(elapsedMs / 1000);
-		if (elapsedSeconds < 60) {
-			attendanceSavedStatusEl.textContent = "Guardado hace " + elapsedSeconds + " s.";
-			return;
-		}
-
-		var elapsedMinutes = Math.floor(elapsedSeconds / 60);
-		attendanceSavedStatusEl.textContent = "Guardado hace " + elapsedMinutes + " min.";
+		attendanceMessageEl.textContent = "";
+		attendanceMessageEl.classList.add("hidden");
+		attendanceMessageEl.classList.remove(
+			"bg-red-100",
+			"text-red-800",
+			"bg-green-100",
+			"text-green-800",
+			"bg-blue-100",
+			"text-blue-800"
+		);
 	}
 
 	function getLocalDateISO(date) {

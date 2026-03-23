@@ -38,15 +38,46 @@
 				<a href="actividades.html" class="inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="M7 16V8"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg>Actividades</a>
 				<a href="tareas.html" class="inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11.5 11 13.5l4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>Tareas</a>
 				<a href="reportes.html" class="inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20V10"/><path d="M12 20V4"/><path d="M18 20v-7"/></svg>Reportes</a>
+				<a href="crear_proyecto.html" class="inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-100 transition-colors">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+					Crear Proyecto
+				</a>
 			</div>
 		</nav>
 
-		<main class="bg-white rounded-2xl shadow-md p-6">
-			<p class="text-gray-500">Modulo en construccion.</p>
+		<main class="bg-white rounded-2xl shadow-md p-6 flex flex-col gap-6">
+			<section>
+				<h2 class="text-xl font-bold mb-4">Reporte de Asistencia</h2>
+				<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+					<div class="flex gap-4">
+						<div>
+							<label for="startDate" class="block text-sm font-medium text-gray-700">Fecha de inicio</label>
+							<input type="date" id="startDate" name="startDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+						</div>
+						<div>
+							<label for="endDate" class="block text-sm font-medium text-gray-700">Fecha de fin</label>
+							<input type="date" id="endDate" name="endDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+						</div>
+					</div>
+					<div class="flex gap-4">
+						<button id="generateReportBtn" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+							Generar Reporte
+						</button>
+						<button id="downloadPdfBtn" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+							Descargar PDF
+						</button>
+					</div>
+				</div>
+				<div id="reportContainer" class="border-t pt-6 mt-6">
+					<p class="text-gray-500">Seleccione un rango de fechas y genere el reporte.</p>
+				</div>
+			</section>
 		</main>
 	</div>
 
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 	<script src="js/supabase.js"></script>
 	<script src="js/section-shell.js"></script>
+	<script src="js/reportes.js"></script>
 </body>
 </html>
