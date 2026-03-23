@@ -37,7 +37,7 @@
 				<div>
 					<label class="block text-sm font-medium text-gray-800">Grado(s) que Atiendes</label>
 					<input type="text" id="groupGrade" required inputmode="numeric" pattern="[0-9,]*" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: 4,5,6" maxlength="50">
-					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Multigrado, bidocente y tridocente: uno o mas grados de 1 a 6 (Ej: 1,2,3). Organizacion completa: solo un grado de 1 a 6 (Ej: 4).</p>
+					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Multigrado, bidocente y tridocente: uno o mas grados (Ej: 1,2,3). Organizacion completa: solo un grado (Ej: 4).</p>
 				</div>
 
 				<div>
@@ -84,11 +84,6 @@
 							<label class="block text-sm font-medium text-gray-800">Nombre(s)</label>
 							<input type="text" id="studentFirstNames" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Juan Carlos" maxlength="80" autocomplete="off">
 							<p class="text-xs text-gray-500 mt-1">Aqui si puedes escribir uno o varios nombres.</p>
-						</div>
-						<div id="studentGradeWrapper" class="hidden">
-							<label class="block text-sm font-medium text-gray-800">Grado del alumno</label>
-							<select id="studentGrade" class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
-							<p class="text-xs text-gray-500 mt-1">Selecciona el grado correspondiente para este alumno.</p>
 						</div>
 					</div>
 					<button type="submit" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">
