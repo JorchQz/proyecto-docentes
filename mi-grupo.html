@@ -79,16 +79,44 @@
 						<div>
 							<label for="editGroupType" class="block text-sm font-medium text-gray-800">Tipo de Organización</label>
 							<select id="editGroupType" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" required>
-								<option value="multigrado">Multigrado</option>
+								<option value="" disabled>Selecciona el tipo...</option>
+								<option value="completa">Organización completa</option>
 								<option value="bidocente">Bidocente</option>
 								<option value="tridocente">Tridocente</option>
-								<option value="normal">Organización Completa</option>
+								<option value="tetradocente">Tetradocente</option>
+								<option value="pentadocente">Pentadocente</option>
+								<option value="unitaria">Unitaria</option>
 							</select>
 						</div>
 						<div>
-							<label for="editGroupGrades" class="block text-sm font-medium text-gray-800">Grados</label>
-							<input id="editGroupGrades" type="text" maxlength="30" placeholder="Ej: 4,5,6" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" required>
-							<p id="editGroupGradesHelp" class="mt-2 text-xs text-gray-500">Multigrado, bidocente y tridocente: uno o más grados de 1 a 6 (Ej: 1,2,3).</p>
+							<label class="block text-sm font-medium text-gray-800">Grado(s) que atiende</label>
+							<div class="mt-2 flex flex-wrap gap-x-5 gap-y-3">
+								<label class="flex items-center gap-2 cursor-pointer select-none">
+									<input type="checkbox" name="editGroupGrades" value="1" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+									<span class="text-sm text-gray-800">1°</span>
+								</label>
+								<label class="flex items-center gap-2 cursor-pointer select-none">
+									<input type="checkbox" name="editGroupGrades" value="2" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+									<span class="text-sm text-gray-800">2°</span>
+								</label>
+								<label class="flex items-center gap-2 cursor-pointer select-none">
+									<input type="checkbox" name="editGroupGrades" value="3" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+									<span class="text-sm text-gray-800">3°</span>
+								</label>
+								<label class="flex items-center gap-2 cursor-pointer select-none">
+									<input type="checkbox" name="editGroupGrades" value="4" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+									<span class="text-sm text-gray-800">4°</span>
+								</label>
+								<label class="flex items-center gap-2 cursor-pointer select-none">
+									<input type="checkbox" name="editGroupGrades" value="5" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+									<span class="text-sm text-gray-800">5°</span>
+								</label>
+								<label class="flex items-center gap-2 cursor-pointer select-none">
+									<input type="checkbox" name="editGroupGrades" value="6" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+									<span class="text-sm text-gray-800">6°</span>
+								</label>
+							</div>
+							<p id="editGroupGradesHelp" class="mt-2 text-xs text-gray-500">Selecciona los grados que atiendes.</p>
 						</div>
 						<div>
 							<label for="editGroupSchool" class="block text-sm font-medium text-gray-800">Escuela (opcional)</label>

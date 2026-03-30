@@ -140,11 +140,35 @@
             <textarea name="pregunta_generadora" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="Escribe la pregunta generadora del proyecto" required></textarea>
           </div>
 
-          <!-- Botón siguiente paso -->
+            <!-- Botón siguiente paso -->
           <div class="md:col-span-2 flex justify-end mt-4">
-            <button type="submit" class="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition">Siguiente</button>
+            <button type="submit" class="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition">Siguiente →</button>
           </div>
         </form>
+      </section>
+
+      <!-- Paso 2: Sesiones -->
+      <section class="border-t pt-6 hidden" id="step2-sesiones">
+        <h2 class="text-xl font-bold text-gray-800 mb-1">Paso 2: Sesiones del Proyecto</h2>
+        <p class="text-gray-500 text-sm mb-6">Agrega cada sesión de tu planeación</p>
+
+        <div id="sesionesContainer" class="flex flex-col gap-4"></div>
+
+        <div class="mt-4">
+          <button type="button" id="btnAgregarSesion"
+            class="border-2 border-blue-600 text-blue-600 font-bold px-5 py-2 rounded-xl hover:bg-blue-50 transition">
+            + Agregar otra sesión
+          </button>
+        </div>
+
+        <div id="mensajePaso2" class="mt-4 hidden"></div>
+
+        <div class="mt-6 flex justify-end">
+          <button type="button" id="btnGuardar"
+            class="bg-green-600 text-white font-bold px-8 py-3 rounded-xl shadow-sm hover:bg-green-700 transition text-lg">
+            💾 Guardar Proyecto Completo
+          </button>
+        </div>
       </section>
 
     </main>
