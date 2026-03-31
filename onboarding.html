@@ -19,6 +19,16 @@
 			<h2 class="text-xl font-bold text-gray-800 mb-4">Paso 1: Crear tu Grupo</h2>
 			<form id="groupForm" class="space-y-4">
 				<div>
+					<label class="block text-sm font-medium text-gray-800">Ciclo Escolar</label>
+					<div class="mt-1 flex items-center gap-2">
+						<select id="cicloInicio" required class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
+						<span class="text-gray-500 shrink-0 font-medium">–</span>
+						<select id="cicloFin" required class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
+					</div>
+					<p class="text-xs text-gray-500 mt-1">Año de inicio y año de fin del ciclo escolar.</p>
+				</div>
+
+				<div>
 					<label class="block text-sm font-medium text-gray-800">Nombre del Grupo</label>
 					<input type="text" id="groupName" required class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Multigrado 4º-6º" maxlength="100">
 				</div>
@@ -38,16 +48,6 @@
 					<label class="block text-sm font-medium text-gray-800">Grado(s) que Atiendes</label>
 					<input type="text" id="groupGrade" required inputmode="numeric" pattern="[0-9,]*" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: 4,5,6" maxlength="50">
 					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Multigrado, bidocente y tridocente: uno o mas grados (Ej: 1,2,3). Organizacion completa: solo un grado (Ej: 4).</p>
-				</div>
-
-				<div>
-					<label class="block text-sm font-medium text-gray-800">Ciclo Escolar</label>
-					<div class="mt-1 flex items-center gap-2">
-						<select id="cicloInicio" required class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
-						<span class="text-gray-500 shrink-0 font-medium">–</span>
-						<select id="cicloFin" required class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
-					</div>
-					<p class="text-xs text-gray-500 mt-1">Año de inicio y año de fin del ciclo escolar.</p>
 				</div>
 
 				<div>
