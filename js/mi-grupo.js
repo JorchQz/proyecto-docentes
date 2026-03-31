@@ -29,7 +29,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var saveGroupBtn = document.getElementById("saveGroupBtn");
 	var editGroupNameInput = document.getElementById("editGroupName");
 	var editGroupTypeInput = document.getElementById("editGroupType");
-	var editGroupGradesInput = document.getElementById("editGroupGrades");
 	var editGroupSchoolInput = document.getElementById("editGroupSchool");
 	var editGroupDescriptionInput = document.getElementById("editGroupDescription");
 	var editGroupGradesHelp = document.getElementById("editGroupGradesHelp");
@@ -150,27 +149,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 			var nombre = (editGroupNameInput.value || "").trim();
 			var tipo = (editGroupTypeInput.value || "").trim();
-			var gradosTexto = (editGroupGradesInput.value || "").trim();
 			var escuela = (editGroupSchoolInput.value || "").trim();
 			var descripcion = (editGroupDescriptionInput.value || "").trim();
 
-			if (!nombre || !tipo || !gradosTexto) {
-				showMessage("error", "Nombre, tipo y grados son requeridos.");
+			if (!nombre || !tipo) {
+				showMessage("error", "Nombre y tipo de organizacion son requeridos.");
 				return;
 			}
 
-			var gradeList = parseGrades(gradosTexto);
+			var gradeList = getSelectedGrades();
 			if (gradeList.length === 0) {
-				showMessage("error", "Ingresa al menos un grado valido entre 1 y 6 (ejemplo: 4,5,6).");
+				showMessage("error", "Selecciona al menos un grado.");
 				return;
 			}
 
-			if (tipo === "normal" && gradeList.length !== 1) {
+			if (tipo === "completa" && gradeList.length !== 1) {
 				showMessage("error", "Organizacion completa solo permite un grado.");
 				return;
 			}
 
-			var normalizedGrades = gradeList.join(",");
 			var gradoPrincipal = gradeList[0];
 
 			setButtonLoading(saveGroupBtn, true, "Guardando...");
@@ -181,14 +178,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 					.update({
 						nombre: nombre,
 						tipo_organizacion: tipo,
-						grados: normalizedGrades,
+						grados: gradeList.map(String),
 						grado: gradoPrincipal,
+						es_multigrado: gradeList.length > 1,
 						escuela: escuela || null,
 						descripcion: descripcion || null,
 					})
 					.eq("id", currentGroup.id)
 					.eq("maestro_id", userId)
-					.select("id, nombre, tipo_organizacion, grados, escuela, descripcion")
+					.select("id, nombre, tipo_organizacion, grados, es_multigrado, escuela, descripcion")
 					.single();
 
 				if (updateResult.error) {
@@ -437,7 +435,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function loadCurrentGroup() {
 		var groupResult = await window.sb
 			.from("grupos")
-			.select("id, nombre, tipo_organizacion, grados, escuela, descripcion")
+			.select("id, nombre, tipo_organizacion, grados, es_multigrado, escuela, descripcion")
 			.eq("maestro_id", userId)
 			.order("id", { ascending: true })
 			.limit(1);
@@ -573,7 +571,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		if (groupGradesEl) {
-			groupGradesEl.textContent = group.grados || "N/A";
+			var grades = parseGroupGrades(group.grados);
+			groupGradesEl.textContent = grades.length > 0
+				? grades.map(function (g) { return g + "\u00b0"; }).join(", ")
+				: "N/A";
 		}
 	}
 
@@ -978,8 +979,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		currentGroupGrades = parseGroupGrades(group.grados);
 
 		editGroupNameInput.value = group.nombre || "";
-		editGroupTypeInput.value = group.tipo_organizacion || "multigrado";
-		editGroupGradesInput.value = group.grados || "";
+
+		var legacyTypeMap = { normal: "completa", multigrado: "" };
+		var tipo = group.tipo_organizacion || "";
+		editGroupTypeInput.value = legacyTypeMap[tipo] !== undefined ? legacyTypeMap[tipo] : tipo;
+
+		setSelectedGrades(currentGroupGrades);
 		editGroupSchoolInput.value = group.escuela || "";
 		editGroupDescriptionInput.value = group.descripcion || "";
 		updateGradesHelpText(editGroupTypeInput.value);
@@ -991,7 +996,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return false;
 		}
 
-		return currentGroup.tipo_organizacion !== "normal" && currentGroupGrades.length > 1;
+		var tipo = currentGroup.tipo_organizacion;
+		return tipo !== "completa" && tipo !== "normal" && currentGroupGrades.length > 1;
 	}
 
 	function configureStudentGradeSelector() {
@@ -1016,8 +1022,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		editStudentGradeWrapper.classList.remove("hidden");
 	}
 
-	function parseGroupGrades(gradesText) {
-		return parseGrades(gradesText || "");
+	function parseGroupGrades(gradesValue) {
+		if (Array.isArray(gradesValue)) {
+			return gradesValue
+				.map(function (g) { return parseInt((g || "").toString().trim(), 10); })
+				.filter(function (g) { return !isNaN(g) && g >= 1 && g <= 6; })
+				.sort(function (a, b) { return a - b; });
+		}
+		return parseGrades(gradesValue || "");
+	}
+
+	function getSelectedGrades() {
+		return Array.from(document.querySelectorAll("input[name='editGroupGrades']:checked"))
+			.map(function (cb) { return parseInt(cb.value, 10); })
+			.sort(function (a, b) { return a - b; });
+	}
+
+	function setSelectedGrades(grades) {
+		document.querySelectorAll("input[name='editGroupGrades']").forEach(function (cb) {
+			cb.checked = grades.indexOf(parseInt(cb.value, 10)) !== -1;
+		});
 	}
 
 	function bindEditTabs() {
@@ -1059,23 +1083,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	function bindEditGradeRules() {
-		if (!editGroupTypeInput || !editGroupGradesInput) {
+		if (!editGroupTypeInput) {
 			return;
 		}
 
 		editGroupTypeInput.addEventListener("change", function () {
 			updateGradesHelpText(editGroupTypeInput.value);
-			editGroupGradesInput.value = sanitizeGradesByType(
-				editGroupGradesInput.value,
-				editGroupTypeInput.value
-			);
-		});
-
-		editGroupGradesInput.addEventListener("input", function () {
-			editGroupGradesInput.value = sanitizeGradesByType(
-				editGroupGradesInput.value,
-				editGroupTypeInput.value
-			);
 		});
 	}
 
@@ -1084,16 +1097,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
-		if (type === "normal") {
-			editGroupGradesHelp.textContent =
-				"Organizacion completa: captura solo un grado de 1 a 6 (Ej: 4).";
-			editGroupGradesInput.placeholder = "Ej: 4";
-			return;
-		}
+		var messages = {
+			completa:     "En organizacion completa, cada maestro atiende un solo grado. Selecciona el grado que tu atiendes.",
+			bidocente:    "En escuelas bidocentes, generalmente cada maestro atiende 2 o 3 grados. Selecciona los grados que tu atiendes.",
+			tridocente:   "En escuelas tridocentes, generalmente cada maestro atiende 2 grados. Selecciona los grados que tu atiendes.",
+			tetradocente: "En escuelas tetradocentes, el maestro puede tener 1, 2 o mas grados. Selecciona los grados que tu atiendes.",
+			pentadocente: "En escuelas pentadocentes, generalmente un maestro atiende 2 grados. Selecciona los grados que tu atiendes.",
+			unitaria:     "En escuelas unitarias, un solo maestro atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tu atiendes.",
+		};
 
-		editGroupGradesHelp.textContent =
-			"Multigrado, bidocente y tridocente: uno o mas grados de 1 a 6 (Ej: 1,2,3).";
-		editGroupGradesInput.placeholder = "Ej: 4,5,6";
+		editGroupGradesHelp.textContent = messages[type] || "Selecciona los grados que atiendes.";
 	}
 
 	function parseGrades(gradosTexto) {
@@ -1134,17 +1147,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
-	function sanitizeGradesByType(value, groupType) {
-		var raw = (value || "").replace(/[^0-9,]/g, "").replace(/,+/g, ",");
-
-		if (groupType === "normal") {
-			var first = parseGrades(raw);
-			return first.length > 0 ? String(first[0]) : raw.replace(/[^0-9]/g, "").slice(0, 2);
-		}
-
-		return raw;
-	}
-
 	function showMessage(type, text) {
 		if (!groupMessageEl) {
 			return;
@@ -1166,10 +1168,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function mapGroupType(groupType) {
 		var typeMap = {
-			multigrado: "Multigrado",
-			bidocente: "Bidocente",
-			tridocente: "Tridocente",
-			normal: "Organización Completa",
+			completa:     "Organización completa",
+			bidocente:    "Bidocente",
+			tridocente:   "Tridocente",
+			tetradocente: "Tetradocente",
+			pentadocente: "Pentadocente",
+			unitaria:     "Unitaria",
+			normal:       "Organización completa",
+			multigrado:   "Multigrado",
 		};
 
 		return typeMap[groupType] || groupType || "N/A";

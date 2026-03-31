@@ -20,10 +20,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var studentGradeWrapper = document.getElementById("studentGradeWrapper");
 	var studentGradeSelect = document.getElementById("studentGrade");
 
+	var cicloInicioSelect = document.getElementById("cicloInicio");
+	var cicloFinSelect = document.getElementById("cicloFin");
+
 	var currentGroupId = null;
 	var currentGroupType = "";
 	var currentGroupGrades = [];
 	var students = [];
+
+	// Poblar selects de ciclo escolar
+	var currentYear = new Date().getFullYear();
+	for (var y = currentYear - 4; y <= currentYear + 3; y++) {
+		var opt1 = document.createElement("option");
+		opt1.value = y;
+		opt1.textContent = y;
+		cicloInicioSelect.appendChild(opt1);
+
+		var opt2 = document.createElement("option");
+		opt2.value = y;
+		opt2.textContent = y;
+		cicloFinSelect.appendChild(opt2);
+	}
+	cicloInicioSelect.value = currentYear - 1;
+	cicloFinSelect.value = currentYear;
 
 	var sessionResult = await window.sb.auth.getSession();
 	if (sessionResult.error || !sessionResult.data.session) {
@@ -70,9 +89,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var groupGrade = document.getElementById("groupGrade").value.trim();
 		var groupSchool = document.getElementById("groupSchool").value.trim();
 		var groupDescription = document.getElementById("groupDescription").value.trim();
+		var cicloInicio = parseInt(cicloInicioSelect.value, 10);
+		var cicloFin = parseInt(cicloFinSelect.value, 10);
 
 		if (!groupName || !groupType || !groupGrade) {
 			showMessage("groupMessage", "error", "Nombre, tipo y grados son requeridos.");
+			return;
+		}
+
+		if (cicloFin <= cicloInicio) {
+			showMessage("groupMessage", "error", "El año de fin del ciclo debe ser mayor al año de inicio.");
 			return;
 		}
 
@@ -110,7 +136,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					grados: normalizedGrades,
 					escuela: groupSchool || null,
 					descripcion: groupDescription || null,
-					ciclo_escolar: new Date().getFullYear().toString(),
+					ciclo_escolar: cicloInicio + "-" + cicloFin,
 				},
 			]).select();
 
