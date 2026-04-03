@@ -37,17 +37,44 @@
 					<label class="block text-sm font-medium text-gray-800">Tipo de Organización</label>
 					<select id="groupType" required class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
 						<option value="">Selecciona un tipo...</option>
-						<option value="multigrado">Multigrado (1 docente, todos los grados)</option>
-						<option value="bidocente">Bidocente (2 docentes)</option>
-						<option value="tridocente">Tridocente (3 docentes)</option>
-						<option value="normal">Organización Completa (1 grado por docente)</option>
+						<option value="unitaria">Unitaria (1 maestro, atiende todos los grados)</option>
+						<option value="bidocente">Bidocente (2 maestros)</option>
+						<option value="tridocente">Tridocente (3 maestros)</option>
+						<option value="tetradocente">Tetradocente (4 maestros)</option>
+						<option value="pentadocente">Pentadocente (5 maestros)</option>
+						<option value="completa">Organización Completa (6 maestros, 1 grado por maestro)</option>
 					</select>
 				</div>
 
 				<div>
 					<label class="block text-sm font-medium text-gray-800">Grado(s) que Atiendes</label>
-					<input type="text" id="groupGrade" required inputmode="numeric" pattern="[0-9,]*" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: 4,5,6" maxlength="50">
-					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Multigrado, bidocente y tridocente: uno o mas grados (Ej: 1,2,3). Organizacion completa: solo un grado (Ej: 4).</p>
+					<div id="groupGradeCheckboxes" class="mt-2 flex flex-wrap gap-x-5 gap-y-3 opacity-40 pointer-events-none">
+						<label class="flex items-center gap-2 select-none">
+							<input type="checkbox" name="groupGrades" value="1" disabled class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+							<span class="text-sm text-gray-800">1°</span>
+						</label>
+						<label class="flex items-center gap-2 select-none">
+							<input type="checkbox" name="groupGrades" value="2" disabled class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+							<span class="text-sm text-gray-800">2°</span>
+						</label>
+						<label class="flex items-center gap-2 select-none">
+							<input type="checkbox" name="groupGrades" value="3" disabled class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+							<span class="text-sm text-gray-800">3°</span>
+						</label>
+						<label class="flex items-center gap-2 select-none">
+							<input type="checkbox" name="groupGrades" value="4" disabled class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+							<span class="text-sm text-gray-800">4°</span>
+						</label>
+						<label class="flex items-center gap-2 select-none">
+							<input type="checkbox" name="groupGrades" value="5" disabled class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+							<span class="text-sm text-gray-800">5°</span>
+						</label>
+						<label class="flex items-center gap-2 select-none">
+							<input type="checkbox" name="groupGrades" value="6" disabled class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+							<span class="text-sm text-gray-800">6°</span>
+						</label>
+					</div>
+					<p class="text-xs text-gray-500 mt-1" id="groupGradeHelp">Primero selecciona el tipo de organización.</p>
 				</div>
 
 				<div>
@@ -92,13 +119,25 @@
 						</div>
 						<div>
 							<label class="block text-sm font-medium text-gray-800">Nombre(s)</label>
-							<input type="text" id="studentFirstNames" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Juan Carlos" maxlength="80" autocomplete="off">
-							<p class="text-xs text-gray-500 mt-1">Aqui si puedes escribir uno o varios nombres.</p>
+							<div class="mt-1">
+								<input type="text" id="studentFirstNames" required class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ej: Juan Carlos" maxlength="80" autocomplete="off">
+								<p class="text-xs text-gray-500 mt-1">Aqui si puedes escribir uno o varios nombres.</p>
+							</div>
+						</div>
+						<div id="studentGradeWrapper" class="hidden">
+							<label for="studentGrade" class="block text-sm font-medium text-gray-800">Grado del alumno</label>
+							<select id="studentGrade" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
+							<p class="text-xs text-gray-500 mt-1">Selecciona el grado correspondiente.</p>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-transparent select-none">Acci&oacute;n</label>
+							<div class="mt-1">
+								<button type="submit" class="w-full h-[42px] inline-flex items-center justify-center px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">
+									+ Agregar Alumno
+								</button>
+							</div>
 						</div>
 					</div>
-					<button type="submit" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">
-						+ Agregar Alumno
-					</button>
 				</form>
 			</div>
 

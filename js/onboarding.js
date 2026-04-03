@@ -12,7 +12,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var stepGroup = document.getElementById("stepGroup");
 	var stepStudents = document.getElementById("stepStudents");
 	var groupTypeSelect = document.getElementById("groupType");
-	var groupGradeInput = document.getElementById("groupGrade");
+	var groupGradeContainer = document.getElementById("groupGradeCheckboxes");
+	var groupGradeCheckboxes = document.querySelectorAll('input[name="groupGrades"]');
 	var groupGradeHelp = document.getElementById("groupGradeHelp");
 	var studentLastName1Input = document.getElementById("studentLastName1");
 	var studentLastName2Input = document.getElementById("studentLastName2");
@@ -54,30 +55,44 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	bindStudentInputRules();
 
-	if (groupTypeSelect && groupGradeHelp && groupGradeInput) {
-		groupTypeSelect.addEventListener("change", function () {
-			if (groupTypeSelect.value === "normal") {
-				groupGradeHelp.textContent =
-					"Organizacion completa: captura solo un grado de 1 a 6 (Ej: 4).";
-				groupGradeInput.placeholder = "Ej: 4";
-				groupGradeInput.value = sanitizeGradesByType(groupGradeInput.value, "normal");
-				return;
-			}
+	var gradeMaxByType = { unitaria: 6, bidocente: 3, tridocente: 2, tetradocente: 3, pentadocente: 2, completa: 1 };
+	var gradeHelpByType = {
+		unitaria:     "Unitaria: un maestro atiende todos los grados, selecciona los que atiendes.",
+		bidocente:    "Bidocente: selecciona hasta 3 grados.",
+		tridocente:   "Tridocente: selecciona hasta 2 grados.",
+		tetradocente: "Tetradocente: selecciona hasta 3 grados.",
+		pentadocente: "Pentadocente: selecciona hasta 2 grados.",
+		completa:     "Organización Completa: selecciona solo 1 grado.",
+	};
 
-			groupGradeHelp.textContent =
-				"Multigrado, bidocente y tridocente: uno o mas grados de 1 a 6 (Ej: 1,2,3).";
-			groupGradeInput.placeholder = "Ej: 4,5,6";
-			groupGradeInput.value = sanitizeGradesByType(
-				groupGradeInput.value,
-				groupTypeSelect.value
-			);
+	if (groupTypeSelect && groupGradeHelp && groupGradeContainer) {
+		groupTypeSelect.addEventListener("change", function () {
+			var type = groupTypeSelect.value;
+
+			// Desmarcar todos al cambiar tipo
+			groupGradeCheckboxes.forEach(function (cb) {
+				cb.checked = false;
+				cb.disabled = !type;
+			});
+
+			if (type) {
+				groupGradeContainer.classList.remove("opacity-40", "pointer-events-none");
+				groupGradeHelp.textContent = gradeHelpByType[type] || "";
+			} else {
+				groupGradeContainer.classList.add("opacity-40", "pointer-events-none");
+				groupGradeHelp.textContent = "Primero selecciona el tipo de organización.";
+			}
 		});
 
-		groupGradeInput.addEventListener("input", function () {
-			groupGradeInput.value = sanitizeGradesByType(
-				groupGradeInput.value,
-				groupTypeSelect.value
-			);
+		groupGradeCheckboxes.forEach(function (cb) {
+			cb.addEventListener("change", function () {
+				var type = groupTypeSelect.value;
+				var max = gradeMaxByType[type] || 6;
+				var checked = Array.from(groupGradeCheckboxes).filter(function (c) { return c.checked; });
+				if (checked.length > max) {
+					cb.checked = false;
+				}
+			});
 		});
 	}
 
@@ -86,14 +101,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var groupName = document.getElementById("groupName").value.trim();
 		var groupType = document.getElementById("groupType").value.trim();
-		var groupGrade = document.getElementById("groupGrade").value.trim();
 		var groupSchool = document.getElementById("groupSchool").value.trim();
 		var groupDescription = document.getElementById("groupDescription").value.trim();
 		var cicloInicio = parseInt(cicloInicioSelect.value, 10);
 		var cicloFin = parseInt(cicloFinSelect.value, 10);
 
-		if (!groupName || !groupType || !groupGrade) {
-			showMessage("groupMessage", "error", "Nombre, tipo y grados son requeridos.");
+		var gradeList = Array.from(groupGradeCheckboxes)
+			.filter(function (cb) { return cb.checked; })
+			.map(function (cb) { return parseInt(cb.value, 10); })
+			.sort(function (a, b) { return a - b; });
+
+		if (!groupName || !groupType) {
+			showMessage("groupMessage", "error", "Nombre y tipo de organización son requeridos.");
+			return;
+		}
+
+		if (gradeList.length === 0) {
+			showMessage("groupMessage", "error", "Selecciona al menos un grado.");
 			return;
 		}
 
@@ -102,53 +126,43 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
-		var gradeList = parseGrades(groupGrade);
-		if (gradeList.length === 0) {
-			showMessage(
-				"groupMessage",
-				"error",
-				"Ingresa al menos un grado valido entre 1 y 6 (ejemplo: 4,5,6)."
-			);
+		var max = gradeMaxByType[groupType] || 6;
+		if (gradeList.length > max) {
+			showMessage("groupMessage", "error", "Has seleccionado más grados de los permitidos para este tipo de organización.");
 			return;
 		}
 
-		if (groupType === "normal" && gradeList.length !== 1) {
-			showMessage(
-				"groupMessage",
-				"error",
-				"Organizacion completa solo permite un grado."
-			);
-			return;
-		}
-
-		var gradoPrincipal = gradeList[0];
-		var normalizedGrades = gradeList.join(",");
+		var isEditing = currentGroupId !== null;
 
 		setLoading(groupForm.querySelector("button"), true);
 
 		try {
-			var result = await window.sb.from("grupos").insert([
-				{
-					maestro_id: userId,
-					nombre: groupName,
-					grado: gradoPrincipal,
-					tipo_organizacion: groupType,
-					grados: normalizedGrades,
-					escuela: groupSchool || null,
-					descripcion: groupDescription || null,
-					ciclo_escolar: cicloInicio + "-" + cicloFin,
-				},
-			]).select();
+			var payload = {
+				nombre: groupName,
+				tipo_organizacion: groupType,
+				grados: gradeList,
+				escuela: groupSchool || null,
+				descripcion: groupDescription || null,
+				ciclo_escolar: cicloInicio + "-" + cicloFin,
+			};
+
+			var result;
+			if (isEditing) {
+				result = await window.sb.from("grupos").update(payload).eq("id", currentGroupId).select();
+			} else {
+				payload.maestro_id = userId;
+				result = await window.sb.from("grupos").insert([payload]).select();
+			}
 
 			if (result.error) {
 				throw result.error;
 			}
 
-			currentGroupId = result.data[0].id;
+			if (!isEditing) { currentGroupId = result.data[0].id; }
 			currentGroupType = groupType;
 			currentGroupGrades = gradeList.slice();
 			configureStudentGradeSelector();
-			showMessage("groupMessage", "success", "Grupo creado exitosamente.");
+			showMessage("groupMessage", "success", isEditing ? "Grupo actualizado exitosamente." : "Grupo creado exitosamente.");
 
 			setTimeout(function () {
 				stepGroup.classList.add("hidden");
@@ -159,7 +173,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			showMessage(
 				"groupMessage",
 				"error",
-				"Error al crear grupo: " + (error.message || "Error desconocido")
+				"Error al guardar grupo: " + (error.message || "Error desconocido")
 			);
 		} finally {
 			setLoading(groupForm.querySelector("button"), false);
@@ -319,6 +333,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			stepStudents.classList.add("hidden");
 			stepGroup.classList.remove("hidden");
 			clearMessage("studentsMessage");
+			var submitBtn = groupForm.querySelector("button");
+			if (submitBtn) {
+				submitBtn.textContent = currentGroupId ? "Guardar cambios" : "Crear Grupo";
+			}
 			document.getElementById("groupName").focus();
 		});
 	}
@@ -389,17 +407,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	function shouldCaptureStudentGrade() {
-		return currentGroupType !== "normal" && currentGroupGrades.length > 1;
+		return currentGroupType !== "completa" && currentGroupGrades.length > 1;
 	}
 
 	function setLoading(btn, isLoading) {
 		btn.disabled = isLoading;
 		if (isLoading) {
 			btn.classList.add("opacity-70", "cursor-not-allowed");
-			btn.textContent = "Creando...";
+			btn.textContent = currentGroupId ? "Guardando..." : "Creando...";
 		} else {
 			btn.classList.remove("opacity-70", "cursor-not-allowed");
-			btn.textContent = "Crear Grupo";
+			btn.textContent = currentGroupId ? "Guardar cambios" : "Crear Grupo";
 		}
 	}
 

@@ -163,12 +163,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return;
 			}
 
-			if (tipo === "completa" && gradeList.length !== 1) {
-				showMessage("error", "Organizacion completa solo permite un grado.");
-				return;
-			}
-
-			var gradoPrincipal = gradeList[0];
 
 			setButtonLoading(saveGroupBtn, true, "Guardando...");
 
@@ -179,14 +173,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 						nombre: nombre,
 						tipo_organizacion: tipo,
 						grados: gradeList.map(String),
-						grado: gradoPrincipal,
-						es_multigrado: gradeList.length > 1,
 						escuela: escuela || null,
 						descripcion: descripcion || null,
 					})
 					.eq("id", currentGroup.id)
 					.eq("maestro_id", userId)
-					.select("id, nombre, tipo_organizacion, grados, es_multigrado, escuela, descripcion")
+					.select("id, nombre, tipo_organizacion, grados, escuela, descripcion")
 					.single();
 
 				if (updateResult.error) {
@@ -435,7 +427,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function loadCurrentGroup() {
 		var groupResult = await window.sb
 			.from("grupos")
-			.select("id, nombre, tipo_organizacion, grados, es_multigrado, escuela, descripcion")
+			.select("id, nombre, tipo_organizacion, grados, escuela, descripcion")
 			.eq("maestro_id", userId)
 			.order("id", { ascending: true })
 			.limit(1);
@@ -980,7 +972,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		editGroupNameInput.value = group.nombre || "";
 
-		var legacyTypeMap = { normal: "completa", multigrado: "" };
+		var legacyTypeMap = { normal: "completa", multigrado: "unitaria" };
 		var tipo = group.tipo_organizacion || "";
 		editGroupTypeInput.value = legacyTypeMap[tipo] !== undefined ? legacyTypeMap[tipo] : tipo;
 
@@ -1087,8 +1079,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
+		var gradeMaxByTypeEdit = { unitaria: 6, bidocente: 3, tridocente: 2, tetradocente: 3, pentadocente: 2, completa: 1 };
+
 		editGroupTypeInput.addEventListener("change", function () {
 			updateGradesHelpText(editGroupTypeInput.value);
+			// Al cambiar tipo, desmarcar los que excedan el nuevo límite
+			var max = gradeMaxByTypeEdit[editGroupTypeInput.value] || 6;
+			var checked = Array.from(document.querySelectorAll("input[name='editGroupGrades']:checked"));
+			checked.slice(max).forEach(function (cb) { cb.checked = false; });
+		});
+
+		document.querySelectorAll("input[name='editGroupGrades']").forEach(function (cb) {
+			cb.addEventListener("change", function () {
+				var max = gradeMaxByTypeEdit[editGroupTypeInput.value] || 6;
+				var checked = Array.from(document.querySelectorAll("input[name='editGroupGrades']:checked"));
+				if (checked.length > max) {
+					cb.checked = false;
+				}
+			});
 		});
 	}
 

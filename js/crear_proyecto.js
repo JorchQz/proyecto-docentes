@@ -28,16 +28,22 @@ document.addEventListener("DOMContentLoaded", async function () {
           .limit(1);
         if (grupos && grupos.length > 0) {
           if (!grupoId) grupoId = grupos[0].id;
-          gradosUsuario = grupos[0].grados
-            .split(',')
-            .map(g => parseInt(g.trim(), 10))
-            .filter(Boolean);
+          const rawGrados = grupos[0].grados;
+          if (Array.isArray(rawGrados)) {
+            gradosUsuario = rawGrados.map(g => parseInt(g, 10)).filter(Boolean);
+          } else if (typeof rawGrados === 'string') {
+            gradosUsuario = rawGrados.split(',').map(g => parseInt(g.trim(), 10)).filter(Boolean);
+          }
+          gradosUsuario.sort((a, b) => a - b);
         }
       }
     }
   } catch (e) {
     console.error('Error cargando grupo:', e);
   }
+
+  // Mapa Fase → grados NEM
+  const faseGradosMap = { 'Fase 3': [1, 2], 'Fase 4': [3, 4], 'Fase 5': [5, 6] };
 
   // ---------- Checkboxes de Fase (NEM Primaria) ----------
   const faseCheckboxes = document.getElementById('faseCheckboxes');
@@ -51,25 +57,54 @@ document.addEventListener("DOMContentLoaded", async function () {
     faseCheckboxes.innerHTML = '';
     faseCheckboxes.appendChild(makeSelectAll('selectAllFase', 'Seleccionar todas las fases', function () {
       faseCheckboxes.querySelectorAll("input[name='fase']").forEach(c => c.checked = this.checked);
+      renderGradosCheckboxes();
     }));
     fasesNEM.forEach(fase => {
-      faseCheckboxes.appendChild(makeCheckbox('fase', fase.val, fase.label));
+      const lbl = makeCheckbox('fase', fase.val, fase.label);
+      lbl.querySelector('input').addEventListener('change', renderGradosCheckboxes);
+      faseCheckboxes.appendChild(lbl);
     });
   }
 
-  // ---------- Checkboxes de Grados ----------
+  // ---------- Checkboxes de Grados (reactivos a fases) ----------
   const gradosCheckboxes = document.getElementById('gradosCheckboxes');
-  if (gradosCheckboxes) {
+
+  function renderGradosCheckboxes() {
+    if (!gradosCheckboxes) return;
+    const fasesChecked = Array.from(
+      faseCheckboxes.querySelectorAll("input[name='fase']:checked")
+    ).map(c => c.value);
+
+    let gradosMostrar;
+    if (fasesChecked.length === 0) {
+      gradosMostrar = gradosUsuario.slice();
+    } else {
+      const gradosDeFases = new Set();
+      fasesChecked.forEach(f => (faseGradosMap[f] || []).forEach(g => gradosDeFases.add(g)));
+      gradosMostrar = gradosUsuario.filter(g => gradosDeFases.has(g));
+    }
+
     gradosCheckboxes.innerHTML = '';
-    if (gradosUsuario.length > 1) {
+    if (gradosMostrar.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'text-sm text-gray-400';
+      p.textContent = gradosUsuario.length === 0
+        ? 'No hay grados registrados en tu grupo.'
+        : 'Las fases seleccionadas no incluyen grados de tu grupo.';
+      gradosCheckboxes.appendChild(p);
+      return;
+    }
+    if (gradosMostrar.length > 1) {
       gradosCheckboxes.appendChild(makeSelectAll('selectAllGrados', 'Seleccionar todos', function () {
         gradosCheckboxes.querySelectorAll("input[name='grados']").forEach(c => c.checked = this.checked);
       }));
     }
-    gradosUsuario.forEach(grado => {
-      gradosCheckboxes.appendChild(makeCheckbox('grados', String(grado), `Grado ${grado}`));
+    gradosMostrar.forEach(grado => {
+      gradosCheckboxes.appendChild(makeCheckbox('grados', String(grado), `${grado}°`));
     });
   }
+
+  renderGradosCheckboxes();
 
   // ---------- Seleccionar todos — Campos formativos ----------
   const cfBox = document.querySelector('[name="campos_formativos"]')?.closest('.flex');
@@ -118,6 +153,33 @@ document.addEventListener("DOMContentLoaded", async function () {
   const step2 = document.getElementById('step2-sesiones');
   const formPaso1 = document.getElementById('formPaso1');
 
+  // Mapa campo formativo → metodología sugerida
+  const campoMetodologiaMap = {
+    'Lenguajes': 'ABPC',
+    'Saberes y Pensamiento Científico': 'STEAM',
+    'Ética, Naturaleza y Sociedades': 'ABP',
+    'De lo Humano y lo Comunitario': 'AS',
+  };
+
+  function sugerirMetodologia() {
+    const checked = Array.from(formPaso1.querySelectorAll('input[name="campos_formativos"]:checked')).map(c => c.value);
+    const hint = document.getElementById('sugerenciaMetodologia');
+    if (checked.length === 1) {
+      const metSugerida = campoMetodologiaMap[checked[0]];
+      if (metSugerida) {
+        const radio = formPaso1.querySelector(`input[name="metodologia"][value="${metSugerida}"]`);
+        if (radio) radio.checked = true;
+        if (hint) hint.classList.remove('hidden');
+      }
+    } else {
+      if (hint) hint.classList.add('hidden');
+    }
+  }
+
+  formPaso1.querySelectorAll('input[name="campos_formativos"]').forEach(cb => {
+    cb.addEventListener('change', sugerirMetodologia);
+  });
+
   if (formPaso1) {
     formPaso1.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -137,13 +199,65 @@ document.addEventListener("DOMContentLoaded", async function () {
       };
       step1.classList.add('hidden');
       step2.classList.remove('hidden');
-      if (sessionCounter === 0) agregarSesion();
+      if (sessionCounter === 0) {
+        agregarSesion();
+      } else {
+        // Actualizar selects de todas las sesiones existentes con los nuevos valores del Paso 1
+        document.querySelectorAll('.session-block').forEach(function (block) {
+          // Campo formativo
+          const cfSelect = block.querySelector('select[name="campo_formativo"]');
+          if (cfSelect) {
+            const cf = buildCampoFormativoOptions();
+            cfSelect.innerHTML = cf.html;
+            cfSelect.disabled = cf.disabled;
+          }
+          // Secuencia
+          const secSelect = block.querySelector('select[name="momento"]');
+          if (secSelect) {
+            const prevVal = secSelect.value;
+            secSelect.innerHTML = buildSecuenciaOptions();
+            // Conservar selección si sigue siendo válida en la nueva metodología
+            if (prevVal && secSelect.querySelector(`option[value="${prevVal}"]`)) {
+              secSelect.value = prevVal;
+            }
+          }
+        });
+      }
     });
   }
 
   // ============================================================
   // PASO 2 — Sesiones
   // ============================================================
+
+  // Secuencias por metodología (Paso 2)
+  const metodologiaSecuencias = {
+    'ABPC': ['1. Identificamos','2. Recuperamos','3. Planificamos','4. Nos acercamos','5. Vamos y volvemos','6. Reorientamos','7. Seguimos','8. Integramos','9. Difundimos','10. Consideramos','11. Avanzamos'],
+    'STEAM': ['Fase 1. Introducción al tema','Fase 2. Diseño de investigación','Fase 3. Organizar y estructurar respuestas','Fase 4. Presentación de resultados','Fase 5. Metacognición'],
+    'ABP': ['1. Presentemos','2. Recolectemos','3. Formulemos el problema','4. Organicemos la experiencia','5. Vivamos la experiencia','6. Resultados y análisis'],
+    'AS': ['Etapa 1. Punto de partida','Etapa 2. Lo que sé y lo que quiero saber','Etapa 3. Organicemos las actividades','Etapa 4. Creatividad en marcha','Etapa 5. Compartimos y evaluamos'],
+  };
+
+  function buildSecuenciaOptions() {
+    const met = paso1Data ? paso1Data.metodologia : null;
+    const opciones = metodologiaSecuencias[met] || [];
+    return '<option value="">Selecciona...</option>' +
+      opciones.map(o => `<option value="${o}">${o}</option>`).join('');
+  }
+
+  function buildCampoFormativoOptions() {
+    const campos = paso1Data ? paso1Data.campos_formativos : [];
+    if (!campos || campos.length === 0) {
+      return { html: '<option value="">Selecciona...</option><option>Lenguajes</option><option>Saberes y Pensamiento Científico</option><option>Ética, Naturaleza y Sociedades</option><option>De lo Humano y lo Comunitario</option>', disabled: false };
+    }
+    if (campos.length === 1) {
+      return { html: `<option value="${campos[0]}" selected>${campos[0]}</option>`, disabled: true };
+    }
+    return {
+      html: '<option value="">Selecciona...</option>' + campos.map(c => `<option value="${c}">${c}</option>`).join(''),
+      disabled: false,
+    };
+  }
 
   function buildDidacticSection(key, label) {
     return `
@@ -215,24 +329,16 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">Campo formativo</label>
             <select name="campo_formativo"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
-              <option value="">Selecciona...</option>
-              <option>Lenguajes</option>
-              <option>Saberes y Pensamiento Científico</option>
-              <option>Ética, Naturaleza y Sociedades</option>
-              <option>De lo Humano y lo Comunitario</option>
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+              ${(function(){ const r = buildCampoFormativoOptions(); return r.disabled ? 'disabled' : ''; })()}>
+              ${buildCampoFormativoOptions().html}
             </select>
           </div>
           <div class="md:col-span-2">
-            <label class="block text-xs font-medium text-gray-500 mb-1">Momento</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Secuencia</label>
             <select name="momento"
               class="session-momento w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
-              <option value="">Selecciona...</option>
-              <option>Presentamos</option>
-              <option>Recolectamos</option>
-              <option>Formulamos el problema</option>
-              <option>Vivimos la experiencia</option>
-              <option>Valoramos la experiencia</option>
+              ${buildSecuenciaOptions()}
             </select>
           </div>
         </div>
@@ -361,6 +467,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   document.getElementById('btnAgregarSesion')?.addEventListener('click', agregarSesion);
 
+  document.getElementById('btnVolverPaso1')?.addEventListener('click', function () {
+    step2.classList.add('hidden');
+    step1.classList.remove('hidden');
+  });
+
   // ============================================================
   // GUARDAR EN SUPABASE
   // ============================================================
@@ -393,7 +504,6 @@ document.addEventListener("DOMContentLoaded", async function () {
           ejes_articuladores:  paso1Data.ejes_articuladores,
           proposito:           paso1Data.proposito,
           pregunta_generadora: paso1Data.pregunta_generadora,
-          es_multigrado:       paso1Data.grados.length > 1,
           visible_mercado:     false,
         })
         .select('id')
