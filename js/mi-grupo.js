@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", async function () {
+﻿document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) {
 		alert("Supabase no esta configurado. Regresando al login.");
 		window.location.href = "index.html";
@@ -851,8 +851,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		var pattern = allowSpaces
-			? /^[A-Za-z\-\s]+$/
-			: /^[A-Za-z\-]+$/;
+			? /^[A-Za-zÑñ\-\s]+$/
+			: /^[A-Za-zÑñ\-]+$/;
 
 		return pattern.test(removeAccents(text));
 	}
@@ -924,7 +924,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function formatNameInput(rawValue, allowSpaces) {
 		var cleaned = removeAccents(rawValue || "")
-			.replace(/[^A-Za-z\-\s]/g, "")
+			.replace(/[^A-Za-zÑñ\-\s]/g, "")
 			.replace(/\s+/g, " ")
 			.trimStart();
 
