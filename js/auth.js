@@ -164,8 +164,11 @@ document.addEventListener("DOMContentLoaded", function () {
 			return;
 		}
 
+		var userId = result.data.session.user.id;
+		await window.sb.from("perfiles").insert([{ id: userId, nombre_completo: teacherName }]);
+
 		showMessage("success", "Registro exitoso. Redirigiendo...");
-		await redirectAfterAuth(result.data.session.user.id);
+		await redirectAfterAuth(userId);
 	}
 
 	async function loginUser(email, password) {

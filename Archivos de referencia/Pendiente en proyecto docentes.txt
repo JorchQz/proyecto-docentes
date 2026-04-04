@@ -1,0 +1,4 @@
+1. Quitar lo de que pida confirmación de correo, solo necesito usuario y contraseña.
+2. Agregar la opción de eliminar cuenta y que se borre todo lo relacionado a la cuenta en supabase
+3. Diferenciador por grados no aparece
+4. Trabajar en el PDA por grado

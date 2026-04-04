@@ -175,6 +175,7 @@
 						grados: gradeList.map(String),
 						escuela: escuela || null,
 						descripcion: descripcion || null,
+						es_multigrado: gradeList.length > 1,
 					})
 					.eq("id", currentGroup.id)
 					.eq("maestro_id", userId)
@@ -321,7 +322,7 @@
 				}
 			}
 
-			var studentName = toTitleCase(buildFullName(lastName1, lastName2, firstNames));
+			var studentName = buildFullName(lastName1, lastName2, firstNames);
  			var studentGrade = shouldCaptureStudentGrade()
 				? selectedGrade
 				: currentGroupGrades[0] || null;
@@ -936,7 +937,7 @@
 	}
 
 	function removeAccents(text) {
-		return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+		return text.normalize("NFD").replace(/[\u0300-\u0302\u0304-\u036f]/g, "").normalize("NFC");
 	}
 
 	function showStudentsMessage(type, text) {
