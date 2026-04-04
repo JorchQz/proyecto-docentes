@@ -150,9 +150,28 @@
         </form>
       </section>
 
-      <!-- Paso 2: Sesiones -->
+      <!-- Paso 2: Contenidos y PDA -->
+      <section class="border-t pt-6 hidden" id="step2-contenidos">
+        <h2 class="text-xl font-bold text-gray-800 mb-1">Paso 2: Contenidos y PDA</h2>
+        <p class="text-gray-500 text-sm mb-6">Especifica los contenidos y procesos de desarrollo de aprendizaje (PDA) por campo formativo y grado</p>
+
+        <div id="contenidosContainer" class="flex flex-col gap-6"></div>
+
+        <div class="mt-6 flex justify-between">
+          <button type="button" id="btnVolverPaso1Desde2"
+            class="border border-gray-300 text-gray-700 font-bold px-6 py-3 rounded-xl hover:bg-gray-50 transition">
+            ← Volver al Paso 1
+          </button>
+          <button type="button" id="btnIrPaso3"
+            class="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl shadow-sm hover:bg-blue-700 transition">
+            Siguiente →
+          </button>
+        </div>
+      </section>
+
+      <!-- Paso 3: Sesiones -->
       <section class="border-t pt-6 hidden" id="step2-sesiones">
-        <h2 class="text-xl font-bold text-gray-800 mb-1">Paso 2: Sesiones del Proyecto</h2>
+        <h2 class="text-xl font-bold text-gray-800 mb-1">Paso 3: Sesiones del Proyecto</h2>
         <p class="text-gray-500 text-sm mb-6">Agrega cada sesión de tu planeación</p>
 
         <div id="sesionesContainer" class="flex flex-col gap-4"></div>
@@ -167,9 +186,9 @@
         <div id="mensajePaso2" class="mt-4 hidden"></div>
 
         <div class="mt-6 flex justify-between">
-          <button type="button" id="btnVolverPaso1"
+          <button type="button" id="btnVolverPaso2"
             class="border border-gray-300 text-gray-700 font-bold px-6 py-3 rounded-xl hover:bg-gray-50 transition">
-            ← Volver al Paso 1
+            ← Volver al Paso 2
           </button>
           <button type="button" id="btnGuardar"
             class="bg-green-600 text-white font-bold px-8 py-3 rounded-xl shadow-sm hover:bg-green-700 transition text-lg">

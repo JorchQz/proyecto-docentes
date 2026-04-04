@@ -197,11 +197,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
-		if (!isSingleWord(lastName1) || (lastName2 && !isSingleWord(lastName2))) {
+		if (!areValidWords(lastName1, true) || (lastName2 && !areValidWords(lastName2, true))) {
 			showMessage(
 				"studentsMessage",
 				"error",
-				"Cada apellido debe contener solo una palabra (sin espacios)."
+				"Cada apellido solo puede contener letras, espacios, guiones y apostrofes."
 			);
 			return;
 		}
@@ -525,7 +525,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			studentLastName1Input.addEventListener("input", function () {
 				studentLastName1Input.value = formatNameInput(
 					studentLastName1Input.value,
-					false
+					true
 				);
 			});
 		}
@@ -534,7 +534,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			studentLastName2Input.addEventListener("input", function () {
 				studentLastName2Input.value = formatNameInput(
 					studentLastName2Input.value,
-					false
+					true
 				);
 			});
 		}

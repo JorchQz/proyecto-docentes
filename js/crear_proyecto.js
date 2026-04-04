@@ -55,15 +55,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   if (faseCheckboxes) {
     faseCheckboxes.innerHTML = '';
-    faseCheckboxes.appendChild(makeSelectAll('selectAllFase', 'Seleccionar todas las fases', function () {
-      faseCheckboxes.querySelectorAll("input[name='fase']").forEach(c => c.checked = this.checked);
-      renderGradosCheckboxes();
-    }));
-    fasesNEM.forEach(fase => {
+    const fasesVisibles = fasesNEM.filter(fase =>
+      (faseGradosMap[fase.val] || []).some(g => gradosUsuario.includes(g))
+    );
+    if (fasesVisibles.length > 1) {
+      faseCheckboxes.appendChild(makeSelectAll('selectAllFase', 'Seleccionar todas las fases', function () {
+        faseCheckboxes.querySelectorAll("input[name='fase']").forEach(c => c.checked = this.checked);
+        renderGradosCheckboxes();
+      }));
+    }
+    fasesVisibles.forEach(fase => {
       const lbl = makeCheckbox('fase', fase.val, fase.label);
       lbl.querySelector('input').addEventListener('change', renderGradosCheckboxes);
       faseCheckboxes.appendChild(lbl);
     });
+    if (fasesVisibles.length === 0) {
+      faseCheckboxes.innerHTML = '<p class="text-sm text-gray-400">No hay fases disponibles para los grados de tu grupo.</p>';
+    }
   }
 
   // ---------- Checkboxes de Grados (reactivos a fases) ----------
@@ -150,6 +158,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   let sessionCounter = 0;
 
   const step1 = document.getElementById('step1-datos-generales');
+  const step2contenidos = document.getElementById('step2-contenidos');
   const step2 = document.getElementById('step2-sesiones');
   const formPaso1 = document.getElementById('formPaso1');
 
@@ -198,36 +207,158 @@ document.addEventListener("DOMContentLoaded", async function () {
         pregunta_generadora: fd.get('pregunta_generadora'),
       };
       step1.classList.add('hidden');
-      step2.classList.remove('hidden');
-      if (sessionCounter === 0) {
-        agregarSesion();
-      } else {
-        // Actualizar selects de todas las sesiones existentes con los nuevos valores del Paso 1
-        document.querySelectorAll('.session-block').forEach(function (block) {
-          // Campo formativo
-          const cfSelect = block.querySelector('select[name="campo_formativo"]');
-          if (cfSelect) {
-            const cf = buildCampoFormativoOptions();
-            cfSelect.innerHTML = cf.html;
-            cfSelect.disabled = cf.disabled;
-          }
-          // Secuencia
-          const secSelect = block.querySelector('select[name="momento"]');
-          if (secSelect) {
-            const prevVal = secSelect.value;
-            secSelect.innerHTML = buildSecuenciaOptions();
-            // Conservar selección si sigue siendo válida en la nueva metodología
-            if (prevVal && secSelect.querySelector(`option[value="${prevVal}"]`)) {
-              secSelect.value = prevVal;
-            }
-          }
-        });
-      }
+      step2contenidos.classList.remove('hidden');
+      renderContenidos();
     });
   }
 
   // ============================================================
-  // PASO 2 — Sesiones
+  // PASO 2 — Contenidos y PDA
+  // ============================================================
+
+  let paso2Data = {}; // { [campo]: { contenido, pda: { [grado]: texto } } }
+
+  function renderContenidos() {
+    const container = document.getElementById('contenidosContainer');
+    if (!container) return;
+
+    const campos = paso1Data ? paso1Data.campos_formativos : [];
+    const grados = paso1Data ? paso1Data.grados.map(Number).sort((a,b)=>a-b) : [];
+
+    // Guardar valores actuales antes de re-renderizar
+    _saveContenidosState();
+
+    container.innerHTML = '';
+
+    if (campos.length === 0) {
+      container.innerHTML = '<p class="text-gray-400 text-sm">No hay campos formativos seleccionados.</p>';
+      return;
+    }
+
+    const fases = paso1Data ? paso1Data.fase : [];
+
+    campos.forEach(function (campo) {
+      const saved = paso2Data[campo] || {};
+      const div = document.createElement('div');
+      div.className = 'campo-contenido-block border border-gray-200 rounded-xl p-5 bg-white';
+      div.dataset.campo = campo;
+
+      // Contenido por fase
+      let contenidoRows = '';
+      if (fases.length <= 1) {
+        const fase = fases[0] || '';
+        const val = (saved.contenido && typeof saved.contenido === 'object')
+          ? (saved.contenido[fase] || '')
+          : (saved.contenido || '');
+        contenidoRows = `
+          <textarea name="contenido_${fase || 'unico'}" rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            placeholder="Escribe el contenido para este campo formativo...">${val}</textarea>`;
+      } else {
+        contenidoRows = `<div class="grid grid-cols-1 md:grid-cols-${Math.min(fases.length, 3)} gap-4">`;
+        fases.forEach(function (fase) {
+          const val = (saved.contenido && typeof saved.contenido === 'object')
+            ? (saved.contenido[fase] || '')
+            : '';
+          contenidoRows += `
+            <div>
+              <label class="block text-xs font-semibold text-blue-700 mb-1">${fase}</label>
+              <textarea name="contenido_${fase}" rows="3"
+                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="Contenido para ${fase}...">${val}</textarea>
+            </div>`;
+        });
+        contenidoRows += '</div>';
+      }
+
+      // PDA por grado
+      let pdaRows = '';
+      grados.forEach(function (g) {
+        const val = (saved.pda && saved.pda[g]) ? saved.pda[g] : '';
+        pdaRows += `
+          <div>
+            <label class="block text-xs font-semibold text-blue-700 mb-1">${g}°</label>
+            <textarea name="pda_${g}" rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+              placeholder="PDA para ${g}°...">${val}</textarea>
+          </div>`;
+      });
+
+      div.innerHTML = `
+        <h3 class="font-bold text-gray-800 mb-4 text-base border-b pb-2">${campo}</h3>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-3">Contenido${fases.length > 1 ? ' por fase' : ''}</label>
+          ${contenidoRows}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-3">Procesos de Desarrollo de Aprendizaje (PDA) por grado</label>
+          <div class="grid grid-cols-1 md:grid-cols-${Math.min(grados.length, 3)} gap-4">
+            ${pdaRows}
+          </div>
+        </div>`;
+
+      container.appendChild(div);
+    });
+  }
+
+  function _saveContenidosState() {
+    document.querySelectorAll('.campo-contenido-block').forEach(function (block) {
+      const campo = block.dataset.campo;
+      if (!campo) return;
+      const contenido = {};
+      block.querySelectorAll('textarea[name^="contenido_"]').forEach(function (ta) {
+        const fase = ta.name.replace('contenido_', '');
+        contenido[fase] = ta.value;
+      });
+      const pda = {};
+      block.querySelectorAll('textarea[name^="pda_"]').forEach(function (ta) {
+        const grado = ta.name.replace('pda_', '');
+        pda[grado] = ta.value;
+      });
+      paso2Data[campo] = { contenido, pda };
+    });
+  }
+
+  function collectContenidosData() {
+    _saveContenidosState();
+    return paso2Data;
+  }
+
+  document.getElementById('btnVolverPaso1Desde2')?.addEventListener('click', function () {
+    _saveContenidosState();
+    step2contenidos.classList.add('hidden');
+    step1.classList.remove('hidden');
+  });
+
+  document.getElementById('btnIrPaso3')?.addEventListener('click', function () {
+    _saveContenidosState();
+    step2contenidos.classList.add('hidden');
+    step2.classList.remove('hidden');
+    if (sessionCounter === 0) {
+      agregarSesion();
+    } else {
+      // Actualizar selects de sesiones existentes si cambió paso 1
+      document.querySelectorAll('.session-block').forEach(function (block) {
+        const cfSelect = block.querySelector('select[name="campo_formativo"]');
+        if (cfSelect) {
+          const cf = buildCampoFormativoOptions();
+          cfSelect.innerHTML = cf.html;
+          cfSelect.disabled = cf.disabled;
+        }
+        const secSelect = block.querySelector('select[name="momento"]');
+        if (secSelect) {
+          const prevVal = secSelect.value;
+          secSelect.innerHTML = buildSecuenciaOptions();
+          if (prevVal && secSelect.querySelector(`option[value="${prevVal}"]`)) {
+            secSelect.value = prevVal;
+          }
+        }
+      });
+    }
+  });
+
+  // ============================================================
+  // PASO 3 — Sesiones
   // ============================================================
 
   // Secuencias por metodología (Paso 2)
@@ -260,6 +391,37 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function buildDidacticSection(key, label) {
+    const grados = paso1Data ? paso1Data.grados.map(Number).sort((a, b) => a - b) : [];
+    const cols = Math.min(grados.length || 2, 3);
+
+    let difCols = '';
+    if (grados.length === 0) {
+      // Fallback: dos columnas genéricas si no hay grados
+      difCols = `
+        <div>
+          <label class="block text-xs font-semibold text-blue-700 mb-1">Grupo A</label>
+          <textarea name="${key}_grado_A" rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            placeholder="Actividad para este grupo..."></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-blue-700 mb-1">Grupo B</label>
+          <textarea name="${key}_grado_B" rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            placeholder="Actividad para este grupo..."></textarea>
+        </div>`;
+    } else {
+      grados.forEach(function (g) {
+        difCols += `
+          <div>
+            <label class="block text-xs font-semibold text-blue-700 mb-1">${g}°</label>
+            <textarea name="${key}_grado_${g}" rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+              placeholder="Actividad para ${g}°..."></textarea>
+          </div>`;
+      });
+    }
+
     return `
       <div class="didactic-section border border-gray-100 rounded-xl p-4 bg-gray-50"
            data-section="${key}" data-mode="todos">
@@ -280,23 +442,8 @@ document.addEventListener("DOMContentLoaded", async function () {
             placeholder="Actividad de ${label.toLowerCase()} para todos los grados..."></textarea>
         </div>
         <div class="mode-dif-panel hidden">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <input type="text" class="label-grupo-a w-full px-2 py-1 border border-blue-200 rounded-lg
-                text-xs text-blue-700 font-semibold mb-1 bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                value="Grados A" placeholder="Ej: 4°">
-              <textarea name="${key}_grado_a" rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="Actividad para este grupo..."></textarea>
-            </div>
-            <div>
-              <input type="text" class="label-grupo-b w-full px-2 py-1 border border-blue-200 rounded-lg
-                text-xs text-blue-700 font-semibold mb-1 bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                value="Grados B" placeholder="Ej: 5° y 6°">
-              <textarea name="${key}_grado_b" rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="Actividad para este grupo..."></textarea>
-            </div>
+          <div class="grid grid-cols-1 md:grid-cols-${cols} gap-3">
+            ${difCols}
           </div>
         </div>
       </div>`;
@@ -467,9 +614,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   document.getElementById('btnAgregarSesion')?.addEventListener('click', agregarSesion);
 
-  document.getElementById('btnVolverPaso1')?.addEventListener('click', function () {
+  document.getElementById('btnVolverPaso2')?.addEventListener('click', function () {
     step2.classList.add('hidden');
-    step1.classList.remove('hidden');
+    step2contenidos.classList.remove('hidden');
+    renderContenidos();
   });
 
   // ============================================================
@@ -504,6 +652,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           ejes_articuladores:  paso1Data.ejes_articuladores,
           proposito:           paso1Data.proposito,
           pregunta_generadora: paso1Data.pregunta_generadora,
+          contenidos_pda:      collectContenidosData(),
           visible_mercado:     false,
         })
         .select('id')
@@ -514,8 +663,17 @@ document.addEventListener("DOMContentLoaded", async function () {
       // Construir payload de sesiones
       const blocks = document.querySelectorAll('.session-block');
       const sesionesPayload = Array.from(blocks).map((block, idx) => {
-        const g   = name => block.querySelector(`[name="${name}"]`)?.value.trim() || null;
+        const g    = name => block.querySelector(`[name="${name}"]`)?.value.trim() || null;
         const mode = key  => block.querySelector(`.didactic-section[data-section="${key}"]`)?.dataset.mode || 'todos';
+
+        function getDifData(key) {
+          const obj = {};
+          block.querySelectorAll(`textarea[name^="${key}_grado_"]`).forEach(function (ta) {
+            const grado = ta.name.replace(`${key}_grado_`, '');
+            obj[grado] = ta.value.trim() || null;
+          });
+          return Object.keys(obj).length > 0 ? obj : null;
+        }
 
         const mI = mode('inicio');
         const mD = mode('desarrollo');
@@ -529,15 +687,12 @@ document.addEventListener("DOMContentLoaded", async function () {
           fecha:                g('fecha') || null,
           campo_formativo:      g('campo_formativo'),
           momento:              g('momento'),
-          inicio_todos:         mI === 'todos'        ? g('inicio_todos')      : null,
-          inicio_grado_a:       mI === 'diferenciado' ? g('inicio_grado_a')    : null,
-          inicio_grado_b:       mI === 'diferenciado' ? g('inicio_grado_b')    : null,
-          desarrollo_todos:     mD === 'todos'        ? g('desarrollo_todos')  : null,
-          desarrollo_grado_a:   mD === 'diferenciado' ? g('desarrollo_grado_a'): null,
-          desarrollo_grado_b:   mD === 'diferenciado' ? g('desarrollo_grado_b'): null,
-          cierre_todos:         mC === 'todos'        ? g('cierre_todos')      : null,
-          cierre_grado_a:       mC === 'diferenciado' ? g('cierre_grado_a')    : null,
-          cierre_grado_b:       mC === 'diferenciado' ? g('cierre_grado_b')    : null,
+          inicio_todos:         mI === 'todos'        ? g('inicio_todos')   : null,
+          inicio_diferenciado:  mI === 'diferenciado' ? getDifData('inicio') : null,
+          desarrollo_todos:     mD === 'todos'        ? g('desarrollo_todos'): null,
+          desarrollo_diferenciado: mD === 'diferenciado' ? getDifData('desarrollo') : null,
+          cierre_todos:         mC === 'todos'        ? g('cierre_todos')   : null,
+          cierre_diferenciado:  mC === 'diferenciado' ? getDifData('cierre') : null,
           tarea:                g('tarea'),
           recursos:             g('recursos'),
           productos:            g('productos'),
