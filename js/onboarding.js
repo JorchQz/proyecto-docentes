@@ -515,9 +515,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function areValidWords(text, allowSpaces) {
 		var pattern = allowSpaces
-			? /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]+$/
-			: /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-]+$/;
-		return pattern.test(text);
+			? /^[A-Za-z\-\s]+$/
+			: /^[A-Za-z\-]+$/;
+		return pattern.test(removeAccents(text || ""));
 	}
 
 	function bindStudentInputRules() {
@@ -550,7 +550,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	function formatNameInput(value, allowSpaces) {
-		var clean = (value || "").replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]/g, "");
+		var clean = removeAccents(value || "").replace(/[^A-Za-z\-\s]/g, "");
 
 		if (allowSpaces) {
 			clean = clean.replace(/\s+/g, " ").replace(/^\s+/, "");
@@ -558,14 +558,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			clean = clean.replace(/\s+/g, "");
 		}
 
-		return toTitleCase(clean);
+		return clean.toUpperCase();
 	}
 
-	function toTitleCase(value) {
-		return (value || "")
-			.toLocaleLowerCase("es-MX")
-			.replace(/(^|[\s'\-])([a-záéíóúüñ])/g, function (match, separator, char) {
-				return separator + char.toLocaleUpperCase("es-MX");
-			});
+	function removeAccents(text) {
+		return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 	}
 });

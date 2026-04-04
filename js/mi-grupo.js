@@ -851,10 +851,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		var pattern = allowSpaces
-			? /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]+$/
-			: /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-]+$/;
+			? /^[A-Za-z\-\s]+$/
+			: /^[A-Za-z\-]+$/;
 
-		return pattern.test(text);
+		return pattern.test(removeAccents(text));
 	}
 
 	function bindStudentInputRules() {
@@ -923,8 +923,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	function formatNameInput(rawValue, allowSpaces) {
-		var cleaned = (rawValue || "")
-			.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]/g, "")
+		var cleaned = removeAccents(rawValue || "")
+			.replace(/[^A-Za-z\-\s]/g, "")
 			.replace(/\s+/g, " ")
 			.trimStart();
 
@@ -932,15 +932,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			cleaned = cleaned.replace(/\s+/g, "");
 		}
 
-		return toTitleCase(cleaned);
+		return cleaned.toUpperCase();
 	}
 
-	function toTitleCase(value) {
-		return (value || "")
-			.toLocaleLowerCase("es-MX")
-			.replace(/(^|[\s'\-])([a-záéíóúüñ])/g, function (match, separator, char) {
-				return separator + char.toLocaleUpperCase("es-MX");
-			});
+	function removeAccents(text) {
+		return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 	}
 
 	function showStudentsMessage(type, text) {
