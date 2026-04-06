@@ -45,74 +45,69 @@ document.addEventListener("DOMContentLoaded", async function () {
   // Mapa Fase → grados NEM
   const faseGradosMap = { 'Fase 3': [1, 2], 'Fase 4': [3, 4], 'Fase 5': [5, 6] };
 
-  // ---------- Checkboxes de Fase (NEM Primaria) ----------
-  const faseCheckboxes = document.getElementById('faseCheckboxes');
-  const fasesNEM = [
-    { val: 'Fase 3', label: 'Fase 3 — Primaria (1° y 2°)' },
-    { val: 'Fase 4', label: 'Fase 4 — Primaria (3° y 4°)' },
-    { val: 'Fase 5', label: 'Fase 5 — Primaria (5° y 6°)' },
-  ];
-
-  if (faseCheckboxes) {
-    faseCheckboxes.innerHTML = '';
-    const fasesVisibles = fasesNEM.filter(fase =>
-      (faseGradosMap[fase.val] || []).some(g => gradosUsuario.includes(g))
-    );
-    if (fasesVisibles.length > 1) {
-      faseCheckboxes.appendChild(makeSelectAll('selectAllFase', 'Seleccionar todas las fases', function () {
-        faseCheckboxes.querySelectorAll("input[name='fase']").forEach(c => c.checked = this.checked);
-        renderGradosCheckboxes();
-      }));
-    }
-    fasesVisibles.forEach(fase => {
-      const lbl = makeCheckbox('fase', fase.val, fase.label);
-      lbl.querySelector('input').addEventListener('change', renderGradosCheckboxes);
-      faseCheckboxes.appendChild(lbl);
-    });
-    if (fasesVisibles.length === 0) {
-      faseCheckboxes.innerHTML = '<p class="text-sm text-gray-400">No hay fases disponibles para los grados de tu grupo.</p>';
-    }
-  }
-
-  // ---------- Checkboxes de Grados (reactivos a fases) ----------
+  // ---------- Checkboxes de Grados (selección primaria) ----------
   const gradosCheckboxes = document.getElementById('gradosCheckboxes');
 
   function renderGradosCheckboxes() {
     if (!gradosCheckboxes) return;
-    const fasesChecked = Array.from(
-      faseCheckboxes.querySelectorAll("input[name='fase']:checked")
-    ).map(c => c.value);
-
-    let gradosMostrar;
-    if (fasesChecked.length === 0) {
-      gradosMostrar = gradosUsuario.slice();
-    } else {
-      const gradosDeFases = new Set();
-      fasesChecked.forEach(f => (faseGradosMap[f] || []).forEach(g => gradosDeFases.add(g)));
-      gradosMostrar = gradosUsuario.filter(g => gradosDeFases.has(g));
-    }
-
     gradosCheckboxes.innerHTML = '';
-    if (gradosMostrar.length === 0) {
+    if (gradosUsuario.length === 0) {
       const p = document.createElement('p');
       p.className = 'text-sm text-gray-400';
-      p.textContent = gradosUsuario.length === 0
-        ? 'No hay grados registrados en tu grupo.'
-        : 'Las fases seleccionadas no incluyen grados de tu grupo.';
+      p.textContent = 'No hay grados registrados en tu grupo.';
       gradosCheckboxes.appendChild(p);
       return;
     }
-    if (gradosMostrar.length > 1) {
+    if (gradosUsuario.length > 1) {
       gradosCheckboxes.appendChild(makeSelectAll('selectAllGrados', 'Seleccionar todos', function () {
         gradosCheckboxes.querySelectorAll("input[name='grados']").forEach(c => c.checked = this.checked);
+        renderFaseBadges();
       }));
     }
-    gradosMostrar.forEach(grado => {
-      gradosCheckboxes.appendChild(makeCheckbox('grados', String(grado), `${grado}°`));
+    gradosUsuario.forEach(grado => {
+      const lbl = makeCheckbox('grados', String(grado), `${grado}°`);
+      lbl.querySelector('input').addEventListener('change', renderFaseBadges);
+      gradosCheckboxes.appendChild(lbl);
+    });
+  }
+
+  // ---------- Fases (derivadas automáticamente de los grados seleccionados) ----------
+  const faseCheckboxes = document.getElementById('faseCheckboxes');
+  const fasesNEM = ['Fase 3', 'Fase 4', 'Fase 5'];
+
+  function renderFaseBadges() {
+    if (!faseCheckboxes) return;
+    const gradosSeleccionados = Array.from(
+      gradosCheckboxes.querySelectorAll("input[name='grados']:checked")
+    ).map(c => parseInt(c.value));
+
+    const fasesActivas = fasesNEM.filter(fase =>
+      (faseGradosMap[fase] || []).some(g => gradosSeleccionados.includes(g))
+    );
+
+    faseCheckboxes.innerHTML = '';
+    if (fasesActivas.length === 0) {
+      faseCheckboxes.innerHTML = '<p class="text-sm text-gray-400">Selecciona al menos un grado.</p>';
+      return;
+    }
+    fasesActivas.forEach(fase => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'inline-flex items-center gap-2';
+      const badge = document.createElement('span');
+      badge.className = 'inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-100 text-blue-800 text-sm font-semibold';
+      badge.textContent = fase;
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'fase';
+      hidden.value = fase;
+      wrapper.appendChild(badge);
+      wrapper.appendChild(hidden);
+      faseCheckboxes.appendChild(wrapper);
     });
   }
 
   renderGradosCheckboxes();
+  renderFaseBadges();
 
   // ---------- Seleccionar todos — Campos formativos ----------
   const cfBox = document.querySelector('[name="campos_formativos"]')?.closest('.flex');
@@ -197,7 +192,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         titulo:             fd.get('titulo'),
         fecha_inicial:      fd.get('fecha_inicial'),
         fecha_final:        fd.get('fecha_final'),
-        fase:               Array.from(formPaso1.querySelectorAll('input[name="fase"]:checked')).map(el => el.value),
+        fase:               Array.from(formPaso1.querySelectorAll('input[name="fase"]')).map(el => el.value),
         grados:             Array.from(formPaso1.querySelectorAll('input[name="grados"]:checked')).map(el => el.value),
         metodologia:        fd.get('metodologia'),
         escenario:          fd.get('escenario'),
@@ -243,33 +238,21 @@ document.addEventListener("DOMContentLoaded", async function () {
       div.className = 'campo-contenido-block border border-gray-200 rounded-xl p-5 bg-white';
       div.dataset.campo = campo;
 
-      // Contenido por fase
-      let contenidoRows = '';
-      if (fases.length <= 1) {
-        const fase = fases[0] || '';
+      // Contenido por fase (siempre con etiqueta de fase)
+      let contenidoRows = `<div class="grid grid-cols-1 md:grid-cols-${Math.min(fases.length || 1, 3)} gap-4">`;
+      (fases.length > 0 ? fases : ['']).forEach(function (fase) {
         const val = (saved.contenido && typeof saved.contenido === 'object')
           ? (saved.contenido[fase] || '')
           : (saved.contenido || '');
-        contenidoRows = `
-          <textarea name="contenido_${fase || 'unico'}" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="Escribe el contenido para este campo formativo...">${val}</textarea>`;
-      } else {
-        contenidoRows = `<div class="grid grid-cols-1 md:grid-cols-${Math.min(fases.length, 3)} gap-4">`;
-        fases.forEach(function (fase) {
-          const val = (saved.contenido && typeof saved.contenido === 'object')
-            ? (saved.contenido[fase] || '')
-            : '';
-          contenidoRows += `
-            <div>
-              <label class="block text-xs font-semibold text-blue-700 mb-1">${fase}</label>
-              <textarea name="contenido_${fase}" rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="Contenido para ${fase}...">${val}</textarea>
-            </div>`;
-        });
-        contenidoRows += '</div>';
-      }
+        contenidoRows += `
+          <div>
+            <label class="block text-xs font-semibold text-blue-700 mb-1">${fase || 'Fase'}</label>
+            <textarea name="contenido_${fase || 'unico'}" rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+              placeholder="Contenido para ${fase || 'este campo'}...">${val}</textarea>
+          </div>`;
+      });
+      contenidoRows += '</div>';
 
       // PDA por grado
       let pdaRows = '';
@@ -287,7 +270,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       div.innerHTML = `
         <h3 class="font-bold text-gray-800 mb-4 text-base border-b pb-2">${campo}</h3>
         <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-3">Contenido${fases.length > 1 ? ' por fase' : ''}</label>
+          <label class="block text-sm font-medium text-gray-700 mb-3">Contenido por fase</label>
           ${contenidoRows}
         </div>
         <div>
@@ -457,14 +440,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     div.innerHTML = `
       <button type="button" class="session-toggle w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition text-left">
         <span class="session-label font-semibold text-gray-700">Sesión ${num} — — </span>
-        <span class="toggle-icon text-gray-400">▼</span>
+        <span class="toggle-icon text-gray-400 transition-transform duration-200 inline-block">▼</span>
       </button>
       <div class="session-body p-5 flex flex-col gap-5">
 
         <!-- Datos básicos de la sesión -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Duración</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Duración (opcional)</label>
             <input type="text" name="duracion" placeholder="50 minutos"
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
           </div>
@@ -531,8 +514,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         <!-- Botón eliminar -->
         <div class="flex justify-end pt-2 border-t border-gray-100">
-          <button type="button" class="btn-eliminar text-red-500 hover:text-red-700 text-sm font-medium transition">
-            🗑️ Eliminar sesión
+          <button type="button" class="btn-eliminar bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 text-sm font-bold px-4 py-2 rounded-xl transition">
+            Eliminar sesión
           </button>
         </div>
       </div>`;
@@ -543,7 +526,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const icon = div.querySelector('.toggle-icon');
       const open = !body.classList.contains('hidden');
       body.classList.toggle('hidden', open);
-      icon.textContent = open ? '▶' : '▼';
+      icon.style.transform = open ? 'rotate(-90deg)' : '';
     });
 
     // Actualizar etiqueta del header cuando cambian fecha o momento
@@ -683,7 +666,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           proyecto_id:          proyecto.id,
           maestro_id:           user.id,
           numero_sesion:        idx + 1,
-          duracion:             g('duracion'),
+          duracion:             g('duracion') || '',
           fecha:                g('fecha') || null,
           campo_formativo:      g('campo_formativo'),
           momento:              g('momento'),
@@ -717,7 +700,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       msgEl.textContent = '❌ Error al guardar: ' + (err.message || 'Intenta de nuevo.');
       msgEl.classList.remove('hidden');
       btn.disabled = false;
-      btn.innerHTML = '💾 Guardar Proyecto Completo';
+      btn.textContent = 'Guardar proyecto';
     }
   });
 
