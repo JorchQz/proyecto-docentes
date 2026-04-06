@@ -373,37 +373,40 @@ document.addEventListener("DOMContentLoaded", async function () {
     };
   }
 
-  function buildDidacticSection(key, label) {
+  function buildDidacticSection(key, label, includeTareas) {
     const grados = paso1Data ? paso1Data.grados.map(Number).sort((a, b) => a - b) : [];
     const cols = Math.min(grados.length || 2, 3);
 
-    let difCols = '';
-    if (grados.length === 0) {
-      // Fallback: dos columnas genéricas si no hay grados
-      difCols = `
-        <div>
-          <label class="block text-xs font-semibold text-blue-700 mb-1">Grupo A</label>
-          <textarea name="${key}_grado_A" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="Actividad para este grupo..."></textarea>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-blue-700 mb-1">Grupo B</label>
-          <textarea name="${key}_grado_B" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="Actividad para este grupo..."></textarea>
+    function makeItemList(listKey, placeholder, addLabel, sectionLabel) {
+      return `
+        <div class="item-list-container mt-3 border-t border-gray-200 pt-3" data-key="${listKey}">
+          <p class="text-xs font-semibold text-gray-500 mb-1.5">${sectionLabel}</p>
+          <div class="item-list flex flex-col gap-1.5">
+            <div class="item-row flex gap-2 items-center">
+              <input type="text" name="${listKey}_item"
+                class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="${placeholder}">
+              <button type="button" class="remove-item-btn text-red-400 hover:text-red-600 text-xl font-bold px-2 leading-none">×</button>
+            </div>
+          </div>
+          <button type="button" class="add-item-btn mt-1.5 text-xs text-blue-600 font-medium hover:underline">${addLabel}</button>
         </div>`;
-    } else {
-      grados.forEach(function (g) {
-        difCols += `
-          <div>
-            <label class="block text-xs font-semibold text-blue-700 mb-1">${g}°</label>
-            <textarea name="${key}_grado_${g}" rows="3"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Actividad para ${g}°..."></textarea>
-          </div>`;
-      });
     }
+
+    let difCols = '';
+    const gradoKeys = grados.length > 0 ? grados : ['A', 'B'];
+    gradoKeys.forEach(function (g) {
+      const isNum = grados.length > 0;
+      difCols += `
+        <div>
+          <label class="block text-xs font-semibold text-blue-700 mb-1">${isNum ? g + '°' : 'Grupo ' + g}</label>
+          <textarea name="${key}_grado_${g}" rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            placeholder="${isNum ? 'Descripción para ' + g + '°...' : 'Descripción para este grupo...'}"></textarea>
+          ${makeItemList(`${key}_act_dif_${g}`, isNum ? `Actividad para ${g}°...` : 'Actividad...', '+ Agregar actividad', 'Actividades')}
+          ${includeTareas ? makeItemList(`${key}_tarea_dif_${g}`, isNum ? `Tarea para ${g}°...` : 'Tarea...', '+ Agregar tarea', 'Tareas para casa') : ''}
+        </div>`;
+    });
 
     return `
       <div class="didactic-section border border-gray-100 rounded-xl p-4 bg-gray-50"
@@ -422,7 +425,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         <div class="mode-todos-panel">
           <textarea name="${key}_todos" rows="3"
             class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="Actividad de ${label.toLowerCase()} para todos los grados..."></textarea>
+            placeholder="Descripción de ${label.toLowerCase()} para todos los grados..."></textarea>
+          ${makeItemList(`${key}_act_todos`, 'Actividad en clase...', '+ Agregar actividad', 'Actividades')}
+          ${includeTareas ? makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', '+ Agregar tarea', 'Tareas para casa') : ''}
         </div>
         <div class="mode-dif-panel hidden">
           <div class="grid grid-cols-1 md:grid-cols-${cols} gap-3">
@@ -476,27 +481,15 @@ document.addEventListener("DOMContentLoaded", async function () {
         <!-- Secuencia didáctica -->
         ${buildDidacticSection('inicio', 'Inicio')}
         ${buildDidacticSection('desarrollo', 'Desarrollo')}
-        ${buildDidacticSection('cierre', 'Cierre')}
+        ${buildDidacticSection('cierre', 'Cierre', true)}
 
         <!-- Campos adicionales -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">¿Qué tarea se deja?</label>
-            <textarea name="tarea" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Tarea para casa..."></textarea>
-          </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Recursos y material didáctico</label>
             <textarea name="recursos" rows="2"
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
               placeholder="Materiales necesarios..."></textarea>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Productos esperados</label>
-            <textarea name="productos" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="¿Qué producirán los alumnos?"></textarea>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Criterios de evaluación</label>
@@ -554,6 +547,30 @@ document.addEventListener("DOMContentLoaded", async function () {
         const tod = section.querySelector('.mode-btn-todos');
         tod.classList.add('bg-white', 'text-gray-600');
         tod.classList.remove('bg-blue-600', 'text-white');
+      });
+    });
+
+    // Listas dinámicas (Tareas y Actividades)
+    div.querySelectorAll('.item-list-container').forEach(function (container) {
+      const list = container.querySelector('.item-list');
+      const key = container.dataset.key;
+
+      container.querySelector('.add-item-btn').addEventListener('click', function () {
+        const newRow = document.createElement('div');
+        newRow.className = 'item-row flex gap-2 items-center';
+        newRow.innerHTML = `
+          <input type="text" name="${key}_item"
+            class="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            placeholder="${list.querySelector('input').placeholder}">
+          <button type="button" class="remove-item-btn text-red-400 hover:text-red-600 text-xl font-bold px-2 leading-none">×</button>`;
+        list.appendChild(newRow);
+        newRow.querySelector('input').focus();
+      });
+
+      list.addEventListener('click', function (e) {
+        if (!e.target.classList.contains('remove-item-btn')) return;
+        if (list.querySelectorAll('.item-row').length === 1) return;
+        e.target.closest('.item-row').remove();
       });
     });
 
@@ -662,25 +679,66 @@ document.addEventListener("DOMContentLoaded", async function () {
         const mD = mode('desarrollo');
         const mC = mode('cierre');
 
+        function getItems(selector) {
+          return Array.from(block.querySelectorAll(selector))
+            .map(i => i.value.trim()).filter(Boolean);
+        }
+
+        function getBlockActividades(sectionKey, sectionMode) {
+          if (sectionMode === 'todos') {
+            return { mode: 'todos', todos: getItems(`input[name="${sectionKey}_act_todos_item"]`), diferenciado: null };
+          }
+          const dif = {};
+          block.querySelectorAll(`input[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
+            const m = input.name.match(new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
+            if (m) {
+              const gr = m[1];
+              if (!dif[gr]) dif[gr] = [];
+              const v = input.value.trim();
+              if (v) dif[gr].push(v);
+            }
+          });
+          return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
+        }
+
+        function getBlockTareas(sectionMode) {
+          if (sectionMode === 'todos') {
+            return { mode: 'todos', todos: getItems('input[name="cierre_tarea_todos_item"]'), diferenciado: null };
+          }
+          const dif = {};
+          block.querySelectorAll('input[name^="cierre_tarea_dif_"]').forEach(function (input) {
+            const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
+            if (m) {
+              const gr = m[1];
+              if (!dif[gr]) dif[gr] = [];
+              const v = input.value.trim();
+              if (v) dif[gr].push(v);
+            }
+          });
+          return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
+        }
+
         return {
-          proyecto_id:          proyecto.id,
-          maestro_id:           user.id,
-          numero_sesion:        idx + 1,
-          duracion:             g('duracion') || '',
-          fecha:                g('fecha') || null,
-          campo_formativo:      g('campo_formativo'),
-          momento:              g('momento'),
-          inicio_todos:         mI === 'todos'        ? g('inicio_todos')   : null,
-          inicio_diferenciado:  mI === 'diferenciado' ? getDifData('inicio') : null,
-          desarrollo_todos:     mD === 'todos'        ? g('desarrollo_todos'): null,
+          proyecto_id:             proyecto.id,
+          maestro_id:              user.id,
+          numero_sesion:           idx + 1,
+          duracion:                g('duracion') || '',
+          fecha:                   g('fecha') || null,
+          campo_formativo:         g('campo_formativo'),
+          momento:                 g('momento'),
+          inicio_todos:            mI === 'todos'        ? g('inicio_todos')        : null,
+          inicio_diferenciado:     mI === 'diferenciado' ? getDifData('inicio')     : null,
+          inicio_actividades:      getBlockActividades('inicio', mI),
+          desarrollo_todos:        mD === 'todos'        ? g('desarrollo_todos')    : null,
           desarrollo_diferenciado: mD === 'diferenciado' ? getDifData('desarrollo') : null,
-          cierre_todos:         mC === 'todos'        ? g('cierre_todos')   : null,
-          cierre_diferenciado:  mC === 'diferenciado' ? getDifData('cierre') : null,
-          tarea:                g('tarea'),
-          recursos:             g('recursos'),
-          productos:            g('productos'),
-          criterios_evaluacion: g('criterios_evaluacion'),
-          observaciones:        g('observaciones'),
+          desarrollo_actividades:  getBlockActividades('desarrollo', mD),
+          cierre_todos:            mC === 'todos'        ? g('cierre_todos')        : null,
+          cierre_diferenciado:     mC === 'diferenciado' ? getDifData('cierre')     : null,
+          cierre_actividades:      getBlockActividades('cierre', mC),
+          cierre_tareas:           getBlockTareas(mC),
+          recursos:                g('recursos'),
+          criterios_evaluacion:    g('criterios_evaluacion'),
+          observaciones:           g('observaciones'),
         };
       });
 
