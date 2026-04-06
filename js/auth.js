@@ -115,8 +115,14 @@ document.addEventListener("DOMContentLoaded", function () {
 				return;
 			}
 
-			if (teacherSex !== "profesor" && teacherSex !== "profesora") {
-				showMessage("error", "Selecciona si eres profesor o profesora.");
+			if (
+				teacherSex !== "hombre" &&
+				teacherSex !== "mujer" &&
+				teacherSex !== "prefiero_no_decirlo" &&
+				teacherSex !== "profesor" &&
+				teacherSex !== "profesora"
+			) {
+				showMessage("error", "Selecciona una opción válida para sexo.");
 				return;
 			}
 		}

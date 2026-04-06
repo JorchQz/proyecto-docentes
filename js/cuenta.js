@@ -81,7 +81,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return;
 			}
 
-			if (sex && sex !== "profesor" && sex !== "profesora") {
+			if (
+				sex &&
+				sex !== "hombre" &&
+				sex !== "mujer" &&
+				sex !== "prefiero_no_decirlo" &&
+				sex !== "profesor" &&
+				sex !== "profesora"
+			) {
 				showMessage("accountMessage", "error", "Selecciona un valor válido para sexo.");
 				return;
 			}
@@ -206,7 +213,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var sex = metadata.sexo_docente || "";
 		teacherNameInput.value = name;
 		if (teacherSexInput) {
-			teacherSexInput.value = sex === "profesor" || sex === "profesora" ? sex : "";
+			if (sex === "profesor" || sex === "hombre") {
+				teacherSexInput.value = "hombre";
+			} else if (sex === "profesora" || sex === "mujer") {
+				teacherSexInput.value = "mujer";
+			} else if (sex === "prefiero_no_decirlo") {
+				teacherSexInput.value = "prefiero_no_decirlo";
+			} else {
+				teacherSexInput.value = "";
+			}
 		}
 		teacherEmailInput.value = user.email || "";
 		teacherCreatedAtInput.value = formatDateTime(user.created_at);

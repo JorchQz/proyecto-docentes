@@ -370,15 +370,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var metadata = (userData && userData.user_metadata) || {};
 		var sex = (metadata.sexo_docente || "").trim().toLowerCase();
 
-		if (sex === "profesora") {
+		if (sex === "profesora" || sex === "mujer") {
 			return "Bienvenida profesora " + name;
 		}
 
-		if (sex === "profesor") {
+		if (sex === "profesor" || sex === "hombre") {
 			return "Bienvenido profesor " + name;
 		}
 
-		return "Bienvenido profesor(a) " + name;
+		return "Bienvenido/a " + name;
 	}
 
 	function mapGroupType(groupType) {
