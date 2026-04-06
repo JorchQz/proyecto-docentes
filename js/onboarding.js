@@ -102,7 +102,6 @@
 		var groupName = document.getElementById("groupName").value.trim();
 		var groupType = document.getElementById("groupType").value.trim();
 		var groupSchool = document.getElementById("groupSchool").value.trim();
-		var groupDescription = document.getElementById("groupDescription").value.trim();
 		var cicloInicio = parseInt(cicloInicioSelect.value, 10);
 		var cicloFin = parseInt(cicloFinSelect.value, 10);
 
@@ -142,7 +141,6 @@
 				tipo_organizacion: groupType,
 				grados: gradeList,
 				escuela: groupSchool || null,
-				descripcion: groupDescription || null,
 				ciclo_escolar: cicloInicio + "-" + cicloFin,
 				es_multigrado: gradeList.length > 1,
 			};
