@@ -62,6 +62,70 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	});
 
+	var showDeleteFormBtn = document.getElementById("showDeleteFormBtn");
+	var deleteAccountForm = document.getElementById("deleteAccountForm");
+	var deleteConfirmInput = document.getElementById("deleteConfirmInput");
+	var cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
+	var confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+
+	if (showDeleteFormBtn) {
+		showDeleteFormBtn.addEventListener("click", function () {
+			showDeleteFormBtn.classList.add("hidden");
+			deleteAccountForm.classList.remove("hidden");
+			deleteConfirmInput.focus();
+		});
+	}
+
+	if (cancelDeleteBtn) {
+		cancelDeleteBtn.addEventListener("click", function () {
+			deleteAccountForm.classList.add("hidden");
+			showDeleteFormBtn.classList.remove("hidden");
+			deleteConfirmInput.value = "";
+			confirmDeleteBtn.disabled = true;
+			clearMessage("deleteAccountMessage");
+		});
+	}
+
+	if (deleteConfirmInput) {
+		deleteConfirmInput.addEventListener("input", function () {
+			confirmDeleteBtn.disabled = deleteConfirmInput.value !== "ELIMINAR";
+		});
+	}
+
+	if (confirmDeleteBtn) {
+		confirmDeleteBtn.addEventListener("click", async function () {
+			if (deleteConfirmInput.value !== "ELIMINAR") {
+				return;
+			}
+
+			confirmDeleteBtn.disabled = true;
+			cancelDeleteBtn.disabled = true;
+			deleteConfirmInput.disabled = true;
+			confirmDeleteBtn.textContent = "Eliminando...";
+			clearMessage("deleteAccountMessage");
+
+			try {
+				var result = await window.sb.rpc("delete_own_account");
+				if (result.error) {
+					throw result.error;
+				}
+
+				await window.sb.auth.signOut();
+				window.location.href = "index.html";
+			} catch (error) {
+				showMessage(
+					"deleteAccountMessage",
+					"error",
+					"No se pudo eliminar la cuenta: " + (error.message || "Error desconocido")
+				);
+				confirmDeleteBtn.disabled = false;
+				cancelDeleteBtn.disabled = false;
+				deleteConfirmInput.disabled = false;
+				confirmDeleteBtn.textContent = "Confirmar eliminación";
+			}
+		});
+	}
+
 	function fillPreferences(user) {
 		var metadata = (user && user.user_metadata) || {};
 		var preferences = metadata.notification_preferences || {
