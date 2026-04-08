@@ -909,11 +909,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         <!-- Campos adicionales -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Recursos y material didáctico</label>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-3">Recursos y material didáctico</label>
+            ${window.sb ? `
+            <div class="space-y-5">
+              <div>
+                <div class="text-xs font-semibold text-gray-500 mb-2">Archivos</div>
+                <input type="file" multiple class="w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+                <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
+                <div class="resource-files-list mt-3 flex flex-wrap gap-2"></div>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-gray-500 mb-2">Links externos</div>
+                <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                  <input type="url"
+                    class="resource-link-url w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                    placeholder="Pega la URL del link...">
+                  <input type="text"
+                    class="resource-link-title w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                    placeholder="Nombre del link (opcional)">
+                  <button type="button"
+                    class="resource-link-add px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
+                    Agregar
+                  </button>
+                </div>
+                <p class="resource-links-error hidden mt-2 text-sm text-red-600"></p>
+                <div class="resource-links-list mt-3 flex flex-wrap gap-2"></div>
+              </div>
+            </div>` : `
             <textarea name="recursos" rows="2"
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Materiales necesarios..."></textarea>
+              placeholder="Materiales necesarios..."></textarea>`}
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
@@ -969,6 +995,159 @@ document.addEventListener("DOMContentLoaded", async function () {
     // Actualizar etiqueta del header cuando cambian fecha o momento
     div.querySelector('.session-fecha').addEventListener('change', () => updateLabel(div));
     div.querySelector('.session-momento').addEventListener('change', () => updateLabel(div));
+
+    const recursosFilesInput = div.querySelector('input[type="file"]');
+    const recursosFilesList = div.querySelector('.resource-files-list');
+    const recursosFilesError = div.querySelector('.resource-files-error');
+    const recursosLinkUrl = div.querySelector('.resource-link-url');
+    const recursosLinkTitle = div.querySelector('.resource-link-title');
+    const recursosLinkAdd = div.querySelector('.resource-link-add');
+    const recursosLinksList = div.querySelector('.resource-links-list');
+    const recursosLinksError = div.querySelector('.resource-links-error');
+
+    let archivosSubidos = [];
+    let linksAgregados = [];
+    const tempRecursosId = `temp_${Date.now()}`;
+
+    function syncRecursosState() {
+      div._archivos = archivosSubidos;
+      div._links = linksAgregados;
+    }
+
+    function truncarTexto(texto, limite) {
+      const valor = String(texto || '');
+      return valor.length > limite ? valor.slice(0, limite - 1) + '…' : valor;
+    }
+
+    function mostrarError(elemento, mensaje) {
+      if (!elemento) return;
+      elemento.textContent = mensaje || '';
+      elemento.classList.toggle('hidden', !mensaje);
+    }
+
+    function renderArchivos() {
+      if (!recursosFilesList) return;
+      recursosFilesList.innerHTML = archivosSubidos.map(function (archivo) {
+        const etiqueta = truncarTexto(archivo.nombre || '', 30);
+        return `
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-50 border border-blue-100 text-blue-800" data-path="${String(archivo.path || '')}">
+            <span>📎</span>
+            <span title="${String(archivo.nombre || '')}">${String(etiqueta)}</span>
+            <button type="button" class="resource-remove-file text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold" data-path="${String(archivo.path || '')}" aria-label="Eliminar archivo">X</button>
+          </span>`;
+      }).join('');
+      syncRecursosState();
+    }
+
+    function renderLinks() {
+      if (!recursosLinksList) return;
+      recursosLinksList.innerHTML = linksAgregados.map(function (link, index) {
+        const titulo = link.titulo && String(link.titulo).trim() ? String(link.titulo).trim() : truncarTexto(link.url || '', 30);
+        return `
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-green-50 border border-green-100 text-green-800" data-index="${index}">
+            <span>🔗</span>
+            <span title="${String(link.url || '')}">${String(titulo)}</span>
+            <button type="button" class="resource-remove-link text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold" data-index="${index}" aria-label="Eliminar link">X</button>
+          </span>`;
+      }).join('');
+      syncRecursosState();
+    }
+
+    async function subirArchivo(file) {
+      const { data: { user } } = await window.sb.auth.getUser();
+      if (!user) throw new Error('No hay sesión activa para subir archivos.');
+
+      const ruta = `recursos/${user.id}/${tempRecursosId}/sesion_${num}/${file.name}`;
+      const pendingChip = document.createElement('span');
+      pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-50 border border-blue-100 text-blue-800';
+      pendingChip.dataset.pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      pendingChip.innerHTML = `<span>📎</span><span title="${String(file.name)}">${String(truncarTexto(file.name, 30))} · Subiendo...</span>`;
+      recursosFilesList?.appendChild(pendingChip);
+
+      const { error: uploadError } = await window.sb.storage.from('recursos').upload(ruta, file, { upsert: false });
+      if (uploadError) throw uploadError;
+
+      let urlPublica = null;
+      try {
+        const { data: signedData, error: signedError } = await window.sb.storage.from('recursos').createSignedUrl(ruta, 31536000);
+        if (signedError) throw signedError;
+        urlPublica = signedData?.signedUrl || null;
+      } catch (signedUrlError) {
+        mostrarError(recursosFilesError, 'El archivo se subió, pero no se pudo generar el enlace seguro.');
+      }
+
+      pendingChip.outerHTML = `
+        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-50 border border-blue-100 text-blue-800" data-path="${String(ruta)}">
+          <span>📎</span>
+          <span title="${String(file.name)}">${String(truncarTexto(file.name, 30))}</span>
+          <button type="button" class="resource-remove-file text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold" data-path="${String(ruta)}" aria-label="Eliminar archivo">X</button>
+        </span>`;
+
+      archivosSubidos.push({ nombre: file.name, path: ruta, url: urlPublica });
+      syncRecursosState();
+      renderArchivos();
+    }
+
+    if (recursosFilesInput) {
+      recursosFilesInput.addEventListener('change', async function () {
+        mostrarError(recursosFilesError, '');
+        const files = Array.from(recursosFilesInput.files || []);
+        recursosFilesInput.value = '';
+        for (const file of files) {
+          try {
+            await subirArchivo(file);
+          } catch (err) {
+            console.error('Error subiendo archivo:', err);
+            mostrarError(recursosFilesError, 'No se pudo subir "' + file.name + '". Puedes continuar sin ese archivo.');
+          }
+        }
+      });
+    }
+
+    recursosFilesList?.addEventListener('click', async function (event) {
+      const btn = event.target.closest('.resource-remove-file');
+      if (!btn) return;
+      const path = String(btn.dataset.path || '');
+      if (!path) return;
+      try {
+        const { error } = await window.sb.storage.from('recursos').remove([path]);
+        if (error) throw error;
+        archivosSubidos = archivosSubidos.filter(function (archivo) {
+          return String(archivo.path || '') !== path;
+        });
+        renderArchivos();
+      } catch (err) {
+        console.error('Error eliminando archivo:', err);
+        mostrarError(recursosFilesError, 'No se pudo eliminar el archivo. Intenta de nuevo.');
+      }
+    });
+
+    recursosLinkAdd?.addEventListener('click', function () {
+      mostrarError(recursosLinksError, '');
+      const url = String(recursosLinkUrl?.value || '').trim();
+      const titulo = String(recursosLinkTitle?.value || '').trim();
+      if (!url) {
+        mostrarError(recursosLinksError, 'Agrega una URL válida para continuar.');
+        return;
+      }
+      linksAgregados.push({ titulo: titulo, url: url });
+      if (recursosLinkUrl) recursosLinkUrl.value = '';
+      if (recursosLinkTitle) recursosLinkTitle.value = '';
+      renderLinks();
+    });
+
+    recursosLinksList?.addEventListener('click', function (event) {
+      const btn = event.target.closest('.resource-remove-link');
+      if (!btn) return;
+      const index = parseInt(btn.dataset.index, 10);
+      if (Number.isNaN(index)) return;
+      linksAgregados.splice(index, 1);
+      renderLinks();
+    });
+
+    syncRecursosState();
+    renderArchivos();
+    renderLinks();
 
     if (mostrarBloquePda) {
       gradosSesion.forEach(function (grado) {
@@ -1210,7 +1389,10 @@ document.addEventListener("DOMContentLoaded", async function () {
           cierre_diferenciado:     mC === 'diferenciado' ? getDifData('cierre')     : null,
           cierre_actividades:      getBlockActividades('cierre', mC),
           cierre_tareas:           getBlockTareas(mC),
-          recursos:                g('recursos'),
+          recursos:                {
+            archivos: block._archivos || [],
+            links: block._links || []
+          },
           pda_sesion: (function() {
             const resultado = [];
             (paso1Data.grados || []).forEach(function(g) {
