@@ -203,6 +203,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       };
       step1.classList.add('hidden');
       step2contenidos.classList.remove('hidden');
+      window.scrollTo(0, 0);
       renderContenidos();
     });
   }
@@ -707,12 +708,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     _saveContenidosState();
     step2contenidos.classList.add('hidden');
     step1.classList.remove('hidden');
+    window.scrollTo(0, 0);
   });
 
   document.getElementById('btnIrPaso3')?.addEventListener('click', function () {
     _saveContenidosState();
     step2contenidos.classList.add('hidden');
     step2.classList.remove('hidden');
+    window.scrollTo(0, 0);
     if (sessionCounter === 0) {
       agregarSesion();
     } else {
@@ -733,6 +736,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           }
         }
       });
+      rebuildAllPdaBlocks();
     }
   });
 
@@ -771,9 +775,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   function buildDidacticSection(key, label, includeTareas) {
     const sectionColors = {
-      inicio:     { border: 'border-l-blue-400',    text: 'text-blue-800',    bg: 'bg-blue-50' },
-      desarrollo: { border: 'border-l-violet-500',  text: 'text-violet-800',  bg: 'bg-violet-50' },
-      cierre:     { border: 'border-l-emerald-500', text: 'text-emerald-800', bg: 'bg-emerald-50' },
+      inicio:     { border: 'border-l-blue-400', text: 'text-gray-700', bg: 'bg-gray-50' },
+      desarrollo: { border: 'border-l-violet-500', text: 'text-gray-700', bg: 'bg-gray-50' },
+      cierre:     { border: 'border-l-emerald-500', text: 'text-gray-700', bg: 'bg-gray-50' },
     };
     const col = sectionColors[key] || { border: 'border-l-gray-400', text: 'text-gray-700', bg: 'bg-gray-50' };
 
@@ -908,13 +912,13 @@ document.addEventListener("DOMContentLoaded", async function () {
         ${buildDidacticSection('cierre', 'Cierre', true)}
 
         <!-- Recursos y material didáctico -->
-        <div class="border border-gray-200 border-l-4 border-l-amber-500 rounded-xl p-4 bg-amber-50">
-          <span class="font-bold text-amber-800 text-sm uppercase tracking-wide block mb-3">Recursos y material didáctico</span>
+        <div class="border border-gray-200 border-l-4 border-l-amber-500 rounded-xl p-4 bg-gray-50">
+          <span class="font-bold text-gray-700 text-sm uppercase tracking-wide block mb-3">Recursos y material didáctico</span>
           ${window.sb ? `
           <div class="space-y-5">
             <div>
               <div class="text-xs font-semibold text-gray-500 mb-2">Archivos</div>
-              <input type="file" multiple class="w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+              <input type="file" multiple class="w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 border border-gray-300 rounded-xl px-3 py-2 bg-white">
               <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
               <div class="resource-files-list mt-3 flex flex-wrap gap-2"></div>
             </div>
@@ -922,13 +926,13 @@ document.addEventListener("DOMContentLoaded", async function () {
               <div class="text-xs font-semibold text-gray-500 mb-2">Links externos</div>
               <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
                 <input type="url"
-                  class="resource-link-url w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  class="resource-link-url w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
                   placeholder="Pega la URL del link...">
                 <input type="text"
-                  class="resource-link-title w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  class="resource-link-title w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
                   placeholder="Nombre del link (opcional)">
                 <button type="button"
-                  class="resource-link-add px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
+                  class="resource-link-add px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition">
                   Agregar
                 </button>
               </div>
@@ -937,23 +941,15 @@ document.addEventListener("DOMContentLoaded", async function () {
             </div>
           </div>` : `
           <textarea name="recursos" rows="2"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
             placeholder="Materiales necesarios..."></textarea>`}
         </div>
 
-        <!-- Campos adicionales -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
-            <textarea name="observaciones" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Notas adicionales..."></textarea>
-          </div>
-        </div>
-
         ${mostrarBloquePda ? `
-        <div class="pt-2 border-t border-gray-100">
-          <label class="block text-sm font-medium text-gray-700 mb-3">PDA que se trabaja en esta sesión</label>
+        <div class="pda-block border border-gray-200 border-l-4 border-l-rose-400 rounded-xl p-4 bg-gray-50">
+          <span class="font-bold text-gray-700 text-sm uppercase tracking-wide block mb-3">
+            PDA por grado
+          </span>
           <div class="space-y-3">
             ${gradosSesion.map(function (grado, index) {
               const opciones = getPdaOptionsForGrade(grado);
@@ -968,7 +964,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                       return `<option value="${String(pda.id)}">${String(pda.pda || '')}</option>`;
                     }).join('')}
                   </select>
-                  <div id="sugerencia_grado_${grado}" class="hidden text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mt-1"></div>
+                  <div id="sugerencia_grado_${grado}" class="hidden text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1"></div>
                   <textarea name="criterio_grado_${grado}" rows="2"
                     class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
                     placeholder="Criterio de evaluación para ${grado}°..."></textarea>
@@ -976,6 +972,16 @@ document.addEventListener("DOMContentLoaded", async function () {
             }).join('')}
           </div>
         </div>` : ''}
+
+        <!-- Campos adicionales -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+            <textarea name="observaciones" rows="2"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+              placeholder="Notas adicionales..."></textarea>
+          </div>
+        </div>
 
         <!-- Botón eliminar -->
         <div class="flex justify-end pt-2 border-t border-gray-100">
@@ -1032,10 +1038,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       recursosFilesList.innerHTML = archivosSubidos.map(function (archivo) {
         const etiqueta = truncarTexto(archivo.nombre || '', 30);
         return `
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-50 border border-blue-100 text-blue-800" data-path="${String(archivo.path || '')}">
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${String(archivo.path || '')}">
             <span>📎</span>
             <span title="${String(archivo.nombre || '')}">${String(etiqueta)}</span>
-            <button type="button" class="resource-remove-file text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold" data-path="${String(archivo.path || '')}" aria-label="Eliminar archivo">X</button>
+            <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${String(archivo.path || '')}" aria-label="Eliminar archivo">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+            </button>
           </span>`;
       }).join('');
       syncRecursosState();
@@ -1046,10 +1054,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       recursosLinksList.innerHTML = linksAgregados.map(function (link, index) {
         const titulo = link.titulo && String(link.titulo).trim() ? String(link.titulo).trim() : truncarTexto(link.url || '', 30);
         return `
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-green-50 border border-green-100 text-green-800" data-index="${index}">
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
             <span>🔗</span>
             <span title="${String(link.url || '')}">${String(titulo)}</span>
-            <button type="button" class="resource-remove-link text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold" data-index="${index}" aria-label="Eliminar link">X</button>
+            <button type="button" class="resource-remove-link inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+            </button>
           </span>`;
       }).join('');
       syncRecursosState();
@@ -1061,7 +1071,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       const ruta = `recursos/${user.id}/${tempRecursosId}/sesion_${num}/${file.name}`;
       const pendingChip = document.createElement('span');
-      pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-50 border border-blue-100 text-blue-800';
+      pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800';
       pendingChip.dataset.pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       pendingChip.innerHTML = `<span>📎</span><span title="${String(file.name)}">${String(truncarTexto(file.name, 30))} · Subiendo...</span>`;
       recursosFilesList?.appendChild(pendingChip);
@@ -1079,10 +1089,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       pendingChip.outerHTML = `
-        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-50 border border-blue-100 text-blue-800" data-path="${String(ruta)}">
+        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${String(ruta)}">
           <span>📎</span>
           <span title="${String(file.name)}">${String(truncarTexto(file.name, 30))}</span>
-          <button type="button" class="resource-remove-file text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold" data-path="${String(ruta)}" aria-label="Eliminar archivo">X</button>
+          <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${String(ruta)}" aria-label="Eliminar archivo">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+          </button>
         </span>`;
 
       archivosSubidos.push({ nombre: file.name, path: ruta, url: urlPublica });
@@ -1213,8 +1225,8 @@ document.addEventListener("DOMContentLoaded", async function () {
           <input type="text" name="${key}_item"
             class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             placeholder="${placeholder}">
-          <button type="button" class="remove-item-btn text-red-400 hover:text-red-600 p-1 rounded transition" aria-label="Eliminar">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+          <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" aria-label="Eliminar">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
           </button>`;
         list.appendChild(newRow);
         newRow.querySelector('input').focus();
@@ -1260,6 +1272,105 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
+  function rebuildAllPdaBlocks() {
+    const newTodosLosPdaIds = Array.from(new Set(
+      Object.values(paso2Data || {})
+        .flatMap(function (cf) { return Array.isArray(cf?.pda_ids) ? cf.pda_ids : []; })
+        .map(function (id) { return String(id); })
+        .filter(Boolean)
+    ));
+    const hasCatalog = Array.isArray(catalogoPDA) && catalogoPDA.length > 0;
+    const showPda = hasCatalog && newTodosLosPdaIds.length > 0;
+
+    const gradosSesion = Array.from(new Set(
+      (paso1Data?.grados || []).map(function (g) { return parseInt(g, 10); }).filter(function (g) { return !Number.isNaN(g); })
+    )).sort(function (a, b) { return a - b; });
+
+    document.querySelectorAll('.session-block').forEach(function (block) {
+      const sessionBody = block.querySelector('.session-body');
+      if (!sessionBody) return;
+
+      // Guardar valores actuales antes de reemplazar
+      const savedPda = {};
+      const savedCriterio = {};
+      gradosSesion.forEach(function (grado) {
+        const sel = sessionBody.querySelector(`select[name="pda_select_grado_${grado}"]`);
+        if (sel) savedPda[grado] = sel.value;
+        const txt = sessionBody.querySelector(`textarea[name="criterio_grado_${grado}"]`);
+        if (txt) savedCriterio[grado] = txt.value;
+      });
+
+      // Eliminar bloque PDA anterior
+      const oldPdaBlock = sessionBody.querySelector('.pda-block');
+      if (oldPdaBlock) oldPdaBlock.remove();
+
+      if (!showPda) return;
+
+      // Construir nuevo bloque PDA
+      const pdaDiv = document.createElement('div');
+      pdaDiv.className = 'pda-block border border-gray-200 border-l-4 border-l-rose-400 rounded-xl p-4 bg-gray-50';
+
+      let innerHtml = `<span class="font-bold text-gray-700 text-sm uppercase tracking-wide block mb-3">PDA por grado</span><div class="space-y-3">`;
+      gradosSesion.forEach(function (grado, index) {
+        const opciones = (catalogoPDA || []).filter(function (pda) {
+          return newTodosLosPdaIds.includes(String(pda.id)) && Number(pda.grado) === Number(grado);
+        }).sort(function (a, b) { return (Number(a.orden) || 0) - (Number(b.orden) || 0); });
+
+        const ultimo = index === gradosSesion.length - 1;
+        const savedVal = savedPda[grado] || '';
+        const savedCrit = savedCriterio[grado] || '';
+
+        innerHtml += `
+          <div class="${ultimo ? '' : 'border-b border-gray-100 pb-3 mb-3'}">
+            <div class="text-xs font-semibold text-blue-700 mb-2">Grado ${grado}°</div>
+            <select name="pda_select_grado_${grado}"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+              <option value="">Selecciona PDA para ${grado}°...</option>
+              ${opciones.map(function (pda) {
+                return `<option value="${String(pda.id)}"${String(pda.id) === savedVal ? ' selected' : ''}>${String(pda.pda || '')}</option>`;
+              }).join('')}
+            </select>
+            <div id="sugerencia_grado_${grado}" class="hidden text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1"></div>
+            <textarea name="criterio_grado_${grado}" rows="2"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
+              placeholder="Criterio de evaluación para ${grado}°...">${savedCrit}</textarea>
+          </div>`;
+      });
+      innerHtml += `</div>`;
+      pdaDiv.innerHTML = innerHtml;
+
+      // Insertar antes del botón Eliminar
+      const eliminarDiv = sessionBody.querySelector('.btn-eliminar')?.closest('div');
+      if (eliminarDiv) {
+        sessionBody.insertBefore(pdaDiv, eliminarDiv);
+      } else {
+        sessionBody.appendChild(pdaDiv);
+      }
+
+      // Reconectar listener de sugerencia de criterio
+      gradosSesion.forEach(function (grado) {
+        const select = pdaDiv.querySelector(`[name="pda_select_grado_${grado}"]`);
+        const sugerencia = pdaDiv.querySelector(`#sugerencia_grado_${grado}`);
+        const criterioTextarea = pdaDiv.querySelector(`[name="criterio_grado_${grado}"]`);
+        if (!select || !sugerencia || !criterioTextarea) return;
+
+        select.addEventListener('change', function () {
+          const pdaSeleccionado = (catalogoPDA || []).find(function (p) {
+            return String(p.id) === String(select.value);
+          });
+          if (pdaSeleccionado && pdaSeleccionado.criterio_valoracion) {
+            sugerencia.textContent = '💡 Criterio sugerido: ' + pdaSeleccionado.criterio_valoracion;
+            sugerencia.classList.remove('hidden');
+            criterioTextarea.value = pdaSeleccionado.criterio_valoracion;
+          } else {
+            sugerencia.textContent = '';
+            sugerencia.classList.add('hidden');
+          }
+        });
+      });
+    });
+  }
+
   function agregarSesion() {
     sessionCounter++;
     const container = document.getElementById('sesionesContainer');
@@ -1272,6 +1383,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   document.getElementById('btnVolverPaso2')?.addEventListener('click', function () {
     step2.classList.add('hidden');
     step2contenidos.classList.remove('hidden');
+    window.scrollTo(0, 0);
     renderContenidos();
   });
 
