@@ -374,22 +374,25 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function buildDidacticSection(key, label, includeTareas) {
+    const sectionColors = {
+      inicio:     { border: 'border-l-blue-400',    text: 'text-blue-800',    bg: 'bg-blue-50' },
+      desarrollo: { border: 'border-l-violet-500',  text: 'text-violet-800',  bg: 'bg-violet-50' },
+      cierre:     { border: 'border-l-emerald-500', text: 'text-emerald-800', bg: 'bg-emerald-50' },
+    };
+    const col = sectionColors[key] || { border: 'border-l-gray-400', text: 'text-gray-700', bg: 'bg-gray-50' };
+
     const grados = paso1Data ? paso1Data.grados.map(Number).sort((a, b) => a - b) : [];
     const cols = Math.min(grados.length || 2, 3);
 
     function makeItemList(listKey, placeholder, addLabel, sectionLabel) {
       return `
-        <div class="item-list-container mt-3 border-t border-gray-200 pt-3" data-key="${listKey}">
+        <div class="item-list-container mt-3 border-t border-gray-200 pt-3" data-key="${listKey}" data-placeholder="${placeholder}">
           <p class="text-xs font-semibold text-gray-500 mb-1.5">${sectionLabel}</p>
-          <div class="item-list flex flex-col gap-1.5">
-            <div class="item-row flex gap-2 items-center">
-              <input type="text" name="${listKey}_item"
-                class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="${placeholder}">
-              <button type="button" class="remove-item-btn text-red-400 hover:text-red-600 text-xl font-bold px-2 leading-none">×</button>
-            </div>
-          </div>
-          <button type="button" class="add-item-btn mt-1.5 text-xs text-blue-600 font-medium hover:underline">${addLabel}</button>
+          <div class="item-list flex flex-col gap-1.5"></div>
+          <button type="button" class="add-item-btn mt-1.5 flex items-center gap-1.5 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            ${addLabel}
+          </button>
         </div>`;
     }
 
@@ -403,16 +406,16 @@ document.addEventListener("DOMContentLoaded", async function () {
           <textarea name="${key}_grado_${g}" rows="3"
             class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             placeholder="${isNum ? 'Descripción para ' + g + '°...' : 'Descripción para este grupo...'}"></textarea>
-          ${makeItemList(`${key}_act_dif_${g}`, isNum ? `Actividad para ${g}°...` : 'Actividad...', '+ Agregar actividad', 'Actividades')}
-          ${includeTareas ? makeItemList(`${key}_tarea_dif_${g}`, isNum ? `Tarea para ${g}°...` : 'Tarea...', '+ Agregar tarea', 'Tareas para casa') : ''}
+          ${makeItemList(`${key}_act_dif_${g}`, isNum ? `Actividad para ${g}°...` : 'Actividad...', 'Agregar actividad', 'Actividades')}
+          ${includeTareas ? makeItemList(`${key}_tarea_dif_${g}`, isNum ? `Tarea para ${g}°...` : 'Tarea...', 'Agregar tarea', 'Tareas para casa') : ''}
         </div>`;
     });
 
     return `
-      <div class="didactic-section border border-gray-100 rounded-xl p-4 bg-gray-50"
+      <div class="didactic-section border border-gray-200 border-l-4 ${col.border} rounded-xl p-4 ${col.bg}"
            data-section="${key}" data-mode="todos">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <span class="font-semibold text-gray-700 text-sm">${label}</span>
+          <span class="font-bold ${col.text} text-sm uppercase tracking-wide">${label}</span>
           <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs">
             <button type="button" class="mode-btn-todos px-3 py-1.5 bg-blue-600 text-white font-medium transition">
               Igual para todos
@@ -426,8 +429,8 @@ document.addEventListener("DOMContentLoaded", async function () {
           <textarea name="${key}_todos" rows="3"
             class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             placeholder="Descripción de ${label.toLowerCase()} para todos los grados..."></textarea>
-          ${makeItemList(`${key}_act_todos`, 'Actividad en clase...', '+ Agregar actividad', 'Actividades')}
-          ${includeTareas ? makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', '+ Agregar tarea', 'Tareas para casa') : ''}
+          ${makeItemList(`${key}_act_todos`, 'Actividad en clase...', 'Agregar actividad', 'Actividades')}
+          ${includeTareas ? makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', 'Agregar tarea', 'Tareas para casa') : ''}
         </div>
         <div class="mode-dif-panel hidden">
           <div class="grid grid-cols-1 md:grid-cols-${cols} gap-3">
@@ -556,21 +559,24 @@ document.addEventListener("DOMContentLoaded", async function () {
       const key = container.dataset.key;
 
       container.querySelector('.add-item-btn').addEventListener('click', function () {
+        const placeholder = container.dataset.placeholder || '';
         const newRow = document.createElement('div');
         newRow.className = 'item-row flex gap-2 items-center';
         newRow.innerHTML = `
           <input type="text" name="${key}_item"
-            class="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="${list.querySelector('input').placeholder}">
-          <button type="button" class="remove-item-btn text-red-400 hover:text-red-600 text-xl font-bold px-2 leading-none">×</button>`;
+            class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            placeholder="${placeholder}">
+          <button type="button" class="remove-item-btn text-red-400 hover:text-red-600 p-1 rounded transition" aria-label="Eliminar">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+          </button>`;
         list.appendChild(newRow);
         newRow.querySelector('input').focus();
       });
 
       list.addEventListener('click', function (e) {
-        if (!e.target.classList.contains('remove-item-btn')) return;
-        if (list.querySelectorAll('.item-row').length === 1) return;
-        e.target.closest('.item-row').remove();
+        const btn = e.target.closest('.remove-item-btn');
+        if (!btn) return;
+        btn.closest('.item-row').remove();
       });
     });
 
@@ -609,7 +615,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   function agregarSesion() {
     sessionCounter++;
-    document.getElementById('sesionesContainer').appendChild(createSessionBlock(sessionCounter));
+    const container = document.getElementById('sesionesContainer');
+    const num = container.querySelectorAll('.session-block').length + 1;
+    container.appendChild(createSessionBlock(num));
   }
 
   document.getElementById('btnAgregarSesion')?.addEventListener('click', agregarSesion);
