@@ -907,40 +907,42 @@ document.addEventListener("DOMContentLoaded", async function () {
         ${buildDidacticSection('desarrollo', 'Desarrollo')}
         ${buildDidacticSection('cierre', 'Cierre', true)}
 
+        <!-- Recursos y material didáctico -->
+        <div class="border border-gray-200 border-l-4 border-l-amber-500 rounded-xl p-4 bg-amber-50">
+          <span class="font-bold text-amber-800 text-sm uppercase tracking-wide block mb-3">Recursos y material didáctico</span>
+          ${window.sb ? `
+          <div class="space-y-5">
+            <div>
+              <div class="text-xs font-semibold text-gray-500 mb-2">Archivos</div>
+              <input type="file" multiple class="w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+              <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
+              <div class="resource-files-list mt-3 flex flex-wrap gap-2"></div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-500 mb-2">Links externos</div>
+              <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                <input type="url"
+                  class="resource-link-url w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  placeholder="Pega la URL del link...">
+                <input type="text"
+                  class="resource-link-title w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  placeholder="Nombre del link (opcional)">
+                <button type="button"
+                  class="resource-link-add px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
+                  Agregar
+                </button>
+              </div>
+              <p class="resource-links-error hidden mt-2 text-sm text-red-600"></p>
+              <div class="resource-links-list mt-3 flex flex-wrap gap-2"></div>
+            </div>
+          </div>` : `
+          <textarea name="recursos" rows="2"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+            placeholder="Materiales necesarios..."></textarea>`}
+        </div>
+
         <!-- Campos adicionales -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-3">Recursos y material didáctico</label>
-            ${window.sb ? `
-            <div class="space-y-5">
-              <div>
-                <div class="text-xs font-semibold text-gray-500 mb-2">Archivos</div>
-                <input type="file" multiple class="w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-gray-300 rounded-xl px-3 py-2 bg-white">
-                <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
-                <div class="resource-files-list mt-3 flex flex-wrap gap-2"></div>
-              </div>
-              <div>
-                <div class="text-xs font-semibold text-gray-500 mb-2">Links externos</div>
-                <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
-                  <input type="url"
-                    class="resource-link-url w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
-                    placeholder="Pega la URL del link...">
-                  <input type="text"
-                    class="resource-link-title w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
-                    placeholder="Nombre del link (opcional)">
-                  <button type="button"
-                    class="resource-link-add px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition">
-                    Agregar
-                  </button>
-                </div>
-                <p class="resource-links-error hidden mt-2 text-sm text-red-600"></p>
-                <div class="resource-links-list mt-3 flex flex-wrap gap-2"></div>
-              </div>
-            </div>` : `
-            <textarea name="recursos" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Materiales necesarios..."></textarea>`}
-          </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
             <textarea name="observaciones" rows="2"
