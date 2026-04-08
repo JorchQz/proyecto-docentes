@@ -392,6 +392,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     function renderCatalogoCampo(containerRef, campo) {
       const saved = normalizeSavedCampo(paso2Data[campo] || {});
       const contenidosCampo = getCatalogoContenidosCampo(campo);
+      const fasesCampo = Array.isArray(fases) ? fases.map(function (f) { return String(f); }) : [];
+      let faseActiva = fasesCampo.length > 0 ? fasesCampo[0] : '';
       let selectedContenidoIds = Array.from(saved.contenidosIds);
       let selectedPdaIds = Array.from(saved.pdaIds);
 
@@ -415,6 +417,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         <h3 class="font-bold text-gray-800 mb-4 text-base border-b pb-2">${escapeHtml(campo)}</h3>
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-3">Contenido oficial SEP</label>
+          <div class="catalogo-fases flex gap-1 mb-3${fasesCampo.length > 1 ? '' : ' hidden'}"></div>
           <div class="relative">
             <input type="text" placeholder="Buscar contenido oficial SEP..."
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
@@ -431,6 +434,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const dropdown = div.querySelector('.catalogo-dropdown');
       const chipsContainer = div.querySelector('.catalogo-chips');
       const pdaContainer = div.querySelector('.catalogo-pda');
+      const tabsContainer = div.querySelector('.catalogo-fases');
 
       function getContenidoSeleccionado() {
         return contenidosCampo.filter(function (item) {
@@ -515,11 +519,24 @@ document.addEventListener("DOMContentLoaded", async function () {
         }).join('');
       }
 
+      function renderTabs() {
+        if (!tabsContainer || fasesCampo.length <= 1) return;
+        tabsContainer.innerHTML = fasesCampo.map(function (fase) {
+          const activa = fase === faseActiva;
+          const clases = activa
+            ? 'px-3 py-1 text-sm rounded-lg bg-blue-600 text-white font-medium cursor-pointer'
+            : 'px-3 py-1 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer';
+          return '<button type="button" class="fase-tab ' + clases + '" data-fase="' + escapeHtml(fase) + '">' + escapeHtml(fase) + '</button>';
+        }).join('');
+      }
+
       function renderDropdown() {
         const query = String(input.value || '').toLowerCase().trim();
         const resultados = contenidosCampo.filter(function (item) {
           const texto = String(item.contenido || '');
-          return query === '' || texto.toLowerCase().includes(query);
+          const pasaFase = !faseActiva || String(item.fase || '') === String(faseActiva);
+          const pasaTexto = query === '' || texto.toLowerCase().includes(query);
+          return pasaFase && pasaTexto;
         }).slice(0, 8);
 
         if (resultados.length === 0) {
@@ -550,6 +567,16 @@ document.addEventListener("DOMContentLoaded", async function () {
       input.addEventListener('focus', renderDropdown);
       input.addEventListener('blur', function () {
         setTimeout(closeDropdown, 120);
+      });
+
+      tabsContainer?.addEventListener('click', function (event) {
+        const tab = event.target.closest('.fase-tab');
+        if (!tab) return;
+        const nuevaFase = String(tab.dataset.fase || '');
+        if (!nuevaFase || nuevaFase === faseActiva) return;
+        faseActiva = nuevaFase;
+        renderTabs();
+        renderDropdown();
       });
 
       dropdown.addEventListener('mousedown', function (event) {
@@ -591,6 +618,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
 
       refresh();
+      renderTabs();
       closeDropdown();
       containerRef.appendChild(div);
     }
