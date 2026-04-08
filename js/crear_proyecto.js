@@ -841,6 +841,31 @@ document.addEventListener("DOMContentLoaded", async function () {
     div.className = 'session-block border border-gray-200 rounded-xl overflow-hidden';
     div.dataset.num = num;
 
+    const gradosSesion = Array.from(new Set((paso1Data?.grados || []).map(function (g) {
+      return parseInt(g, 10);
+    }).filter(function (g) {
+      return !Number.isNaN(g);
+    }))).sort(function (a, b) {
+      return a - b;
+    });
+
+    const todosLosPdaIds = Array.from(new Set(Object.values(paso2Data || {}).flatMap(function (cf) {
+      return Array.isArray(cf?.pda_ids) ? cf.pda_ids : [];
+    }).map(function (id) {
+      return String(id);
+    }).filter(Boolean)));
+
+    const hayCatalogoPda = Array.isArray(catalogoPDA) && catalogoPDA.length > 0;
+    const mostrarBloquePda = hayCatalogoPda && todosLosPdaIds.length > 0;
+
+    function getPdaOptionsForGrade(grado) {
+      return (catalogoPDA || []).filter(function (pda) {
+        return todosLosPdaIds.includes(String(pda.id)) && Number(pda.grado) === Number(grado);
+      }).sort(function (a, b) {
+        return (Number(a.orden) || 0) - (Number(b.orden) || 0);
+      });
+    }
+
     div.innerHTML = `
       <button type="button" class="session-toggle w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition text-left">
         <span class="session-label font-semibold text-gray-700">Sesión ${num} — — </span>
@@ -890,12 +915,6 @@ document.addEventListener("DOMContentLoaded", async function () {
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
               placeholder="Materiales necesarios..."></textarea>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Criterios de evaluación</label>
-            <textarea name="criterios_evaluacion" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="¿Cómo se evaluará?"></textarea>
-          </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
             <textarea name="observaciones" rows="2"
@@ -903,6 +922,32 @@ document.addEventListener("DOMContentLoaded", async function () {
               placeholder="Notas adicionales..."></textarea>
           </div>
         </div>
+
+        ${mostrarBloquePda ? `
+        <div class="pt-2 border-t border-gray-100">
+          <label class="block text-sm font-medium text-gray-700 mb-3">PDA que se trabaja en esta sesión</label>
+          <div class="space-y-3">
+            ${gradosSesion.map(function (grado, index) {
+              const opciones = getPdaOptionsForGrade(grado);
+              const ultimo = index === gradosSesion.length - 1;
+              return `
+                <div class="${ultimo ? '' : 'border-b border-gray-100 pb-3 mb-3'}">
+                  <div class="text-xs font-semibold text-blue-700 mb-2">Grado ${grado}°</div>
+                  <select name="pda_select_grado_${grado}"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+                    <option value="">Selecciona PDA para ${grado}°...</option>
+                    ${opciones.map(function (pda) {
+                      return `<option value="${String(pda.id)}">${String(pda.pda || '')}</option>`;
+                    }).join('')}
+                  </select>
+                  <div id="sugerencia_grado_${grado}" class="hidden text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mt-1"></div>
+                  <textarea name="criterio_grado_${grado}" rows="2"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
+                    placeholder="Criterio de evaluación para ${grado}°..."></textarea>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
 
         <!-- Botón eliminar -->
         <div class="flex justify-end pt-2 border-t border-gray-100">
@@ -924,6 +969,31 @@ document.addEventListener("DOMContentLoaded", async function () {
     // Actualizar etiqueta del header cuando cambian fecha o momento
     div.querySelector('.session-fecha').addEventListener('change', () => updateLabel(div));
     div.querySelector('.session-momento').addEventListener('change', () => updateLabel(div));
+
+    if (mostrarBloquePda) {
+      gradosSesion.forEach(function (grado) {
+        const select = div.querySelector(`[name="pda_select_grado_${grado}"]`);
+        const sugerencia = div.querySelector(`#sugerencia_grado_${grado}`);
+        const criterioTextarea = div.querySelector(`[name="criterio_grado_${grado}"]`);
+
+        if (!select || !sugerencia || !criterioTextarea) return;
+
+        select.addEventListener('change', function () {
+          const pdaSeleccionado = (catalogoPDA || []).find(function (p) {
+            return String(p.id) === String(select.value);
+          });
+
+          if (pdaSeleccionado && pdaSeleccionado.criterio_valoracion) {
+            sugerencia.textContent = '💡 Criterio sugerido: ' + pdaSeleccionado.criterio_valoracion;
+            sugerencia.classList.remove('hidden');
+            criterioTextarea.value = pdaSeleccionado.criterio_valoracion;
+          } else {
+            sugerencia.textContent = '';
+            sugerencia.classList.add('hidden');
+          }
+        });
+      });
+    }
 
     // Modo didáctico (Igual / Diferenciado) por sección
     div.querySelectorAll('.didactic-section').forEach(section => {
@@ -1141,7 +1211,23 @@ document.addEventListener("DOMContentLoaded", async function () {
           cierre_actividades:      getBlockActividades('cierre', mC),
           cierre_tareas:           getBlockTareas(mC),
           recursos:                g('recursos'),
-          criterios_evaluacion:    g('criterios_evaluacion'),
+          pda_sesion: (function() {
+            const resultado = [];
+            (paso1Data.grados || []).forEach(function(g) {
+              const gNum = parseInt(g, 10);
+              const pdaId = block.querySelector(`[name="pda_select_grado_${gNum}"]`)?.value || null;
+              const criterio = block.querySelector(`[name="criterio_grado_${gNum}"]`)?.value?.trim() || null;
+              if (!pdaId && !criterio) return;
+              const pda = (catalogoPDA || []).find(function(p) { return p.id === pdaId; });
+              resultado.push({
+                grado: gNum,
+                pda_id: pdaId,
+                pda_texto: pda ? pda.pda : null,
+                criterio_aplicado: criterio
+              });
+            });
+            return resultado.length > 0 ? resultado : null;
+          })(),
           observaciones:           g('observaciones'),
         };
       });
