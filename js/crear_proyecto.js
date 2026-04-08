@@ -211,76 +211,414 @@ document.addEventListener("DOMContentLoaded", async function () {
   // PASO 2 — Contenidos y PDA
   // ============================================================
 
-  let paso2Data = {}; // { [campo]: { contenido, pda: { [grado]: texto } } }
+  let paso2Data = {}; // { [campo]: { contenidos_ids: [], pda_ids: [], contenidos_texto: [] } }
+  let catalogoContenidos = [];
+  let catalogoPDA = [];
+  let catalogoCargaPromise = null;
+  let catalogoCargado = false;
+  let catalogoError = null;
+  let renderContenidosToken = 0;
 
-  function renderContenidos() {
+  async function cargarCatalogo() {
+    if (catalogoCargado) {
+      return { contenidos: catalogoContenidos, pdasCatalogo: catalogoPDA };
+    }
+
+    if (!catalogoCargaPromise) {
+      catalogoCargaPromise = (async function () {
+        const fasesActuales = paso1Data ? paso1Data.fase : [];
+        const gradosActuales = paso1Data ? paso1Data.grados.map(Number) : [];
+
+        const { data: contenidos, error: errorContenidos } = await window.sb
+          .from('catalogo_contenidos')
+          .select('id, fase, campo_formativo, contenido, orden')
+          .in('fase', fasesActuales)
+          .order('orden');
+
+        if (errorContenidos) throw errorContenidos;
+
+        const { data: pdasCatalogo, error: errorPda } = await window.sb
+          .from('catalogo_pda')
+          .select('id, contenido_id, grado, pda, criterio_valoracion, orden')
+          .in('grado', gradosActuales)
+          .order('orden');
+
+        if (errorPda) throw errorPda;
+
+        catalogoContenidos = Array.isArray(contenidos) ? contenidos : [];
+        catalogoPDA = Array.isArray(pdasCatalogo) ? pdasCatalogo : [];
+        catalogoCargado = true;
+        catalogoError = null;
+
+        return { contenidos: catalogoContenidos, pdasCatalogo: catalogoPDA };
+      })().catch(function (error) {
+        catalogoError = error;
+        catalogoCargado = false;
+        catalogoContenidos = [];
+        catalogoPDA = [];
+        throw error;
+      }).finally(function () {
+        catalogoCargaPromise = null;
+      });
+    }
+
+    return catalogoCargaPromise;
+  }
+
+  async function renderContenidos() {
     const container = document.getElementById('contenidosContainer');
     if (!container) return;
 
+    const token = ++renderContenidosToken;
     const campos = paso1Data ? paso1Data.campos_formativos : [];
-    const grados = paso1Data ? paso1Data.grados.map(Number).sort((a,b)=>a-b) : [];
+    const grados = paso1Data ? paso1Data.grados.map(Number).sort(function (a, b) { return a - b; }) : [];
+    const fases = paso1Data ? paso1Data.fase : [];
 
-    // Guardar valores actuales antes de re-renderizar
-    _saveContenidosState();
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
-    container.innerHTML = '';
+    function normalizeSavedCampo(saved) {
+      const contenidosIds = Array.isArray(saved.contenidos_ids) ? saved.contenidos_ids.map(function (id) { return String(id); }) : [];
+      const contenidosTexto = Array.isArray(saved.contenidos_texto) ? saved.contenidos_texto.map(function (texto) { return String(texto); }) : [];
+      const pdaIds = Array.isArray(saved.pda_ids) ? saved.pda_ids.map(function (id) { return String(id); }) : [];
+
+      if (contenidosIds.length === 0 && saved.contenido) {
+        if (typeof saved.contenido === 'string' && saved.contenido.trim()) {
+          contenidosTexto.push(saved.contenido.trim());
+        } else if (typeof saved.contenido === 'object') {
+          Object.keys(saved.contenido).forEach(function (key) {
+            const texto = saved.contenido[key];
+            if (typeof texto === 'string' && texto.trim()) {
+              contenidosTexto.push(texto.trim());
+            }
+          });
+        }
+      }
+
+      if (pdaIds.length === 0 && saved.pda && typeof saved.pda === 'object') {
+        Object.keys(saved.pda).forEach(function (key) {
+          const valor = saved.pda[key];
+          if (Array.isArray(valor)) {
+            valor.forEach(function (item) {
+              if (item) pdaIds.push(String(item));
+            });
+          } else if (typeof valor === 'string' && valor.trim()) {
+            pdaIds.push(String(valor.trim()));
+          }
+        });
+      }
+
+      return {
+        contenidosIds: Array.from(new Set(contenidosIds)),
+        contenidosTexto: Array.from(new Set(contenidosTexto.filter(Boolean))),
+        pdaIds: Array.from(new Set(pdaIds)),
+      };
+    }
+
+    function getCatalogoContenidosCampo(campo) {
+      return catalogoContenidos.filter(function (item) {
+        return String(item.campo_formativo) === String(campo);
+      });
+    }
+
+    function getCatalogoPdaPorContenidoIds(contenidoIds) {
+      const idsSet = new Set(contenidoIds.map(function (id) { return String(id); }));
+      return catalogoPDA.filter(function (item) {
+        return idsSet.has(String(item.contenido_id));
+      });
+    }
+
+    function renderFallback(containerRef) {
+      const mensaje = '<p class="text-red-600 text-sm font-medium mb-4">No se pudo cargar el catálogo. Puedes escribir los contenidos manualmente.</p>';
+      containerRef.innerHTML = mensaje;
+
+      campos.forEach(function (campo) {
+        const saved = paso2Data[campo] || {};
+        const div = document.createElement('div');
+        div.className = 'campo-contenido-block border border-gray-200 rounded-xl p-5 bg-white mb-4';
+        div.dataset.campo = campo;
+        div.dataset.mode = 'fallback';
+
+        const textosGuardados = Array.isArray(saved.contenidos_texto) ? saved.contenidos_texto : [];
+        const pdaTextoGuardado = saved.pda_texto && typeof saved.pda_texto === 'object' ? saved.pda_texto : {};
+        const columnas = Math.min(fases.length || 1, 3);
+
+        let contenidoRows = '<div class="grid grid-cols-1 md:grid-cols-' + columnas + ' gap-4">';
+        (fases.length > 0 ? fases : ['']).forEach(function (fase, index) {
+          contenidoRows += `
+            <div>
+              <label class="block text-xs font-semibold text-blue-700 mb-1">${escapeHtml(fase || 'Fase')}</label>
+              <textarea name="contenido_${escapeHtml(fase || 'unico')}" rows="3"
+                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="Contenido para ${escapeHtml(fase || 'este campo')}...">${escapeHtml(textosGuardados[index] || '')}</textarea>
+            </div>`;
+        });
+        contenidoRows += '</div>';
+
+        let pdaRows = '<div class="grid grid-cols-1 md:grid-cols-' + Math.min(grados.length || 1, 3) + ' gap-4">';
+        grados.forEach(function (grado) {
+          const val = pdaTextoGuardado[grado] || pdaTextoGuardado[String(grado)] || '';
+          pdaRows += `
+            <div>
+              <label class="block text-xs font-semibold text-blue-700 mb-1">${grado}°</label>
+              <textarea name="pda_${grado}" rows="3"
+                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="PDA para ${grado}°...">${escapeHtml(val)}</textarea>
+            </div>`;
+        });
+        pdaRows += '</div>';
+
+        div.innerHTML = `
+          <h3 class="font-bold text-gray-800 mb-4 text-base border-b pb-2">${escapeHtml(campo)}</h3>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-3">Contenido por fase</label>
+            ${contenidoRows}
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-3">Procesos de Desarrollo de Aprendizaje (PDA) por grado</label>
+            ${pdaRows}
+          </div>`;
+
+        containerRef.appendChild(div);
+      });
+    }
+
+    function renderCatalogoCampo(containerRef, campo) {
+      const saved = normalizeSavedCampo(paso2Data[campo] || {});
+      const contenidosCampo = getCatalogoContenidosCampo(campo);
+      let selectedContenidoIds = Array.from(saved.contenidosIds);
+      let selectedPdaIds = Array.from(saved.pdaIds);
+
+      if (selectedContenidoIds.length === 0 && saved.contenidosTexto.length > 0) {
+        saved.contenidosTexto.forEach(function (texto) {
+          const encontrado = contenidosCampo.find(function (item) {
+            return String(item.contenido || '').trim() === String(texto || '').trim();
+          });
+          if (encontrado && !selectedContenidoIds.includes(String(encontrado.id))) {
+            selectedContenidoIds.push(String(encontrado.id));
+          }
+        });
+      }
+
+      const div = document.createElement('div');
+      div.className = 'campo-contenido-block border border-gray-200 rounded-xl p-5 bg-white mb-4';
+      div.dataset.campo = campo;
+      div.dataset.mode = 'catalogo';
+
+      div.innerHTML = `
+        <h3 class="font-bold text-gray-800 mb-4 text-base border-b pb-2">${escapeHtml(campo)}</h3>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-3">Contenido oficial SEP</label>
+          <div class="relative">
+            <input type="text" placeholder="Buscar contenido oficial SEP..."
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+            <div class="catalogo-dropdown absolute left-0 right-0 mt-1 z-50 bg-white shadow-lg border border-gray-200 rounded-xl hidden max-h-64 overflow-y-auto"></div>
+          </div>
+          <div class="catalogo-chips mt-3 flex flex-wrap gap-2"></div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-3">Procesos de Desarrollo de Aprendizaje (PDA)</label>
+          <div class="catalogo-pda"></div>
+        </div>`;
+
+      const input = div.querySelector('input[type="text"]');
+      const dropdown = div.querySelector('.catalogo-dropdown');
+      const chipsContainer = div.querySelector('.catalogo-chips');
+      const pdaContainer = div.querySelector('.catalogo-pda');
+
+      function getContenidoSeleccionado() {
+        return contenidosCampo.filter(function (item) {
+          return selectedContenidoIds.includes(String(item.id));
+        });
+      }
+
+      function getPdaFiltrados() {
+        const contenidoIdsSet = new Set(selectedContenidoIds.map(function (id) { return String(id); }));
+        return catalogoPDA.filter(function (item) {
+          return contenidoIdsSet.has(String(item.contenido_id)) && grados.includes(Number(item.grado));
+        });
+      }
+
+      function syncPdaSelection() {
+        const validIds = new Set(getPdaFiltrados().map(function (item) { return String(item.id); }));
+        selectedPdaIds = selectedPdaIds.filter(function (id) {
+          return validIds.has(String(id));
+        });
+      }
+
+      function renderChips() {
+        const seleccionados = getContenidoSeleccionado();
+        chipsContainer.innerHTML = seleccionados.map(function (item) {
+          return `
+            <span class="contenido-chip inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium" data-contenido-id="${escapeHtml(item.id)}" data-contenido-texto="${escapeHtml(item.contenido || '')}">
+              <span>${escapeHtml(item.contenido || '')}</span>
+              <button type="button" class="remove-contenido-btn inline-flex items-center justify-center text-blue-500 hover:text-blue-800 hover:bg-blue-200 p-0.5 rounded-full transition" data-id="${escapeHtml(item.id)}" aria-label="Quitar contenido">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+              </button>
+            </span>`;
+        }).join('');
+      }
+
+      function renderPdaSection() {
+        const pdaFiltrados = getPdaFiltrados();
+        if (selectedContenidoIds.length === 0) {
+          pdaContainer.innerHTML = '<p class="text-gray-400 text-sm">Selecciona un contenido para ver los PDA</p>';
+          return;
+        }
+
+        const grupos = {};
+        pdaFiltrados.forEach(function (item) {
+          const grado = Number(item.grado);
+          if (!grados.includes(grado)) return;
+          if (!grupos[grado]) grupos[grado] = [];
+          grupos[grado].push(item);
+        });
+
+        const gradosConPDA = grados.filter(function (grado) {
+          return grupos[grado] && grupos[grado].length > 0;
+        });
+
+        if (gradosConPDA.length === 0) {
+          pdaContainer.innerHTML = '<p class="text-gray-400 text-sm">Selecciona un contenido para ver los PDA</p>';
+          return;
+        }
+
+        pdaContainer.innerHTML = gradosConPDA.map(function (grado) {
+          const items = grupos[grado].slice().sort(function (a, b) {
+            return (Number(a.orden) || 0) - (Number(b.orden) || 0);
+          });
+
+          return `
+            <div class="mb-4 last:mb-0">
+              <div class="text-xs font-semibold text-blue-700 mb-2">${grado}°</div>
+              <div class="space-y-3">
+                ${items.map(function (item) {
+                  const checked = selectedPdaIds.includes(String(item.id)) ? 'checked' : '';
+                  const criterio = item.criterio_valoracion ? `<div class="text-xs text-gray-400 mt-1">${escapeHtml(item.criterio_valoracion)}</div>` : '';
+                  return `
+                    <label class="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" name="pda_ids" value="${escapeHtml(item.id)}" data-pda-id="${escapeHtml(item.id)}" class="form-checkbox h-5 w-5 text-blue-600 rounded-lg border-gray-300 focus:ring-blue-500 mt-0.5" ${checked}>
+                      <div class="flex-1">
+                        <div class="text-sm text-gray-800">${escapeHtml(item.pda || '')}</div>
+                        ${criterio}
+                      </div>
+                    </label>`;
+                }).join('')}
+              </div>
+            </div>`;
+        }).join('');
+      }
+
+      function renderDropdown() {
+        const query = String(input.value || '').toLowerCase().trim();
+        const resultados = contenidosCampo.filter(function (item) {
+          const texto = String(item.contenido || '');
+          return query === '' || texto.toLowerCase().includes(query);
+        }).slice(0, 8);
+
+        if (resultados.length === 0) {
+          dropdown.innerHTML = '<div class="px-3 py-2 text-sm text-gray-400">Sin resultados</div>';
+        } else {
+          dropdown.innerHTML = resultados.map(function (item) {
+            return `
+              <div class="contenido-option px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer" data-id="${escapeHtml(item.id)}" data-texto="${escapeHtml(item.contenido || '')}">
+                ${escapeHtml(item.contenido || '')}
+              </div>`;
+          }).join('');
+        }
+
+        dropdown.classList.remove('hidden');
+      }
+
+      function closeDropdown() {
+        dropdown.classList.add('hidden');
+      }
+
+      function refresh() {
+        syncPdaSelection();
+        renderChips();
+        renderPdaSection();
+      }
+
+      input.addEventListener('input', renderDropdown);
+      input.addEventListener('focus', renderDropdown);
+      input.addEventListener('blur', function () {
+        setTimeout(closeDropdown, 120);
+      });
+
+      dropdown.addEventListener('mousedown', function (event) {
+        const option = event.target.closest('.contenido-option');
+        if (!option) return;
+        event.preventDefault();
+        const contenidoId = String(option.dataset.id || '');
+        if (contenidoId && !selectedContenidoIds.includes(contenidoId)) {
+          selectedContenidoIds.push(contenidoId);
+        }
+        input.value = '';
+        closeDropdown();
+        refresh();
+      });
+
+      chipsContainer.addEventListener('click', function (event) {
+        const btn = event.target.closest('.remove-contenido-btn');
+        if (!btn) return;
+        const contenidoId = String(btn.dataset.id || '');
+        selectedContenidoIds = selectedContenidoIds.filter(function (id) {
+          return String(id) !== contenidoId;
+        });
+        closeDropdown();
+        refresh();
+      });
+
+      pdaContainer.addEventListener('change', function (event) {
+        const checkbox = event.target.closest('input[name="pda_ids"]');
+        if (!checkbox) return;
+        const pdaId = String(checkbox.value || checkbox.dataset.pdaId || '');
+        if (!pdaId) return;
+        if (checkbox.checked) {
+          if (!selectedPdaIds.includes(pdaId)) selectedPdaIds.push(pdaId);
+        } else {
+          selectedPdaIds = selectedPdaIds.filter(function (id) {
+            return String(id) !== pdaId;
+          });
+        }
+      });
+
+      refresh();
+      closeDropdown();
+      containerRef.appendChild(div);
+    }
 
     if (campos.length === 0) {
       container.innerHTML = '<p class="text-gray-400 text-sm">No hay campos formativos seleccionados.</p>';
       return;
     }
 
-    const fases = paso1Data ? paso1Data.fase : [];
+    container.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">Cargando catálogo SEP...</p>';
+
+    try {
+      await cargarCatalogo();
+    } catch (error) {
+      // fallback manual
+    }
+
+    if (token !== renderContenidosToken) return;
+
+    container.innerHTML = '';
+
+    if (catalogoError) {
+      renderFallback(container);
+      return;
+    }
 
     campos.forEach(function (campo) {
-      const saved = paso2Data[campo] || {};
-      const div = document.createElement('div');
-      div.className = 'campo-contenido-block border border-gray-200 rounded-xl p-5 bg-white';
-      div.dataset.campo = campo;
-
-      // Contenido por fase (siempre con etiqueta de fase)
-      let contenidoRows = `<div class="grid grid-cols-1 md:grid-cols-${Math.min(fases.length || 1, 3)} gap-4">`;
-      (fases.length > 0 ? fases : ['']).forEach(function (fase) {
-        const val = (saved.contenido && typeof saved.contenido === 'object')
-          ? (saved.contenido[fase] || '')
-          : (saved.contenido || '');
-        contenidoRows += `
-          <div>
-            <label class="block text-xs font-semibold text-blue-700 mb-1">${fase || 'Fase'}</label>
-            <textarea name="contenido_${fase || 'unico'}" rows="3"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Contenido para ${fase || 'este campo'}...">${val}</textarea>
-          </div>`;
-      });
-      contenidoRows += '</div>';
-
-      // PDA por grado
-      let pdaRows = '';
-      grados.forEach(function (g) {
-        const val = (saved.pda && saved.pda[g]) ? saved.pda[g] : '';
-        pdaRows += `
-          <div>
-            <label class="block text-xs font-semibold text-blue-700 mb-1">${g}°</label>
-            <textarea name="pda_${g}" rows="3"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="PDA para ${g}°...">${val}</textarea>
-          </div>`;
-      });
-
-      div.innerHTML = `
-        <h3 class="font-bold text-gray-800 mb-4 text-base border-b pb-2">${campo}</h3>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-3">Contenido por fase</label>
-          ${contenidoRows}
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-3">Procesos de Desarrollo de Aprendizaje (PDA) por grado</label>
-          <div class="grid grid-cols-1 md:grid-cols-${Math.min(grados.length, 3)} gap-4">
-            ${pdaRows}
-          </div>
-        </div>`;
-
-      container.appendChild(div);
+      renderCatalogoCampo(container, campo);
     });
   }
 
@@ -288,17 +626,47 @@ document.addEventListener("DOMContentLoaded", async function () {
     document.querySelectorAll('.campo-contenido-block').forEach(function (block) {
       const campo = block.dataset.campo;
       if (!campo) return;
-      const contenido = {};
-      block.querySelectorAll('textarea[name^="contenido_"]').forEach(function (ta) {
-        const fase = ta.name.replace('contenido_', '');
-        contenido[fase] = ta.value;
+
+      if ((block.dataset.mode || 'catalogo') === 'fallback') {
+        const contenidosTexto = [];
+        block.querySelectorAll('textarea[name^="contenido_"]').forEach(function (ta) {
+          const texto = ta.value.trim();
+          if (texto) contenidosTexto.push(texto);
+        });
+
+        const pdaTexto = {};
+        block.querySelectorAll('textarea[name^="pda_"]').forEach(function (ta) {
+          const grado = ta.name.replace('pda_', '');
+          pdaTexto[grado] = ta.value;
+        });
+
+        paso2Data[campo] = {
+          contenidos_ids: [],
+          pda_ids: [],
+          contenidos_texto: contenidosTexto,
+          pda_texto: pdaTexto,
+        };
+        return;
+      }
+
+      const contenidosIds = [];
+      const contenidosTexto = [];
+      block.querySelectorAll('.contenido-chip').forEach(function (chip) {
+        const contenidoId = String(chip.dataset.contenidoId || '').trim();
+        const contenidoTexto = String(chip.dataset.contenidoTexto || '').trim();
+        if (contenidoId) contenidosIds.push(contenidoId);
+        if (contenidoTexto) contenidosTexto.push(contenidoTexto);
       });
-      const pda = {};
-      block.querySelectorAll('textarea[name^="pda_"]').forEach(function (ta) {
-        const grado = ta.name.replace('pda_', '');
-        pda[grado] = ta.value;
-      });
-      paso2Data[campo] = { contenido, pda };
+
+      const pdaIds = Array.from(block.querySelectorAll('input[name="pda_ids"]:checked')).map(function (input) {
+        return String(input.value || input.dataset.pdaId || '').trim();
+      }).filter(Boolean);
+
+      paso2Data[campo] = {
+        contenidos_ids: Array.from(new Set(contenidosIds)),
+        pda_ids: Array.from(new Set(pdaIds)),
+        contenidos_texto: Array.from(new Set(contenidosTexto)),
+      };
     });
   }
 
