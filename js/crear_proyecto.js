@@ -190,8 +190,6 @@ document.addEventListener("DOMContentLoaded", async function () {
       const fd = new FormData(formPaso1);
       paso1Data = {
         titulo:             fd.get('titulo'),
-        fecha_inicial:      fd.get('fecha_inicial'),
-        fecha_final:        fd.get('fecha_final'),
         fase:               Array.from(formPaso1.querySelectorAll('input[name="fase"]')).map(el => el.value),
         grados:             Array.from(formPaso1.querySelectorAll('input[name="grados"]:checked')).map(el => el.value),
         metodologia:        fd.get('metodologia'),
@@ -885,11 +883,6 @@ document.addEventListener("DOMContentLoaded", async function () {
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Fecha</label>
-            <input type="date" name="fecha"
-              class="session-fecha w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
-          </div>
-          <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">Campo formativo</label>
             <select name="campo_formativo"
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
@@ -1000,8 +993,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       icon.style.transform = open ? 'rotate(-90deg)' : '';
     });
 
-    // Actualizar etiqueta del header cuando cambian fecha o momento
-    div.querySelector('.session-fecha').addEventListener('change', () => updateLabel(div));
+    // Actualizar etiqueta del header cuando cambia la secuencia
     div.querySelector('.session-momento').addEventListener('change', () => updateLabel(div));
 
     const recursosFilesInput = div.querySelector('input[type="file"]');
@@ -1254,15 +1246,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   function updateLabel(block) {
     const num   = block.dataset.num;
-    const fecha = block.querySelector('.session-fecha').value;
     const momento = block.querySelector('.session-momento').value;
-    let fechaStr = '';
-    if (fecha) {
-      const [y, m, d] = fecha.split('-');
-      fechaStr = `${d}/${m}/${y.slice(2)}`;
-    }
     block.querySelector('.session-label').textContent =
-      `Sesión ${num} — ${fechaStr || '—'} — ${momento || '—'}`;
+      `Sesión ${num} — ${momento || '—'}`;
   }
 
   function renumber() {
@@ -1409,8 +1395,6 @@ document.addEventListener("DOMContentLoaded", async function () {
           maestro_id:          user.id,
           grupo_id:            grupoId,
           titulo:              paso1Data.titulo,
-          fecha_inicial:       paso1Data.fecha_inicial,
-          fecha_final:         paso1Data.fecha_final,
           fase:                paso1Data.fase,
           grados:              paso1Data.grados,
           metodologia:         paso1Data.metodologia,
@@ -1490,7 +1474,6 @@ document.addEventListener("DOMContentLoaded", async function () {
           maestro_id:              user.id,
           numero_sesion:           idx + 1,
           duracion:                g('duracion') || '',
-          fecha:                   g('fecha') || null,
           campo_formativo:         g('campo_formativo'),
           momento:                 g('momento'),
           inicio_todos:            mI === 'todos'        ? g('inicio_todos')        : null,
