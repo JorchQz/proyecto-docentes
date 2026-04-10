@@ -9,18 +9,27 @@
 </head>
 <body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-8 text-gray-800">
 	<div class="max-w-4xl mx-auto flex flex-col gap-6">
-		<header class="bg-blue-800 rounded-2xl shadow-md p-6">
-			<h1 class="text-2xl md:text-3xl font-bold text-white">Planeación</h1>
-			<p class="text-blue-100 text-sm md:text-base mt-1">Planificación de proyectos y secuencias didácticas</p>
+		<header class="bg-blue-800 rounded-2xl shadow-md p-6 flex justify-between items-center gap-4">
+			<div>
+				<h1 class="text-2xl md:text-3xl font-bold text-white">Mis Proyectos</h1>
+				<p class="text-blue-100 text-sm md:text-base mt-1">Gestiona y planea tus proyectos NEM</p>
+			</div>
+			<a href="crear_proyecto.html" class="bg-white text-blue-800 font-bold px-4 py-2 rounded-xl text-sm hover:bg-blue-50 transition">
+				+ Nuevo proyecto
+			</a>
 		</header>
 
 		<main class="bg-white rounded-2xl shadow-md p-6">
-			<p class="text-gray-500">Módulo en construcción.</p>
+			<div id="proyectosEstado" class="text-center py-12 text-gray-400">
+				Cargando proyectos...
+			</div>
+			<div id="proyectosGrid" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
 		</main>
 	</div>
 
 	<script src="js/supabase.js"></script>
 	<script src="js/navbar.js"></script>
 	<script src="js/section-shell.js"></script>
+	<script src="js/planeacion.js"></script>
 </body>
 </html>
