@@ -748,6 +748,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
       rebuildAllPdaBlocks();
     }
+
+    // Restaurar sesiones del borrador si hay pendientes
+    if (restoreDraft._sesiones && restoreDraft._sesiones.length) {
+      restoreSessionBlocks(restoreDraft._sesiones);
+      restoreDraft._sesiones = null;
+    }
   });
 
   // ============================================================
@@ -1389,11 +1395,117 @@ document.addEventListener("DOMContentLoaded", async function () {
   // BORRADOR — guardado local (localStorage)
   // ============================================================
 
+  function collectSessionsData() {
+    const blocks = document.querySelectorAll('.session-block');
+    if (!blocks.length) return [];
+    return Array.from(blocks).map(function (block) {
+      const g = function (name) {
+        return block.querySelector('[name="' + name + '"]')?.value?.trim() || null;
+      };
+      const mode = function (key) {
+        return block.querySelector('.didactic-section[data-section="' + key + '"]')
+          ?.dataset.mode || 'todos';
+      };
+      function getDifData(key) {
+        const obj = {};
+        block.querySelectorAll('textarea[name^="' + key + '_grado_"]').forEach(function (ta) {
+          const grado = ta.name.replace(key + '_grado_', '');
+          obj[grado] = ta.value.trim() || null;
+        });
+        return Object.keys(obj).length > 0 ? obj : null;
+      }
+      function getItems(selector) {
+        return Array.from(block.querySelectorAll(selector))
+          .map(function (i) { return i.value.trim(); }).filter(Boolean);
+      }
+      function getActividades(sectionKey, sectionMode) {
+        if (sectionMode === 'todos') {
+          return { mode: 'todos',
+            todos: getItems('input[name="' + sectionKey + '_act_todos_item"]'),
+            diferenciado: null };
+        }
+        const dif = {};
+        block.querySelectorAll('input[name^="' + sectionKey + '_act_dif_"]')
+          .forEach(function (input) {
+            const m = input.name.match(
+              new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
+            if (m) {
+              const gr = m[1];
+              if (!dif[gr]) dif[gr] = [];
+              const v = input.value.trim();
+              if (v) dif[gr].push(v);
+            }
+          });
+        return { mode: 'diferenciado', todos: null,
+          diferenciado: Object.keys(dif).length > 0 ? dif : null };
+      }
+      function getTareas(sectionMode) {
+        if (sectionMode === 'todos') {
+          return { mode: 'todos',
+            todos: getItems('input[name="cierre_tarea_todos_item"]'),
+            diferenciado: null };
+        }
+        const dif = {};
+        block.querySelectorAll('input[name^="cierre_tarea_dif_"]')
+          .forEach(function (input) {
+            const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
+            if (m) {
+              const gr = m[1];
+              if (!dif[gr]) dif[gr] = [];
+              const v = input.value.trim();
+              if (v) dif[gr].push(v);
+            }
+          });
+        return { mode: 'diferenciado', todos: null,
+          diferenciado: Object.keys(dif).length > 0 ? dif : null };
+      }
+      const mI = mode('inicio');
+      const mD = mode('desarrollo');
+      const mC = mode('cierre');
+      const pdaSesion = [];
+      (paso1Data ? paso1Data.grados || [] : []).forEach(function (gr) {
+        const gNum = parseInt(gr, 10);
+        const pdaId = block.querySelector('[name="pda_select_grado_' + gNum + '"]')
+          ?.value || null;
+        const criterio = block.querySelector('[name="criterio_grado_' + gNum + '"]')
+          ?.value?.trim() || null;
+        if (!pdaId && !criterio) return;
+        const pda = (catalogoPDA || []).find(function (p) { return p.id === pdaId; });
+        pdaSesion.push({
+          grado: gNum,
+          pda_id: pdaId,
+          pda_texto: pda ? pda.pda : null,
+          criterio_aplicado: criterio
+        });
+      });
+      return {
+        duracion:               g('duracion'),
+        campo_formativo:        g('campo_formativo'),
+        momento:                g('momento'),
+        inicio_todos:           mI === 'todos' ? g('inicio_todos') : null,
+        inicio_diferenciado:    mI === 'diferenciado' ? getDifData('inicio') : null,
+        inicio_actividades:     getActividades('inicio', mI),
+        desarrollo_todos:       mD === 'todos' ? g('desarrollo_todos') : null,
+        desarrollo_diferenciado:mD === 'diferenciado' ? getDifData('desarrollo') : null,
+        desarrollo_actividades: getActividades('desarrollo', mD),
+        cierre_todos:           mC === 'todos' ? g('cierre_todos') : null,
+        cierre_diferenciado:    mC === 'diferenciado' ? getDifData('cierre') : null,
+        cierre_actividades:     getActividades('cierre', mC),
+        cierre_tareas:          getTareas(mC),
+        observaciones:          g('observaciones'),
+        pda_sesion:             pdaSesion.length > 0 ? pdaSesion : null,
+        _archivos:              block._archivos || [],
+        _links:                 block._links || []
+      };
+    });
+  }
+
   function saveDraft() {
     try {
       const draft = {
         paso1Data: paso1Data,
         paso2Data: paso2Data,
+        sesiones: collectSessionsData() || [],
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -1484,6 +1596,197 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     document.getElementById('borradorBanner')?.classList.add('hidden');
+
+    restoreDraft._sesiones = (draft.sesiones && draft.sesiones.length)
+      ? draft.sesiones
+      : null;
+  }
+
+  function restoreSessionBlocks(sesiones) {
+    if (!sesiones || !sesiones.length) return;
+    const container = document.getElementById('sesionesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    sessionCounter = 0;
+
+    sesiones.forEach(function (data, idx) {
+      sessionCounter++;
+      const num = idx + 1;
+      const block = createSessionBlock(num);
+      container.appendChild(block);
+
+      const set = function (name, val) {
+        if (val == null) return;
+        const el = block.querySelector('[name="' + name + '"]');
+        if (el) el.value = val;
+      };
+      set('duracion', data.duracion);
+      set('observaciones', data.observaciones);
+      set('campo_formativo', data.campo_formativo);
+      set('momento', data.momento);
+      updateLabel(block);
+
+      function restoreSection(key, sectionData, actData, tareasData) {
+        if (!sectionData && !actData) return;
+        const section = block.querySelector(
+          '.didactic-section[data-section="' + key + '"]');
+        if (!section) return;
+
+        const mode = (actData && actData.mode) || 'todos';
+        if (mode === 'diferenciado') {
+          section.querySelector('.mode-btn-dif')?.click();
+        } else {
+          section.querySelector('.mode-btn-todos')?.click();
+        }
+
+        if (mode === 'todos') {
+          const ta = section.querySelector('textarea[name="' + key + '_todos"]');
+          if (ta && sectionData) ta.value = sectionData;
+          if (actData && actData.todos && actData.todos.length) {
+            const listContainer = section.querySelector(
+              '.item-list-container[data-key="' + key + '_act_todos"]');
+            if (listContainer) {
+              actData.todos.forEach(function (texto) {
+                listContainer.querySelector('.add-item-btn')?.click();
+                const inputs = listContainer.querySelectorAll('.item-row input');
+                if (inputs.length) inputs[inputs.length - 1].value = texto;
+              });
+            }
+          }
+        } else {
+          if (sectionData && typeof sectionData === 'object') {
+            Object.entries(sectionData).forEach(function (entry) {
+              const ta = section.querySelector(
+                'textarea[name="' + key + '_grado_' + entry[0] + '"]');
+              if (ta && entry[1]) ta.value = entry[1];
+            });
+          }
+          if (actData && actData.diferenciado) {
+            Object.entries(actData.diferenciado).forEach(function (entry) {
+              const gr = entry[0];
+              const items = entry[1];
+              if (!items || !items.length) return;
+              const listContainer = section.querySelector(
+                '.item-list-container[data-key="' + key + '_act_dif_' + gr + '"]');
+              if (listContainer) {
+                items.forEach(function (texto) {
+                  listContainer.querySelector('.add-item-btn')?.click();
+                  const inputs = listContainer.querySelectorAll('.item-row input');
+                  if (inputs.length) inputs[inputs.length - 1].value = texto;
+                });
+              }
+            });
+          }
+        }
+      }
+
+      restoreSection('inicio',
+        data.inicio_todos || data.inicio_diferenciado,
+        data.inicio_actividades, null);
+      restoreSection('desarrollo',
+        data.desarrollo_todos || data.desarrollo_diferenciado,
+        data.desarrollo_actividades, null);
+      restoreSection('cierre',
+        data.cierre_todos || data.cierre_diferenciado,
+        data.cierre_actividades, null);
+
+      if (data.cierre_tareas) {
+        const tareasMode = data.cierre_tareas.mode || 'todos';
+        const cierreSection = block.querySelector(
+          '.didactic-section[data-section="cierre"]');
+        if (cierreSection) {
+          if (tareasMode === 'todos' && data.cierre_tareas.todos?.length) {
+            const listContainer = cierreSection.querySelector(
+              '.item-list-container[data-key="cierre_tarea_todos"]');
+            if (listContainer) {
+              data.cierre_tareas.todos.forEach(function (texto) {
+                listContainer.querySelector('.add-item-btn')?.click();
+                const inputs = listContainer.querySelectorAll('.item-row input');
+                if (inputs.length) inputs[inputs.length - 1].value = texto;
+              });
+            }
+          } else if (tareasMode === 'diferenciado' && data.cierre_tareas.diferenciado) {
+            Object.entries(data.cierre_tareas.diferenciado).forEach(function (entry) {
+              const gr = entry[0];
+              const items = entry[1];
+              if (!items || !items.length) return;
+              const listContainer = cierreSection.querySelector(
+                '.item-list-container[data-key="cierre_tarea_dif_' + gr + '"]');
+              if (listContainer) {
+                items.forEach(function (texto) {
+                  listContainer.querySelector('.add-item-btn')?.click();
+                  const inputs = listContainer.querySelectorAll('.item-row input');
+                  if (inputs.length) inputs[inputs.length - 1].value = texto;
+                });
+              }
+            });
+          }
+        }
+      }
+
+      if (data.pda_sesion && data.pda_sesion.length) {
+        data.pda_sesion.forEach(function (item) {
+          const selectEl = block.querySelector(
+            '[name="pda_select_grado_' + item.grado + '"]');
+          if (selectEl && item.pda_id) {
+            selectEl.value = item.pda_id;
+            selectEl.dispatchEvent(new Event('change'));
+          }
+          if (item.criterio_aplicado) {
+            const criterioEl = block.querySelector(
+              '[name="criterio_grado_' + item.grado + '"]');
+            if (criterioEl) criterioEl.value = item.criterio_aplicado;
+          }
+        });
+      }
+
+      block._archivos = data._archivos || [];
+      block._links = data._links || [];
+      if (block._links.length) {
+        const linksContainer = block.querySelector('.links-chips-container');
+        if (linksContainer) {
+          block._links.forEach(function (link) {
+            const chip = document.createElement('div');
+            chip.className =
+              'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ' +
+              'bg-green-50 border border-green-100 text-green-800';
+            chip.innerHTML = '🔗 ' + (link.titulo || link.url) +
+              ' <button type="button" class="remove-link-btn text-gray-400 ' +
+              'hover:text-red-500 transition ml-1 text-xs font-bold">✕</button>';
+            chip.querySelector('.remove-link-btn').addEventListener('click',
+              function () {
+                block._links = block._links.filter(function (l) {
+                  return l.url !== link.url;
+                });
+                chip.remove();
+              });
+            linksContainer.appendChild(chip);
+          });
+        }
+      }
+      if (block._archivos.length) {
+        const archivosContainer = block.querySelector('.archivos-chips-container');
+        if (archivosContainer) {
+          block._archivos.forEach(function (archivo) {
+            const chip = document.createElement('div');
+            chip.className =
+              'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ' +
+              'bg-blue-50 border border-blue-100 text-blue-800';
+            chip.innerHTML = '📎 ' + archivo.nombre +
+              ' <button type="button" class="remove-archivo-btn text-gray-400 ' +
+              'hover:text-red-500 transition ml-1 text-xs font-bold">✕</button>';
+            chip.querySelector('.remove-archivo-btn').addEventListener('click',
+              function () {
+                block._archivos = block._archivos.filter(function (a) {
+                  return a.path !== archivo.path;
+                });
+                chip.remove();
+              });
+            archivosContainer.appendChild(chip);
+          });
+        }
+      }
+    });
   }
 
   document.getElementById('btnGuardarBorrador2')?.addEventListener('click', function () {
