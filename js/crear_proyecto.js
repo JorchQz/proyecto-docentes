@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", async function () {
 
+  const DRAFT_KEY = 'borradorProyectoActivo';
+
   // ============================================================
   // PASO 1 — Datos dinámicos
   // ============================================================
@@ -108,6 +110,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   renderGradosCheckboxes();
   renderFaseBadges();
+  checkAndShowDraftBanner();
+
+  document.getElementById('btnContinuarBorrador')?.addEventListener('click', restoreDraft);
+  document.getElementById('btnDescartarBorrador')?.addEventListener('click', function () {
+    clearDraft();
+    document.getElementById('borradorBanner')?.classList.add('hidden');
+  });
+  document.getElementById('btnGuardarBorrador1')?.addEventListener('click', saveDraft);
 
   // ---------- Seleccionar todos — Campos formativos ----------
   const cfBox = document.querySelector('[name="campos_formativos"]')?.closest('.flex');
@@ -199,6 +209,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         proposito:          fd.get('proposito'),
         pregunta_generadora: fd.get('pregunta_generadora'),
       };
+      saveDraft();
       step1.classList.add('hidden');
       step2contenidos.classList.remove('hidden');
       window.scrollTo(0, 0);
@@ -711,6 +722,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   document.getElementById('btnIrPaso3')?.addEventListener('click', function () {
     _saveContenidosState();
+    saveDraft();
     step2contenidos.classList.add('hidden');
     step2.classList.remove('hidden');
     window.scrollTo(0, 0);
@@ -1374,6 +1386,113 @@ document.addEventListener("DOMContentLoaded", async function () {
   });
 
   // ============================================================
+  // BORRADOR — guardado local (localStorage)
+  // ============================================================
+
+  function saveDraft() {
+    try {
+      const draft = {
+        paso1Data: paso1Data,
+        paso2Data: paso2Data,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      const toast = document.getElementById('borradorToast');
+      if (toast) {
+        toast.classList.remove('hidden');
+        clearTimeout(saveDraft._timer);
+        saveDraft._timer = setTimeout(function () { toast.classList.add('hidden'); }, 2500);
+      }
+    } catch (_) {}
+  }
+
+  function loadDraft() {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) { return null; }
+  }
+
+  function clearDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+  }
+
+  function checkAndShowDraftBanner() {
+    const draft = loadDraft();
+    if (!draft || !draft.paso1Data) return;
+    const banner = document.getElementById('borradorBanner');
+    const fechaEl = document.getElementById('borradorFecha');
+    if (!banner) return;
+    if (fechaEl && draft.savedAt) {
+      const fecha = new Date(draft.savedAt);
+      fechaEl.textContent = 'Guardado el ' +
+        fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) +
+        ' a las ' +
+        fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    }
+    banner.classList.remove('hidden');
+  }
+
+  function restoreDraft() {
+    const draft = loadDraft();
+    if (!draft || !draft.paso1Data) return;
+    const d = draft.paso1Data;
+
+    if (formPaso1) {
+      const tituloInput = formPaso1.querySelector('[name="titulo"]');
+      if (tituloInput && d.titulo) tituloInput.value = d.titulo;
+
+      if (d.grados && gradosCheckboxes) {
+        gradosCheckboxes.querySelectorAll('input[name="grados"]').forEach(function (cb) {
+          cb.checked = d.grados.includes(cb.value);
+        });
+        renderFaseBadges();
+      }
+
+      if (d.metodologia) {
+        const radio = formPaso1.querySelector(`input[name="metodologia"][value="${d.metodologia}"]`);
+        if (radio) radio.checked = true;
+      }
+
+      if (d.escenario) {
+        const radio = formPaso1.querySelector(`input[name="escenario"][value="${d.escenario}"]`);
+        if (radio) radio.checked = true;
+      }
+
+      if (d.campos_formativos) {
+        formPaso1.querySelectorAll('input[name="campos_formativos"]').forEach(function (cb) {
+          cb.checked = d.campos_formativos.includes(cb.value);
+        });
+        sugerirMetodologia();
+      }
+
+      if (d.ejes_articuladores) {
+        formPaso1.querySelectorAll('input[name="ejes_articuladores"]').forEach(function (cb) {
+          cb.checked = d.ejes_articuladores.includes(cb.value);
+        });
+      }
+
+      const proposito = formPaso1.querySelector('[name="proposito"]');
+      if (proposito && d.proposito) proposito.value = d.proposito;
+
+      const pregunta = formPaso1.querySelector('[name="pregunta_generadora"]');
+      if (pregunta && d.pregunta_generadora) pregunta.value = d.pregunta_generadora;
+    }
+
+    if (draft.paso2Data) {
+      paso2Data = draft.paso2Data;
+    }
+
+    document.getElementById('borradorBanner')?.classList.add('hidden');
+  }
+
+  document.getElementById('btnGuardarBorrador2')?.addEventListener('click', function () {
+    _saveContenidosState();
+    saveDraft();
+  });
+  document.getElementById('btnGuardarBorrador3')?.addEventListener('click', saveDraft);
+
+  // ============================================================
   // GUARDAR EN SUPABASE
   // ============================================================
 
@@ -1519,6 +1638,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       msgEl.className = 'mt-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm';
       msgEl.textContent = '✅ Proyecto guardado correctamente. Redirigiendo...';
       msgEl.classList.remove('hidden');
+      clearDraft();
       setTimeout(() => { window.location.href = 'planeacion.html'; }, 1800);
 
     } catch (err) {

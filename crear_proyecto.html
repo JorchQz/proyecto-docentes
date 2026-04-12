@@ -25,6 +25,26 @@
         <p id="userEmail" class="mt-1 text-lg font-semibold text-gray-800">Cargando...</p>
       </div>
 
+      <!-- Banner de borrador guardado -->
+      <div id="borradorBanner" class="hidden mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p class="font-semibold text-amber-800">Borrador encontrado</p>
+            <p id="borradorFecha" class="text-sm text-amber-700 mt-0.5"></p>
+          </div>
+          <div class="flex gap-3 shrink-0">
+            <button type="button" id="btnDescartarBorrador"
+              class="text-sm border border-amber-300 text-amber-700 px-4 py-2 rounded-xl hover:bg-amber-100 transition">
+              Descartar
+            </button>
+            <button type="button" id="btnContinuarBorrador"
+              class="text-sm bg-amber-500 text-white font-bold px-4 py-2 rounded-xl hover:bg-amber-600 transition">
+              Continuar borrador
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Paso 1: Datos Generales -->
       <section class="border-t pt-6" id="step1-datos-generales">
         <h2 class="text-xl font-bold text-gray-800 mb-4">Paso 1: Datos Generales</h2>
@@ -132,7 +152,11 @@
           </div>
 
             <!-- Botón siguiente paso -->
-          <div class="md:col-span-2 flex justify-end mt-4">
+          <div class="md:col-span-2 flex justify-between mt-4">
+            <button type="button" id="btnGuardarBorrador1"
+              class="border border-gray-300 text-gray-600 px-5 py-2 rounded-xl hover:bg-gray-50 transition text-sm">
+              Guardar borrador
+            </button>
             <button type="submit" class="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition">Siguiente →</button>
           </div>
         </form>
@@ -145,15 +169,21 @@
 
         <div id="contenidosContainer" class="flex flex-col gap-6"></div>
 
-        <div class="mt-6 flex justify-between">
+        <div class="mt-6 flex justify-between gap-3">
           <button type="button" id="btnVolverPaso1Desde2"
             class="border border-gray-300 text-gray-700 font-bold px-6 py-3 rounded-xl hover:bg-gray-50 transition">
             ← Volver al Paso 1
           </button>
-          <button type="button" id="btnIrPaso3"
-            class="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl shadow-sm hover:bg-blue-700 transition">
-            Siguiente →
-          </button>
+          <div class="flex gap-3">
+            <button type="button" id="btnGuardarBorrador2"
+              class="border border-gray-300 text-gray-600 px-5 py-3 rounded-xl hover:bg-gray-50 transition text-sm">
+              Guardar borrador
+            </button>
+            <button type="button" id="btnIrPaso3"
+              class="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl shadow-sm hover:bg-blue-700 transition">
+              Siguiente →
+            </button>
+          </div>
         </div>
       </section>
 
@@ -173,21 +203,32 @@
 
         <div id="mensajePaso2" class="mt-4 hidden"></div>
 
-        <div class="mt-6 flex justify-between">
+        <div class="mt-6 flex justify-between gap-3">
           <button type="button" id="btnVolverPaso2"
             class="border border-gray-300 text-gray-700 font-bold px-6 py-3 rounded-xl hover:bg-gray-50 transition">
             ← Volver al Paso 2
           </button>
-          <button type="button" id="btnGuardar"
-            class="bg-green-600 text-white font-bold px-8 py-3 rounded-xl shadow-sm hover:bg-green-700 transition text-lg">
-            Guardar proyecto
-          </button>
+          <div class="flex gap-3">
+            <button type="button" id="btnGuardarBorrador3"
+              class="border border-gray-300 text-gray-600 px-5 py-3 rounded-xl hover:bg-gray-50 transition text-sm">
+              Guardar borrador
+            </button>
+            <button type="button" id="btnGuardar"
+              class="bg-green-600 text-white font-bold px-8 py-3 rounded-xl shadow-sm hover:bg-green-700 transition text-lg">
+              Guardar proyecto
+            </button>
+          </div>
         </div>
       </section>
 
     </main>
 
     <!-- Footer eliminado temporalmente para el paso final -->
+  </div>
+
+  <!-- Toast de borrador guardado -->
+  <div id="borradorToast" class="fixed bottom-6 right-6 hidden bg-gray-800 text-white text-sm font-medium px-4 py-3 rounded-xl shadow-lg z-50">
+    Borrador guardado
   </div>
 
   <script src="js/supabase.js"></script>
