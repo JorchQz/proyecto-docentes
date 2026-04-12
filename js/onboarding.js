@@ -519,33 +519,20 @@
 		return pattern.test(removeAccents(text || ""));
 	}
 
+	function bindNameInput(input, allowSpaces) {
+		input.addEventListener("input", function (e) {
+			if (e.isComposing) return;
+			input.value = formatNameInput(input.value, allowSpaces);
+		});
+		input.addEventListener("compositionend", function () {
+			input.value = formatNameInput(input.value, allowSpaces);
+		});
+	}
+
 	function bindStudentInputRules() {
-		if (studentLastName1Input) {
-			studentLastName1Input.addEventListener("input", function () {
-				studentLastName1Input.value = formatNameInput(
-					studentLastName1Input.value,
-					true
-				);
-			});
-		}
-
-		if (studentLastName2Input) {
-			studentLastName2Input.addEventListener("input", function () {
-				studentLastName2Input.value = formatNameInput(
-					studentLastName2Input.value,
-					true
-				);
-			});
-		}
-
-		if (studentFirstNamesInput) {
-			studentFirstNamesInput.addEventListener("input", function () {
-				studentFirstNamesInput.value = formatNameInput(
-					studentFirstNamesInput.value,
-					true
-				);
-			});
-		}
+		if (studentLastName1Input) bindNameInput(studentLastName1Input, true);
+		if (studentLastName2Input) bindNameInput(studentLastName2Input, true);
+		if (studentFirstNamesInput) bindNameInput(studentFirstNamesInput, true);
 	}
 
 	function formatNameInput(value, allowSpaces) {

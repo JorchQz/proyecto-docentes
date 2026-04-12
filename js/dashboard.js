@@ -120,8 +120,9 @@ async function cargarGrupoYAlumnos() {
 			.limit(1)
 			.single();
 
-		if (grupoError) {
+		if (grupoError && grupoError.code !== "PGRST116") {
 			showError("No se pudo cargar el grupo activo: " + grupoError.message);
+			return;
 		}
 
 		if (g) {
@@ -130,7 +131,7 @@ async function cargarGrupoYAlumnos() {
 	}
 
 	if (!grupoId) {
-		alumnos = [];
+		window.location.href = "onboarding.html";
 		return;
 	}
 

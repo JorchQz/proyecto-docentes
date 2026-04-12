@@ -858,36 +858,25 @@
 		return pattern.test(removeAccents(text));
 	}
 
+	function bindNameInput(input, allowSpaces, extra) {
+		input.addEventListener("input", function (e) {
+			if (e.isComposing) return;
+			input.value = formatNameInput(input.value, allowSpaces);
+			if (extra) extra();
+		});
+		input.addEventListener("compositionend", function () {
+			input.value = formatNameInput(input.value, allowSpaces);
+			if (extra) extra();
+		});
+	}
+
 	function bindStudentInputRules() {
-		if (editStudentLastName1Input) {
-			editStudentLastName1Input.addEventListener("input", function () {
-				editStudentLastName1Input.value = formatNameInput(
-					editStudentLastName1Input.value,
-					true
-				);
-				maybeExitEditModeFromBlankForm();
-			});
-		}
-
-		if (editStudentLastName2Input) {
-			editStudentLastName2Input.addEventListener("input", function () {
-				editStudentLastName2Input.value = formatNameInput(
-					editStudentLastName2Input.value,
-					true
-				);
-				maybeExitEditModeFromBlankForm();
-			});
-		}
-
-		if (editStudentFirstNamesInput) {
-			editStudentFirstNamesInput.addEventListener("input", function () {
-				editStudentFirstNamesInput.value = formatNameInput(
-					editStudentFirstNamesInput.value,
-					true
-				);
-				maybeExitEditModeFromBlankForm();
-			});
-		}
+		if (editStudentLastName1Input)
+			bindNameInput(editStudentLastName1Input, true, maybeExitEditModeFromBlankForm);
+		if (editStudentLastName2Input)
+			bindNameInput(editStudentLastName2Input, true, maybeExitEditModeFromBlankForm);
+		if (editStudentFirstNamesInput)
+			bindNameInput(editStudentFirstNamesInput, true, maybeExitEditModeFromBlankForm);
 
 		if (editStudentGradeSelect) {
 			editStudentGradeSelect.addEventListener("change", function () {
