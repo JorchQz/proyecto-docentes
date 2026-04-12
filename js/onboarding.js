@@ -5,6 +5,12 @@
 		return;
 	}
 
+	document.getElementById('btnCerrarSesionOnboarding')
+		?.addEventListener('click', async function () {
+			await window.sb.auth.signOut();
+			window.location.href = 'index.html';
+		});
+
 	var groupForm = document.getElementById("groupForm");
 	var studentForm = document.getElementById("studentForm");
 	var completeBtn = document.getElementById("completeOnboarding");
