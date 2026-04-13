@@ -2,6 +2,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const DRAFT_KEY = 'borradorProyectoActivo';
 
+  // Detección de modo edición (URL ?id=xxx)
+  const _urlParams = new URLSearchParams(window.location.search);
+  const editProyectoId = _urlParams.get('id');
+  let proyectoId = editProyectoId || null;
+
   // ============================================================
   // PASO 1 — Datos dinámicos
   // ============================================================
@@ -110,7 +115,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   renderGradosCheckboxes();
   renderFaseBadges();
-  checkAndShowDraftBanner();
+  if (!editProyectoId) { checkAndShowDraftBanner(); }
 
   document.getElementById('btnContinuarBorrador')?.addEventListener('click', restoreDraft);
   document.getElementById('btnDescartarBorrador')?.addEventListener('click', function () {
@@ -842,6 +847,13 @@ document.addEventListener("DOMContentLoaded", async function () {
           </div>
         </div>
         <div class="mode-todos-panel">
+          <div class="flex items-center gap-2 mb-1">
+            <button type="button" class="list-format-btn flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition" data-active="false" title="Activar lista con viñetas (• )">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+              Lista
+            </button>
+            <span class="at-hint text-xs text-gray-400 hidden">Escribe @ para citar una actividad</span>
+          </div>
           <textarea name="${key}_todos" rows="3"
             class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             placeholder="Descripción de ${label.toLowerCase()} para todos los grados..."></textarea>
@@ -854,6 +866,112 @@ document.addEventListener("DOMContentLoaded", async function () {
           </div>
         </div>
       </div>`;
+  }
+
+  function renumberItems(list) {
+    list.querySelectorAll('.item-row').forEach(function (row, i) {
+      const badge = row.querySelector('.activity-num');
+      if (badge) badge.textContent = i + 1;
+    });
+  }
+
+  function setupAtMention(textarea, section, sectionKey) {
+    let dropdown = null;
+
+    function getActivitiesFromSection() {
+      const listKey = sectionKey + '_act_todos';
+      const listContainer = section.querySelector('.item-list-container[data-key="' + listKey + '"]');
+      if (!listContainer) return [];
+      const items = [];
+      listContainer.querySelectorAll('.item-row').forEach(function (row, i) {
+        const el = row.querySelector('[name="' + listKey + '_item"]');
+        items.push({ ref: '@actividad_' + (i + 1), text: el ? el.value.trim() : '', num: i + 1 });
+      });
+      return items;
+    }
+
+    function hideDropdown() {
+      if (dropdown) { dropdown.remove(); dropdown = null; }
+    }
+
+    function insertRef(ref, replaceLen) {
+      const pos = textarea.selectionStart;
+      const val = textarea.value;
+      const before = val.slice(0, pos - replaceLen);
+      const after = val.slice(pos);
+      textarea.value = before + ref + after;
+      const newPos = before.length + ref.length;
+      textarea.setSelectionRange(newPos, newPos);
+      textarea.focus();
+    }
+
+    function showDropdown(items, replaceLen) {
+      hideDropdown();
+      const wrapper = textarea.parentElement;
+      if (!wrapper) return;
+      if (getComputedStyle(wrapper).position === 'static') wrapper.style.position = 'relative';
+
+      dropdown = document.createElement('div');
+      dropdown.className = 'absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[200px] max-h-48 overflow-y-auto';
+      dropdown.style.top = (textarea.offsetTop + textarea.offsetHeight + 4) + 'px';
+      dropdown.style.left = textarea.offsetLeft + 'px';
+
+      items.forEach(function (item) {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 flex items-center gap-2';
+        opt.innerHTML = '<span class="font-mono text-blue-600 text-xs font-bold shrink-0">' + item.ref + '</span>' +
+          (item.text
+            ? '<span class="text-gray-600 truncate">' + item.text + '</span>'
+            : '<span class="text-gray-400 italic text-xs">sin texto aún</span>');
+        opt.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          insertRef(item.ref, replaceLen);
+          hideDropdown();
+        });
+        dropdown.appendChild(opt);
+      });
+
+      wrapper.appendChild(dropdown);
+    }
+
+    textarea.addEventListener('input', function () {
+      const val = this.value;
+      const pos = this.selectionStart;
+      const textBefore = val.slice(0, pos);
+      const atMatch = textBefore.match(/@(\w*)$/);
+      if (!atMatch) { hideDropdown(); return; }
+
+      const query = atMatch[1].toLowerCase();
+      const activities = getActivitiesFromSection();
+      if (!activities.length) { hideDropdown(); return; }
+
+      const filtered = activities.filter(function (a) {
+        return a.ref.toLowerCase().includes(query) || a.text.toLowerCase().includes(query);
+      });
+      if (!filtered.length) { hideDropdown(); return; }
+
+      showDropdown(filtered, atMatch[0].length);
+    });
+
+    textarea.addEventListener('keydown', function (e) {
+      if (dropdown && e.key === 'Escape') { hideDropdown(); e.preventDefault(); }
+    });
+
+    textarea.addEventListener('blur', function () {
+      setTimeout(hideDropdown, 200);
+    });
+
+    // Mostrar pista del @ cuando hay al menos una actividad
+    const hint = section.querySelector('.at-hint');
+    const listContainerForHint = section.querySelector('.item-list-container[data-key="' + sectionKey + '_act_todos"]');
+    if (hint && listContainerForHint) {
+      const observer = new MutationObserver(function () {
+        const count = listContainerForHint.querySelectorAll('.item-row').length;
+        hint.classList.toggle('hidden', count === 0);
+      });
+      observer.observe(listContainerForHint, { childList: true, subtree: false });
+    }
   }
 
   function createSessionBlock(num) {
@@ -1222,6 +1340,41 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
     });
 
+    // Formato lista y @menciones para secciones didácticas principales
+    div.querySelectorAll('.didactic-section').forEach(function (section) {
+      const sectionKey = section.dataset.section;
+      const mainTextarea = section.querySelector('textarea[name="' + sectionKey + '_todos"]');
+      const listBtn = section.querySelector('.list-format-btn');
+
+      if (listBtn && mainTextarea) {
+        listBtn.addEventListener('click', function () {
+          const active = listBtn.dataset.active === 'true';
+          listBtn.dataset.active = String(!active);
+          if (!active) {
+            listBtn.classList.add('bg-blue-100', 'text-blue-700', 'border-blue-300');
+            listBtn.classList.remove('text-gray-500', 'border-gray-200');
+          } else {
+            listBtn.classList.remove('bg-blue-100', 'text-blue-700', 'border-blue-300');
+            listBtn.classList.add('text-gray-500', 'border-gray-200');
+          }
+        });
+        mainTextarea.addEventListener('keydown', function (e) {
+          if (listBtn.dataset.active !== 'true' || e.key !== 'Enter') return;
+          e.preventDefault();
+          const pos = this.selectionStart;
+          const val = this.value;
+          const insert = '\n• ';
+          this.value = val.slice(0, pos) + insert + val.slice(this.selectionEnd);
+          const newPos = pos + insert.length;
+          this.setSelectionRange(newPos, newPos);
+        });
+      }
+
+      if (mainTextarea) {
+        setupAtMention(mainTextarea, section, sectionKey);
+      }
+    });
+
     // Listas dinámicas (Tareas y Actividades)
     div.querySelectorAll('.item-list-container').forEach(function (container) {
       const list = container.querySelector('.item-list');
@@ -1230,22 +1383,30 @@ document.addEventListener("DOMContentLoaded", async function () {
       container.querySelector('.add-item-btn').addEventListener('click', function () {
         const placeholder = container.dataset.placeholder || '';
         const newRow = document.createElement('div');
-        newRow.className = 'item-row flex gap-2 items-center';
+        newRow.className = 'item-row flex gap-2 items-start';
         newRow.innerHTML = `
-          <input type="text" name="${key}_item"
-            class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="${placeholder}">
-          <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" aria-label="Eliminar">
+          <span class="activity-num text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-1 rounded mt-0.5 shrink-0 min-w-[1.75rem] text-center leading-4">1</span>
+          <textarea name="${key}_item" rows="1"
+            class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden break-words"
+            placeholder="${placeholder}" style="min-height:2.1rem"></textarea>
+          <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition mt-1.5 shrink-0" aria-label="Eliminar">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
           </button>`;
+        const ta = newRow.querySelector('textarea');
+        ta.addEventListener('input', function () {
+          this.style.height = 'auto';
+          this.style.height = this.scrollHeight + 'px';
+        });
         list.appendChild(newRow);
-        newRow.querySelector('input').focus();
+        renumberItems(list);
+        ta.focus();
       });
 
       list.addEventListener('click', function (e) {
         const btn = e.target.closest('.remove-item-btn');
         if (!btn) return;
         btn.closest('.item-row').remove();
+        renumberItems(list);
       });
     });
 
@@ -1421,11 +1582,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       function getActividades(sectionKey, sectionMode) {
         if (sectionMode === 'todos') {
           return { mode: 'todos',
-            todos: getItems('input[name="' + sectionKey + '_act_todos_item"]'),
+            todos: getItems('[name="' + sectionKey + '_act_todos_item"]'),
             diferenciado: null };
         }
         const dif = {};
-        block.querySelectorAll('input[name^="' + sectionKey + '_act_dif_"]')
+        block.querySelectorAll('[name^="' + sectionKey + '_act_dif_"]')
           .forEach(function (input) {
             const m = input.name.match(
               new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
@@ -1442,11 +1603,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       function getTareas(sectionMode) {
         if (sectionMode === 'todos') {
           return { mode: 'todos',
-            todos: getItems('input[name="cierre_tarea_todos_item"]'),
+            todos: getItems('[name="cierre_tarea_todos_item"]'),
             diferenciado: null };
         }
         const dif = {};
-        block.querySelectorAll('input[name^="cierre_tarea_dif_"]')
+        block.querySelectorAll('[name^="cierre_tarea_dif_"]')
           .forEach(function (input) {
             const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
             if (m) {
@@ -1602,6 +1763,119 @@ document.addEventListener("DOMContentLoaded", async function () {
       : null;
   }
 
+  function populateFormPaso1(data) {
+    if (!formPaso1 || !data) return;
+    const tituloInput = formPaso1.querySelector('[name="titulo"]');
+    if (tituloInput && data.titulo) tituloInput.value = data.titulo;
+
+    if (data.grados && gradosCheckboxes) {
+      gradosCheckboxes.querySelectorAll('input[name="grados"]').forEach(function (cb) {
+        cb.checked = data.grados.map(String).includes(cb.value);
+      });
+      renderFaseBadges();
+    }
+    if (data.metodologia) {
+      const radio = formPaso1.querySelector('input[name="metodologia"][value="' + data.metodologia + '"]');
+      if (radio) radio.checked = true;
+    }
+    if (data.escenario) {
+      const radio = formPaso1.querySelector('input[name="escenario"][value="' + data.escenario + '"]');
+      if (radio) radio.checked = true;
+    }
+    if (data.campos_formativos) {
+      formPaso1.querySelectorAll('input[name="campos_formativos"]').forEach(function (cb) {
+        cb.checked = data.campos_formativos.includes(cb.value);
+      });
+    }
+    if (data.ejes_articuladores) {
+      formPaso1.querySelectorAll('input[name="ejes_articuladores"]').forEach(function (cb) {
+        cb.checked = data.ejes_articuladores.includes(cb.value);
+      });
+    }
+    const proposito = formPaso1.querySelector('[name="proposito"]');
+    if (proposito && data.proposito) proposito.value = data.proposito;
+    const pregunta = formPaso1.querySelector('[name="pregunta_generadora"]');
+    if (pregunta && data.pregunta_generadora) pregunta.value = data.pregunta_generadora;
+  }
+
+  async function cargarProyectoParaEdicion(id) {
+    const h1 = document.querySelector('header h1');
+    const subtitle = document.querySelector('header p');
+    if (h1) h1.textContent = 'Cargando proyecto...';
+
+    try {
+      const { data: proyecto, error } = await window.sb
+        .from('proyectos')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error || !proyecto) {
+        alert('No se pudo cargar el proyecto. Regresando a planeación.');
+        window.location.href = 'planeacion.html';
+        return;
+      }
+
+      // Normalizar arrays
+      function toArr(val) {
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string' && val.trim()) return [val];
+        return [];
+      }
+
+      paso1Data = {
+        titulo:              proyecto.titulo || '',
+        fase:                toArr(proyecto.fase),
+        grados:              toArr(proyecto.grados).map(String),
+        metodologia:         proyecto.metodologia || '',
+        escenario:           proyecto.escenario || '',
+        campos_formativos:   toArr(proyecto.campos_formativos),
+        ejes_articuladores:  toArr(proyecto.ejes_articuladores),
+        proposito:           proyecto.proposito || '',
+        pregunta_generadora: proyecto.pregunta_generadora || '',
+      };
+
+      paso2Data = proyecto.contenidos_pda || {};
+
+      // Poblar formulario paso 1 (para cuando el usuario regrese)
+      populateFormPaso1(paso1Data);
+
+      // Actualizar encabezado
+      if (h1) h1.textContent = 'Editar Proyecto';
+      if (subtitle) subtitle.textContent = proyecto.titulo || 'Proyecto sin título';
+
+      // Ocultar banner de borrador
+      document.getElementById('borradorBanner')?.classList.add('hidden');
+
+      // Cargar catálogo antes de renderizar sesiones (para PDA selects)
+      try { await cargarCatalogo(); } catch (_) {}
+
+      // Cargar sesiones
+      const { data: sesiones } = await window.sb
+        .from('sesiones')
+        .select('*')
+        .eq('proyecto_id', id)
+        .order('numero_sesion');
+
+      // Ir directo al paso 3
+      step1.classList.add('hidden');
+      step2contenidos.classList.add('hidden');
+      step2.classList.remove('hidden');
+      window.scrollTo(0, 0);
+
+      if (sesiones && sesiones.length) {
+        restoreSessionBlocks(sesiones);
+      } else {
+        agregarSesion();
+      }
+
+    } catch (err) {
+      console.error('Error cargando proyecto:', err);
+      alert('Error al cargar el proyecto. Regresando a planeación.');
+      window.location.href = 'planeacion.html';
+    }
+  }
+
   function restoreSessionBlocks(sesiones) {
     if (!sesiones || !sesiones.length) return;
     const container = document.getElementById('sesionesContainer');
@@ -1671,8 +1945,12 @@ document.addEventListener("DOMContentLoaded", async function () {
               if (listContainer) {
                 items.forEach(function (texto) {
                   listContainer.querySelector('.add-item-btn')?.click();
-                  const inputs = listContainer.querySelectorAll('.item-row input');
-                  if (inputs.length) inputs[inputs.length - 1].value = texto;
+                  const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
+                  if (els.length) {
+                    const last = els[els.length - 1];
+                    last.value = texto;
+                    last.dispatchEvent(new Event('input'));
+                  }
                 });
               }
             });
@@ -1715,8 +1993,12 @@ document.addEventListener("DOMContentLoaded", async function () {
               if (listContainer) {
                 items.forEach(function (texto) {
                   listContainer.querySelector('.add-item-btn')?.click();
-                  const inputs = listContainer.querySelectorAll('.item-row input');
-                  if (inputs.length) inputs[inputs.length - 1].value = texto;
+                  const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
+                  if (els.length) {
+                    const last = els[els.length - 1];
+                    last.value = texto;
+                    last.dispatchEvent(new Event('input'));
+                  }
                 });
               }
             });
@@ -1810,28 +2092,46 @@ document.addEventListener("DOMContentLoaded", async function () {
       const { data: { user }, error: userError } = await window.sb.auth.getUser();
       if (userError || !user) throw new Error('No hay sesión activa.');
 
-      // Insertar proyecto
-      const { data: proyecto, error: pError } = await window.sb
-        .from('proyectos')
-        .insert({
-          maestro_id:          user.id,
-          grupo_id:            grupoId,
-          titulo:              paso1Data.titulo,
-          fase:                paso1Data.fase,
-          grados:              paso1Data.grados,
-          metodologia:         paso1Data.metodologia,
-          escenario:           paso1Data.escenario,
-          campos_formativos:   paso1Data.campos_formativos,
-          ejes_articuladores:  paso1Data.ejes_articuladores,
-          proposito:           paso1Data.proposito,
-          pregunta_generadora: paso1Data.pregunta_generadora,
-          contenidos_pda:      collectContenidosData(),
-          visible_mercado:     false,
-        })
-        .select('id')
-        .single();
+      // Datos del proyecto
+      const proyectoPayload = {
+        titulo:              paso1Data.titulo,
+        fase:                paso1Data.fase,
+        grados:              paso1Data.grados,
+        metodologia:         paso1Data.metodologia,
+        escenario:           paso1Data.escenario,
+        campos_formativos:   paso1Data.campos_formativos,
+        ejes_articuladores:  paso1Data.ejes_articuladores,
+        proposito:           paso1Data.proposito,
+        pregunta_generadora: paso1Data.pregunta_generadora,
+        contenidos_pda:      collectContenidosData(),
+      };
 
-      if (pError) throw pError;
+      let proyectoFinalId;
+
+      if (proyectoId) {
+        // Modo edición — actualizar proyecto existente
+        const { error: pError } = await window.sb
+          .from('proyectos')
+          .update(proyectoPayload)
+          .eq('id', proyectoId);
+        if (pError) throw pError;
+        proyectoFinalId = proyectoId;
+        // Eliminar sesiones anteriores para re-insertarlas
+        const { error: delError } = await window.sb
+          .from('sesiones')
+          .delete()
+          .eq('proyecto_id', proyectoId);
+        if (delError) throw delError;
+      } else {
+        // Modo creación — insertar proyecto nuevo
+        const { data: proyectoNuevo, error: pError } = await window.sb
+          .from('proyectos')
+          .insert({ ...proyectoPayload, maestro_id: user.id, grupo_id: grupoId, visible_mercado: false })
+          .select('id')
+          .single();
+        if (pError) throw pError;
+        proyectoFinalId = proyectoNuevo.id;
+      }
 
       // Construir payload de sesiones
       const blocks = document.querySelectorAll('.session-block');
@@ -1859,10 +2159,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         function getBlockActividades(sectionKey, sectionMode) {
           if (sectionMode === 'todos') {
-            return { mode: 'todos', todos: getItems(`input[name="${sectionKey}_act_todos_item"]`), diferenciado: null };
+            return { mode: 'todos', todos: getItems(`[name="${sectionKey}_act_todos_item"]`), diferenciado: null };
           }
           const dif = {};
-          block.querySelectorAll(`input[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
+          block.querySelectorAll(`[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
             const m = input.name.match(new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
             if (m) {
               const gr = m[1];
@@ -1876,10 +2176,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         function getBlockTareas(sectionMode) {
           if (sectionMode === 'todos') {
-            return { mode: 'todos', todos: getItems('input[name="cierre_tarea_todos_item"]'), diferenciado: null };
+            return { mode: 'todos', todos: getItems('[name="cierre_tarea_todos_item"]'), diferenciado: null };
           }
           const dif = {};
-          block.querySelectorAll('input[name^="cierre_tarea_dif_"]').forEach(function (input) {
+          block.querySelectorAll('[name^="cierre_tarea_dif_"]').forEach(function (input) {
             const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
             if (m) {
               const gr = m[1];
@@ -1892,7 +2192,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         }
 
         return {
-          proyecto_id:             proyecto.id,
+          proyecto_id:             proyectoFinalId,
           maestro_id:              user.id,
           numero_sesion:           idx + 1,
           duracion:                g('duracion') || '',
@@ -1953,5 +2253,10 @@ document.addEventListener("DOMContentLoaded", async function () {
       btn.textContent = 'Guardar proyecto';
     }
   });
+
+  // Modo edición: cargar proyecto al abrir la página con ?id=
+  if (editProyectoId && window.sb) {
+    cargarProyectoParaEdicion(editProyectoId);
+  }
 
 });

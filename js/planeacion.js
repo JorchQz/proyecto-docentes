@@ -155,7 +155,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			card.className = "relative rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow";
 
 			const badgeMap = {
-				borrador: { clase: "bg-gray-100 text-gray-600", texto: "Borrador" },
+				borrador: { clase: "bg-emerald-50 text-emerald-700 border border-emerald-200", texto: "Listo" },
 				activo: { clase: "bg-green-100 text-green-700", texto: "Activo" },
 				completado: { clase: "bg-blue-100 text-blue-700", texto: "Completado" },
 				pausado: { clase: "bg-yellow-100 text-yellow-700", texto: "Pausado" },
