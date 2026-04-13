@@ -825,7 +825,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         <div>
           <label class="block text-xs font-semibold text-blue-700 mb-1">${isNum ? g + '°' : 'Grupo ' + g}</label>
           <textarea name="${key}_grado_${g}" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
             placeholder="${isNum ? 'Descripción para ' + g + '°...' : 'Descripción para este grupo...'}"></textarea>
           ${makeItemList(`${key}_act_dif_${g}`, isNum ? `Actividad para ${g}°...` : 'Actividad...', 'Agregar actividad', 'Actividades')}
           ${includeTareas ? makeItemList(`${key}_tarea_dif_${g}`, isNum ? `Tarea para ${g}°...` : 'Tarea...', 'Agregar tarea', 'Tareas para casa') : ''}
@@ -855,7 +855,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             <span class="at-hint text-xs text-gray-400 hidden">Escribe @ para citar una actividad</span>
           </div>
           <textarea name="${key}_todos" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
             placeholder="Descripción de ${label.toLowerCase()} para todos los grados..."></textarea>
           ${makeItemList(`${key}_act_todos`, 'Actividad en clase...', 'Agregar actividad', 'Actividades')}
           ${includeTareas ? makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', 'Agregar tarea', 'Tareas para casa') : ''}
@@ -875,16 +875,16 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
-  function setupAtMention(textarea, section, sectionKey) {
+  function setupAtMention(textarea, section, sectionKey, listKeySuffix) {
     let dropdown = null;
+    const resolvedListKey = sectionKey + (listKeySuffix || '_act_todos');
 
     function getActivitiesFromSection() {
-      const listKey = sectionKey + '_act_todos';
-      const listContainer = section.querySelector('.item-list-container[data-key="' + listKey + '"]');
+      const listContainer = section.querySelector('.item-list-container[data-key="' + resolvedListKey + '"]');
       if (!listContainer) return [];
       const items = [];
       listContainer.querySelectorAll('.item-row').forEach(function (row, i) {
-        const el = row.querySelector('[name="' + listKey + '_item"]');
+        const el = row.querySelector('[name="' + resolvedListKey + '_item"]');
         items.push({ ref: '@actividad_' + (i + 1), text: el ? el.value.trim() : '', num: i + 1 });
       });
       return items;
@@ -912,7 +912,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (getComputedStyle(wrapper).position === 'static') wrapper.style.position = 'relative';
 
       dropdown = document.createElement('div');
-      dropdown.className = 'absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[200px] max-h-48 overflow-y-auto';
+      dropdown.className = 'absolute z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 w-64 max-h-48 overflow-y-auto';
       dropdown.style.top = (textarea.offsetTop + textarea.offsetHeight + 4) + 'px';
       dropdown.style.left = textarea.offsetLeft + 'px';
 
@@ -1371,8 +1371,25 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       if (mainTextarea) {
+        mainTextarea.addEventListener('input', function () {
+          this.style.height = 'auto';
+          this.style.height = this.scrollHeight + 'px';
+        });
         setupAtMention(mainTextarea, section, sectionKey);
       }
+
+      // Auto-resize y @-mention para textareas diferenciados por grado
+      section.querySelectorAll('textarea[name*="_grado_"]').forEach(function (ta) {
+        ta.addEventListener('input', function () {
+          this.style.height = 'auto';
+          this.style.height = this.scrollHeight + 'px';
+        });
+        // Extraer el grado del nombre (ej: "inicio_grado_3" → "3")
+        const gradoMatch = ta.name.match(/_grado_(.+)$/);
+        if (gradoMatch) {
+          setupAtMention(ta, section, sectionKey, '_act_dif_' + gradoMatch[1]);
+        }
+      });
     });
 
     // Listas dinámicas (Tareas y Actividades)
@@ -1418,6 +1435,14 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
       div.remove();
       renumber();
+    });
+
+    // Auto-resize para todos los textareas del bloque (excepto .item-row que ya tienen el suyo)
+    div.querySelectorAll('textarea:not(.item-row textarea)').forEach(function (ta) {
+      ta.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = this.scrollHeight + 'px';
+      });
     });
 
     return div;
@@ -1892,7 +1917,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       const set = function (name, val) {
         if (val == null) return;
         const el = block.querySelector('[name="' + name + '"]');
-        if (el) el.value = val;
+        if (!el) return;
+        el.value = val;
+        if (el.tagName === 'TEXTAREA') el.dispatchEvent(new Event('input'));
       };
       set('duracion', data.duracion);
       set('observaciones', data.observaciones);
@@ -1915,15 +1942,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         if (mode === 'todos') {
           const ta = section.querySelector('textarea[name="' + key + '_todos"]');
-          if (ta && sectionData) ta.value = sectionData;
+          if (ta && sectionData) {
+            ta.value = sectionData;
+            ta.dispatchEvent(new Event('input'));
+          }
           if (actData && actData.todos && actData.todos.length) {
             const listContainer = section.querySelector(
               '.item-list-container[data-key="' + key + '_act_todos"]');
             if (listContainer) {
               actData.todos.forEach(function (texto) {
                 listContainer.querySelector('.add-item-btn')?.click();
-                const inputs = listContainer.querySelectorAll('.item-row input');
-                if (inputs.length) inputs[inputs.length - 1].value = texto;
+                const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
+                if (els.length) {
+                  const last = els[els.length - 1];
+                  last.value = texto;
+                  last.dispatchEvent(new Event('input'));
+                }
               });
             }
           }
@@ -1932,7 +1966,10 @@ document.addEventListener("DOMContentLoaded", async function () {
             Object.entries(sectionData).forEach(function (entry) {
               const ta = section.querySelector(
                 'textarea[name="' + key + '_grado_' + entry[0] + '"]');
-              if (ta && entry[1]) ta.value = entry[1];
+              if (ta && entry[1]) {
+                ta.value = entry[1];
+                ta.dispatchEvent(new Event('input'));
+              }
             });
           }
           if (actData && actData.diferenciado) {
@@ -1979,8 +2016,12 @@ document.addEventListener("DOMContentLoaded", async function () {
             if (listContainer) {
               data.cierre_tareas.todos.forEach(function (texto) {
                 listContainer.querySelector('.add-item-btn')?.click();
-                const inputs = listContainer.querySelectorAll('.item-row input');
-                if (inputs.length) inputs[inputs.length - 1].value = texto;
+                const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
+                if (els.length) {
+                  const last = els[els.length - 1];
+                  last.value = texto;
+                  last.dispatchEvent(new Event('input'));
+                }
               });
             }
           } else if (tareasMode === 'diferenciado' && data.cierre_tareas.diferenciado) {
