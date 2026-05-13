@@ -222,7 +222,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var toggle = document.createElement("input");
 			toggle.type = "checkbox";
 			toggle.className =
-				"h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500";
+				"h-7 w-7 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer";
 
 			if (isTodaySelected()) {
 				toggle.checked = estado === "presente";

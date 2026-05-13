@@ -308,6 +308,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		try {
+			// Verificar que el proyecto tenga sesiones antes de iniciar
+			const { count, error: countError } = await window.sb
+				.from("sesiones")
+				.select("id", { count: "exact", head: true })
+				.eq("proyecto_id", proyectoActivoId);
+
+			if (countError || !count) {
+				mostrarToast("Este proyecto no tiene sesiones. Edítalo para agregarlas.", "error");
+				return;
+			}
+
 			const proyectoResult = await window.sb
 				.from("proyectos")
 				.update({ estado: "activo", fecha_inicial: fechaElegida })
@@ -324,6 +335,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.eq("numero_sesion", 1);
 
 			if (sesionResult.error) {
+				// Revertir para evitar estado parcial (proyecto activo sin sesión activa)
+				await window.sb
+					.from("proyectos")
+					.update({ estado: "borrador", fecha_inicial: null })
+					.eq("id", proyectoActivoId);
 				throw sesionResult.error;
 			}
 
@@ -332,7 +348,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			mostrarToast("✅ ¡Proyecto iniciado! Ya aparece en tu dashboard.");
 		} catch (error) {
 			console.error(error);
-			alert("No se pudo iniciar el proyecto. Intenta de nuevo.");
+			mostrarToast("No se pudo iniciar el proyecto. Intenta de nuevo.", "error");
 		} finally {
 			if (modalConfirmBtn) {
 				modalConfirmBtn.disabled = false;
@@ -352,20 +368,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.eq("id", proyectoId);
 
 		if (result.error) {
-			alert("No se pudo pausar el proyecto. Intenta de nuevo.");
+			mostrarToast("No se pudo pausar el proyecto. Intenta de nuevo.", "error");
 			return;
 		}
 
 		await cargarProyectos();
 	}
 
-	function mostrarToast(mensaje) {
+	function mostrarToast(mensaje, tipo) {
 		if (toastEl) {
 			toastEl.remove();
 		}
 
 		toastEl = document.createElement("div");
-		toastEl.className = "fixed bottom-4 right-4 z-50 bg-green-600 text-white px-4 py-3 rounded-xl shadow-lg";
+		var bg = tipo === "error" ? "bg-red-600" : "bg-green-600";
+		toastEl.className = "fixed bottom-4 right-4 z-50 " + bg + " text-white px-4 py-3 rounded-xl shadow-lg text-sm";
 		toastEl.textContent = mensaje;
 		document.body.appendChild(toastEl);
 

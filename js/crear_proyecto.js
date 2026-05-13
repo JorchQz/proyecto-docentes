@@ -1,5 +1,17 @@
 document.addEventListener("DOMContentLoaded", async function () {
 
+  function _toast(msg, type) {
+    var existing = document.getElementById('_cp_toast');
+    if (existing) existing.remove();
+    var el = document.createElement('div');
+    el.id = '_cp_toast';
+    var bg = type === 'error' ? 'bg-red-600' : 'bg-green-600';
+    el.className = 'fixed bottom-4 right-4 z-50 ' + bg + ' text-white px-4 py-3 rounded-xl shadow-lg text-sm';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 3500);
+  }
+
   const DRAFT_KEY = 'borradorProyectoActivo';
 
   // Detección de modo edición (URL ?id=xxx)
@@ -1430,7 +1442,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     // Eliminar sesión
     div.querySelector('.btn-eliminar').addEventListener('click', function () {
       if (document.querySelectorAll('.session-block').length === 1) {
-        alert('Debe haber al menos una sesión.');
+        _toast('Debe haber al menos una sesión.', 'error');
         return;
       }
       div.remove();
@@ -1836,7 +1848,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         .single();
 
       if (error || !proyecto) {
-        alert('No se pudo cargar el proyecto. Regresando a planeación.');
         window.location.href = 'planeacion.html';
         return;
       }
@@ -1896,7 +1907,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     } catch (err) {
       console.error('Error cargando proyecto:', err);
-      alert('Error al cargar el proyecto. Regresando a planeación.');
       window.location.href = 'planeacion.html';
     }
   }

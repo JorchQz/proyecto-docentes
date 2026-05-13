@@ -1,6 +1,5 @@
 document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) {
-		alert("Supabase no esta configurado. Regresando al login.");
 		window.location.href = "index.html";
 		return;
 	}
@@ -41,7 +40,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 			var result = await window.sb.auth.signOut();
 			if (result.error) {
-				alert("No se pudo cerrar sesion: " + result.error.message);
+				_shellToast("No se pudo cerrar sesión. Intenta de nuevo.", "error");
 				logoutBtn.disabled = false;
 				logoutBtn.classList.remove("opacity-70", "cursor-not-allowed");
 			}
@@ -82,6 +81,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		mainMenuPanel.classList.add("hidden");
+	}
+
+	function _shellToast(msg, type) {
+		var el = document.createElement("div");
+		var bg = type === "error" ? "bg-red-600" : "bg-green-600";
+		el.className = "fixed bottom-4 right-4 z-50 " + bg + " text-white px-4 py-3 rounded-xl shadow-lg text-sm";
+		el.textContent = msg;
+		document.body.appendChild(el);
+		setTimeout(function () { el.remove(); }, 3500);
 	}
 
 	function getTeacherNameFromUser(userData) {

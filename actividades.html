@@ -9,18 +9,33 @@
 </head>
 <body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-8 text-gray-800">
 	<div class="max-w-4xl mx-auto flex flex-col gap-6">
+
 		<header class="bg-blue-800 rounded-2xl shadow-md p-6">
 			<h1 class="text-2xl md:text-3xl font-bold text-white">Actividades</h1>
-			<p class="text-blue-100 text-sm md:text-base mt-1">Actividades del día a día para trabajo en clase</p>
+			<p class="text-blue-100 text-sm md:text-base mt-1">Sesiones planeadas en tus proyectos</p>
 		</header>
 
-		<main class="bg-white rounded-2xl shadow-md p-6">
-			<p class="text-gray-500">Aqui mostraremos actividades y tareas ligadas a proyectos.</p>
-		</main>
+		<div class="bg-white rounded-2xl shadow-md p-4 flex flex-col sm:flex-row gap-3">
+			<select id="filtroProyecto" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+				<option value="">Todos los proyectos</option>
+			</select>
+			<select id="filtroCampo" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+				<option value="">Todos los campos formativos</option>
+				<option value="Lenguajes">Lenguajes</option>
+				<option value="Saberes y Pensamiento Científico">Saberes y Pensamiento Científico</option>
+				<option value="Ética, Naturaleza y Sociedades">Ética, Naturaleza y Sociedades</option>
+				<option value="De lo Humano y lo Comunitario">De lo Humano y lo Comunitario</option>
+			</select>
+		</div>
+
+		<div id="actividadesEstado" class="text-center py-16 text-gray-400 text-lg">Cargando actividades...</div>
+		<div id="actividadesGrid" class="hidden grid grid-cols-1 gap-4"></div>
+
 	</div>
 
 	<script src="js/supabase.js"></script>
 	<script src="js/navbar.js"></script>
 	<script src="js/section-shell.js"></script>
+	<script src="js/actividades.js"></script>
 </body>
 </html>

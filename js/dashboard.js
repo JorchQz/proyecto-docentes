@@ -509,8 +509,8 @@ async function crearCardSesion() {
 	btnCompletar.className = "bg-green-600 text-white text-lg font-semibold px-5 py-2.5 rounded-xl hover:bg-green-700";
 	btnCompletar.textContent = "✓ Sesion completada";
 	btnCompletar.addEventListener("click", function () {
-		abrirModalCierre(async function (notas) {
-			await completarSesionDelDia(notas);
+		abrirModalCierre(async function (notas, califs) {
+			await completarSesionDelDia(notas, califs);
 		});
 	});
 	acciones.appendChild(btnCompletar);
@@ -519,7 +519,7 @@ async function crearCardSesion() {
 	return card;
 }
 
-async function completarSesionDelDia(notasCierre) {
+async function completarSesionDelDia(notasCierre, califData) {
 	clearError();
 	const hoy = getLocalDateISO();
 	try {
@@ -543,6 +543,43 @@ async function completarSesionDelDia(notasCierre) {
 			const { error: insertTaskError } = await window.sb.from("tareas").insert(insertsTareas);
 			if (insertTaskError) {
 				throw insertTaskError;
+			}
+		}
+
+		if (califData && califData.length) {
+			const califRows = [];
+			califData.forEach(function (al) {
+				califRows.push({
+					alumno_id:     al.id,
+					maestro_id:    user.id,
+					sesion_id:     sesionActiva.id,
+					proyecto_id:   proyectoActivo.id,
+					grupo_id:      grupoId,
+					tipo:          "participacion",
+					calificacion:  al.participacion,
+					entrego:       true,
+					fecha:         hoy,
+					grado:         al.grado || null,
+					campo_formativo: null,
+				});
+				califRows.push({
+					alumno_id:     al.id,
+					maestro_id:    user.id,
+					sesion_id:     sesionActiva.id,
+					proyecto_id:   proyectoActivo.id,
+					grupo_id:      grupoId,
+					tipo:          "conducta",
+					calificacion:  al.conducta,
+					entrego:       true,
+					fecha:         hoy,
+					grado:         al.grado || null,
+					campo_formativo: null,
+				});
+			});
+			const { error: califError } = await window.sb.from("calificaciones").insert(califRows);
+			if (califError) {
+				// No se bloquea el cierre — la sesión ya fue guardada. El maestro puede re-registrar desde Reportes.
+				console.error("calificaciones insert:", califError.message);
 			}
 		}
 
@@ -966,28 +1003,174 @@ async function activarSiguienteSesion(siguiente) {
 
 function abrirModalCierre(onConfirm) {
 	let modal = document.getElementById("modal-cierre-sesion");
-	if (modal) {
-		modal.remove();
-	}
+	if (modal) modal.remove();
+
+	// Estado de calificaciones: { alumnoId: { p: 10, c: 10 } }
+	const califState = {};
+	alumnos.forEach(function (al) {
+		califState[al.id] = { p: 10, c: 10 };
+	});
 
 	modal = document.createElement("div");
 	modal.id = "modal-cierre-sesion";
 	modal.className = "fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4";
-	modal.innerHTML =
-		"<div class='bg-white rounded-2xl shadow-xl w-full max-w-lg p-5'>" +
-		"<h3 class='text-lg font-bold text-gray-800 mb-2'>Confirmar cierre de sesion</h3>" +
-		"<textarea id='notasCierreInput' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[120px]' placeholder='¿Algo diferente a lo planeado?'></textarea>" +
-		"<div class='mt-4 flex justify-end gap-2'>" +
-		"<button id='cancelarCierreBtn' class='border border-gray-300 text-gray-600 px-4 py-2 rounded-lg'>Cancelar</button>" +
-		"<button id='confirmarCierreBtn' class='bg-green-600 text-white px-4 py-2 rounded-lg'>Confirmar</button>" +
-		"</div></div>";
+
+	const inner = document.createElement("div");
+	inner.className = "bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]";
+	modal.appendChild(inner);
+
+	// Cabecera
+	const hdr = document.createElement("div");
+	hdr.className = "p-5 border-b shrink-0";
+	hdr.innerHTML = "<h3 class='text-lg font-bold text-gray-800'>Cerrar sesión del día</h3>";
+	inner.appendChild(hdr);
+
+	// Área scrollable
+	const body = document.createElement("div");
+	body.className = "flex-1 overflow-y-auto p-5 flex flex-col gap-5";
+	inner.appendChild(body);
+
+	// — Notas —
+	const notasWrap = document.createElement("div");
+	notasWrap.innerHTML =
+		"<label class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
+		"<textarea id='notasCierreInput' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea>";
+	body.appendChild(notasWrap);
+
+	// — Participación y Conducta —
+	const califSection = document.createElement("div");
+	const califTitle = document.createElement("p");
+	califTitle.className = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3";
+	califTitle.textContent = "Participación y Conducta";
+	califSection.appendChild(califTitle);
+
+	// Setter global
+	const globalWrap = document.createElement("div");
+	globalWrap.className = "flex items-center gap-3 bg-gray-50 rounded-xl p-3 mb-3";
+	const globalLbl = document.createElement("span");
+	globalLbl.className = "text-sm text-gray-600 font-semibold shrink-0 w-20";
+	globalLbl.textContent = "Todos:";
+	globalWrap.appendChild(globalLbl);
+
+	["P", "C"].forEach(function (tipo) {
+		const wrap = document.createElement("div");
+		wrap.className = "flex-1";
+		const lbl = document.createElement("p");
+		lbl.className = "text-xs text-gray-500 mb-1";
+		lbl.textContent = tipo === "P" ? "Participación" : "Conducta";
+		wrap.appendChild(lbl);
+		const btns = document.createElement("div");
+		btns.className = "flex gap-1";
+		[10, 9, 8, 7, 6, 5].forEach(function (g) {
+			const btn = document.createElement("button");
+			btn.type = "button";
+			btn.textContent = g;
+			btn.className = "text-xs w-9 h-9 rounded-lg font-semibold transition " +
+				(g === 10 ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200");
+			btn.addEventListener("click", function () {
+				// Actualizar visual del setter global
+				btns.querySelectorAll("button").forEach(function (b) {
+					b.className = "text-xs w-9 h-9 rounded-lg font-semibold transition bg-gray-100 text-gray-600 hover:bg-gray-200";
+				});
+				btn.className = "text-xs w-9 h-9 rounded-lg font-semibold transition bg-indigo-600 text-white";
+				// Aplicar a todos los alumnos
+				alumnos.forEach(function (al) {
+					califState[al.id][tipo === "P" ? "p" : "c"] = g;
+					const key = tipo === "P" ? "p" : "c";
+					const row = document.getElementById("calif-row-" + al.id);
+					if (!row) return;
+					row.querySelectorAll(".grade-btn[data-tipo='" + tipo + "']").forEach(function (b) {
+						b.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition " +
+							(parseInt(b.dataset.grade) === g ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200");
+					});
+				});
+			});
+			btns.appendChild(btn);
+		});
+		wrap.appendChild(btns);
+		globalWrap.appendChild(wrap);
+	});
+	califSection.appendChild(globalWrap);
+
+	// Filas por alumno
+	alumnos.forEach(function (al) {
+		const row = document.createElement("div");
+		row.id = "calif-row-" + al.id;
+		row.className = "flex items-center gap-2 py-2 border-b border-gray-100 last:border-0";
+
+		const nameWrap = document.createElement("div");
+		nameWrap.className = "w-36 shrink-0";
+		const name = document.createElement("p");
+		name.className = "text-sm text-gray-800 truncate font-medium";
+		name.textContent = (al.nombre_completo || "Alumno").split(" ")[0];
+		const gBadge = document.createElement("span");
+		gBadge.className = "text-xs text-blue-600";
+		gBadge.textContent = al.grado ? al.grado + "°" : "";
+		nameWrap.appendChild(name);
+		nameWrap.appendChild(gBadge);
+		row.appendChild(nameWrap);
+
+		["P", "C"].forEach(function (tipo) {
+			const wrap = document.createElement("div");
+			wrap.className = "flex-1 flex gap-0.5";
+			[10, 9, 8, 7, 6, 5].forEach(function (g) {
+				const btn = document.createElement("button");
+				btn.type = "button";
+				btn.textContent = g;
+				btn.dataset.tipo = tipo;
+				btn.dataset.grade = g;
+				btn.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition " +
+					(g === 10 ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200");
+				btn.addEventListener("click", function () {
+					califState[al.id][tipo === "P" ? "p" : "c"] = g;
+					wrap.querySelectorAll("button").forEach(function (b) {
+						b.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition bg-gray-100 text-gray-600 hover:bg-gray-200";
+						b.dataset.tipo = tipo;
+						b.dataset.grade = b.textContent;
+					});
+					btn.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition bg-blue-600 text-white";
+				});
+				wrap.appendChild(btn);
+			});
+			row.appendChild(wrap);
+		});
+
+		califSection.appendChild(row);
+	});
+
+	body.appendChild(califSection);
+
+	// Footer
+	const footer = document.createElement("div");
+	footer.className = "p-5 border-t flex justify-end gap-2 shrink-0";
+	const cancelBtn = document.createElement("button");
+	cancelBtn.type = "button";
+	cancelBtn.id = "cancelarCierreBtn";
+	cancelBtn.className = "border border-gray-300 text-gray-600 px-4 py-3 rounded-xl";
+	cancelBtn.textContent = "Cancelar";
+	const confirmBtn = document.createElement("button");
+	confirmBtn.type = "button";
+	confirmBtn.id = "confirmarCierreBtn";
+	confirmBtn.className = "bg-green-600 text-white px-5 py-3 rounded-xl font-semibold";
+	confirmBtn.textContent = "Guardar y cerrar";
+	footer.appendChild(cancelBtn);
+	footer.appendChild(confirmBtn);
+	inner.appendChild(footer);
 
 	document.body.appendChild(modal);
 
-	document.getElementById("cancelarCierreBtn").addEventListener("click", cerrarModalCierre);
-	document.getElementById("confirmarCierreBtn").addEventListener("click", async function () {
-		const notas = document.getElementById("notasCierreInput").value.trim();
-		await onConfirm(notas);
+	cancelBtn.addEventListener("click", cerrarModalCierre);
+	confirmBtn.addEventListener("click", async function () {
+		const notas  = document.getElementById("notasCierreInput").value.trim();
+		const califs = alumnos.map(function (al) {
+			return {
+				id:           al.id,
+				grado:        al.grado || null,
+				participacion: califState[al.id].p,
+				conducta:      califState[al.id].c,
+			};
+		});
+		await onConfirm(notas, califs);
 	});
 }
 

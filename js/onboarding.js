@@ -1,6 +1,5 @@
 ﻿document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) {
-		alert("Supabase no esta configurado.");
 		window.location.href = "index.html";
 		return;
 	}

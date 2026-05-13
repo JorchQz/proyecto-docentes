@@ -1,193 +1,415 @@
 document.addEventListener("DOMContentLoaded", async function () {
-    if (!window.sb) {
-        console.error("Supabase no esta configurado.");
-        return;
-    }
+	if (!window.sb) {
+		window.location.href = "index.html";
+		return;
+	}
 
-    const generateReportBtn = document.getElementById("generateReportBtn");
-    const downloadPdfBtn = document.getElementById("downloadPdfBtn");
-    const reportContainer = document.getElementById("reportContainer");
-    const startDateInput = document.getElementById("startDate");
-    const endDateInput = document.getElementById("endDate");
+	// ── Estado global ──────────────────────────────────────────────
+	let userId    = null;
+	let grupoId   = null;
+	let grupNombre = "";
+	let alumnos   = [];
+	let lastCalifData = []; // cache para CSV y concentrado
 
-    let currentUserId = null;
-    let currentGroup = null;
-    let students = [];
+	const CAMPOS = [
+		"Lenguajes",
+		"Saberes y Pensamiento Científico",
+		"Ética, Naturaleza y Sociedades",
+		"De lo Humano y lo Comunitario",
+	];
+	const CAMPOS_CORTOS = ["Lenguajes", "Sab. Cient.", "Ética/Soc.", "Humano/Com."];
 
-    async function initialize() {
-        try {
-            const sessionResult = await window.sb.auth.getSession();
-            if (sessionResult.error || !sessionResult.data.session) {
-                window.location.href = "index.html";
-                return;
-            }
-            currentUserId = sessionResult.data.session.user.id;
-            await loadCurrentGroup();
-            await loadStudents();
-        } catch (error) {
-            console.error("Error al inicializar:", error);
-            reportContainer.innerHTML = "<p class='text-red-500'>Error al cargar los datos iniciales.</p>";
-        }
-    }
+	// ── Inicialización ─────────────────────────────────────────────
+	const { data: { session }, error: sessErr } = await window.sb.auth.getSession();
+	if (sessErr || !session) { window.location.href = "index.html"; return; }
+	userId = session.user.id;
 
-    async function loadCurrentGroup() {
-        const { data, error } = await window.sb
-            .from("grupos")
-            .select("id, nombre")
-            .eq("maestro_id", currentUserId)
-            .single();
+	const { data: grupo } = await window.sb
+		.from("grupos").select("id, nombre").eq("maestro_id", userId).single();
+	if (!grupo) { window.location.href = "onboarding.html"; return; }
+	grupoId   = grupo.id;
+	grupNombre = grupo.nombre || "Grupo";
 
-        if (error) throw error;
+	const { data: als } = await window.sb
+		.from("alumnos")
+		.select("id, nombre_completo, num_lista, grado")
+		.eq("maestro_id", userId)
+		.eq("grupo_id", grupoId)
+		.eq("estatus", "Activo")
+		.order("grado").order("num_lista");
+	alumnos = als || [];
 
-        if (!data) {
-            window.location.href = "onboarding.html";
-            return;
-        }
-        currentGroup = data;
-    }
+	// ── Tabs ───────────────────────────────────────────────────────
+	document.querySelectorAll(".tab-btn").forEach(function (btn) {
+		btn.addEventListener("click", function () {
+			const tab = btn.dataset.tab;
+			document.querySelectorAll(".tab-btn").forEach(function (b) {
+				b.classList.remove("text-blue-700", "border-blue-600", "bg-blue-50");
+				b.classList.add("text-gray-500", "border-transparent");
+			});
+			btn.classList.add("text-blue-700", "border-blue-600", "bg-blue-50");
+			btn.classList.remove("text-gray-500", "border-transparent");
 
-    async function loadStudents() {
-        const { data, error } = await window.sb
-            .from("alumnos")
-            .select("id, nombre_completo, num_lista")
-            .eq("maestro_id", currentUserId)
-            .eq("grupo_id", currentGroup.id)
-            .order("num_lista", { ascending: true });
+			["panelAsistencia", "panelCalificaciones", "panelConcentrado"].forEach(function (id) {
+				document.getElementById(id).classList.add("hidden");
+			});
+			document.getElementById("panel" + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove("hidden");
+		});
+	});
 
-        if (error) throw error;
+	// ═══════════════════════════════════════════════════════════════
+	// TAB 1 — ASISTENCIA
+	// ═══════════════════════════════════════════════════════════════
+	document.getElementById("generateReportBtn").addEventListener("click", async function () {
+		const start = document.getElementById("startDate").value;
+		const end   = document.getElementById("endDate").value;
+		const cont  = document.getElementById("reportContainer");
 
-        students = data || [];
-    }
+		if (!start || !end) {
+			cont.innerHTML = "<p class='text-red-500 text-sm'>Selecciona un rango de fechas.</p>";
+			return;
+		}
+		cont.innerHTML = "<p class='text-gray-400 text-sm'>Generando...</p>";
 
-    function processAttendanceData(students, attendanceData) {
-        const reportData = new Map();
+		const { data, error } = await window.sb
+			.from("asistencias")
+			.select("alumno_id, asistencia_estado")
+			.eq("maestro_id", userId)
+			.eq("grupo_id", grupoId)
+			.gte("fecha", start)
+			.lte("fecha", end);
 
-        students.forEach(student => {
-            reportData.set(student.id, {
-                name: student.nombre_completo,
-                num_lista: student.num_lista,
-                presente: 0,
-                ausente: 0,
-                justificada: 0,
-                total: 0
-            });
-        });
+		if (error) { cont.innerHTML = "<p class='text-red-500 text-sm'>Error al cargar datos.</p>"; return; }
 
-        attendanceData.forEach(record => {
-            if (reportData.has(record.alumno_id)) {
-                const studentSummary = reportData.get(record.alumno_id);
-                if (record.asistencia_estado === 'presente') {
-                    studentSummary.presente++;
-                } else if (record.asistencia_estado === 'ausente') {
-                    studentSummary.ausente++;
-                } else if (record.asistencia_estado === 'justificada') {
-                    studentSummary.justificada++;
-                }
-            }
-        });
-        
-        // Calculate total days from the number of records for each student
-        reportData.forEach(summary => {
-            summary.total = summary.presente + summary.ausente + summary.justificada;
-        });
+		const mapa = {};
+		alumnos.forEach(function (al) {
+			mapa[al.id] = { nombre: al.nombre_completo, num: al.num_lista, presente: 0, ausente: 0, justificada: 0 };
+		});
+		(data || []).forEach(function (r) {
+			if (!mapa[r.alumno_id]) return;
+			if (r.asistencia_estado === "presente")   mapa[r.alumno_id].presente++;
+			if (r.asistencia_estado === "ausente")    mapa[r.alumno_id].ausente++;
+			if (r.asistencia_estado === "justificada") mapa[r.alumno_id].justificada++;
+		});
 
-        return Array.from(reportData.values());
-    }
+		const filas = Object.values(mapa).sort(function (a, b) { return (a.num || 0) - (b.num || 0); });
+		if (!filas.length) { cont.innerHTML = "<p class='text-gray-400'>Sin datos para este período.</p>"; return; }
 
-    function renderReport(processedData, startDate, endDate) {
-        if (!processedData || processedData.length === 0) {
-            reportContainer.innerHTML = "<p>No hay datos de asistencia para el rango de fechas seleccionado.</p>";
-            return;
-        }
+		let html = "<h3 class='font-bold text-gray-800 mb-3'>Asistencia del " + start + " al " + end + "</h3>" +
+			"<div class='overflow-x-auto'><table class='min-w-full text-sm border-collapse'>" +
+			"<thead><tr class='bg-gray-50 text-xs text-gray-500 uppercase'>" +
+			"<th class='px-4 py-3 text-left'>No.</th><th class='px-4 py-3 text-left'>Alumno</th>" +
+			"<th class='px-4 py-3 text-center'>Presentes</th><th class='px-4 py-3 text-center'>Faltas</th>" +
+			"<th class='px-4 py-3 text-center'>Justificadas</th><th class='px-4 py-3 text-center'>Total</th>" +
+			"</tr></thead><tbody class='divide-y divide-gray-100'>";
 
-        processedData.sort((a, b) => a.num_lista - b.num_lista);
+		filas.forEach(function (al) {
+			const total = al.presente + al.ausente + al.justificada;
+			const pct   = total ? Math.round((al.presente / total) * 100) : 0;
+			const color = pct >= 85 ? "text-green-600" : pct >= 70 ? "text-yellow-600" : "text-red-600";
+			html += "<tr class='hover:bg-gray-50'>" +
+				"<td class='px-4 py-3 text-gray-500'>" + (al.num || "") + "</td>" +
+				"<td class='px-4 py-3 font-medium text-gray-800'>" + esc(al.nombre) + "</td>" +
+				"<td class='px-4 py-3 text-center text-green-600 font-semibold'>" + al.presente + "</td>" +
+				"<td class='px-4 py-3 text-center text-red-500'>" + al.ausente + "</td>" +
+				"<td class='px-4 py-3 text-center text-yellow-600'>" + al.justificada + "</td>" +
+				"<td class='px-4 py-3 text-center'><span class='" + color + " font-bold'>" + total + "</span></td>" +
+				"</tr>";
+		});
+		html += "</tbody></table></div>";
+		cont.innerHTML = html;
+	});
 
-        let tableHTML = `
-            <h3 class="text-lg font-bold mb-2">Reporte de Asistencia del ${startDate} al ${endDate}</h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alumno</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Presentes</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Faltas</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Justificadas</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Días</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-        `;
+	document.getElementById("downloadPdfBtn").addEventListener("click", function () {
+		const el = document.getElementById("reportContainer");
+		if (!el.querySelector("table")) return;
+		html2pdf().set({
+			margin: 0.5,
+			filename: "asistencia-" + grupNombre + ".pdf",
+			html2canvas: { scale: 2 },
+			jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+		}).from(el).save();
+	});
 
-        processedData.forEach(student => {
-            tableHTML += `
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.num_lista || ''}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.presente}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.ausente}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.justificada}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.total}</td>
-                </tr>
-            `;
-        });
+	// ═══════════════════════════════════════════════════════════════
+	// TAB 2 — VISTA RECREA (Calificaciones por campo formativo)
+	// ═══════════════════════════════════════════════════════════════
+	document.getElementById("generarCalifBtn").addEventListener("click", async function () {
+		await generarVistaRecrea();
+	});
 
-        tableHTML += `
-                    </tbody>
-                </table>
-            </div>
-        `;
+	document.getElementById("exportCsvBtn").addEventListener("click", function () {
+		if (!lastCalifData.length) return;
+		exportarCSV(lastCalifData);
+	});
 
-        reportContainer.innerHTML = tableHTML;
-    }
+	async function generarVistaRecrea() {
+		const cont = document.getElementById("califContainer");
+		const trimestre = document.getElementById("selectTrimestre").value;
+		cont.innerHTML = "<p class='text-gray-400 text-sm'>Cargando calificaciones...</p>";
 
-    generateReportBtn.addEventListener("click", async () => {
-        const startDate = startDateInput.value;
-        const endDate = endDateInput.value;
+		// Obtener IDs de proyectos del trimestre seleccionado
+		let proyIds = null;
+		if (trimestre) {
+			const { data: proyectos } = await window.sb
+				.from("proyectos")
+				.select("id")
+				.eq("maestro_id", userId)
+				.eq("grupo_id", grupoId)
+				.eq("trimestre", parseInt(trimestre));
+			if (!proyectos || !proyectos.length) {
+				cont.innerHTML = "<p class='text-gray-400'>No hay proyectos para el trimestre " + trimestre + ".</p>";
+				return;
+			}
+			proyIds = proyectos.map(function (p) { return p.id; });
+		}
 
-        if (!startDate || !endDate) {
-            reportContainer.innerHTML = "<p class='text-red-500'>Por favor, seleccione un rango de fechas.</p>";
-            return;
-        }
+		let query = window.sb
+			.from("calificaciones")
+			.select("alumno_id, tipo, calificacion, campo_formativo, grado")
+			.eq("maestro_id", userId)
+			.eq("grupo_id", grupoId);
 
-        reportContainer.innerHTML = "<p>Generando reporte...</p>";
+		if (proyIds) {
+			query = query.in("proyecto_id", proyIds);
+		}
 
-        try {
-            const { data: attendanceData, error: attendanceError } = await window.sb
-                .from("asistencias")
-                .select("alumno_id, fecha, asistencia_estado")
-                .eq("maestro_id", currentUserId)
-                .eq("grupo_id", currentGroup.id)
-                .gte("fecha", startDate)
-                .lte("fecha", endDate);
+		const { data: califs, error } = await query;
+		if (error) { cont.innerHTML = "<p class='text-red-500 text-sm'>Error al cargar calificaciones.</p>"; return; }
 
-            if (attendanceError) throw attendanceError;
+		if (!califs || !califs.length) {
+			cont.innerHTML = "<div class='py-8 text-center'><p class='text-gray-400 text-lg mb-2'>Sin calificaciones registradas</p><p class='text-sm text-gray-400'>Las calificaciones se generan al cerrar sesiones desde el Dashboard.</p></div>";
+			return;
+		}
 
-            const processedData = processAttendanceData(students, attendanceData);
-            renderReport(processedData, startDate, endDate);
+		// Calcular promedios por alumno x campo + participación + conducta
+		const resumen = {};
+		alumnos.forEach(function (al) {
+			resumen[al.id] = {
+				nombre:  al.nombre_completo || "Sin nombre",
+				num:     al.num_lista,
+				grado:   al.grado,
+				campos:  {},
+				part:    [],
+				cond:    [],
+			};
+			CAMPOS.forEach(function (c) { resumen[al.id].campos[c] = []; });
+		});
 
-        } catch (error) {
-            console.error("Error al generar el reporte:", error);
-            reportContainer.innerHTML = `<p class='text-red-500'>Error al generar el reporte: ${error.message}</p>`;
-        }
-    });
+		califs.forEach(function (r) {
+			if (!resumen[r.alumno_id] || r.calificacion === null) return;
+			const cal = Number(r.calificacion);
+			if (r.tipo === "participacion") {
+				resumen[r.alumno_id].part.push(cal);
+			} else if (r.tipo === "conducta") {
+				resumen[r.alumno_id].cond.push(cal);
+			} else if (r.campo_formativo && resumen[r.alumno_id].campos[r.campo_formativo]) {
+				resumen[r.alumno_id].campos[r.campo_formativo].push(cal);
+			}
+		});
 
-    downloadPdfBtn.addEventListener("click", () => {
-        const element = reportContainer.cloneNode(true);
-        // Remove the h3 from the cloned element to avoid it in the pdf
-        const h3 = element.querySelector('h3');
-        if(h3) h3.remove();
+		// Mostrar TODOS los alumnos — los sin datos muestran "—" para que el maestro vea quién falta
+		const filas = Object.values(resumen)
+			.sort(function (a, b) { return (a.grado || 0) - (b.grado || 0) || (a.num || 0) - (b.num || 0); });
 
-        const opt = {
-            margin:       1,
-            filename:     `reporte-asistencia-${currentGroup.nombre}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2 },
-            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-        };
+		if (!filas.length) {
+			cont.innerHTML = "<p class='text-gray-400'>Sin alumnos en el grupo.</p>";
+			return;
+		}
 
-        html2pdf().set(opt).from(element).save();
-    });
+		lastCalifData = filas;
 
-    initialize();
+		// Renderizar tabla
+		let html = "<div class='overflow-x-auto'><table class='min-w-full text-sm border-collapse'>" +
+			"<thead><tr class='bg-gray-50 text-xs text-gray-500 uppercase'>" +
+			"<th class='px-3 py-3 text-left whitespace-nowrap'>No.</th>" +
+			"<th class='px-3 py-3 text-left whitespace-nowrap'>Alumno</th>" +
+			"<th class='px-3 py-3 text-center'>Grado</th>";
+
+		CAMPOS_CORTOS.forEach(function (c) {
+			html += "<th class='px-3 py-3 text-center whitespace-nowrap'>" + c + "</th>";
+		});
+		html += "<th class='px-3 py-3 text-center'>Part.</th>" +
+			"<th class='px-3 py-3 text-center'>Cond.</th>" +
+			"<th class='px-3 py-3 text-center font-bold text-gray-700'>Prom.</th>" +
+			"</tr></thead><tbody class='divide-y divide-gray-100'>";
+
+		filas.forEach(function (al) {
+			const campoProms = CAMPOS.map(function (c) {
+				return promedio(al.campos[c]);
+			});
+			const partProm = promedio(al.part);
+			const condProm = promedio(al.cond);
+			const todos    = campoProms.filter(function (v) { return v !== null; })
+				.concat(partProm !== null ? [partProm] : [])
+				.concat(condProm !== null ? [condProm] : []);
+			const promTotal = todos.length ? Math.round(todos.reduce(function (a, b) { return a + b; }, 0) / todos.length) : null;
+
+			html += "<tr class='hover:bg-gray-50'>" +
+				"<td class='px-3 py-3 text-gray-500'>" + (al.num || "") + "</td>" +
+				"<td class='px-3 py-3 font-medium text-gray-800 whitespace-nowrap'>" + esc(al.nombre) + "</td>" +
+				"<td class='px-3 py-3 text-center'>" + (al.grado ? al.grado + "°" : "—") + "</td>";
+
+			campoProms.forEach(function (v) {
+				html += "<td class='px-3 py-3 text-center'>" + celdaCalif(v) + "</td>";
+			});
+			html += "<td class='px-3 py-3 text-center'>" + celdaCalif(partProm) + "</td>" +
+				"<td class='px-3 py-3 text-center'>" + celdaCalif(condProm) + "</td>" +
+				"<td class='px-3 py-3 text-center'><span class='font-bold text-base " + colorCalif(promTotal) + "'>" +
+				(promTotal !== null ? promTotal : "—") + "</span></td>" +
+				"</tr>";
+		});
+
+		html += "</tbody></table></div>";
+		cont.innerHTML = html;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// TAB 3 — CONCENTRADO DIRECTOR
+	// ═══════════════════════════════════════════════════════════════
+	document.getElementById("generarConcBtn").addEventListener("click", async function () {
+		const cont = document.getElementById("concentradoContainer");
+		const trimestre = document.getElementById("selectTrimestreConc").value;
+
+		// Reusar datos cacheados si el trimestre coincide con Vista Recrea
+		const trimestreCalif = document.getElementById("selectTrimestre").value;
+		let filas = [];
+
+		if (lastCalifData.length && trimestreCalif === trimestre) {
+			filas = lastCalifData;
+		} else {
+			cont.innerHTML = "<p class='text-gray-400 text-sm'>Generando desde calificaciones...</p>";
+
+			let proyIds = null;
+			if (trimestre) {
+				const { data: proyectos } = await window.sb
+					.from("proyectos").select("id")
+					.eq("maestro_id", userId).eq("grupo_id", grupoId)
+					.eq("trimestre", parseInt(trimestre));
+				if (proyectos && proyectos.length) proyIds = proyectos.map(function (p) { return p.id; });
+			}
+
+			let q = window.sb.from("calificaciones")
+				.select("alumno_id, tipo, calificacion, campo_formativo, grado")
+				.eq("maestro_id", userId).eq("grupo_id", grupoId);
+			if (proyIds) q = q.in("proyecto_id", proyIds);
+
+			const { data: califs, error } = await q;
+			if (error || !califs || !califs.length) {
+				cont.innerHTML = "<p class='text-gray-400'>Sin calificaciones para este período.</p>";
+				return;
+			}
+
+			const resumen = {};
+			alumnos.forEach(function (al) {
+				resumen[al.id] = { nombre: al.nombre_completo, grado: al.grado, todos: [] };
+			});
+			califs.forEach(function (r) {
+				if (!resumen[r.alumno_id] || r.calificacion === null) return;
+				resumen[r.alumno_id].todos.push(Number(r.calificacion));
+			});
+
+			filas = Object.values(resumen)
+				.filter(function (al) { return al.todos.length; })
+				.map(function (al) {
+					const prom = al.todos.reduce(function (a, b) { return a + b; }, 0) / al.todos.length;
+					return { nombre: al.nombre, grado: al.grado, promedio: Math.round(prom) };
+				})
+				.sort(function (a, b) { return b.promedio - a.promedio; });
+		}
+
+		if (!filas.length) { cont.innerHTML = "<p class='text-gray-400'>Sin datos para este período.</p>"; return; }
+
+		const calcProm = function (fila) {
+			const campoProms = CAMPOS.map(function (c) { return promedio(fila.campos ? (fila.campos[c] || []) : []); });
+			const partP = promedio(fila.part || []);
+			const condP = promedio(fila.cond || []);
+			const todos = campoProms.filter(Boolean)
+				.concat(partP !== null ? [partP] : [])
+				.concat(condP !== null ? [condP] : []);
+			return todos.length ? Math.round(todos.reduce(function (a, b) { return a + b; }, 0) / todos.length) : (fila.promedio || null);
+		};
+
+		const bajo  = filas.filter(function (f) { const p = calcProm(f); return p !== null && p <= 6; });
+		const medio = filas.filter(function (f) { const p = calcProm(f); return p !== null && p >= 7 && p <= 8; });
+		const alto  = filas.filter(function (f) { const p = calcProm(f); return p !== null && p >= 9; });
+
+		const bloque = function (titulo, color, lista) {
+			if (!lista.length) return "";
+			const items = lista.map(function (al) {
+				const p = calcProm(al);
+				return "<li class='flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0'>" +
+					"<span class='text-sm text-gray-800'>" + esc(al.nombre) + (al.grado ? " <span class='text-xs text-gray-400'>" + al.grado + "°</span>" : "") + "</span>" +
+					"<span class='text-sm font-bold " + colorCalif(p) + "'>" + (p !== null ? p : "—") + "</span>" +
+					"</li>";
+			}).join("");
+			return "<div class='rounded-xl border " + color.border + " overflow-hidden'>" +
+				"<div class='" + color.header + " px-4 py-3 flex justify-between items-center'>" +
+				"<span class='font-bold text-sm'>" + titulo + "</span>" +
+				"<span class='text-sm font-semibold'>" + lista.length + " alumno" + (lista.length !== 1 ? "s" : "") + "</span>" +
+				"</div><ul class='px-4 py-1'>" + items + "</ul></div>";
+		};
+
+		cont.innerHTML =
+			"<div class='flex flex-col gap-4'>" +
+			bloque("Alto (9-10)", { border: "border-green-200", header: "bg-green-50 text-green-800" }, alto) +
+			bloque("Medio (7-8)", { border: "border-yellow-200", header: "bg-yellow-50 text-yellow-800" }, medio) +
+			bloque("Bajo (5-6)",  { border: "border-red-200",   header: "bg-red-50 text-red-800"   }, bajo) +
+			"<p class='text-xs text-gray-400 text-right'>Total: " + (alto.length + medio.length + bajo.length) + " alumnos con datos</p>" +
+			"</div>";
+	});
+
+	// ── Helpers ────────────────────────────────────────────────────
+	function promedio(arr) {
+		if (!arr || !arr.length) return null;
+		const sum = arr.reduce(function (a, b) { return a + b; }, 0);
+		return Math.round(sum / arr.length);
+	}
+
+	function colorCalif(v) {
+		if (v === null || v === undefined) return "text-gray-400";
+		if (v >= 9) return "text-green-600";
+		if (v >= 7) return "text-yellow-600";
+		return "text-red-500";
+	}
+
+	function celdaCalif(v) {
+		if (v === null || v === undefined) return "<span class='text-gray-300'>—</span>";
+		return "<span class='font-semibold " + colorCalif(v) + "'>" + v + "</span>";
+	}
+
+	function exportarCSV(filas) {
+		const cabecera = ["No.", "Alumno", "Grado"].concat(CAMPOS).concat(["Participacion", "Conducta", "Promedio"]);
+		const lineas = [cabecera.join(",")];
+
+		filas.forEach(function (al) {
+			const campoProms = CAMPOS.map(function (c) {
+				return promedio(al.campos ? (al.campos[c] || []) : []) ?? "";
+			});
+			const partP = promedio(al.part || []) ?? "";
+			const condP = promedio(al.cond || []) ?? "";
+			const todos = [].concat(campoProms.filter(function (v) { return v !== ""; }))
+				.concat(partP !== "" ? [partP] : [])
+				.concat(condP !== "" ? [condP] : []);
+			const promT = todos.length ? Math.round(todos.reduce(function (a, b) { return Number(a) + Number(b); }, 0) / todos.length) : "";
+
+			const fila = [al.num || "", '"' + (al.nombre || "") + '"', al.grado || ""]
+				.concat(campoProms)
+				.concat([partP, condP, promT]);
+			lineas.push(fila.join(","));
+		});
+
+		const blob = new Blob(["﻿" + lineas.join("\n")], { type: "text/csv;charset=utf-8;" });
+		const url  = URL.createObjectURL(blob);
+		const a    = document.createElement("a");
+		a.href     = url;
+		a.download = "vista-recrea-" + grupNombre + ".csv";
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	function esc(str) {
+		return String(str || "")
+			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	}
 });
