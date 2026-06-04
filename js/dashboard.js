@@ -605,7 +605,9 @@ async function completarSesionDelDia(notasCierre, califData) {
 		resumenDia.sesionNombre =
 			"Sesion " + (sesionActiva ? sesionActiva.numero_sesion || "-" : "") + " " +
 			(sesionActiva && sesionActiva.momento ? "- " + sesionActiva.momento : "");
-		resumenDia.tareasParaManana = insertsTareas.map((t) => t.descripcion);
+		resumenDia.tareasParaManana = insertsTareas.map((t) =>
+			t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion
+		);
 
 		cerrarModalCierre();
 		colapsar("card-sesion", "✅ Sesion marcada como completada");
@@ -852,7 +854,9 @@ function getActividadesFase(fase) {
 }
 
 function getTareasCierreTexto() {
-	return extraerTareasCierre().map((t) => t.descripcion);
+	return extraerTareasCierre().map((t) =>
+		t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion
+	);
 }
 
 function extraerTareasCierre() {
@@ -865,16 +869,20 @@ function extraerTareasCierre() {
 	}
 	if (typeof raw === "object") {
 		const mode = raw.mode || "todos";
-		if (mode === "diferenciado" && raw.por_grado && typeof raw.por_grado === "object") {
+		// Modo diferenciado: { diferenciado: { "4": [...], "5": [...] } }.
+		// "por_grado" se acepta como alias por compatibilidad con borradores antiguos.
+		const porGrado = raw.diferenciado || raw.por_grado;
+		if (mode === "diferenciado" && porGrado && typeof porGrado === "object") {
 			const out = [];
-			Object.keys(raw.por_grado).forEach((grado) => {
-				(raw.por_grado[grado] || []).forEach((t) => {
+			Object.keys(porGrado).forEach((grado) => {
+				(porGrado[grado] || []).forEach((t) => {
 					out.push({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: Number(grado) });
 				});
 			});
 			return out;
 		}
-		const lista = raw.items || raw.tareas || [];
+		// Modo igual para todos: { todos: [...] }. "items"/"tareas" son alias antiguos.
+		const lista = raw.todos || raw.items || raw.tareas || [];
 		return (Array.isArray(lista) ? lista : [lista]).map((t) => ({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: null }));
 	}
 	return [];

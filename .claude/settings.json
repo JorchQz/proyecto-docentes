@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\proyecto-docentes\" -Recurse -Depth 3)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Get-ChildItem -Path \"c:\\\\proyecto-docentes\" -Recurse -Filter \"*.js\" -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(grep -n \"TODO\\\\|STUB\\\\|FIXME\\\\|\\\\\\\\.\\\\\\\\.\\\\\\\\.|\\\\[\\\\]\" c:/proyecto-docentes/js/*.js)",
+      "Bash(Get-ChildItem -Path \"c:\\\\proyecto-docentes\" -Type File -Filter \"*.html\")",
+      "Bash(findstr /r \"trimestre\\\\|inicio\\\\|desarrollo\\\\|cierre\" js\\\\dashboard.js)",
+      "Bash(findstr \"calificacion\" js\\\\dashboard.js)",
+      "Bash(grep -n \"proyectoActivo\\\\\\\\.id\\\\|sesionActiva\\\\\\\\.id\" dashboard.js)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Read(//c/Users/jorge/.claude/projects/c--proyecto-docentes/f4eccb9f-47cf-46d9-8dbf-8281010dcfce/tool-results/**)",
+      "Bash(python -c ' *)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}
