@@ -52,6 +52,61 @@
 				</form>
 			</section>
 
+			<section id="pesoPonderacion" class="bg-white rounded-2xl shadow-md p-6">
+				<h2 class="text-lg font-bold text-gray-800">Ponderación de calificaciones</h2>
+				<p class="text-sm text-gray-500 mt-1">Define el peso de cada rubro en la calificación trimestral. La suma debe ser 100%.</p>
+
+				<div id="ponderacionMessage" class="mt-4"></div>
+
+				<div class="mt-6 space-y-4">
+					<div class="flex items-center justify-between">
+						<label class="text-sm font-medium text-gray-700">Tareas</label>
+						<input id="pesoTareas" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					</div>
+
+					<div class="flex items-center justify-between">
+						<label class="text-sm font-medium text-gray-700">Trabajos / Actividades</label>
+						<input id="pesoTrabajos" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					</div>
+
+					<div class="flex items-center justify-between">
+						<label class="text-sm font-medium text-gray-700">Asistencia</label>
+						<input id="pesoAsistencia" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					</div>
+
+					<div class="flex items-center justify-between">
+						<label class="text-sm font-medium text-gray-700">Participación</label>
+						<input id="pesoParticipacion" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					</div>
+
+					<div class="flex items-center justify-between">
+						<label class="text-sm font-medium text-gray-700">Conducta</label>
+						<input id="pesoConducata" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					</div>
+
+					<div class="flex items-center justify-between">
+						<label class="text-sm font-medium text-gray-700">Examen</label>
+						<input id="pesoExamen" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					</div>
+
+					<div class="border-t border-gray-200 pt-4 mt-4">
+						<div class="flex items-center justify-between">
+							<span class="text-sm font-medium text-gray-700">Suma actual:</span>
+							<span id="sumaPonderacion" class="text-lg font-bold text-red-600">0%</span>
+						</div>
+					</div>
+
+					<div class="flex gap-3 pt-2">
+						<button id="savePonderacionBtn" type="button" disabled class="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+							Guardar ponderación
+						</button>
+						<button id="resetPonderacionBtn" type="button" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+							Restaurar valores por defecto
+						</button>
+					</div>
+				</div>
+			</section>
+
 			<section class="bg-white rounded-2xl shadow-md p-6 border border-red-200">
 				<h2 class="text-lg font-bold text-red-700">Eliminar cuenta</h2>
 				<p class="text-sm text-gray-500 mt-1">Esta acción es permanente e irreversible. Se eliminarán todos tus grupos, alumnos, asistencias y proyectos.</p>
