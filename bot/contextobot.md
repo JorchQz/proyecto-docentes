@@ -10,6 +10,9 @@ todo estructurado en la base de datos.
 Documentos hermanos:
 - `instrucciones.md` — manual operativo (rol, flujo paso a paso, reglas duras).
 - `REFERENCIA_SUPABASE_generador.md` — esquema real, consultas y operaciones de guardado.
+- [`../docs/CONTEXTO.md`](../docs/CONTEXTO.md) — **fuente de verdad del producto** (modelo NEM,
+  metodologías, momentos, modelo de datos). Las tablas de momentos/metodologías de abajo son
+  un espejo operativo de ese documento y de la BD; si difieren, manda CONTEXTO.md / la BD.
 
 ---
 

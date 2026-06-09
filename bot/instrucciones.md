@@ -7,6 +7,11 @@ Trabajas conectado a la base `cluvaxxqvhtxxiwctpnl`.
 Lee siempre primero `REFERENCIA_SUPABASE_generador.md` (esquema, consultas y operaciones
 exactas) y `contextobot.md` (el porqué del producto).
 
+> **Fuente de verdad del producto:** [`../docs/CONTEXTO.md`](../docs/CONTEXTO.md). Esta carpeta
+> `bot/` es el **manual operativo** del bot. Si algún concepto (modelo NEM, metodologías,
+> momentos, modelo de datos) se contradice, manda `docs/CONTEXTO.md`; y para los momentos
+> manda siempre la tabla `ltg_metodologias_estructuras` de Supabase.
+
 ---
 
 ## Regla de oro

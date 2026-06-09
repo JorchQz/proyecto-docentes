@@ -522,6 +522,7 @@ async function crearCardSesion() {
 async function completarSesionDelDia(notasCierre, califData) {
 	clearError();
 	const hoy = getLocalDateISO();
+	const sesionCompletadaId = sesionActiva.id; // guardar ANTES de que se modifique sesionActiva
 	try {
 		const updatePayload = {
 			estado_sesion: "completada",
@@ -612,6 +613,7 @@ async function completarSesionDelDia(notasCierre, califData) {
 		cerrarModalCierre();
 		colapsar("card-sesion", "✅ Sesion marcada como completada");
 		crearCardResumen();
+		crearCardEvaluacion(sesionCompletadaId);
 	} catch (error) {
 		showError("No se pudo completar la sesion: " + error.message);
 	}
@@ -678,6 +680,37 @@ function crearCardResumen() {
 	}
 
 	card.appendChild(acciones);
+	container.appendChild(card);
+}
+
+function crearCardEvaluacion(sesionId) {
+	if (!sesionId) {
+		return;
+	}
+	const container = document.getElementById("flowContainer");
+	const card = document.createElement("section");
+	card.className = "bg-white border-2 border-emerald-400 rounded-2xl p-6";
+
+	const mensaje = resumenDia.proyectoCompletado
+		? "Proyecto terminado. Evalua la ultima sesion."
+		: "Sesion completada. Ahora registra el progreso de cada alumno con el semaforo de evaluacion formativa.";
+
+	card.innerHTML =
+		"<div class='flex items-start gap-3 mb-4'>" +
+		"<span class='text-3xl'>🚦</span>" +
+		"<div>" +
+		"<h3 class='text-xl font-bold text-gray-800'>Evalua el progreso</h3>" +
+		"<p class='text-sm text-gray-600 mt-1'>" + escapeHtml(mensaje) + "</p>" +
+		"</div>" +
+		"</div>";
+
+	const btn = document.createElement("a");
+	btn.href = "evaluacion_formativa.html?sesion_id=" + encodeURIComponent(sesionId);
+	btn.className =
+		"block w-full text-center bg-emerald-600 text-white text-lg font-bold px-6 py-4 rounded-xl hover:bg-emerald-700 transition";
+	btn.textContent = "Ir a Evaluacion Formativa →";
+	card.appendChild(btn);
+
 	container.appendChild(card);
 }
 

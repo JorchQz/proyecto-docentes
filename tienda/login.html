@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Planeaciones NEM — Acceder</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+</head>
+<body class="bg-blue-900 flex flex-col items-center justify-center min-h-screen p-4 text-gray-800">
+
+	<a href="index.html" class="inline-flex items-center gap-1 text-sm text-blue-100 hover:text-white font-medium mb-4">← Volver a la tienda</a>
+
+	<div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+		<div class="text-center mb-8 flex flex-col items-center">
+			<div class="w-12 h-12 rounded-xl bg-blue-900 text-white flex items-center justify-center mb-2"><i data-lucide="graduation-cap" class="w-7 h-7"></i></div>
+			<a href="index.html" class="inline-block text-2xl font-extrabold text-blue-900 mb-1">Planeaciones NEM</a>
+			<p class="text-gray-500 text-sm" id="subtitulo">Inicia sesión para acceder a tus planeaciones</p>
+		</div>
+
+		<form id="loginForm" class="space-y-5">
+			<div id="nombreField" class="hidden">
+				<label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
+				<input type="text" id="nombre" maxlength="100" autocomplete="name"
+					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					placeholder="Ej. María Fernanda López">
+			</div>
+
+			<div id="escuelaField" class="hidden">
+				<label class="block text-sm font-medium text-gray-700 mb-1">Escuela <span class="text-gray-400 font-normal">(opcional)</span></label>
+				<input type="text" id="escuela" maxlength="120"
+					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					placeholder="Nombre de tu escuela">
+			</div>
+
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
+				<input type="email" id="email" required autocomplete="email"
+					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					placeholder="maestra@correo.com">
+			</div>
+
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+				<input type="password" id="password" required autocomplete="current-password"
+					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					placeholder="••••••••">
+			</div>
+
+			<button type="submit"
+				class="w-full flex justify-center py-3 px-4 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors min-h-[44px]">
+				Iniciar sesión
+			</button>
+		</form>
+
+		<div class="mt-6 text-center">
+			<p class="text-sm text-gray-500">
+				¿No tienes cuenta? <a href="#" id="toggleLink" class="font-semibold text-blue-700 hover:text-blue-800">Regístrate</a>
+			</p>
+		</div>
+
+		<div class="mt-6 pt-5 border-t border-gray-100 flex items-center justify-center gap-x-4 gap-y-1 flex-wrap text-xs text-gray-400">
+			<span class="inline-flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Pago seguro</span>
+			<span class="inline-flex items-center gap-1"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato</span>
+		</div>
+	</div>
+
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<script src="../js/supabase.js"></script>
+	<script src="js/tienda-common.js"></script>
+	<script src="js/login.js"></script>
+	<script>document.addEventListener("DOMContentLoaded", function () { if (window.lucide) { lucide.createIcons(); } });</script>
+</body>
+</html>

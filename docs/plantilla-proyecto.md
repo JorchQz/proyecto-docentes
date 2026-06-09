@@ -112,30 +112,28 @@
 
 ## Anexo — Secuencias por metodología
 
-Usa estos nombres exactos en el campo **Momento / secuencia** de cada sesión.
+Usa estos nombres **exactos** en el campo **Momento / secuencia** de cada sesión. Son los
+oficiales de la base de datos (`ltg_metodologias_estructuras`); la fuente de verdad está en
+[CONTEXTO.md §2](CONTEXTO.md). No los abrevies ni los cambies.
 
-**ABPC**
-1. Identificamos · 2. Recuperamos · 3. Planificamos · 4. Nos acercamos ·
-5. Vamos y volvemos · 6. Reorientamos · 7. Seguimos · 8. Integramos ·
-9. Difundimos · 10. Consideramos · 11. Avanzamos
+**ABPC — Proyectos Comunitarios** (11)
+1. Identificación · 2. Recuperación · 3. Planificación · 4. Acercamiento ·
+5. Comprensión y producción · 6. Reconocimiento · 7. Concreción · 8. Integración ·
+9. Difusión · 10. Consideraciones · 11. Avances
 
-**STEAM**
-- Fase 1. Introducción al tema
-- Fase 2. Diseño de investigación
-- Fase 3. Organizar y estructurar respuestas
-- Fase 4. Presentación de resultados
-- Fase 5. Metacognición
+**STEAM — Indagación (STEAM)** (5)
+1. Introducción al tema / Saberes previos · 2. Diseño y desarrollo de la indagación ·
+3. Establecer conclusiones · 4. Presentación de resultados y propuesta de acción ·
+5. Metacognición / Reflexión
 
-**ABP**
+**ABP — Aprendizaje Basado en Problemas** (6)
 1. Presentemos · 2. Recolectemos · 3. Formulemos el problema ·
 4. Organicemos la experiencia · 5. Vivamos la experiencia · 6. Resultados y análisis
 
-**AS (Aprendizaje Servicio)**
-- Etapa 1. Punto de partida
-- Etapa 2. Lo que sé y lo que quiero saber
-- Etapa 3. Organicemos las actividades
-- Etapa 4. Creatividad en marcha
-- Etapa 5. Compartimos y evaluamos
+**AS — Aprendizaje Servicio** (5)
+1. Punto de partida · 2. Lo que sé y lo que quiero saber ·
+3. Organicemos las actividades · 4. Creatividad en marcha ·
+5. Compartimos y evaluamos lo aprendido
 
 ---
 

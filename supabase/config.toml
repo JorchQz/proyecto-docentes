@@ -1,0 +1,18 @@
+# Configuración de Edge Functions del marketplace.
+#
+# verify_jwt = true  → Supabase exige un JWT válido en Authorization (default).
+# verify_jwt = false → la función es pública / la llama un tercero (Mercado Pago).
+#
+# Estas funciones validan la identidad por su cuenta cuando hace falta.
+
+[functions.descargar-archivo]
+verify_jwt = false   # valida el JWT manualmente para devolver errores legibles
+
+[functions.crear-preferencia-mp]
+verify_jwt = false   # valida el JWT manualmente
+
+[functions.previsualizar]
+verify_jwt = false   # pública: cualquiera puede ver la muestra
+
+[functions.webhook-mercadopago]
+verify_jwt = false   # la llama Mercado Pago, no un usuario

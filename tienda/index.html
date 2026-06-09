@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Planeaciones NEM listas para tu salón — por trimestre o ciclo</title>
+	<meta name="description" content="Planeaciones de primaria alineadas a la Nueva Escuela Mexicana, listas para imprimir o editar. Compra por trimestre o el ciclo completo. Pago seguro y acceso inmediato.">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+</head>
+<body class="bg-white min-h-screen pt-14 text-gray-800">
+
+	<!-- Hero -->
+	<section class="bg-blue-900 text-white">
+		<div class="max-w-5xl mx-auto px-4 py-16 md:py-24 flex flex-col items-center text-center gap-6">
+			<span class="inline-flex items-center gap-2 bg-blue-800 text-blue-100 text-xs font-semibold px-3 py-1.5 rounded-full">Nueva Escuela Mexicana · Ciclo 2026-2027</span>
+			<h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-3xl">
+				Planeaciones listas para tu salón, sin perder tus tardes
+			</h1>
+			<p class="text-blue-100 text-base md:text-lg max-w-2xl">
+				Proyectos completos por campo formativo, con sesiones, PDAs por grado, actividades
+				diferenciadas, anexos y examen. Compra <strong>por trimestre</strong> o el
+				<strong>ciclo completo</strong> de tu grado o aula multigrado.
+			</p>
+			<div class="flex flex-col sm:flex-row gap-3 mt-2">
+				<a href="catalogo.html" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8 py-4 rounded-xl transition text-base min-h-[52px] inline-flex items-center justify-center gap-2">
+					<i data-lucide="search" class="w-5 h-5"></i> Ver planeaciones
+				</a>
+				<a href="login.html" class="bg-blue-800 hover:bg-blue-700 text-white font-semibold px-8 py-4 rounded-xl transition text-base min-h-[52px] inline-flex items-center justify-center">Ya tengo cuenta</a>
+			</div>
+			<div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-blue-200 text-sm mt-2">
+				<span class="inline-flex items-center gap-1.5"><i data-lucide="shield-check" class="w-4 h-4"></i> Pago seguro</span>
+				<span class="inline-flex items-center gap-1.5"><i data-lucide="zap" class="w-4 h-4"></i> Acceso inmediato</span>
+				<span class="inline-flex items-center gap-1.5"><i data-lucide="printer" class="w-4 h-4"></i> Listas para imprimir</span>
+			</div>
+		</div>
+	</section>
+
+	<!-- Cómo funciona -->
+	<section class="max-w-5xl mx-auto px-4 py-16">
+		<h2 class="text-2xl md:text-3xl font-extrabold text-blue-900 text-center mb-10">Cómo funciona</h2>
+		<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+			<div class="flex flex-col items-center text-center gap-2">
+				<div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center"><i data-lucide="mouse-pointer-click" class="w-6 h-6"></i></div>
+				<h3 class="font-bold text-gray-800">1. Elige tu paquete</h3>
+				<p class="text-sm text-gray-500">Por trimestre o ciclo completo, de tu grado o de tu aula multigrado.</p>
+			</div>
+			<div class="flex flex-col items-center text-center gap-2">
+				<div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center"><i data-lucide="credit-card" class="w-6 h-6"></i></div>
+				<h3 class="font-bold text-gray-800">2. Paga seguro</h3>
+				<p class="text-sm text-gray-500">Tarjeta, OXXO o SPEI con Mercado Pago, o transferencia directa.</p>
+			</div>
+			<div class="flex flex-col items-center text-center gap-2">
+				<div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center"><i data-lucide="folder-open" class="w-6 h-6"></i></div>
+				<h3 class="font-bold text-gray-800">3. Accede al instante</h3>
+				<p class="text-sm text-gray-500">Abre tu biblioteca: ve, imprime o descarga tus planeaciones y anexos.</p>
+			</div>
+		</div>
+	</section>
+
+	<!-- Qué incluye -->
+	<section class="bg-gray-50 border-y border-gray-100">
+		<div class="max-w-5xl mx-auto px-4 py-16">
+			<h2 class="text-2xl md:text-3xl font-extrabold text-blue-900 text-center mb-10">Qué incluye cada paquete</h2>
+			<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+				<div class="bg-white rounded-2xl p-6 border border-gray-100">
+					<div class="mb-3"><i data-lucide="folder" class="w-8 h-8 text-blue-700"></i></div>
+					<h3 class="font-bold text-gray-800 mb-1">Proyectos completos</h3>
+					<p class="text-sm text-gray-500">Todas las sesiones con sus momentos metodológicos, PDAs por grado y actividades diferenciadas.</p>
+				</div>
+				<div class="bg-white rounded-2xl p-6 border border-gray-100">
+					<div class="mb-3"><i data-lucide="paperclip" class="w-8 h-8 text-blue-700"></i></div>
+					<h3 class="font-bold text-gray-800 mb-1">Anexos y examen</h3>
+					<p class="text-sm text-gray-500">Material listo para el alumno por sesión y el examen del trimestre, todo incluido.</p>
+				</div>
+				<div class="bg-white rounded-2xl p-6 border border-gray-100">
+					<div class="mb-3"><i data-lucide="pencil" class="w-8 h-8 text-blue-700"></i></div>
+					<h3 class="font-bold text-gray-800 mb-1">PDF o editable</h3>
+					<p class="text-sm text-gray-500">Imprime el PDF tal cual o compra la versión editable (Word) para adaptarla a tu grupo.</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Para quién / multigrado -->
+	<section class="max-w-4xl mx-auto px-4 py-16 text-center flex flex-col items-center gap-4">
+		<div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center"><i data-lucide="users" class="w-6 h-6"></i></div>
+		<h2 class="text-2xl font-extrabold text-blue-900">También para escuelas multigrado</h2>
+		<p class="text-gray-600 max-w-2xl">
+			¿Atiendes varios grados a la vez? Tenemos paquetes <strong>bidocente</strong> y
+			<strong>tridocente</strong> con la diferenciación por grado ya resuelta dentro de cada
+			proyecto. Ahorras horas de planeación cada semana.
+		</p>
+		<a href="catalogo.html" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-4 rounded-xl transition min-h-[52px] inline-flex items-center justify-center mt-2">Explorar catálogo</a>
+	</section>
+
+	<!-- Confianza -->
+	<section class="bg-blue-900 text-white">
+		<div class="max-w-5xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+			<div class="flex flex-col items-center gap-2"><i data-lucide="shield-check" class="w-7 h-7 text-emerald-400"></i><p class="text-sm font-semibold">Pago seguro</p><p class="text-xs text-blue-200">Mercado Pago</p></div>
+			<div class="flex flex-col items-center gap-2"><i data-lucide="zap" class="w-7 h-7 text-emerald-400"></i><p class="text-sm font-semibold">Acceso inmediato</p><p class="text-xs text-blue-200">Tras confirmar el pago</p></div>
+			<div class="flex flex-col items-center gap-2"><i data-lucide="book-open-check" class="w-7 h-7 text-emerald-400"></i><p class="text-sm font-semibold">Alineado a la NEM</p><p class="text-xs text-blue-200">Nuevos libros 2026-2027</p></div>
+			<div class="flex flex-col items-center gap-2"><i data-lucide="store" class="w-7 h-7 text-emerald-400"></i><p class="text-sm font-semibold">Hecho por docentes</p><p class="text-xs text-blue-200">Para docentes</p></div>
+		</div>
+	</section>
+
+	<!-- FAQ -->
+	<section class="max-w-3xl mx-auto px-4 py-16">
+		<h2 class="text-2xl md:text-3xl font-extrabold text-blue-900 text-center mb-8">Preguntas frecuentes</h2>
+		<div class="flex flex-col gap-3">
+			<details class="group bg-gray-50 rounded-xl border border-gray-100 p-4">
+				<summary class="flex items-center justify-between cursor-pointer font-semibold text-gray-800 list-none">¿Cómo recibo mi compra? <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform group-open:rotate-180"></i></summary>
+				<p class="text-sm text-gray-600 mt-2">En cuanto se confirma tu pago, entras a tu biblioteca y puedes ver, imprimir o descargar todo: planeaciones, anexos y examen.</p>
+			</details>
+			<details class="group bg-gray-50 rounded-xl border border-gray-100 p-4">
+				<summary class="flex items-center justify-between cursor-pointer font-semibold text-gray-800 list-none">¿Cuál es la diferencia entre PDF y editable? <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform group-open:rotate-180"></i></summary>
+				<p class="text-sm text-gray-600 mt-2">El PDF está listo para imprimir. La versión editable (Word) te permite adaptar la planeación a tu grupo; por eso cuesta un poco más. Ambas incluyen anexos y examen.</p>
+			</details>
+			<details class="group bg-gray-50 rounded-xl border border-gray-100 p-4">
+				<summary class="flex items-center justify-between cursor-pointer font-semibold text-gray-800 list-none">¿Qué formas de pago aceptan? <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform group-open:rotate-180"></i></summary>
+				<p class="text-sm text-gray-600 mt-2">Tarjeta, pago en OXXO y SPEI a través de Mercado Pago, o transferencia directa a nuestra cuenta.</p>
+			</details>
+			<details class="group bg-gray-50 rounded-xl border border-gray-100 p-4">
+				<summary class="flex items-center justify-between cursor-pointer font-semibold text-gray-800 list-none">¿Sirve para grupos multigrado? <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform group-open:rotate-180"></i></summary>
+				<p class="text-sm text-gray-600 mt-2">Sí. Hay paquetes bidocente (1°-2°-3°, 4°-5°-6°) y tridocente (1°-2°, 3°-4°, 5°-6°) con la diferenciación por grado dentro de cada proyecto.</p>
+			</details>
+			<details class="group bg-gray-50 rounded-xl border border-gray-100 p-4">
+				<summary class="flex items-center justify-between cursor-pointer font-semibold text-gray-800 list-none">¿Puedo compartir las planeaciones? <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform group-open:rotate-180"></i></summary>
+				<p class="text-sm text-gray-600 mt-2">Tu compra es de uso personal docente. Cada planeación lleva un pie de página con tus datos; por favor no la distribuyas ni la revendas.</p>
+			</details>
+		</div>
+	</section>
+
+	<!-- CTA final -->
+	<section class="bg-emerald-600 text-white">
+		<div class="max-w-3xl mx-auto px-4 py-14 text-center flex flex-col items-center gap-4">
+			<h2 class="text-2xl md:text-3xl font-extrabold">Recupera tus tardes este trimestre</h2>
+			<p class="text-emerald-50 max-w-xl">Empieza con un trimestre o llévate el ciclo completo a mejor precio.</p>
+			<a href="catalogo.html" class="bg-white text-emerald-700 hover:bg-emerald-50 font-bold px-8 py-4 rounded-xl transition min-h-[52px] inline-flex items-center justify-center mt-1">Ver planeaciones</a>
+		</div>
+	</section>
+
+	<footer class="bg-gray-900 text-gray-400">
+		<div class="max-w-5xl mx-auto px-4 py-10 flex flex-col sm:flex-row justify-between gap-6 text-sm">
+			<div>
+				<p class="font-bold text-white text-base mb-1">Planeaciones NEM</p>
+				<p class="max-w-xs">Planeaciones para primaria alineadas a la Nueva Escuela Mexicana. Uso personal, no para distribución.</p>
+			</div>
+			<div class="flex flex-col gap-1">
+				<a href="catalogo.html" class="hover:text-white">Catálogo</a>
+				<a href="login.html" class="hover:text-white">Iniciar sesión</a>
+				<a href="mailto:jorgequezadarm@gmail.com" class="hover:text-white">Contacto y soporte</a>
+			</div>
+		</div>
+		<div class="border-t border-gray-800 py-4 text-center text-xs">Pagos con Mercado Pago (tarjeta · OXXO · SPEI) y transferencia.</div>
+	</footer>
+
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<script src="../js/supabase.js"></script>
+	<script src="js/tienda-common.js"></script>
+	<script>
+		document.addEventListener("DOMContentLoaded", function () {
+			Tienda.montarNav("");
+			Tienda.iconos();
+		});
+	</script>
+</body>
+</html>

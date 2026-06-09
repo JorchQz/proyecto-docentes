@@ -41,6 +41,9 @@
 	var MENU_ITEMS = [
 		{ key: "mi-cuenta", href: "mi-cuenta.html", label: "Mi cuenta" },
 		{ key: "mi-grupo", href: "mi-grupo.html", label: "Mi grupo" },
+		{ key: "evaluacion-diagnostica", href: "evaluacion_diagnostica.html", label: "Diagnóstico" },
+		{ key: "examen", href: "examen.html", label: "Exámenes" },
+		{ key: "marketplace", href: "marketplace.html", label: "Marketplace" },
 		{ key: "ajustes", href: "ajustes.html", label: "Ajustes" },
 	];
 

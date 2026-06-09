@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Admin — Planeaciones NEM</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+</head>
+<body class="bg-gray-50 min-h-screen pt-14 text-gray-800">
+
+	<div id="denegado" class="hidden max-w-md mx-auto mt-20 text-center">
+		<p class="mb-3 flex justify-center"><i data-lucide="lock" class="w-12 h-12 text-gray-400"></i></p>
+		<p class="text-lg font-semibold text-gray-800">Acceso restringido</p>
+		<p class="text-gray-500 text-sm">Esta sección es solo para administración.</p>
+		<a href="catalogo.html" class="inline-block mt-4 text-blue-700 underline font-medium">Ir al catálogo</a>
+	</div>
+
+	<div id="panel" class="hidden max-w-6xl mx-auto px-4 py-6 flex flex-col gap-6">
+		<header>
+			<h1 class="text-2xl md:text-3xl font-extrabold text-blue-900">Administración</h1>
+			<p class="text-gray-500 text-sm mt-1">Gestiona paquetes, órdenes y accesos.</p>
+		</header>
+
+		<!-- Tabs -->
+		<div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+			<div class="flex border-b">
+				<button data-tab="productos" class="tab-btn flex-1 py-4 text-sm font-semibold text-blue-700 border-b-2 border-blue-600 bg-blue-50">Paquetes</button>
+				<button data-tab="ordenes" class="tab-btn flex-1 py-4 text-sm font-semibold text-gray-500 border-b-2 border-transparent hover:bg-gray-50">Órdenes</button>
+				<button data-tab="acceso" class="tab-btn flex-1 py-4 text-sm font-semibold text-gray-500 border-b-2 border-transparent hover:bg-gray-50">Acceso manual</button>
+			</div>
+
+			<!-- Tab Paquetes -->
+			<div id="panelProductos" class="p-5 flex flex-col gap-4">
+				<div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+					Cada paquete agrupa los proyectos de un grado. <strong>Trimestre</strong> = 4 proyectos ·
+					<strong>Ciclo completo</strong> = 12 proyectos. Pega el <strong>ID de la carpeta de Drive</strong>
+					del paquete y pon precios. El ID está en el enlace de la carpeta, entre <code>/folders/</code> y <code>?</code>.
+				</div>
+				<div id="gridPaquetes" class="flex flex-col gap-6">
+					<p class="text-gray-400 text-sm">Cargando…</p>
+				</div>
+			</div>
+
+			<!-- Tab Órdenes -->
+			<div id="panelOrdenes" class="hidden p-5 flex flex-col gap-4">
+				<p class="text-sm text-gray-500">Confirma transferencias y revisa el estado de los pagos.</p>
+				<div id="listaOrdenes" class="overflow-x-auto">
+					<p class="text-gray-400 text-sm">Cargando órdenes...</p>
+				</div>
+			</div>
+
+			<!-- Tab Acceso manual -->
+			<div id="panelAcceso" class="hidden p-5 flex flex-col gap-4 max-w-lg">
+				<p class="text-sm text-gray-500">Otorga acceso a un usuario manualmente (por ejemplo, si pagó por fuera).</p>
+				<div>
+					<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Correo del usuario</label>
+					<input id="accesoEmail" type="email" placeholder="usuario@correo.com" class="w-full px-3 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+				</div>
+				<div>
+					<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Paquete</label>
+					<select id="accesoProducto" class="w-full px-3 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+				</div>
+				<div>
+					<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Versión</label>
+					<select id="accesoTipo" class="w-full px-3 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+						<option value="pdf">PDF</option>
+						<option value="editable">Editable (incluye PDF)</option>
+					</select>
+				</div>
+				<button id="otorgarBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition min-h-[44px]">Otorgar acceso</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal editor de paquete -->
+	<div id="modalProducto" class="hidden fixed inset-0 z-40 bg-black/50 flex items-start justify-center p-4 overflow-y-auto">
+		<div class="bg-white rounded-2xl shadow-xl w-full max-w-lg my-8">
+			<div class="bg-blue-900 text-white px-5 py-3 rounded-t-2xl flex items-center justify-between">
+				<h3 class="font-bold" id="modalTitulo">Configurar paquete</h3>
+				<button id="modalCerrar" class="text-blue-200 hover:text-white text-xl leading-none">&times;</button>
+			</div>
+			<div class="p-5 flex flex-col gap-4">
+				<div class="bg-gray-50 rounded-xl p-3 text-sm text-gray-600" id="resumenPaquete"></div>
+
+				<div>
+					<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">ID de la carpeta de Drive</label>
+					<input id="fDriveFolder" type="text" placeholder="Ej. 1A2b3C4d..." class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm font-mono">
+					<p class="text-xs text-gray-400 mt-1" id="ayudaCarpeta"></p>
+				</div>
+
+				<div class="grid grid-cols-2 gap-3">
+					<div>
+						<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Precio PDF (MXN)</label>
+						<input id="fPrecioPdf" type="number" min="0" step="0.01" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
+					</div>
+					<div>
+						<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Precio editable (MXN)</label>
+						<input id="fPrecioEditable" type="number" min="0" step="0.01" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
+					</div>
+				</div>
+
+				<div>
+					<label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Descripción (opcional)</label>
+					<textarea id="fDescripcion" rows="2" class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"></textarea>
+				</div>
+
+				<label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+					<input id="fActivo" type="checkbox" class="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+					Visible en el catálogo (activo)
+				</label>
+			</div>
+			<div class="border-t border-gray-100 p-4 flex justify-end gap-2">
+				<button id="modalCancelar" class="px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 min-h-[44px]">Cancelar</button>
+				<button id="modalGuardar" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl min-h-[44px]">Guardar</button>
+			</div>
+		</div>
+	</div>
+
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<script src="../js/supabase.js"></script>
+	<script src="js/tienda-common.js"></script>
+	<script src="js/admin.js"></script>
+</body>
+</html>

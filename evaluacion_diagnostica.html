@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>SaaS NEM - Evaluación Diagnóstica</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 pb-24 text-gray-800">
+
+	<!-- Selector de momento (sticky bajo la navbar) -->
+	<div id="momentoBar" class="fixed top-14 left-0 right-0 z-20 bg-blue-900 shadow-md px-4 py-2">
+		<div class="max-w-4xl mx-auto flex flex-col gap-2">
+			<div class="flex items-center gap-2 overflow-x-auto pb-1">
+				<span class="text-xs text-blue-200 font-medium shrink-0">Momento:</span>
+				<button type="button" data-momento="inicio_ciclo"
+					class="momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px]">
+					Inicio de ciclo
+				</button>
+				<button type="button" data-momento="trimestre_1"
+					class="momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px]">
+					Fin T1
+				</button>
+				<button type="button" data-momento="trimestre_2"
+					class="momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px]">
+					Fin T2
+				</button>
+				<button type="button" data-momento="trimestre_3"
+					class="momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px]">
+					Fin T3
+				</button>
+			</div>
+			<!-- Navegación por alumno -->
+			<div class="flex items-center justify-between gap-2">
+				<button id="btnAnterior" type="button"
+					class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold hover:bg-blue-600 active:bg-blue-800 transition-colors min-h-[36px] disabled:opacity-40 disabled:pointer-events-none">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+					Anterior
+				</button>
+				<div id="alumnoInfo" class="flex-1 text-center">
+					<p id="alumnoNombre" class="text-sm font-bold text-white leading-tight truncate">Cargando...</p>
+					<p id="alumnoSubtitulo" class="text-xs text-blue-200"></p>
+				</div>
+				<button id="btnSiguiente" type="button"
+					class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold hover:bg-blue-600 active:bg-blue-800 transition-colors min-h-[36px] disabled:opacity-40 disabled:pointer-events-none">
+					Siguiente
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Contenido principal -->
+	<div id="mainContent" class="max-w-4xl mx-auto px-4 flex flex-col gap-4">
+		<div id="diagMensaje" class="hidden rounded-lg px-4 py-3 text-sm font-medium"></div>
+		<div id="diagCuerpo">
+			<div class="text-center py-20 text-gray-400 text-base">Cargando evaluación...</div>
+		</div>
+	</div>
+
+	<!-- Footer sticky con progreso -->
+	<div class="fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-lg px-4 py-3">
+		<div class="max-w-4xl mx-auto flex flex-col gap-2">
+			<div class="flex items-center justify-between text-sm text-gray-600">
+				<span id="footerProgreso">0 de 0 alumnos evaluados</span>
+				<button id="btnFinalizar" type="button"
+					class="px-5 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">
+					Volver al Dashboard
+				</button>
+			</div>
+			<div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+				<div id="footerBarra" class="h-2 rounded-full bg-emerald-500 transition-all duration-300" style="width:0%"></div>
+			</div>
+		</div>
+	</div>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/navbar.js"></script>
+	<script src="js/evaluacion_diagnostica.js"></script>
+</body>
+</html>

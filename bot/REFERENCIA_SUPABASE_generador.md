@@ -1,6 +1,10 @@
 # Referencia Supabase — Generador de Planeaciones NEM
 Proyecto ID: `cluvaxxqvhtxxiwctpnl` | Ciclo activo: `2025-2026`
 
+> Fuente de verdad conceptual del producto: [`../docs/CONTEXTO.md`](../docs/CONTEXTO.md).
+> Este archivo es la referencia **operativa** del bot (esquema, consultas, guardado). La tabla
+> de momentos de abajo refleja `ltg_metodologias_estructuras`; ante cualquier duda, manda la BD.
+
 > Verificado contra el esquema real. `dosificacion_sesiones` está **alineada al shape nativo
 > de `sesiones` del SaaS** (ver `supabase/dosificacion_sesiones_align.sql`), para que importar
 > un proyecto comprado al perfil de un maestro sea una copia casi 1:1, sin pérdida de datos.
@@ -224,6 +228,18 @@ WHERE li.grado = [GRADO]
   AND li.[cf_columna] = true
 ORDER BY li.libro, li.pagina;
 ```
+
+### 4B. Proyectos del libro de texto (libro "Proyectos …") para citar
+```sql
+SELECT pr.nombre_proyecto, pr.libro, pr.pagina, pr.link
+FROM ltg_proyectos_referencia pr
+WHERE pr.grado = [GRADO]
+  AND pr.[cf_columna] = true
+ORDER BY pr.libro, pr.pagina;
+```
+> `li.link` y `pr.link` ya apuntan a la **página exacta** del libro digital de Conaliteg
+> (ej. `https://libros.conaliteg.gob.mx/2025/P1MLA.htm#page/86`). Úsalos tal cual como
+> hipervínculo en la planeación y guárdalos en `sesion_links_ltg.link_libro`.
 
 ### 5. Ver qué proyectos faltan por generar
 ```sql

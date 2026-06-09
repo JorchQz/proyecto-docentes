@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>SaaS NEM - Evaluación Formativa</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 pb-20 text-gray-800">
+
+	<!-- Header fijo de la sesión (se rellena con JS) -->
+	<div id="evalHeader" class="fixed top-14 left-0 right-0 z-20 bg-blue-900 text-white shadow-md px-4 py-3">
+		<div class="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+			<div class="min-w-0">
+				<h1 id="headerTitulo" class="text-base font-bold leading-tight truncate">Cargando...</h1>
+				<div class="flex items-center gap-2 mt-0.5">
+					<span id="headerMomento" class="inline-block text-xs bg-blue-700 rounded-full px-2 py-0.5 font-medium"></span>
+					<span id="headerSesion" class="text-xs text-blue-200"></span>
+				</div>
+			</div>
+			<div id="headerContadores" class="flex items-center gap-3 shrink-0 text-sm font-semibold mt-1 sm:mt-0">
+				<span class="flex items-center gap-1">
+					<span class="inline-block w-3 h-3 rounded-full bg-emerald-400"></span>
+					<span id="cntLogrado">0</span>
+				</span>
+				<span class="flex items-center gap-1">
+					<span class="inline-block w-3 h-3 rounded-full bg-amber-300"></span>
+					<span id="cntEnProceso">0</span>
+				</span>
+				<span class="flex items-center gap-1">
+					<span class="inline-block w-3 h-3 rounded-full bg-red-400"></span>
+					<span id="cntRequiereApoyo">0</span>
+				</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Contenido principal -->
+	<div class="max-w-4xl mx-auto px-4 pt-20 flex flex-col gap-4">
+		<div id="evalMensaje" class="hidden rounded-lg px-4 py-3 text-sm font-medium"></div>
+		<div id="evalLista" class="flex flex-col gap-4">
+			<div class="text-center py-20 text-gray-400 text-base">Cargando evaluación...</div>
+		</div>
+	</div>
+
+	<!-- Footer sticky con progreso -->
+	<div id="evalFooter" class="fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-lg px-4 py-3">
+		<div class="max-w-4xl mx-auto flex flex-col gap-2">
+			<div class="flex items-center justify-between text-sm text-gray-600">
+				<span id="footerProgreso">0 de 0 alumnos evaluados</span>
+				<button id="btnFinalizar" type="button"
+					class="px-5 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">
+					Finalizar y volver al Dashboard
+				</button>
+			</div>
+			<div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+				<div id="footerBarra" class="h-2 rounded-full bg-emerald-500 transition-all duration-300" style="width:0%"></div>
+			</div>
+		</div>
+	</div>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/navbar.js"></script>
+	<script src="js/evaluacion_formativa.js"></script>
+</body>
+</html>

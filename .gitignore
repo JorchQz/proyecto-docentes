@@ -1,0 +1,13 @@
+# Material de referencia (binarios pesados: PDFs, xlsx) — solo en disco local
+docs/referencia/
+
+# Configuración local de Claude Code (no compartir)
+.claude/settings.local.json
+
+# Archivos del sistema operativo
+Thumbs.db
+.DS_Store
+
+# Logs y temporales
+*.log
+*.tmp

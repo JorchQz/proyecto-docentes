@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>SaaS NEM - Exámenes</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		@media print {
+			#app-navbar, #examenHeader, #examenTabs, #examenFooter,
+			.no-print { display: none !important; }
+			body { padding: 0 !important; background: #fff !important; }
+			.print-area { box-shadow: none !important; border: 0 !important; }
+		}
+	</style>
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 pb-24 text-gray-800">
+
+	<!-- Header de examen (se rellena con JS) -->
+	<div id="examenHeader" class="fixed top-14 left-0 right-0 z-20 bg-blue-900 text-white shadow-md px-4 py-3">
+		<div class="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+			<div class="min-w-0">
+				<h1 id="headerTitulo" class="text-base font-bold leading-tight truncate">Exámenes</h1>
+				<div class="flex flex-wrap items-center gap-2 mt-0.5">
+					<span id="headerMeta" class="text-xs text-blue-200"></span>
+				</div>
+			</div>
+			<div id="headerEstado" class="shrink-0 text-sm font-semibold mt-1 sm:mt-0"></div>
+		</div>
+	</div>
+
+	<!-- Pestañas (solo en vista de un examen) -->
+	<div id="examenTabs" class="hidden fixed left-0 right-0 z-10 bg-white border-b border-gray-200 shadow-sm px-4">
+		<div class="max-w-4xl mx-auto flex gap-1 py-2">
+			<button id="tabVer" type="button"
+				class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] bg-blue-800 text-white">
+				Ver examen
+			</button>
+			<button id="tabCalificar" type="button"
+				class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] bg-gray-100 text-gray-600 hover:bg-gray-200">
+				Calificar
+			</button>
+		</div>
+	</div>
+
+	<!-- Contenido principal -->
+	<div id="examenContenido" class="max-w-4xl mx-auto px-4 pt-20 flex flex-col gap-4">
+		<div id="examenMensaje" class="hidden rounded-lg px-4 py-3 text-sm font-medium"></div>
+		<div id="examenMain" class="flex flex-col gap-4">
+			<div class="text-center py-20 text-gray-400 text-base">Cargando...</div>
+		</div>
+	</div>
+
+	<!-- Footer sticky (solo en pestaña Calificar) -->
+	<div id="examenFooter" class="hidden fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-lg px-4 py-3">
+		<div class="max-w-4xl mx-auto flex flex-col gap-2">
+			<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+				<div id="footerCF" class="flex flex-wrap items-center gap-2 text-xs font-semibold"></div>
+				<div class="flex items-center gap-3 shrink-0">
+					<span id="footerProgreso" class="text-xs text-gray-500">0 de 0 alumnos</span>
+					<button id="btnSiguienteAlumno" type="button"
+						class="px-4 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">
+						Siguiente alumno →
+					</button>
+				</div>
+			</div>
+			<div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+				<div id="footerBarra" class="h-2 rounded-full bg-emerald-500 transition-all duration-300" style="width:0%"></div>
+			</div>
+		</div>
+	</div>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/navbar.js"></script>
+	<script src="js/examen.js"></script>
+</body>
+</html>

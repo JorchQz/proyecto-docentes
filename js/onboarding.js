@@ -28,6 +28,7 @@
 
 	var cicloInicioSelect = document.getElementById("cicloInicio");
 	var cicloFinSelect = document.getElementById("cicloFin");
+	var trimestreActualSelect = document.getElementById("trimestreActual");
 
 	var currentGroupId = null;
 	var currentGroupType = "";
@@ -141,6 +142,8 @@
 		setLoading(groupForm.querySelector("button"), true);
 
 		try {
+			var trimestre = parseInt(trimestreActualSelect.value, 10) || 1;
+
 			var payload = {
 				nombre: groupName,
 				tipo_organizacion: groupType,
@@ -148,6 +151,7 @@
 				escuela: groupSchool || null,
 				ciclo_escolar: cicloInicio + "-" + cicloFin,
 				es_multigrado: gradeList.length > 1,
+				trimestre_actual: trimestre,
 			};
 
 			var result;
@@ -306,6 +310,17 @@
 			if (insertResult.error) {
 				throw insertResult.error;
 			}
+
+			// Crear ajustes con ponderación por defecto (silencioso, no bloquea si falla)
+			await window.sb.from("maestro_ajustes").upsert({
+				maestro_id: userId,
+				peso_tareas: 25,
+				peso_trabajos: 25,
+				peso_asistencia: 10,
+				peso_participacion: 5,
+				peso_conducta: 5,
+				peso_examen: 30,
+			}, { onConflict: "maestro_id", ignoreDuplicates: true });
 
 			showMessage(
 				"studentsMessage",

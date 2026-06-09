@@ -16,7 +16,24 @@
       "Bash(git push *)",
       "Read(//c/Users/jorge/.claude/projects/c--proyecto-docentes/f4eccb9f-47cf-46d9-8dbf-8281010dcfce/tool-results/**)",
       "Bash(python -c ' *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(node --check c:\\\\proyecto-docentes\\\\js\\\\dashboard.js)",
+      "Bash(node --check \"c:/proyecto-docentes/js/dashboard.js\")",
+      "Bash(Select-String -Path \"c:\\\\proyecto-docentes\\\\planeacion.html\" -Pattern \"filtroTrimestre|filtroEstado|bannerActivo|modalInicioProyecto|bg-blue-900|bg-emerald\")",
+      "Bash(Select-Object -First 20)",
+      "Bash(Get-Item \"c:\\\\proyecto-docentes\\\\evaluacion_diagnostica.html\", \"c:\\\\proyecto-docentes\\\\js\\\\evaluacion_diagnostica.js\")",
+      "Bash(Select-Object Name, Length)",
+      "Bash(node --check \"c:\\\\proyecto-docentes\\\\js\\\\examen.js\")",
+      "Bash(node --check c:\\\\proyecto-docentes\\\\js\\\\reportes.js)",
+      "Bash(node --check \"c:/proyecto-docentes/js/reportes.js\")",
+      "Bash(node --check c:\\\\proyecto-docentes\\\\js\\\\importador.js)",
+      "Bash(node --check c:\\\\proyecto-docentes\\\\js\\\\marketplace.js)",
+      "Bash(node --check \"c:/proyecto-docentes/js/importador.js\")",
+      "Bash(node --check \"c:/proyecto-docentes/js/marketplace.js\")",
+      "mcp__claude_ai_Supabase__deploy_edge_function",
+      "mcp__claude_ai_Supabase__list_edge_functions"
     ]
   }
 }
