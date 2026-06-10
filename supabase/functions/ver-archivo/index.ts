@@ -105,7 +105,12 @@ Deno.serve(async (req: Request) => {
       const nombre =
         (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.nombre_docente)) ||
         user.email || "Comprador";
-      const texto = textoPie(String(nombre), user.email || "");
+      const { data: perfil } = await admin
+        .from("perfiles")
+        .select("cct")
+        .eq("id", user.id)
+        .maybeSingle();
+      const texto = textoPie(String(nombre), perfil?.cct || null);
       if (esPdf) { try { bytes = await aplicarPiePdf(bytes, texto); } catch (_) { /* original */ } }
       else if (esDocx) { try { bytes = await aplicarPieDocx(bytes, texto); } catch (_) { /* original */ } }
     }

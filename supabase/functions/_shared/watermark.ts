@@ -8,8 +8,9 @@
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { unzip, zip, strToU8, strFromU8 } from "https://esm.sh/fflate@0.8.2";
 
-export function textoPie(nombre: string, email: string): string {
-  return `Creado por Jissez para ${nombre} (${email}) · Uso docente exclusivo · Prohibida su distribución o reventa`;
+export function textoPie(nombre: string, cct?: string | null): string {
+  const id = cct ? `${nombre} · CCT ${cct}` : nombre;
+  return `Creado por Jissez para ${id} · Uso docente exclusivo · Prohibida su distribución o reventa`;
 }
 
 // ── PDF ─────────────────────────────────────────────────────────────────────

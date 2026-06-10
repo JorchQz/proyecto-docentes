@@ -4,6 +4,8 @@ document.addEventListener("DOMContentLoaded", function () {
 	var nombreInput = document.getElementById("nombre");
 	var escuelaField = document.getElementById("escuelaField");
 	var escuelaInput = document.getElementById("escuela");
+	var cctField = document.getElementById("cctField");
+	var cctInput = document.getElementById("cct");
 	var emailInput = document.getElementById("email");
 	var passwordInput = document.getElementById("password");
 	var submitBtn = form.querySelector("button[type='submit']");
@@ -55,6 +57,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		e.preventDefault();
 		var nombre = (nombreInput.value || "").trim();
 		var escuela = (escuelaInput.value || "").trim();
+		var cct = (cctInput.value || "").trim().toUpperCase();
 		var email = (emailInput.value || "").trim();
 		var password = passwordInput.value;
 
@@ -62,9 +65,23 @@ document.addEventListener("DOMContentLoaded", function () {
 			showMessage("error", "Ingresa correo y contraseña.");
 			return;
 		}
-		if (mode === "register" && (!nombre || nombre.length < 3)) {
-			showMessage("error", "Ingresa tu nombre completo (mínimo 3 caracteres).");
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+			showMessage("error", "Ingresa un correo electrónico válido.");
 			return;
+		}
+		if (mode === "register") {
+			if (!nombre || nombre.length < 3) {
+				showMessage("error", "Ingresa tu nombre completo (mínimo 3 caracteres).");
+				return;
+			}
+			if (password.length < 6) {
+				showMessage("error", "La contraseña debe tener al menos 6 caracteres.");
+				return;
+			}
+			if (cct && !/^[A-Z0-9]{10}$/.test(cct)) {
+				showMessage("error", "El CCT debe tener 10 caracteres (letras y números).");
+				return;
+			}
 		}
 
 		setLoading(true);
@@ -72,7 +89,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 		try {
 			if (mode === "register") {
-				await registrar(email, password, nombre, escuela);
+				await registrar(email, password, nombre, escuela, cct);
 			} else {
 				await ingresar(email, password);
 			}
@@ -82,7 +99,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		}
 	});
 
-	async function registrar(email, password, nombre, escuela) {
+	async function registrar(email, password, nombre, escuela, cct) {
 		var res = await window.sb.auth.signUp({
 			email: email,
 			password: password,
@@ -102,7 +119,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		var userId = res.data.session.user.id;
 		// Crear perfil (activo_saas=false por default → solo marketplace).
 		await window.sb.from("perfiles").upsert(
-			{ id: userId, nombre_completo: nombre, escuela: escuela || null },
+			{ id: userId, nombre_completo: nombre, escuela: escuela || null, cct: cct || null },
 			{ onConflict: "id" }
 		);
 		location.href = await destino(userId);
@@ -117,6 +134,7 @@ document.addEventListener("DOMContentLoaded", function () {
 	function updateModeUI() {
 		if (mode === "register") {
 			nombreField.classList.remove("hidden");
+			cctField.classList.remove("hidden");
 			escuelaField.classList.remove("hidden");
 			nombreInput.required = true;
 			submitBtn.textContent = "Crear cuenta";
@@ -125,6 +143,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			document.querySelector("#toggleLink").parentNode.firstChild.textContent = "¿Ya tienes cuenta? ";
 		} else {
 			nombreField.classList.add("hidden");
+			cctField.classList.add("hidden");
 			escuelaField.classList.add("hidden");
 			nombreInput.required = false;
 			submitBtn.textContent = "Iniciar sesión";
