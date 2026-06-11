@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		session = await Tienda.requireSession();
 		if (!session) { return; }
 	}
+	Tienda.montarFooter();
 
 	var esc = Tienda.esc;
 	var estadoEl = document.getElementById("estado");

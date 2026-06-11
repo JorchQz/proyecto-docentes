@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) { return; }
 
 	await Tienda.montarNav("catalogo");
+	Tienda.montarFooter();
 
 	var esc = Tienda.esc;
 	var money = Tienda.formatMoney;

@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) { return; }
 
 	var session = await Tienda.montarNav("");
+	Tienda.montarFooter();
 	var esc = Tienda.esc;
 	var money = Tienda.formatMoney;
 
@@ -67,6 +68,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	estadoEl.classList.add("hidden");
 	contenidoEl.classList.remove("hidden");
+	var infoExtra = document.getElementById("infoExtra");
+	if (infoExtra) { infoExtra.classList.remove("hidden"); Tienda.iconos(); }
 
 	var ctaBtn = document.getElementById("ctaBtn");
 	if (ctaBtn) {

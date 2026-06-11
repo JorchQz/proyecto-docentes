@@ -120,58 +120,113 @@
 		var admin = esAdmin(session);
 		var nombre = nombreUsuario(session);
 
-		function navLink(href, label, key) {
-			var act = activo === key;
-			var cls = act
-				? "bg-white/15 text-white font-semibold"
-				: "text-white/85 hover:bg-white/10 hover:text-white";
-			return '<a href="' + href + '" class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] transition ' + cls + '">' + label + '</a>';
+		// Enlaces de navegación (centro). Visibles en desktop y dentro del menú móvil.
+		function navLinks(extraCls) {
+			var items = [{ href: "catalogo.html", label: "Catálogo", key: "catalogo" }];
+			if (session) { items.push({ href: "mis-compras.html", label: "Mis compras", key: "mis-compras" }); }
+			if (admin) { items.push({ href: "admin.html", label: "Admin", key: "admin" }); }
+			return items.map(function (it) {
+				var act = activo === it.key;
+				var cls = act
+					? "bg-white/15 text-white font-semibold"
+					: "text-white/85 hover:bg-white/10 hover:text-white";
+				return '<a href="' + it.href + '" class="' + (extraCls || "inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] transition") + ' ' + cls + '">' + it.label + '</a>';
+			}).join("");
 		}
 
+		// Lado derecho desktop: nombre + Salir, o Iniciar sesión.
 		var derecha = "";
 		if (session) {
-			derecha += navLink("mis-compras.html", "Mis compras", "mis-compras");
-			if (admin) { derecha += navLink("admin.html", "Admin", "admin"); }
-			if (nombre) { derecha += '<span class="hidden sm:inline text-white/60 text-[13px] px-2 truncate max-w-[130px]">' + esc(nombre) + '</span>'; }
-			derecha += '<button id="tiendaLogoutBtn" class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
+			if (nombre) { derecha += '<span class="hidden lg:inline text-white/60 text-[13px] px-2 truncate max-w-[150px]">' + esc(nombre) + '</span>'; }
+			derecha += '<button data-logout class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
 		} else {
-			derecha += '<a href="login.html" class="hidden sm:inline-flex items-center h-11 px-4 rounded-xl text-white/90 font-semibold hover:bg-white/10 transition text-[15px]">Iniciar sesión</a>';
+			derecha += '<a href="login.html" class="inline-flex items-center h-11 px-4 sm:px-5 rounded-xl bg-action hover:bg-action-dark text-white font-bold text-[15px] transition" style="background-color:#059669;box-shadow:0 8px 24px -12px rgba(5,150,105,.9)">Iniciar sesión</a>';
 		}
 
 		var html =
-			'<header class="sticky top-0 z-50" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,4px 4px;border-bottom:1px solid rgba(255,255,255,.1)">' +
-			'<nav class="max-w-[1180px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">' +
-			'<div class="flex items-center gap-4 min-w-0">' +
+			'<header class="sticky top-0 z-50" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(circle at 86% 78%,rgba(255,255,255,.06),transparent 42%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,auto,4px 4px;border-bottom:1px solid rgba(255,255,255,.1)">' +
+			'<nav class="max-w-[1180px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">' +
+			// Logo
 			'<a href="index.html" class="shrink-0 flex items-center gap-2">' +
 			'<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline\'" />' +
 			'<span style="display:none;color:#fff;font-weight:800;font-size:17px;letter-spacing:-.01em">Jissez</span>' +
 			'</a>' +
-			'<div class="hidden md:flex items-center gap-1">' +
-			navLink("catalogo.html", "Catálogo", "catalogo") +
+			// Enlaces centro (solo desktop)
+			'<div class="hidden md:flex items-center gap-1 min-w-0">' +
+			navLinks() +
 			'</div>' +
-			'</div>' +
-			'<div class="flex items-center gap-1 shrink-0">' +
-			derecha +
+			// Lado derecho
+			'<div class="flex items-center gap-2 shrink-0">' +
+			'<div class="hidden md:flex items-center gap-1">' + derecha + '</div>' +
+			// Botón hamburguesa (solo móvil)
+			'<button data-menu-toggle class="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-xl text-white hover:bg-white/10 transition" aria-label="Menú" aria-expanded="false">' +
+			'<i data-lucide="menu" style="width:24px;height:24px"></i>' +
+			'</button>' +
 			'</div>' +
 			'</nav>' +
+			// Menú móvil desplegable
+			'<div data-mobile-menu class="hidden md:hidden border-t border-white/10" style="background-color:#16276b">' +
+			'<div class="px-4 py-3 flex flex-col text-white/90 gap-0.5">' +
+			navLinks("flex items-center h-12 px-3 rounded-lg text-[15px] transition") +
+			(session
+				? (nombre ? '<span class="px-3 pt-3 mt-1 border-t border-white/10 text-white/55 text-[13px] truncate">' + esc(nombre) + '</span>' : '') +
+					'<button data-logout class="flex items-center h-12 px-3 rounded-lg text-[15px] text-white/85 hover:bg-white/10 transition text-left">Salir</button>'
+				: '<a href="login.html" class="flex items-center justify-center h-12 mt-2 rounded-xl text-white font-bold text-[15px]" style="background-color:#059669">Iniciar sesión</a>') +
+			'</div>' +
+			'</div>' +
 			'</header>';
 
 		var wrapper = document.createElement("div");
 		wrapper.innerHTML = html;
-		document.body.insertBefore(wrapper.firstChild, document.body.firstChild);
+		var header = wrapper.firstChild;
+		document.body.insertBefore(header, document.body.firstChild);
 		iconos();
 
-		var logoutBtn = document.getElementById("tiendaLogoutBtn");
-		if (logoutBtn) {
-			logoutBtn.addEventListener("click", async function () {
-				logoutBtn.disabled = true;
-				logoutBtn.textContent = "Saliendo...";
-				if (window.sb) { await window.sb.auth.signOut(); }
-				location.href = "index.html";
+		// Toggle del menú móvil.
+		var toggle = header.querySelector("[data-menu-toggle]");
+		var menu = header.querySelector("[data-mobile-menu]");
+		if (toggle && menu) {
+			toggle.addEventListener("click", function () {
+				var abierto = !menu.classList.contains("hidden");
+				menu.classList.toggle("hidden", abierto);
+				toggle.setAttribute("aria-expanded", String(!abierto));
+				toggle.innerHTML = '<i data-lucide="' + (abierto ? "menu" : "x") + '" style="width:24px;height:24px"></i>';
+				iconos();
 			});
 		}
 
+		// Cerrar sesión (botón desktop y móvil).
+		header.querySelectorAll("[data-logout]").forEach(function (btn) {
+			btn.addEventListener("click", async function () {
+				header.querySelectorAll("[data-logout]").forEach(function (b) { b.disabled = true; b.textContent = "Saliendo..."; });
+				if (window.sb) { await window.sb.auth.signOut(); }
+				location.href = "index.html";
+			});
+		});
+
 		return session;
+	}
+
+	// Footer claro compartido para páginas internas. Se agrega al final del body.
+	function montarFooter() {
+		if (document.querySelector("footer[data-tienda-footer]")) { return; }
+		var anio = new Date().getFullYear();
+		var html =
+			'<footer data-tienda-footer class="mt-12 border-t border-line bg-white">' +
+			'<div class="max-w-[1180px] mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-mute">' +
+			'<img src="assets/jissez-wordmark-blue.png" alt="Jissez" style="height:24px;width:auto" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline\'" />' +
+			'<span style="display:none;color:#1e3a8a;font-weight:800">Jissez</span>' +
+			'<p>© ' + anio + ' Jissez · Planeaciones NEM</p>' +
+			'<div class="flex gap-5">' +
+			'<a href="index.html" class="hover:text-ink transition">Inicio</a>' +
+			'<a href="catalogo.html" class="hover:text-ink transition">Catálogo</a>' +
+			'<a href="mailto:jorgequezadarm@gmail.com" class="hover:text-ink transition">Contacto</a>' +
+			'</div>' +
+			'</div>' +
+			'</footer>';
+		var wrapper = document.createElement("div");
+		wrapper.innerHTML = html;
+		document.body.appendChild(wrapper.firstChild);
 	}
 
 	window.Tienda = {
@@ -190,5 +245,6 @@
 		nombreUsuario: nombreUsuario,
 		descargarArchivo: descargarArchivo,
 		montarNav: montarNav,
+		montarFooter: montarFooter,
 	};
 })();

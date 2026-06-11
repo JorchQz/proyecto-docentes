@@ -36,7 +36,7 @@
 	</script>
 	<style>
 		html { scroll-behavior: smooth; }
-		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; }
+		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 		::selection { background: #1e3a8a; color: #fff; }
 
 		.board-tex {
@@ -167,8 +167,8 @@
 			<span class="text-sm text-mute leading-tight">alineado a los<br />programas NEM</span>
 		</div>
 		<div class="hidden md:block w-px h-9 bg-line"></div>
-		<div class="flex items-center gap-3 text-mute">
-			<span class="text-sm font-semibold mr-1">Paga con</span>
+		<div class="flex flex-wrap items-center justify-center gap-2.5 text-mute">
+			<span class="text-sm font-semibold mr-1 w-full text-center md:w-auto">Paga con</span>
 			<span class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-line text-ink text-[13px] font-semibold"><i data-lucide="credit-card" class="w-4 h-4 text-board"></i> Mercado Pago</span>
 			<span class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-line text-ink text-[13px] font-semibold"><i data-lucide="landmark" class="w-4 h-4 text-board"></i> SPEI</span>
 			<span class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-line text-ink text-[13px] font-semibold"><i data-lucide="store" class="w-4 h-4 text-board"></i> OXXO</span>
