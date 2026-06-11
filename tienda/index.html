@@ -36,7 +36,7 @@
 	</script>
 	<style>
 		html { scroll-behavior: smooth; }
-		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; overflow-x: clip; }
 		::selection { background: #1e3a8a; color: #fff; }
 
 		.board-tex {
@@ -48,13 +48,18 @@
 			background-size: auto, auto, 4px 4px;
 		}
 
-		.chalk-u { position: relative; white-space: nowrap; }
-		.chalk-u::after {
-			content: ""; position: absolute; left: -1.5%; right: -1.5%; bottom: -0.1em;
-			height: 0.16em; border-radius: 99px; background: var(--accent, #f2cf6b);
-			opacity: .96;
+		/* Subrayado de gis: usa background-gradient (no ::after) para que el texto
+		   pueda envolver en pantallas estrechas sin desbordar, subrayando cada línea. */
+		.chalk-u {
+			background-image: linear-gradient(var(--accent, #f2cf6b), var(--accent, #f2cf6b));
+			background-repeat: no-repeat;
+			background-position: 0 100%;
+			background-size: 100% 0.16em;
+			padding-bottom: 0.05em;
+			-webkit-box-decoration-break: clone;
+			box-decoration-break: clone;
 		}
-		.chalk-u.thin::after { height: 0.1em; }
+		.chalk-u.thin { background-size: 100% 0.11em; }
 
 		.ph {
 			background-color: #f1f0ea;
@@ -256,7 +261,7 @@
 
 <!-- MULTIGRADO -->
 <section id="multigrado" class="bg-white">
-	<div class="max-w-content mx-auto px-4 sm:px-6 py-20 lg:py-24 grid lg:grid-cols-2 gap-12 items-center">
+	<div class="max-w-content mx-auto px-4 sm:px-6 py-20 lg:py-24 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 		<div class="reveal order-2 lg:order-1 relative">
 			<div class="relative bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center gap-2 mb-4">
@@ -286,7 +291,7 @@
 			</h2>
 			<p class="mt-4 text-lg text-mute">Dar clases en grupos multigrado es uno de los retos más exigentes. Por eso diseñamos paquetes específicos: un proyecto común para todo el grupo, con actividades y materiales diferenciados para cada grado.</p>
 			<ul class="mt-6 space-y-3">
-				<li class="flex items-start gap-3 text-ink"><i data-lucide="check-circle-2" class="w-5 h-5 text-action mt-0.5 shrink-0"></i> Modalidad <strong>bidocente</strong> (2 grados) y <strong>tridocente</strong> (3 grados).</li>
+				<li class="flex items-start gap-3 text-ink"><i data-lucide="check-circle-2" class="w-5 h-5 text-action mt-0.5 shrink-0"></i> <span>Modalidad <strong>bidocente</strong> (2 grados) y <strong>tridocente</strong> (3 grados).</span></li>
 				<li class="flex items-start gap-3 text-ink"><i data-lucide="check-circle-2" class="w-5 h-5 text-action mt-0.5 shrink-0"></i> Un mismo momento metodológico para todo el grupo.</li>
 				<li class="flex items-start gap-3 text-ink"><i data-lucide="check-circle-2" class="w-5 h-5 text-action mt-0.5 shrink-0"></i> Anexos y exámenes por cada grado del paquete.</li>
 			</ul>
