@@ -65,12 +65,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		t.addEventListener("click", function () {
 			var tab = t.getAttribute("data-tab");
 			tabs.forEach(function (x) {
-				var on = x === t;
-				x.classList.toggle("text-blue-700", on);
-				x.classList.toggle("border-blue-600", on);
-				x.classList.toggle("bg-blue-50", on);
-				x.classList.toggle("text-gray-500", !on);
-				x.classList.toggle("border-transparent", !on);
+				if (x === t) { x.classList.add("active"); } else { x.classList.remove("active"); }
 			});
 			Object.keys(paneles).forEach(function (k) {
 				paneles[k].classList.toggle("hidden", k !== tab);
@@ -100,14 +95,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var html = "";
 
 		// Organización completa: 6 grados.
-		html += '<div><h2 class="text-lg font-extrabold text-blue-900 mb-3">Organización completa</h2>';
+		html += '<div><h2 class="text-lg font-extrabold mb-3" style="color:#1e3a8a">Organización completa</h2>';
 		for (var g = 1; g <= 6; g++) {
 			html += bloqueFila(g + "° grado", "completa", String(g), g, "");
 		}
 		html += "</div>";
 
 		// Multigrado: 5 combinaciones.
-		html += '<div><h2 class="text-lg font-extrabold text-blue-900 mb-3 mt-2">Multigrado</h2>';
+		html += '<div><h2 class="text-lg font-extrabold mb-3 mt-2" style="color:#1e3a8a">Multigrado</h2>';
 		COMBOS.forEach(function (c) {
 			var sub = c.modalidad === "bidocente" ? "Bidocente" : "Tridocente";
 			html += bloqueFila("Multigrado " + comboDisplay(c.combo) + " · " + sub, "multigrado", c.combo, c.grado, c.combo);
@@ -137,30 +132,30 @@ document.addEventListener("DOMContentLoaded", async function () {
 		celdas += celda(org, llave, "trimestre", 3, "Trimestre 3", "4 proyectos");
 		celdas += celda(org, llave, "ciclo", null, "Ciclo completo", "12 proyectos");
 		return (
-			'<div class="mb-4"><h3 class="font-bold text-gray-700 mb-2 text-sm">' + esc(titulo) + "</h3>" +
+			'<div class="mb-4"><h3 class="font-bold mb-2 text-sm" style="color:#5b6473">' + esc(titulo) + "</h3>" +
 			'<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">' + celdas + "</div></div>"
 		);
 	}
 
 	function celda(org, llave, tipo, trimestre, etiqueta, sub) {
 		var prod = porClave[claveDe(org, llave, tipo, trimestre)];
-		var estado, borde;
+		var estadoHtml, borderColor;
 		if (!prod) {
-			estado = '<span class="text-[11px] font-semibold text-gray-400">Sin configurar</span>';
-			borde = "border-gray-200";
+			estadoHtml = '<span class="text-[11px] font-semibold" style="color:#5b6473">Sin configurar</span>';
+			borderColor = "#e7e6df";
 		} else if (prod.activo) {
-			estado = '<span class="text-[11px] font-semibold text-emerald-700">Publicado · ' + money(prod.precio_pdf) + "</span>";
-			borde = "border-emerald-300";
+			estadoHtml = '<span class="text-[11px] font-semibold" style="color:#047a55">Publicado · ' + money(prod.precio_pdf) + "</span>";
+			borderColor = "#6ee7b7";
 		} else {
-			estado = '<span class="text-[11px] font-semibold text-amber-700">Oculto</span>';
-			borde = "border-amber-300";
+			estadoHtml = '<span class="text-[11px] font-semibold" style="color:#b45309">Oculto</span>';
+			borderColor = "#fcd34d";
 		}
 		return (
 			'<button data-cfg="1" data-org="' + esc(org) + '" data-llave="' + esc(llave) + '" data-tipo="' + tipo + '" data-tri="' + trimestre + '" ' +
-			'class="text-left bg-white border ' + borde + ' rounded-xl p-3 hover:shadow-md transition min-h-[78px] flex flex-col justify-between">' +
-			'<div><p class="font-semibold text-gray-800 text-sm">' + etiqueta + "</p>" +
-			'<p class="text-[11px] text-gray-400">' + sub + "</p></div>" +
-			'<div class="mt-2">' + estado + "</div></button>"
+			'class="text-left bg-white rounded-xl p-3 hover:shadow-md transition min-h-[78px] flex flex-col justify-between" style="border:1px solid ' + borderColor + '">' +
+			'<div><p class="font-semibold text-sm" style="color:#1c2434">' + etiqueta + "</p>" +
+			'<p class="text-[11px]" style="color:#5b6473">' + sub + "</p></div>" +
+			'<div class="mt-2">' + estadoHtml + "</div></button>"
 		);
 	}
 
@@ -263,36 +258,36 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var listaOrdenesEl = document.getElementById("listaOrdenes");
 
 	async function cargarOrdenes() {
-		listaOrdenesEl.innerHTML = '<p class="text-gray-400 text-sm">Cargando órdenes...</p>';
+		listaOrdenesEl.innerHTML = '<p class="text-sm" style="color:#5b6473">Cargando órdenes...</p>';
 		var res = await window.sb.rpc("admin_listar_ordenes");
 		if (res.error) {
-			listaOrdenesEl.innerHTML = '<p class="text-red-500 text-sm">Error al cargar órdenes: ' + esc(res.error.message) + "</p>";
+			listaOrdenesEl.innerHTML = '<p class="text-sm" style="color:#b91c1c">Error al cargar órdenes: ' + esc(res.error.message) + "</p>";
 			return;
 		}
 		var ordenes = res.data || [];
 		if (!ordenes.length) {
-			listaOrdenesEl.innerHTML = '<p class="text-gray-400 text-sm">Aún no hay órdenes.</p>';
+			listaOrdenesEl.innerHTML = '<p class="text-sm" style="color:#5b6473">Aún no hay órdenes.</p>';
 			return;
 		}
 		var rows = ordenes.map(function (o) {
 			var fecha = o.created_at ? new Date(o.created_at).toLocaleDateString("es-MX") : "";
 			var accion = o.estado === "pendiente"
-				? '<button data-confirmar="' + esc(o.id) + '" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg min-h-[40px]">Confirmar pago</button>'
+				? '<button data-confirmar="' + esc(o.id) + '" class="text-xs font-semibold px-3 py-2 rounded-lg min-h-[40px] text-white" style="background:#059669">Confirmar pago</button>'
 				: "—";
 			return (
-				"<tr class='border-b border-gray-100'>" +
-				"<td class='py-2 pr-3 text-xs text-gray-500'>" + esc(fecha) + "</td>" +
-				"<td class='py-2 pr-3 text-sm text-gray-700'>" + esc(o.comprador_email || o.user_id) + "</td>" +
-				"<td class='py-2 pr-3 text-sm text-gray-700'>" + esc(o.detalle || "—") + "</td>" +
-				"<td class='py-2 pr-3 text-sm font-semibold text-gray-800'>" + money(o.monto_total) + "</td>" +
-				"<td class='py-2 pr-3 text-xs text-gray-500'>" + esc(o.metodo_pago || "") + "</td>" +
+				'<tr style="border-bottom:1px solid #e7e6df">' +
+				'<td class="py-2 pr-3 text-xs" style="color:#5b6473">' + esc(fecha) + "</td>" +
+				'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(o.comprador_email || o.user_id) + "</td>" +
+				'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(o.detalle || "—") + "</td>" +
+				'<td class="py-2 pr-3 text-sm font-semibold" style="color:#1c2434">' + money(o.monto_total) + "</td>" +
+				'<td class="py-2 pr-3 text-xs" style="color:#5b6473">' + esc(o.metodo_pago || "") + "</td>" +
 				"<td class='py-2 pr-3'>" + badgeEstado(o.estado) + "</td>" +
 				"<td class='py-2'>" + accion + "</td></tr>"
 			);
 		}).join("");
 		listaOrdenesEl.innerHTML =
 			'<table class="w-full text-left min-w-[760px]">' +
-			'<thead><tr class="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-200">' +
+			'<thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
 			"<th class='py-2 pr-3 font-semibold'>Fecha</th><th class='py-2 pr-3 font-semibold'>Comprador</th>" +
 			"<th class='py-2 pr-3 font-semibold'>Compra</th>" +
 			"<th class='py-2 pr-3 font-semibold'>Monto</th><th class='py-2 pr-3 font-semibold'>Método</th>" +
@@ -316,14 +311,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	function badgeEstado(estado) {
-		var map = {
-			pagado: "text-emerald-700 bg-emerald-100",
-			pendiente: "text-amber-700 bg-amber-100",
-			fallido: "text-red-700 bg-red-100",
-			reembolsado: "text-gray-600 bg-gray-100",
+		var styles = {
+			pagado:      "color:#047a55;background:#ecfdf5;border:1px solid #a7f3d0",
+			pendiente:   "color:#b45309;background:#fffbeb;border:1px solid #fcd34d",
+			fallido:     "color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5",
+			reembolsado: "color:#5b6473;background:#f3f4f6;border:1px solid #e7e6df",
 		};
-		var cls = map[estado] || "text-gray-600 bg-gray-100";
-		return '<span class="text-xs font-semibold px-2 py-1 rounded-full ' + cls + '">' + esc(estado) + "</span>";
+		var style = styles[estado] || styles.reembolsado;
+		return '<span class="text-xs font-semibold px-2 py-1 rounded-full" style="' + style + '">' + esc(estado) + "</span>";
 	}
 
 	// ── Acceso manual ──────────────────────────────────────────────────────────

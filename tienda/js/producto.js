@@ -86,6 +86,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return p.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre " + p.trimestre;
 	}
 
+	var GRADO_COLOR = { "1":"#f2cf6b","2":"#ef9277","3":"#79c8a6","4":"#a99fe0","5":"#85b8e6","6":"#f0b285" };
+	var GRADO_TXT = { "1":"rgba(30,58,138,.85)","2":"#fff","3":"rgba(30,58,138,.85)","4":"#fff","5":"rgba(30,58,138,.85)","6":"rgba(30,58,138,.85)" };
+
 	function renderHeader() {
 		var tituloGrupo = esMulti
 			? "Multigrado " + comboDisplay()
@@ -95,18 +98,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 			? "Planeación multigrado para un aula de " + comboDisplay() + ", con actividades diferenciadas por grado, alineada a la NEM."
 			: "Planeaciones de " + gradoNum + "° grado alineadas a la Nueva Escuela Mexicana.";
 
-		var acento = esMulti ? "bg-blue-900" : "bg-emerald-600";
+		// Actualizar breadcrumb
+		var bc = document.getElementById("breadcrumbNombre");
+		if (bc) { bc.textContent = tituloGrupo; }
+
 		var b = "";
-		b += '<span class="inline-flex items-center ' + acento + ' text-white text-xs font-semibold px-2.5 py-1 rounded-full">' + esc(esMulti ? comboDisplay() + " multigrado" : gradoNum + "° grado") + "</span>";
+		if (!esMulti) {
+			var gc = GRADO_COLOR[String(gradoNum)] || "#e7e6df";
+			var gt = GRADO_TXT[String(gradoNum)] || "#1c2434";
+			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:' + gc + ';color:' + gt + '">' +
+				'<span class="w-5 h-5 rounded-md text-[11px] font-black flex items-center justify-center" style="background:' + gc + ';color:' + gt + '">' + esc(gradoNum) + '°</span>' +
+				gradoNum + '° grado</span>';
+		} else {
+			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:rgba(30,58,138,.1);color:#1e3a8a">' + esc(comboDisplay() + " multigrado") + '</span>';
+		}
+		b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-semibold" style="background:rgba(30,58,138,.08);color:#1e3a8a"><i data-lucide="badge-check" class="w-3.5 h-3.5"></i> Alineado a la NEM</span>';
 		if (esMulti) {
-			b += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-full">' + (info.modalidad === "bidocente" ? "Bidocente" : "Tridocente") + "</span>";
+			b += '<span class="inline-flex items-center h-8 px-3 rounded-full text-[13px]" style="background:#f1f0ea;color:#5b6473">' + (info.modalidad === "bidocente" ? "Bidocente" : "Tridocente") + "</span>";
 		}
 		badgesEl.innerHTML = b;
+		Tienda.iconos();
 	}
 
 	function renderSelector() {
 		selectorEl.innerHTML = productos.map(function (p) {
-			return '<button data-prod="' + esc(p.id) + '" class="opt border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2.5 rounded-xl transition min-h-[44px]">' + esc(etiquetaOpcion(p)) + "</button>";
+			return '<button data-prod="' + esc(p.id) + '" class="opt-btn border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl transition">' + esc(etiquetaOpcion(p)) + "</button>";
 		}).join("");
 		selectorEl.querySelectorAll("[data-prod]").forEach(function (btn) {
 			btn.addEventListener("click", function () {
@@ -118,15 +134,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function seleccionar(p) {
 		seleccionado = p;
-		// Estilo del selector.
-		selectorEl.querySelectorAll(".opt").forEach(function (b) {
+		selectorEl.querySelectorAll(".opt-btn").forEach(function (b) {
 			var on = b.getAttribute("data-prod") === String(p.id);
-			b.classList.toggle("border-emerald-600", on);
-			b.classList.toggle("bg-emerald-600", on);
-			b.classList.toggle("text-white", on);
-			b.classList.toggle("text-gray-700", !on);
-			b.classList.toggle("bg-white", !on);
-			b.classList.toggle("border-gray-300", !on);
+			if (on) { b.classList.add("selected"); } else { b.classList.remove("selected"); }
 		});
 		renderMeta();
 		renderOpciones();
@@ -144,8 +154,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			["Incluye", "Planeación + anexos + examen"],
 		];
 		metaEl.innerHTML = meta.map(function (m) {
-			return '<div><dt class="text-xs text-gray-400 uppercase tracking-wide">' + esc(m[0]) + "</dt>" +
-				'<dd class="font-semibold text-gray-700">' + esc(m[1]) + "</dd></div>";
+			return '<div><dt class="text-[11px] font-bold uppercase tracking-[0.1em]" style="color:#5b6473">' + esc(m[0]) + "</dt>" +
+				'<dd class="font-semibold mt-0.5" style="color:#1c2434">' + esc(m[1]) + "</dd></div>";
 		}).join("");
 	}
 
@@ -175,13 +185,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function filaOpcion(o) {
 		var precioTxt = money(o.precio);
 		var accion = o.comprado
-			? '<button data-descargar="1" class="shrink-0 bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition min-h-[44px]">Ya lo tienes → Abrir</button>'
-			: '<button data-comprar="' + o.tipo + '" data-pid="' + esc(o.prod.id) + '" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition min-h-[44px]">Comprar ' + precioTxt + "</button>";
+			? '<button data-descargar="1" class="shrink-0 h-11 px-4 rounded-xl text-sm font-semibold text-white transition" style="background:#1e3a8a">Ya lo tienes — Abrir</button>'
+			: '<button data-comprar="' + o.tipo + '" data-pid="' + esc(o.prod.id) + '" class="shrink-0 h-11 px-5 rounded-xl text-sm font-bold text-white transition" style="background:#059669">Comprar ' + precioTxt + "</button>";
 		return (
-			'<div class="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-4">' +
+			'<div class="flex items-center justify-between gap-3 bg-white border rounded-2xl p-4" style="border-color:#e7e6df">' +
 			'<div class="min-w-0">' +
-			'<p class="font-semibold text-gray-800 text-sm">' + esc(o.nombre) + "</p>" +
-			'<p class="text-xs text-gray-500 mt-0.5">' + esc(o.detalle) + "</p>" +
+			'<p class="font-semibold text-sm" style="color:#1c2434">' + esc(o.nombre) + "</p>" +
+			'<p class="text-xs mt-0.5" style="color:#5b6473">' + esc(o.detalle) + "</p>" +
 			"</div>" + accion + "</div>"
 		);
 	}
@@ -213,9 +223,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!filas.length) { incluyeWrap.classList.add("hidden"); return; }
 
 		incluyeLista.innerHTML = filas.map(function (d) {
-			var t = esCiclo && d.trimestre ? '<span class="text-xs text-gray-400">T' + esc(d.trimestre) + "</span> " : "";
+			var t = esCiclo && d.trimestre ? '<span class="text-[11px]" style="color:#5b6473">T' + esc(d.trimestre) + " · </span>" : "";
 			return '<li class="flex items-start gap-2">' +
-				'<i data-lucide="check" class="w-4 h-4 text-emerald-600 mt-0.5 shrink-0"></i>' +
+				'<i data-lucide="check" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>' +
 				'<span>' + t + esc(d.nombre_proyecto || "Proyecto") + "</span></li>";
 		}).join("");
 		incluyeWrap.classList.remove("hidden");

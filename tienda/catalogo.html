@@ -3,64 +3,120 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Catálogo de Planeaciones NEM</title>
-	<script src="https://cdn.tailwindcss.com"></script>
+	<title>Catálogo de planeaciones · Jissez</title>
+	<meta name="description" content="Explora planeaciones para primaria por grado o modalidad multigrado, alineadas a la Nueva Escuela Mexicana.">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<script>
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
+						ink: '#1c2434',
+						mute: '#5b6473',
+						line: '#e7e6df',
+						action: { DEFAULT: '#059669', dark: '#047a55' },
+						paper: '#faf9f4',
+						gisAmarillo: '#f2cf6b',
+						gisCoral: '#ef9277',
+						gisMenta: '#79c8a6',
+						gisLavanda: '#a99fe0',
+						gisCielo: '#85b8e6',
+						gisDurazno: '#f0b285',
+					},
+					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+					maxWidth: { content: '1180px' },
+				},
+			},
+		};
+	</script>
+	<style>
+		html { scroll-behavior: smooth; }
+		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; }
+
+		.board-tex {
+			background-color: #1e3a8a;
+			background-image: radial-gradient(circle at 18% 14%, rgba(255,255,255,.07), transparent 38%), radial-gradient(rgba(255,255,255,.04) .6px, transparent .6px);
+			background-size: auto, 4px 4px;
+		}
+		.ph {
+			background-color: #f1f0ea;
+			background-image: repeating-linear-gradient(135deg, rgba(30,58,138,.06) 0 8px, transparent 8px 16px);
+			border: 1px dashed rgba(30,58,138,.22);
+			color: #9ba3af; display: flex; align-items: center; justify-content: center;
+			font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-align: center;
+		}
+		.prod-card { transition: transform .2s ease, box-shadow .2s ease; }
+		.prod-card:hover { transform: translateY(-3px); box-shadow: 0 16px 36px -22px rgba(28,36,52,.38); }
+		.chip { transition: all .14s ease; cursor: pointer; user-select: none; }
+		.chip.active { background: #1e3a8a; color: #fff; border-color: #1e3a8a; }
+		.chip:not(.active):hover { border-color: #1e3a8a; color: #1e3a8a; }
+	</style>
 </head>
-<body class="bg-gray-50 min-h-screen pt-14 text-gray-800">
+<body class="antialiased min-h-screen">
 
-	<div class="max-w-6xl mx-auto px-4 py-6 flex flex-col gap-6">
-
-		<header class="flex flex-col gap-1">
-			<h1 class="text-2xl md:text-3xl font-extrabold text-blue-900">Catálogo de planeaciones</h1>
-			<p class="text-gray-500 text-sm" id="contadorTexto">Cargando...</p>
-		</header>
-
-		<!-- Filtros -->
-		<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex flex-col gap-4 sticky top-16 z-20">
+<!-- Encabezado de página -->
+<div class="border-b border-line bg-white">
+	<div class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-10">
+		<div class="flex flex-wrap items-end justify-between gap-4">
 			<div>
-				<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Organización</p>
-				<div id="chipsOrg" class="flex flex-wrap gap-2">
-					<button data-org="completa" class="chip-org border border-emerald-600 text-white bg-emerald-600 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">Organización completa</button>
-					<button data-org="multigrado" class="chip-org border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">Multigrado</button>
+				<div class="flex items-center gap-2 text-[13px] text-mute mb-2">
+					<a href="index.html" class="hover:text-ink transition">Inicio</a>
+					<i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+					<span class="text-ink font-medium">Catálogo</span>
 				</div>
+				<h1 class="font-black text-ink text-[clamp(1.8rem,3.5vw,2.6rem)] tracking-tight leading-tight">Catálogo de planeaciones</h1>
+				<p class="mt-2 text-mute">Elige tu grado o modalidad. Seleccionas T1, T2, T3 o ciclo completo en la página del paquete.</p>
 			</div>
+			<p class="text-[14px] text-mute"><span id="contadorTexto"></span></p>
+		</div>
+	</div>
+</div>
 
-			<!-- Subfiltro: completa → grados -->
-			<div id="subCompleta">
-				<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Grado</p>
-				<div id="chipsGrado" class="flex flex-wrap gap-2">
-					<button data-grado="1" class="chip-grado border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">1°</button>
-					<button data-grado="2" class="chip-grado border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">2°</button>
-					<button data-grado="3" class="chip-grado border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">3°</button>
-					<button data-grado="4" class="chip-grado border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">4°</button>
-					<button data-grado="5" class="chip-grado border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">5°</button>
-					<button data-grado="6" class="chip-grado border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">6°</button>
-				</div>
-			</div>
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8">
 
-			<!-- Subfiltro: multigrado → modalidad -->
-			<div id="subMultigrado" class="hidden">
-				<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Modalidad</p>
-				<div id="chipsModalidad" class="flex flex-wrap gap-2">
-					<button data-mod="tridocente" class="chip-mod border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">Tridocente · 1°-2° · 3°-4° · 5°-6°</button>
-					<button data-mod="bidocente" class="chip-mod border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 text-sm font-semibold px-4 py-2 rounded-xl transition min-h-[44px]">Bidocente · 1°-2°-3° · 4°-5°-6°</button>
-				</div>
+	<!-- Filtros sticky -->
+	<div class="bg-white border border-line rounded-2xl shadow-sm p-4 mb-6 sticky top-16 z-20 flex flex-col gap-4">
+		<div>
+			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Organización</p>
+			<div id="chipsOrg" class="flex flex-wrap gap-2">
+				<button data-org="completa" class="chip-org chip active border text-sm font-semibold h-10 px-4 rounded-xl">Organización completa</button>
+				<button data-org="multigrado" class="chip-org chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Multigrado</button>
 			</div>
 		</div>
-
-		<!-- Estado / grid -->
-		<div id="estado" class="text-center py-16"></div>
-		<div id="grid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
-
+		<div id="subCompleta">
+			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Grado</p>
+			<div id="chipsGrado" class="flex flex-wrap gap-2">
+				<button data-grado="1" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">1°</button>
+				<button data-grado="2" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">2°</button>
+				<button data-grado="3" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">3°</button>
+				<button data-grado="4" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">4°</button>
+				<button data-grado="5" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">5°</button>
+				<button data-grado="6" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">6°</button>
+			</div>
+		</div>
+		<div id="subMultigrado" class="hidden">
+			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Modalidad</p>
+			<div id="chipsModalidad" class="flex flex-wrap gap-2">
+				<button data-mod="tridocente" class="chip-mod chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Tridocente · 1°-2° · 3°-4° · 5°-6°</button>
+				<button data-mod="bidocente" class="chip-mod chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Bidocente · 1°-2°-3° · 4°-5°-6°</button>
+			</div>
+		</div>
 	</div>
 
-	<script src="https://unpkg.com/lucide@latest"></script>
-	<script src="../js/supabase.js"></script>
-	<script src="js/tienda-common.js"></script>
-	<script src="js/catalogo.js"></script>
+	<!-- Estado / grid -->
+	<div id="estado" class="text-center py-20 text-mute"></div>
+	<div id="grid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script src="js/catalogo.js"></script>
 </body>
 </html>

@@ -68,11 +68,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function setChip(chip, activo) {
 		if (activo) {
-			chip.classList.remove("border-gray-300", "text-gray-600", "bg-white", "hover:bg-gray-50");
-			chip.classList.add("border-emerald-600", "text-white", "bg-emerald-600");
+			chip.classList.remove("border-line", "text-ink");
+			chip.classList.add("active");
 		} else {
-			chip.classList.add("border-gray-300", "text-gray-600", "bg-white", "hover:bg-gray-50");
-			chip.classList.remove("border-emerald-600", "text-white", "bg-emerald-600");
+			chip.classList.add("border-line", "text-ink");
+			chip.classList.remove("active");
 		}
 	}
 
@@ -110,9 +110,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function aplicarFiltros() {
 		if (!todos.length) { mostrarVacioCatalogo(); return; }
 		var grupos = agrupar();
-		contadorTextoEl.textContent = grupos.length
-			? grupos.length + (grupos.length === 1 ? " paquete disponible" : " paquetes disponibles")
-			: "";
+		if (contadorTextoEl) {
+			contadorTextoEl.textContent = grupos.length
+				? grupos.length + (grupos.length === 1 ? " paquete" : " paquetes")
+				: "";
+		}
 		if (!grupos.length) { mostrarVacioFiltrado(); return; }
 		render(grupos);
 	}
@@ -125,6 +127,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Tienda.iconos();
 	}
 
+	// Mapa de colores por grado (design tokens inline para compatibilidad CDN)
+	var GRADO_COLOR = {
+		"1": { bg: "#f2cf6b", txt: "rgba(30,58,138,.85)" },
+		"2": { bg: "#ef9277", txt: "#fff" },
+		"3": { bg: "#79c8a6", txt: "rgba(30,58,138,.85)" },
+		"4": { bg: "#a99fe0", txt: "#fff" },
+		"5": { bg: "#85b8e6", txt: "rgba(30,58,138,.85)" },
+		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
+	};
+
 	function card(grupo) {
 		var esMulti = orgActiva === "multigrado";
 		var precios = grupo.productos
@@ -136,44 +148,55 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: grupo.grado + "° Primaria";
 		var etiqueta = esMulti
 			? (grupo.modalidad === "bidocente" ? "Bidocente" : "Tridocente")
-			: "Grado completo";
-		var acento = esMulti ? "bg-blue-900" : "bg-emerald-600";
+			: (grupo.grado + "° grado");
 		var icono = esMulti ? "users" : "graduation-cap";
 
 		var href = esMulti
 			? "producto.html?org=multigrado&combo=" + encodeURIComponent(grupo.combo)
 			: "producto.html?org=completa&g=" + encodeURIComponent(grupo.grado);
 
+		// Badge de grado (color gis) o badge multigrado
+		var badge;
+		if (!esMulti) {
+			var gc = GRADO_COLOR[String(grupo.grado)] || { bg: "#e7e6df", txt: "#1c2434" };
+			badge = '<span style="background:' + gc.bg + ';color:' + gc.txt + '" class="absolute top-3 left-3 w-10 h-10 rounded-xl text-base font-black flex items-center justify-center shadow">' + esc(grupo.grado) + '°</span>';
+		} else {
+			badge = '<span class="absolute top-3 left-3 h-9 px-3 rounded-xl text-sm font-black flex items-center justify-center shadow" style="background:#1e3a8a;color:#fff">' + esc(etiqueta) + '</span>';
+		}
+
 		var a = document.createElement("a");
 		a.href = href;
-		a.className = "bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col";
+		a.className = "prod-card bg-white rounded-3xl border overflow-hidden flex flex-col";
+		a.style.borderColor = "#e7e6df";
 
 		a.innerHTML =
-			'<div class="h-32 ' + acento + ' flex flex-col items-center justify-center text-white gap-1">' +
-			'<i data-lucide="' + icono + '" class="w-8 h-8"></i>' +
-			'<span class="text-sm font-semibold">' + esc(titulo) + "</span></div>" +
-			'<div class="p-4 flex flex-col gap-2 flex-1">' +
-			'<div class="flex flex-wrap gap-1.5">' +
-			'<span class="inline-flex items-center ' + acento + ' text-white text-xs font-semibold px-2 py-0.5 rounded-full">' + esc(etiqueta) + "</span>" +
-			"</div>" +
-			'<h3 class="font-bold text-gray-800 text-sm leading-snug">' + esc(titulo) + "</h3>" +
-			'<p class="text-xs text-gray-500 flex-1">Elige por trimestre (4 proyectos) o el ciclo completo (12 proyectos). Incluye anexos y examen.</p>' +
-			'<div class="flex items-center justify-between pt-2 border-t border-gray-100 mt-1">' +
-			'<span class="text-xs text-gray-400">Ver opciones</span>' +
-			'<span class="text-emerald-700 font-bold text-sm">' + (isFinite(precioDesde) ? "Desde " + money(precioDesde) : "") + "</span>" +
-			"</div></div>";
+			'<div class="relative">' +
+			'<div class="ph h-40 rounded-none border-x-0 border-t-0" style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
+			badge +
+			'</div>' +
+			'<div class="p-5 flex flex-col flex-1">' +
+			'<h3 class="font-bold text-lg leading-snug" style="color:#1c2434">' + esc(titulo) + '</h3>' +
+			'<p class="mt-1 text-sm" style="color:#5b6473">Proyectos, PDAs, anexos y examen. Por trimestre o ciclo completo.</p>' +
+			'<div class="mt-5 pt-4 flex items-center justify-between" style="border-top:1px solid #e7e6df">' +
+			'<div>' +
+			(isFinite(precioDesde)
+				? '<span class="font-black text-lg" style="color:#1c2434">Desde ' + money(precioDesde) + '</span><span class="text-sm" style="color:#5b6473"> / trim</span>'
+				: '<span class="text-sm" style="color:#5b6473">Ver opciones</span>') +
+			'</div>' +
+			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#059669">Ver <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
+			'</div></div>';
 		return a;
 	}
 
 	function mostrarCargando() {
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
-		estadoEl.innerHTML = '<p class="text-gray-400">Cargando paquetes...</p>';
+		estadoEl.innerHTML = '<p style="color:#5b6473">Cargando paquetes...</p>';
 	}
 	function mostrarError() {
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
-		estadoEl.innerHTML = '<p class="text-red-500 font-medium">Error al cargar el catálogo. Recarga la página.</p>';
+		estadoEl.innerHTML = '<p style="color:#dc2626;font-weight:500">Error al cargar el catálogo. Recarga la página.</p>';
 	}
 	function mostrarVacioCatalogo() {
 		estadoEl.classList.remove("hidden");
@@ -181,17 +204,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		contadorTextoEl.textContent = "";
 		estadoEl.innerHTML =
 			'<div class="flex flex-col items-center gap-3">' +
-			'<i data-lucide="package" class="w-12 h-12 text-gray-400"></i>' +
-			'<p class="text-gray-700 text-lg font-semibold">Catálogo en camino</p>' +
-			'<p class="text-gray-400 text-sm max-w-md">Estamos cargando los paquetes. Vuelve pronto.</p>' +
-			"</div>";
+			'<i data-lucide="package" style="width:3rem;height:3rem;color:#5b6473"></i>' +
+			'<p class="font-semibold text-lg" style="color:#1c2434">Catálogo en camino</p>' +
+			'<p class="text-sm" style="color:#5b6473">Estamos cargando los paquetes. Vuelve pronto.</p>' +
+			'</div>';
 		Tienda.iconos();
 	}
 	function mostrarVacioFiltrado() {
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
 		estadoEl.innerHTML =
-			'<p class="text-gray-400 font-medium">Aún no hay paquetes disponibles aquí</p>' +
-			'<p class="text-gray-300 text-sm mt-1">Prueba con otra organización o modalidad.</p>';
+			'<p style="color:#5b6473;font-weight:500">Aún no hay paquetes disponibles aquí.</p>' +
+			'<p style="color:#9ba3af;font-size:.875rem;margin-top:.25rem">Prueba con otra organización o modalidad.</p>';
 	}
 });

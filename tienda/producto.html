@@ -3,99 +3,141 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Planeación — Planeaciones NEM</title>
-	<script src="https://cdn.tailwindcss.com"></script>
+	<title>Planeación — Jissez</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<script>
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
+						ink: '#1c2434',
+						mute: '#5b6473',
+						line: '#e7e6df',
+						action: { DEFAULT: '#059669', dark: '#047a55' },
+						paper: '#faf9f4',
+						gisAmarillo: '#f2cf6b',
+						gisCoral: '#ef9277',
+						gisMenta: '#79c8a6',
+						gisLavanda: '#a99fe0',
+						gisCielo: '#85b8e6',
+						gisDurazno: '#f0b285',
+					},
+					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+					maxWidth: { content: '1180px' },
+				},
+			},
+		};
+	</script>
+	<style>
+		html { scroll-behavior: smooth; }
+		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; }
+		.board-tex { background-color: #1e3a8a; background-image: radial-gradient(circle at 20% 10%, rgba(255,255,255,.07), transparent 35%), radial-gradient(rgba(255,255,255,.04) 0.6px, transparent 0.6px); background-size: auto, 4px 4px; }
+		.ph { background-color: #f1f0ea; background-image: repeating-linear-gradient(135deg, rgba(30,58,138,.06) 0 8px, transparent 8px 16px); border: 1px dashed rgba(30,58,138,.22); color: #9ba3af; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-align: center; }
+		.opt-btn { transition: all .14s ease; }
+		.opt-btn.selected { background: #1e3a8a; color: #fff; border-color: #1e3a8a; }
+		.opt-btn:not(.selected):hover { border-color: #1e3a8a; color: #1e3a8a; }
+	</style>
 </head>
-<body class="bg-gray-50 min-h-screen pt-14 text-gray-800">
+<body class="antialiased min-h-screen">
 
-	<div class="max-w-5xl mx-auto px-4 py-6">
-		<a href="catalogo.html" class="inline-flex items-center gap-1 text-sm text-blue-700 hover:text-blue-800 font-medium mb-4">← Volver al catálogo</a>
+<!-- Breadcrumb -->
+<div class="border-b border-line bg-white">
+	<div class="max-w-content mx-auto px-4 sm:px-6 h-11 flex items-center gap-2 text-[13px] text-mute">
+		<a href="index.html" class="hover:text-ink transition">Inicio</a>
+		<i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+		<a href="catalogo.html" class="hover:text-ink transition">Catálogo</a>
+		<i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+		<span class="text-ink font-medium" id="breadcrumbNombre">Cargando...</span>
+	</div>
+</div>
 
-		<div id="estado" class="text-center py-20 text-gray-400">Cargando planeación...</div>
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-12">
 
-		<div id="contenido" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
-			<!-- Columna izquierda: preview -->
-			<div class="flex flex-col gap-3">
-				<div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-					<div class="bg-blue-900 text-white px-4 py-2 text-sm font-semibold flex items-center justify-between">
-						<span>Vista previa</span>
-						<span class="text-blue-200 text-xs">Primeras páginas</span>
-					</div>
-					<div id="previewWrap" class="bg-gray-100" style="height:520px;">
-						<div id="previewVacio" class="hidden h-full flex items-center justify-center text-gray-400 text-sm px-6 text-center">
-							La vista previa estará disponible pronto.
-						</div>
-						<iframe id="previewFrame" class="w-full h-full" title="Vista previa"></iframe>
-					</div>
+	<div id="estado" class="text-center py-20" style="color:#5b6473">Cargando planeación...</div>
+
+	<div id="contenido" class="hidden grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-8 lg:gap-12 items-start">
+
+		<!-- Columna izquierda: preview -->
+		<div class="lg:sticky lg:top-24 flex flex-col gap-4">
+			<div class="bg-white rounded-3xl border border-line overflow-hidden shadow-sm">
+				<div class="bg-paper border-b border-line px-4 py-3 flex items-center justify-between text-[13px] text-mute">
+					<span class="flex items-center gap-1.5"><i data-lucide="file-text" class="w-4 h-4"></i> Vista previa · primeras páginas</span>
+					<span>muestra gratuita</span>
 				</div>
-				<p class="text-xs text-gray-400 text-center">Esta es una muestra. La planeación completa se entrega al comprar.</p>
-
-				<!-- CTA de compra bajo la muestra -->
-				<div id="ctaPreview" class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center flex flex-col gap-2">
-					<p class="text-sm font-semibold text-emerald-800">¿Te gustó la muestra? Esto es solo el inicio del primer proyecto.</p>
-					<p class="text-xs text-emerald-700" id="ctaTexto">Desbloquea todos los proyectos del paquete, con anexos y examen.</p>
-					<button id="ctaBtn" class="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl transition min-h-[44px]">Ver opciones de compra ↓</button>
-				</div>
-
-				<!-- Beneficios -->
-				<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-					<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Por qué te va a servir</p>
-					<ul class="flex flex-col gap-2.5 text-sm text-gray-700">
-						<li class="flex items-start gap-2"><i data-lucide="clock" class="w-4 h-4 text-emerald-600 mt-0.5 shrink-0"></i>Ahorra horas de planeación cada semana.</li>
-						<li class="flex items-start gap-2"><i data-lucide="book-open-check" class="w-4 h-4 text-emerald-600 mt-0.5 shrink-0"></i>Alineado a la NEM y a los nuevos libros 2026-2027.</li>
-						<li class="flex items-start gap-2"><i data-lucide="layers" class="w-4 h-4 text-emerald-600 mt-0.5 shrink-0"></i>Sesiones con momentos, PDAs por grado y actividades diferenciadas.</li>
-						<li class="flex items-start gap-2"><i data-lucide="paperclip" class="w-4 h-4 text-emerald-600 mt-0.5 shrink-0"></i>Anexos por sesión y examen del trimestre incluidos.</li>
-						<li class="flex items-start gap-2"><i data-lucide="link" class="w-4 h-4 text-emerald-600 mt-0.5 shrink-0"></i>Con enlaces directos a las páginas del libro de texto.</li>
-					</ul>
+				<div id="previewWrap" class="bg-paper" style="height:520px">
+					<div id="previewVacio" class="hidden h-full flex items-center justify-center text-mute text-sm px-6 text-center">
+						La vista previa estará disponible pronto.
+					</div>
+					<iframe id="previewFrame" class="w-full h-full" title="Vista previa"></iframe>
 				</div>
 			</div>
+			<p class="text-center text-[12px] text-mute">Esta es una muestra. La planeación completa se entrega al comprar.</p>
 
-			<!-- Columna derecha: info + compra -->
-			<div class="flex flex-col gap-5">
-				<div>
-					<div id="badges" class="flex flex-wrap gap-1.5 mb-3"></div>
-					<h1 id="titulo" class="text-2xl font-extrabold text-blue-900 leading-tight"></h1>
-				</div>
+			<!-- CTA bajo la muestra -->
+			<div id="ctaPreview" class="border border-line rounded-2xl p-5 text-center flex flex-col gap-2" style="background:#faf9f4">
+				<p class="font-semibold text-ink">¿Te gustó la muestra?</p>
+				<p class="text-sm text-mute" id="ctaTexto">Desbloquea todos los proyectos del paquete, con anexos y examen.</p>
+				<button id="ctaBtn" class="mt-1 h-12 rounded-xl font-bold text-white transition" style="background:#059669">Ver opciones de compra</button>
+			</div>
 
-				<p id="descripcion" class="text-gray-600 leading-relaxed text-sm"></p>
+			<!-- Por qué te sirve -->
+			<div class="bg-white rounded-2xl border border-line p-5">
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-3">Por qué te va a servir</p>
+				<ul class="flex flex-col gap-2.5 text-sm text-ink">
+					<li class="flex items-start gap-2"><i data-lucide="clock" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>Ahorra horas de planeación cada semana.</li>
+					<li class="flex items-start gap-2"><i data-lucide="book-open-check" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>Alineado a la NEM y a los nuevos libros 2026-2027.</li>
+					<li class="flex items-start gap-2"><i data-lucide="layers" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>Sesiones con momentos, PDAs por grado y actividades diferenciadas.</li>
+					<li class="flex items-start gap-2"><i data-lucide="paperclip" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>Anexos por sesión y examen del trimestre incluidos.</li>
+				</ul>
+			</div>
+		</div>
 
-				<dl id="meta" class="grid grid-cols-2 gap-3 text-sm"></dl>
+		<!-- Columna derecha: info + compra -->
+		<div class="flex flex-col gap-5">
+			<div>
+				<div id="badges" class="flex flex-wrap gap-2 mb-3"></div>
+				<h1 id="titulo" class="font-black tracking-tight leading-tight text-[clamp(1.7rem,3vw,2.3rem)] text-ink"></h1>
+				<p id="descripcion" class="mt-3 text-[17px] text-mute leading-relaxed"></p>
+			</div>
 
-				<!-- Selector de paquete (trimestre / ciclo) -->
-				<div id="selectorWrap" class="border-t border-gray-200 pt-4">
-					<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Elige tu paquete</p>
-					<div id="selectorOpcion" class="flex flex-wrap gap-2"></div>
-				</div>
+			<dl id="meta" class="grid grid-cols-2 gap-3 text-sm"></dl>
 
-				<!-- Qué incluye (lista de proyectos) -->
-				<div id="incluyeWrap" class="hidden">
-					<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Qué incluye este paquete</p>
-					<ul id="incluyeLista" class="flex flex-col gap-1.5 text-sm text-gray-700"></ul>
-				</div>
+			<!-- Selector de paquete -->
+			<div id="selectorWrap" class="border-t border-line pt-4">
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Elige tu paquete</p>
+				<div id="selectorOpcion" class="flex flex-wrap gap-2"></div>
+			</div>
 
-				<!-- Opciones de compra -->
-				<div id="opcionesCompra" class="flex flex-col gap-3 border-t border-gray-200 pt-5"></div>
+			<!-- Lista de proyectos incluidos -->
+			<div id="incluyeWrap" class="hidden">
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Qué incluye este paquete</p>
+				<ul id="incluyeLista" class="flex flex-col gap-1.5 text-sm text-ink"></ul>
+			</div>
 
-				<p class="text-xs text-gray-400">Los anexos y el examen se incluyen sin costo adicional en ambas versiones.</p>
+			<!-- Opciones de compra -->
+			<div id="opcionesCompra" class="flex flex-col gap-3 border-t border-line pt-5"></div>
 
-				<!-- Confianza / pago -->
-				<div class="bg-gray-50 rounded-xl border border-gray-100 p-4 flex flex-col gap-2 text-sm text-gray-600">
-					<span class="inline-flex items-center gap-2 font-semibold text-gray-800"><i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i> Compra protegida</span>
-					<span class="inline-flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4 text-gray-400"></i> Tarjeta, OXXO o SPEI con Mercado Pago · o transferencia</span>
-					<span class="inline-flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4 text-gray-400"></i> Acceso inmediato tras confirmar el pago</span>
-					<span class="inline-flex items-center gap-2"><i data-lucide="user-check" class="w-4 h-4 text-gray-400"></i> Uso personal docente · lleva tu pie de página</span>
-				</div>
+			<p class="text-xs text-mute">Los anexos y el examen se incluyen sin costo adicional en ambas versiones.</p>
+
+			<!-- Confianza -->
+			<div class="bg-white rounded-2xl border border-line p-4 flex flex-col gap-2 text-sm text-mute">
+				<span class="inline-flex items-center gap-2 font-semibold text-ink"><i data-lucide="shield-check" class="w-4 h-4" style="color:#059669"></i> Compra protegida</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4"></i> Tarjeta, OXXO o SPEI con Mercado Pago · o transferencia</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> Acceso inmediato tras confirmar el pago</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="infinity" class="w-4 h-4"></i> Sin caducidad — queda en tu cuenta para siempre</span>
 			</div>
 		</div>
 	</div>
+</main>
 
-	<script src="https://unpkg.com/lucide@latest"></script>
-	<script src="../js/supabase.js"></script>
-	<script src="js/tienda-common.js"></script>
-	<script src="js/producto.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script src="js/producto.js"></script>
 </body>
 </html>

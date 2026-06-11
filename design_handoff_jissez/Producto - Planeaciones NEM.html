@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Planeaciones 3° grado · Jissez</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          board: { DEFAULT: '#1e3a8a', deep: '#16276b', soft: '#26499f' },
+          chalk: '#f6f8fe',
+          ink: '#1c2434',
+          mute: '#5b6473',
+          line: '#e7e6df',
+          action: { DEFAULT: '#059669', dark: '#047a55' },
+          paper: '#faf9f4',
+          gisAmarillo: '#f2cf6b',
+          gisCoral: '#ef9277',
+          gisMenta: '#79c8a6',
+          gisLavanda: '#a99fe0',
+          gisCielo: '#85b8e6',
+        },
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        maxWidth: { content: '1180px' },
+      },
+    },
+  };
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; }
+
+  .board-tex {
+    background-color: #1e3a8a;
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,.07), transparent 35%),
+      radial-gradient(rgba(255,255,255,.04) 0.6px, transparent 0.6px);
+    background-size: auto, 4px 4px;
+  }
+  .ph {
+    background-color: #f1f0ea;
+    background-image: repeating-linear-gradient(135deg, rgba(30,58,138,.06) 0 8px, transparent 8px 16px);
+    border: 1px dashed rgba(30,58,138,.22);
+    color: #9ba3af; display: flex; align-items: center; justify-content: center;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; letter-spacing: .02em;
+    text-align: center;
+  }
+
+  /* Price animation */
+  .price-val { transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .18s ease; display: inline-block; }
+  .price-val.bump { animation: priceBump .22s cubic-bezier(.2,.8,.2,1); }
+  @keyframes priceBump { 0%{transform:scale(1)} 40%{transform:scale(1.06)} 100%{transform:scale(1)} }
+
+  /* Package selector */
+  .pkg-btn { transition: all .14s ease; }
+  .pkg-btn.selected { background: #1e3a8a; color: #fff; border-color: #1e3a8a; }
+  .pkg-btn:not(.selected):hover { border-color: #1e3a8a; color: #1e3a8a; }
+
+  /* Format toggle */
+  .fmt-btn { transition: all .14s ease; flex: 1; }
+  .fmt-btn.selected { background: #1e3a8a; color: #fff; border-color: #1e3a8a; box-shadow: 0 2px 10px -4px rgba(30,58,138,.5); }
+
+  /* PDF preview */
+  .thumb { transition: all .14s ease; cursor: pointer; }
+  .thumb.active { border-color: #1e3a8a; }
+  .thumb:hover:not(.active) { border-color: #a99fe0; }
+
+  /* Sticky bar */
+  #stickyBar { transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
+  #stickyBar.hidden-bar { transform: translateY(100%); opacity: 0; pointer-events: none; }
+
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .faq-plus { transform: rotate(45deg); }
+  .faq-plus { transition: transform .22s ease; }
+
+  .lift { transition: transform .2s ease, box-shadow .2s ease; }
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 14px 32px -20px rgba(28,36,52,.35); }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ============ NAVBAR ============ -->
+<header class="sticky top-0 z-50 board-tex border-b border-white/10">
+  <nav class="max-w-content mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+    <a href="Landing — Planeaciones NEM.html" class="flex items-center gap-2.5 shrink-0">
+      <img src="assets/jissez-wordmark-white.png" alt="Jissez" class="h-7 w-auto" />
+    </a>
+    <div class="hidden lg:flex items-center gap-1 text-[15px] text-white/85">
+      <a href="Landing — Planeaciones NEM.html#como" class="px-3.5 h-10 inline-flex items-center rounded-lg hover:bg-white/10 transition">Cómo funciona</a>
+      <a href="Landing — Planeaciones NEM.html#multigrado" class="px-3.5 h-10 inline-flex items-center rounded-lg hover:bg-white/10 transition">Multigrado</a>
+      <a href="Landing — Planeaciones NEM.html#precios" class="px-3.5 h-10 inline-flex items-center rounded-lg hover:bg-white/10 transition">Precios</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="Mis compras — Planeaciones NEM.html" class="hidden sm:inline-flex items-center h-11 px-4 rounded-xl text-white/90 font-semibold hover:bg-white/10 transition">Iniciar sesión</a>
+      <a href="#comprar" class="inline-flex items-center gap-2 h-11 px-4 sm:px-5 rounded-xl bg-action hover:bg-action-dark text-white font-bold transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.9)]">
+        <i data-lucide="shopping-cart" class="w-[18px] h-[18px]"></i>
+        <span class="hidden sm:inline">Comprar ahora</span>
+        <span class="sm:hidden">Comprar</span>
+      </a>
+    </div>
+  </nav>
+</header>
+
+<!-- ============ BREADCRUMB ============ -->
+<div class="border-b border-line bg-white">
+  <div class="max-w-content mx-auto px-4 sm:px-6 h-11 flex items-center gap-2 text-[13px] text-mute">
+    <a href="Landing — Planeaciones NEM.html" class="hover:text-ink transition">Inicio</a>
+    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+    <a href="#" class="hover:text-ink transition">Catálogo</a>
+    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+    <span class="text-ink font-medium">Planeaciones 3° grado</span>
+  </div>
+</div>
+
+<!-- ============ MAIN PRODUCT AREA ============ -->
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-12">
+  <div class="grid lg:grid-cols-[1fr_440px] gap-8 lg:gap-12 items-start">
+
+    <!-- ---- LEFT: PDF Preview ---- -->
+    <div class="lg:sticky lg:top-24">
+      <!-- main preview -->
+      <div class="bg-white rounded-3xl border border-line overflow-hidden shadow-sm">
+        <div class="relative bg-paper border-b border-line px-4 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-2 text-[13px] text-mute">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+            <span id="previewLabel">Portada · Proyecto 1 · 3° grado</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[12px] text-mute" id="pageCount">Página 1 de 5</span>
+            <button onclick="prevPage()" class="w-8 h-8 rounded-lg border border-line flex items-center justify-center hover:bg-paper transition text-ink" aria-label="Anterior">
+              <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+            <button onclick="nextPage()" class="w-8 h-8 rounded-lg border border-line flex items-center justify-center hover:bg-paper transition text-ink" aria-label="Siguiente">
+              <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        <div id="pdfMain" class="ph h-[420px] sm:h-[500px] lg:h-[540px] rounded-none border-0 text-[13px]">Portada · 3° grado · Trimestre 1</div>
+      </div>
+
+      <!-- thumbnail strip -->
+      <div class="mt-3 flex gap-2.5 overflow-x-auto pb-1 snap-x">
+        <div onclick="goToPage(0)" class="thumb active snap-start shrink-0 w-20 rounded-xl border-2 border-board overflow-hidden">
+          <div class="ph h-24 rounded-none border-0 text-[9px]">Portada</div>
+        </div>
+        <div onclick="goToPage(1)" class="thumb snap-start shrink-0 w-20 rounded-xl border-2 border-line overflow-hidden">
+          <div class="ph h-24 rounded-none border-0 text-[9px]">Sesión 1</div>
+        </div>
+        <div onclick="goToPage(2)" class="thumb snap-start shrink-0 w-20 rounded-xl border-2 border-line overflow-hidden">
+          <div class="ph h-24 rounded-none border-0 text-[9px]">PDA</div>
+        </div>
+        <div onclick="goToPage(3)" class="thumb snap-start shrink-0 w-20 rounded-xl border-2 border-line overflow-hidden">
+          <div class="ph h-24 rounded-none border-0 text-[9px]">Anexo</div>
+        </div>
+        <div onclick="goToPage(4)" class="thumb snap-start shrink-0 w-20 rounded-xl border-2 border-line overflow-hidden">
+          <div class="ph h-24 rounded-none border-0 text-[9px]">Examen</div>
+        </div>
+      </div>
+      <p class="mt-2 text-center text-[12px] text-mute">Vista previa · algunas páginas bloqueadas</p>
+    </div>
+
+    <!-- ---- RIGHT: Product Info ---- -->
+    <div>
+      <!-- badges -->
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-gisMenta/25 text-action-dark text-[13px] font-bold">
+          <span class="w-5 h-5 rounded-md bg-gisMenta text-board/80 text-[11px] font-black flex items-center justify-center">3°</span>
+          3° grado
+        </span>
+        <span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-board/8 text-board text-[13px] font-semibold">
+          <i data-lucide="badge-check" class="w-3.5 h-3.5"></i>
+          Alineado a la NEM
+        </span>
+      </div>
+
+      <h1 class="mt-4 font-black text-ink tracking-tight text-[clamp(1.7rem,3vw,2.3rem)] leading-tight">
+        Planeaciones 3° grado<br />Educación Primaria
+      </h1>
+      <p class="mt-3 text-[17px] text-mute leading-relaxed">
+        Proyectos, PDAs, actividades diferenciadas, anexos y examen — todo lo que necesitas para el trimestre, listo para llevar al salón.
+      </p>
+
+      <!-- what's inside compact -->
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <div class="flex items-center gap-2 text-[14px] text-ink">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-action shrink-0"></i> Proyectos completos
+        </div>
+        <div class="flex items-center gap-2 text-[14px] text-ink">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-action shrink-0"></i> PDAs diferenciados
+        </div>
+        <div class="flex items-center gap-2 text-[14px] text-ink">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-action shrink-0"></i> Actividades por sesión
+        </div>
+        <div class="flex items-center gap-2 text-[14px] text-ink">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-action shrink-0"></i> Anexos para el alumno
+        </div>
+        <div class="flex items-center gap-2 text-[14px] text-ink">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-action shrink-0"></i> Examen de trimestre
+        </div>
+        <div class="flex items-center gap-2 text-[14px] text-ink">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-action shrink-0"></i> Descarga inmediata
+        </div>
+      </div>
+
+      <hr class="my-6 border-line" />
+
+      <!-- Package selector -->
+      <div id="comprar">
+        <p class="text-[13px] font-bold text-ink uppercase tracking-[0.1em] mb-3">Cobertura</p>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <button onclick="selectPkg('t1')" data-pkg="t1" class="pkg-btn selected h-14 rounded-2xl border-2 border-board text-sm font-bold flex flex-col items-center justify-center gap-0.5">
+            <span>Trimestre 1</span>
+            <span class="text-[11px] font-medium opacity-75">~14 sesiones</span>
+          </button>
+          <button onclick="selectPkg('t2')" data-pkg="t2" class="pkg-btn h-14 rounded-2xl border-2 border-line bg-white text-ink text-sm font-bold flex flex-col items-center justify-center gap-0.5">
+            <span>Trimestre 2</span>
+            <span class="text-[11px] font-medium opacity-60">~14 sesiones</span>
+          </button>
+          <button onclick="selectPkg('t3')" data-pkg="t3" class="pkg-btn h-14 rounded-2xl border-2 border-line bg-white text-ink text-sm font-bold flex flex-col items-center justify-center gap-0.5">
+            <span>Trimestre 3</span>
+            <span class="text-[11px] font-medium opacity-60">~14 sesiones</span>
+          </button>
+          <button onclick="selectPkg('ciclo')" data-pkg="ciclo" class="pkg-btn relative h-14 rounded-2xl border-2 border-line bg-white text-ink text-sm font-bold flex flex-col items-center justify-center gap-0.5">
+            <span>Ciclo completo</span>
+            <span class="text-[11px] font-medium text-action-dark">Ahorra $98</span>
+            <span class="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-gisAmarillo text-board text-[10px] font-black px-2 h-5 rounded-full flex items-center whitespace-nowrap">Más elegido</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Format selector -->
+      <div class="mt-5">
+        <p class="text-[13px] font-bold text-ink uppercase tracking-[0.1em] mb-3">Formato</p>
+        <div class="flex gap-2 bg-paper rounded-2xl border border-line p-1">
+          <button onclick="selectFmt('pdf')" data-fmt="pdf" class="fmt-btn selected h-12 rounded-xl border-2 border-board text-sm font-bold flex items-center justify-center gap-2">
+            <i data-lucide="file-text" class="w-4 h-4"></i> Solo PDF
+          </button>
+          <button onclick="selectFmt('word')" data-fmt="word" class="fmt-btn h-12 rounded-xl border-2 border-transparent bg-transparent text-ink text-sm font-bold flex items-center justify-center gap-2 hover:border-line">
+            <i data-lucide="file-pen-line" class="w-4 h-4"></i> PDF + Word
+            <span id="wordExtra" class="text-[11px] font-semibold text-mute">+$50</span>
+          </button>
+        </div>
+        <p class="mt-1.5 text-[12px] text-mute">La versión Word te permite editar el contenido antes de imprimir.</p>
+      </div>
+
+      <!-- Price + CTA -->
+      <div class="mt-6 bg-white border border-line rounded-3xl p-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-[13px] text-mute font-medium mb-0.5" id="priceLabel">Trimestre 1 · PDF</div>
+            <div class="flex items-baseline gap-2">
+              <span class="text-4xl font-black text-ink price-val" id="priceDisplay">$149</span>
+              <span class="text-mute text-sm" id="priceUnit">MXN</span>
+              <span id="originalPrice" class="hidden line-through text-mute text-lg">$447</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="flex items-center gap-1.5 text-action-dark text-[13px] font-semibold">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato
+            </div>
+            <div class="text-[12px] text-mute mt-0.5">Sin caducidad</div>
+          </div>
+        </div>
+        <button onclick="handleBuy()" class="mt-4 w-full h-14 rounded-2xl bg-action hover:bg-action-dark text-white font-black text-lg transition shadow-[0_10px_28px_-16px_rgba(5,150,105,1)] flex items-center justify-center gap-2.5" id="buyBtn">
+          <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+          <span id="buyLabel">Comprar · $149</span>
+        </button>
+        <!-- trust row -->
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[12px] text-mute">
+          <span class="inline-flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i> Pago seguro</span>
+          <span class="inline-flex items-center gap-1"><i data-lucide="credit-card" class="w-3.5 h-3.5"></i> Mercado Pago</span>
+          <span class="inline-flex items-center gap-1"><i data-lucide="landmark" class="w-3.5 h-3.5"></i> SPEI</span>
+          <span class="inline-flex items-center gap-1"><i data-lucide="store" class="w-3.5 h-3.5"></i> OXXO</span>
+        </div>
+      </div>
+
+      <!-- teacher note -->
+      <div class="mt-4 flex items-start gap-3 bg-board/5 rounded-2xl px-4 py-3.5">
+        <i data-lucide="graduation-cap" class="w-5 h-5 text-board mt-0.5 shrink-0"></i>
+        <p class="text-[13px] text-ink leading-relaxed">Elaborado por docentes de educación primaria en activo. Si tienes dudas sobre el contenido antes de comprar, escríbenos.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ QUÉ INCLUYE EN DETALLE ============ -->
+  <section class="mt-16 lg:mt-20">
+    <h2 class="font-black text-ink text-2xl mb-6">Contenido del paquete</h2>
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <div class="bg-white border border-line rounded-3xl p-6">
+        <span class="w-11 h-11 rounded-2xl bg-gisMenta/20 text-action-dark flex items-center justify-center mb-4"><i data-lucide="layers" class="w-5 h-5"></i></span>
+        <h3 class="font-bold text-ink text-lg mb-2">Proyectos completos</h3>
+        <p class="text-mute text-[15px] leading-relaxed">Cada proyecto incluye todos los momentos metodológicos (inicio, desarrollo y cierre) para cada sesión.</p>
+        <ul class="mt-3 space-y-1.5 text-[14px] text-ink">
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Tres proyectos por trimestre</li>
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> ~14 sesiones por proyecto</li>
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Campos formativos integrados</li>
+        </ul>
+      </div>
+
+      <div class="bg-white border border-line rounded-3xl p-6">
+        <span class="w-11 h-11 rounded-2xl bg-gisAmarillo/25 text-board flex items-center justify-center mb-4"><i data-lucide="target" class="w-5 h-5"></i></span>
+        <h3 class="font-bold text-ink text-lg mb-2">PDAs por grado</h3>
+        <p class="text-mute text-[15px] leading-relaxed">Procesos de Desarrollo de Aprendizaje elaborados específicamente para 3° grado, siguiendo los programas NEM.</p>
+        <ul class="mt-3 space-y-1.5 text-[14px] text-ink">
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Uno por proyecto</li>
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Con criterios de evaluación</li>
+        </ul>
+      </div>
+
+      <div class="bg-white border border-line rounded-3xl p-6">
+        <span class="w-11 h-11 rounded-2xl bg-gisCoral/20 text-gisCoral flex items-center justify-center mb-4"><i data-lucide="puzzle" class="w-5 h-5"></i></span>
+        <h3 class="font-bold text-ink text-lg mb-2">Actividades diferenciadas</h3>
+        <p class="text-mute text-[15px] leading-relaxed">Actividades adaptadas para cada sesión que consideran distintos ritmos y estilos de aprendizaje.</p>
+        <ul class="mt-3 space-y-1.5 text-[14px] text-ink">
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Por cada sesión del proyecto</li>
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Materiales de apoyo incluidos</li>
+        </ul>
+      </div>
+
+      <div class="bg-white border border-line rounded-3xl p-6">
+        <span class="w-11 h-11 rounded-2xl bg-gisLavanda/25 text-gisLavanda flex items-center justify-center mb-4"><i data-lucide="paperclip" class="w-5 h-5"></i></span>
+        <h3 class="font-bold text-ink text-lg mb-2">Anexos para el alumno</h3>
+        <p class="text-mute text-[15px] leading-relaxed">Material complementario listo para imprimir y entregar directamente a los alumnos.</p>
+        <ul class="mt-3 space-y-1.5 text-[14px] text-ink">
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Fichas de trabajo</li>
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Lecturas y recursos de apoyo</li>
+        </ul>
+      </div>
+
+      <div class="bg-white border border-line rounded-3xl p-6">
+        <span class="w-11 h-11 rounded-2xl bg-gisCielo/25 text-board flex items-center justify-center mb-4"><i data-lucide="clipboard-check" class="w-5 h-5"></i></span>
+        <h3 class="font-bold text-ink text-lg mb-2">Examen de trimestre</h3>
+        <p class="text-mute text-[15px] leading-relaxed">Instrumento de evaluación alineado a los aprendizajes del trimestre, listo para reproducir.</p>
+        <ul class="mt-3 space-y-1.5 text-[14px] text-ink">
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Con clave de respuestas</li>
+          <li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Formato oficial</li>
+        </ul>
+      </div>
+
+      <div class="bg-board board-tex text-white rounded-3xl p-6">
+        <span class="w-11 h-11 rounded-2xl bg-white/15 text-white flex items-center justify-center mb-4"><i data-lucide="download" class="w-5 h-5"></i></span>
+        <h3 class="font-bold text-lg mb-2">Acceso inmediato</h3>
+        <p class="text-white/80 text-[15px] leading-relaxed">Al confirmar el pago, todos los archivos quedan disponibles en tu biblioteca para descargar cuando quieras.</p>
+        <div class="mt-4 flex items-center gap-2 text-gisMenta text-[14px] font-semibold">
+          <i data-lucide="infinity" class="w-4 h-4"></i> Sin caducidad ni límite de descargas
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FAQ PRODUCTO ============ -->
+  <section class="mt-14 max-w-2xl">
+    <h2 class="font-black text-ink text-2xl mb-5">Preguntas sobre este paquete</h2>
+    <div class="space-y-2">
+      <details class="bg-white border border-line rounded-2xl px-5">
+        <summary class="flex items-center justify-between gap-4 py-4 font-semibold text-ink">¿Puedo ver más páginas de muestra antes de comprar? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+        <p class="pb-4 text-mute leading-relaxed text-[15px]">La vista previa muestra portada, una sesión de muestra, el PDA, un anexo y el formato del examen. El resto del contenido se desbloquea tras la compra.</p>
+      </details>
+      <details class="bg-white border border-line rounded-2xl px-5">
+        <summary class="flex items-center justify-between gap-4 py-4 font-semibold text-ink">¿Si compro Trimestre 1 ahora, puedo agregar los demás después? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+        <p class="pb-4 text-mute leading-relaxed text-[15px]">Sí. Puedes comprar cada trimestre por separado en el momento que lo necesites. Si en algún punto decides adquirir el ciclo completo, el precio se ajusta descontando lo que ya pagaste.</p>
+      </details>
+      <details class="bg-white border border-line rounded-2xl px-5">
+        <summary class="flex items-center justify-between gap-4 py-4 font-semibold text-ink">¿En qué dispositivos puedo descargar mis archivos? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+        <p class="pb-4 text-mute leading-relaxed text-[15px]">En cualquiera: computadora, tablet o celular. Los archivos quedan en tu cuenta y puedes descargarlos cuantas veces quieras, sin restricción de dispositivo.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ RELATED PRODUCTS ============ -->
+  <section class="mt-14">
+    <h2 class="font-black text-ink text-2xl mb-6">También podría interesarte</h2>
+    <div class="grid sm:grid-cols-3 gap-4">
+      <a href="#" class="lift bg-white border border-line rounded-3xl overflow-hidden flex flex-col">
+        <div class="relative">
+          <div class="ph h-36 rounded-none border-0 text-[11px]">portada · 2° grado</div>
+          <span class="absolute top-3 left-3 w-9 h-9 rounded-xl bg-gisCoral text-white text-sm font-black flex items-center justify-center shadow">2°</span>
+        </div>
+        <div class="p-4 flex-1 flex flex-col">
+          <h3 class="font-bold text-ink text-base leading-snug">Planeaciones 2° grado · T1</h3>
+          <div class="mt-auto pt-3 flex items-center justify-between">
+            <span class="text-xl font-black text-ink">$149</span>
+            <span class="text-[12px] text-mute">PDF · desde</span>
+          </div>
+        </div>
+      </a>
+      <a href="#" class="lift bg-white border border-line rounded-3xl overflow-hidden flex flex-col">
+        <div class="relative">
+          <div class="ph h-36 rounded-none border-0 text-[11px]">portada · 4° grado</div>
+          <span class="absolute top-3 left-3 w-9 h-9 rounded-xl bg-gisLavanda text-white text-sm font-black flex items-center justify-center shadow">4°</span>
+        </div>
+        <div class="p-4 flex-1 flex flex-col">
+          <h3 class="font-bold text-ink text-base leading-snug">Planeaciones 4° grado · T1</h3>
+          <div class="mt-auto pt-3 flex items-center justify-between">
+            <span class="text-xl font-black text-ink">$149</span>
+            <span class="text-[12px] text-mute">PDF · desde</span>
+          </div>
+        </div>
+      </a>
+      <a href="#" class="lift bg-white border border-line rounded-3xl overflow-hidden flex flex-col">
+        <div class="relative">
+          <div class="ph h-36 rounded-none border-0 text-[11px]">portada · multigrado 2°–3°</div>
+          <span class="absolute top-3 left-3 h-9 px-2.5 rounded-xl bg-board text-white text-xs font-black flex items-center shadow">2°–3°</span>
+        </div>
+        <div class="p-4 flex-1 flex flex-col">
+          <h3 class="font-bold text-ink text-base leading-snug">Multigrado bidocente 2°–3° · T1</h3>
+          <div class="mt-auto pt-3 flex items-center justify-between">
+            <span class="text-xl font-black text-ink">$229</span>
+            <span class="text-[12px] text-mute">PDF · desde</span>
+          </div>
+        </div>
+      </a>
+    </div>
+  </section>
+</main>
+
+<!-- ============ STICKY BUY BAR (appears when main CTA scrolls out) ============ -->
+<div id="stickyBar" class="hidden-bar fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-line shadow-[0_-8px_32px_-16px_rgba(28,36,52,.2)]">
+  <div class="max-w-content mx-auto px-4 sm:px-6 py-3 flex items-center gap-4">
+    <div class="flex items-center gap-2 shrink-0">
+      <span class="w-9 h-9 rounded-xl bg-gisMenta text-board/80 text-sm font-black flex items-center justify-center">3°</span>
+      <div class="hidden sm:block">
+        <div class="text-sm font-bold text-ink leading-tight">Planeaciones 3° grado</div>
+        <div class="text-[12px] text-mute" id="barConfig">Trimestre 1 · PDF</div>
+      </div>
+    </div>
+    <div class="ml-auto flex items-center gap-3">
+      <span class="text-2xl font-black text-ink" id="barPrice">$149</span>
+      <button onclick="handleBuy()" class="h-12 px-5 rounded-2xl bg-action hover:bg-action-dark text-white font-bold transition text-[15px] flex items-center gap-2">
+        <i data-lucide="shopping-cart" class="w-4 h-4"></i> Comprar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="mt-16 border-t border-line bg-white">
+  <div class="max-w-content mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-mute">
+    <img src="assets/jissez-wordmark-blue.png" alt="Jissez" class="h-6 w-auto" />
+    <p>© 2026 Jissez · Planeaciones NEM</p>
+    <div class="flex gap-5">
+      <a href="#" class="hover:text-ink transition">Términos</a>
+      <a href="#" class="hover:text-ink transition">Privacidad</a>
+      <a href="#" class="hover:text-ink transition">Contacto</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  lucide.createIcons();
+
+  // ---- State ----
+  const prices = {
+    t1:    { pdf: 149, word: 199 },
+    t2:    { pdf: 149, word: 199 },
+    t3:    { pdf: 149, word: 199 },
+    ciclo: { pdf: 349, word: 449 },
+  };
+  const pkgLabels = { t1: 'Trimestre 1', t2: 'Trimestre 2', t3: 'Trimestre 3', ciclo: 'Ciclo completo' };
+  const savingsOriginal = { ciclo: 447 }; // 3 × $149
+
+  let selPkg = localStorage.getItem('jissez_pkg') || 't1';
+  let selFmt = localStorage.getItem('jissez_fmt') || 'pdf';
+
+  function getPrice() { return prices[selPkg][selFmt]; }
+
+  function updateUI() {
+    const p = getPrice();
+    const priceEl = document.getElementById('priceDisplay');
+    priceEl.classList.remove('bump');
+    void priceEl.offsetWidth;
+    priceEl.classList.add('bump');
+    priceEl.textContent = '$' + p;
+    document.getElementById('buyLabel').textContent = 'Comprar · $' + p;
+    document.getElementById('barPrice').textContent = '$' + p;
+
+    const label = pkgLabels[selPkg] + ' · ' + (selFmt === 'pdf' ? 'PDF' : 'PDF + Word');
+    document.getElementById('priceLabel').textContent = label;
+    document.getElementById('barConfig').textContent = label;
+
+    // show original price line-through for ciclo
+    const orig = document.getElementById('originalPrice');
+    if (selPkg === 'ciclo') {
+      orig.classList.remove('hidden');
+      orig.textContent = selFmt === 'pdf' ? '$447' : '$597';
+    } else { orig.classList.add('hidden'); }
+
+    // word extra indicator
+    const we = document.getElementById('wordExtra');
+    we.textContent = selFmt === 'word' ? '' : '+$50';
+
+    try {
+      localStorage.setItem('jissez_pkg', selPkg);
+      localStorage.setItem('jissez_fmt', selFmt);
+    } catch(e) {}
+  }
+
+  function selectPkg(pkg) {
+    selPkg = pkg;
+    document.querySelectorAll('[data-pkg]').forEach(b => {
+      b.classList.toggle('selected', b.dataset.pkg === pkg);
+    });
+    updateUI();
+  }
+
+  function selectFmt(fmt) {
+    selFmt = fmt;
+    document.querySelectorAll('[data-fmt]').forEach(b => {
+      b.classList.toggle('selected', b.dataset.fmt === fmt);
+    });
+    updateUI();
+  }
+
+  function handleBuy() {
+    // Persist selection, then go to checkout
+    try { localStorage.setItem('jissez_pkg', selPkg); localStorage.setItem('jissez_fmt', selFmt); } catch(e) {}
+    const btn = document.getElementById('buyBtn');
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Redirigiendo al pago…</span>';
+    btn.classList.replace('bg-action', 'bg-action-dark');
+    lucide.createIcons();
+    setTimeout(() => { window.location.href = 'Checkout — Planeaciones NEM.html'; }, 900);
+  }
+
+  // Init
+  selectPkg(selPkg);
+  selectFmt(selFmt);
+
+  // ---- PDF Preview ----
+  const pages = [
+    { label: 'Portada · Proyecto 1 · 3° grado', text: 'Portada · 3° grado · Trimestre 1' },
+    { label: 'Sesión 1 · Momento de inicio', text: 'Sesión 1 · actividades de inicio' },
+    { label: 'PDA · Procesos de Desarrollo de Aprendizaje', text: 'PDA · 3° grado' },
+    { label: 'Anexo 1 · Material para el alumno', text: 'Anexo 1 · ficha de trabajo' },
+    { label: 'Examen · Trimestre 1', text: 'Examen de trimestre · 3°' },
+  ];
+  let curPage = 0;
+
+  function renderPage() {
+    const p = pages[curPage];
+    document.getElementById('previewLabel').textContent = p.label;
+    document.getElementById('pageCount').textContent = 'Página ' + (curPage + 1) + ' de ' + pages.length;
+    document.getElementById('pdfMain').textContent = p.text;
+    document.querySelectorAll('.thumb').forEach((el, i) => {
+      el.classList.toggle('active', i === curPage);
+      el.classList.toggle('border-board', i === curPage);
+      el.classList.toggle('border-2', true);
+      el.classList.toggle('border-line', i !== curPage);
+    });
+  }
+
+  function prevPage() { curPage = (curPage - 1 + pages.length) % pages.length; renderPage(); }
+  function nextPage() { curPage = (curPage + 1) % pages.length; renderPage(); }
+  function goToPage(n) { curPage = n; renderPage(); }
+
+  // ---- Sticky bar ----
+  const buySection = document.getElementById('comprar');
+  const bar = document.getElementById('stickyBar');
+  const barObs = new IntersectionObserver(entries => {
+    bar.classList.toggle('hidden-bar', entries[0].isIntersecting);
+  }, { threshold: 0.3 });
+  barObs.observe(buySection);
+</script>
+</body>
+</html>

@@ -53,13 +53,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function cardProyecto(p) {
 		var card = document.createElement("div");
-		card.className = "bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden";
+		card.className = "bg-white rounded-2xl overflow-hidden";
+		card.style.border = "1px solid #e7e6df";
 		card.innerHTML =
-			'<button class="cab w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-gray-50">' +
-			'<span class="font-bold text-gray-800">' + esc(p.nombre) + "</span>" +
-			'<i data-lucide="chevron-down" class="chevron w-5 h-5 text-gray-400 transition-transform -rotate-90"></i>' +
+			'<button class="cab w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition" style="border-radius:1rem">' +
+			'<span class="font-bold" style="color:#1c2434">' + esc(p.nombre) + "</span>" +
+			'<i data-lucide="chevron-down" class="chevron transition-transform -rotate-90" style="width:1.25rem;height:1.25rem;color:#5b6473"></i>' +
 			"</button>" +
-			'<div class="cuerpo hidden border-t border-gray-100 px-5 py-4"><p class="text-sm text-gray-400">Cargando…</p></div>';
+			'<div class="cuerpo hidden px-5 py-4" style="border-top:1px solid #e7e6df"><p class="text-sm" style="color:#5b6473">Cargando...</p></div>';
 
 		var cab = card.querySelector(".cab");
 		var cuerpo = card.querySelector(".cuerpo");
@@ -99,7 +100,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var filas = g.items.map(function (a) { return filaArchivo(a, index); }).join("");
 			return (
 				'<div class="mb-3 last:mb-0">' +
-				'<p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">' + esc(g.grupo) + "</p>" +
+				'<p class="text-[11px] font-bold uppercase tracking-[0.1em] mb-1.5" style="color:#5b6473">' + esc(g.grupo) + "</p>" +
 				'<div class="flex flex-col gap-1.5">' + filas + "</div></div>"
 			);
 		}).join("");
@@ -113,28 +114,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function filaArchivo(a, index) {
 		var btns = "";
 		if (a.ver) {
-			btns += boton("ver", index, a, '<i data-lucide="eye" class="w-3.5 h-3.5"></i> Ver', "bg-blue-700 hover:bg-blue-800");
+			btns += boton("ver", index, a, '<i data-lucide="eye" style="width:.875rem;height:.875rem"></i> Ver', "background:#1e3a8a;color:#fff");
 		}
 		if (a.ext === "docx") {
-			// La versión editable: el .docx es para editar.
-			btns += boton("descargar", index, a, '<i data-lucide="pencil" class="w-3.5 h-3.5"></i> Editar (Word)', "bg-emerald-600 hover:bg-emerald-700");
+			btns += boton("descargar", index, a, '<i data-lucide="pencil" style="width:.875rem;height:.875rem"></i> Editar (Word)', "background:#059669;color:#fff");
 		} else {
-			btns += boton("descargar", index, a, '<i data-lucide="download" class="w-3.5 h-3.5"></i> Descargar', "bg-slate-600 hover:bg-slate-700");
+			btns += boton("descargar", index, a, '<i data-lucide="download" style="width:.875rem;height:.875rem"></i> Descargar', "background:#475569;color:#fff");
 		}
 		var iconoName = a.ext === "pdf" ? "file-text" : (a.ext === "docx" ? "file-pen-line" : "paperclip");
 		return (
-			'<div class="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">' +
-			'<span class="text-sm text-gray-700 min-w-0 truncate flex items-center gap-2">' +
-			'<i data-lucide="' + iconoName + '" class="w-4 h-4 shrink-0 text-gray-400"></i>' + esc(a.nombre) + "</span>" +
+			'<div class="flex items-center justify-between gap-3 rounded-xl px-3 py-2" style="background:#faf9f4">' +
+			'<span class="text-sm min-w-0 truncate flex items-center gap-2" style="color:#1c2434">' +
+			'<i data-lucide="' + iconoName + '" style="width:1rem;height:1rem;shrink:0;color:#5b6473"></i>' + esc(a.nombre) + "</span>" +
 			'<div class="flex items-center gap-2 shrink-0">' + btns + "</div></div>"
 		);
 	}
 
-	function boton(accion, index, a, label, color) {
+	function boton(accion, index, a, label, style) {
 		return (
 			'<button data-accion="' + accion + '" data-proyecto="' + index +
 			'" data-path="' + esc(a.path) + '" data-nombre="' + esc(a.nombre) +
-			'" class="' + color + ' text-white text-xs font-semibold px-3 py-2 rounded-lg min-h-[38px] inline-flex items-center gap-1.5">' + label + "</button>"
+			'" class="text-xs font-semibold px-3 rounded-lg inline-flex items-center gap-1.5" style="' + style + ';min-height:38px">' + label + "</button>"
 		);
 	}
 
@@ -198,7 +198,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (err) {
 			estadoEl.classList.remove("hidden");
 			listaEl.classList.add("hidden");
-			estadoEl.innerHTML = '<p class="text-red-500">' + esc(err.message || "Error al cargar.") + "</p>";
+			estadoEl.innerHTML = '<p style="color:#dc2626">' + esc(err.message || "Error al cargar.") + "</p>";
 			return null;
 		}
 	}

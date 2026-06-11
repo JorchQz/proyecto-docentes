@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Catálogo de planeaciones · Jissez</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        board: { DEFAULT:'#1e3a8a', deep:'#16276b' },
+        ink:'#1c2434', mute:'#5b6473', line:'#e7e6df',
+        action:{ DEFAULT:'#059669', dark:'#047a55' },
+        paper:'#faf9f4',
+        gisAmarillo:'#f2cf6b', gisCoral:'#ef9277',
+        gisMenta:'#79c8a6',   gisLavanda:'#a99fe0',
+        gisCielo:'#85b8e6',   gisDurazno:'#f0b285',
+      },
+      fontFamily:{ sans:['Inter','system-ui','sans-serif'] },
+      maxWidth:{ content:'1180px' },
+    }},
+  };
+</script>
+<style>
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter',system-ui,sans-serif;background:#faf9f4;color:#1c2434;-webkit-font-smoothing:antialiased}
+  .board-tex{background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 14%,rgba(255,255,255,.07),transparent 38%),radial-gradient(rgba(255,255,255,.04) .6px,transparent .6px);background-size:auto,4px 4px}
+  .ph{background-color:#f1f0ea;background-image:repeating-linear-gradient(135deg,rgba(30,58,138,.06) 0 8px,transparent 8px 16px);border:1px dashed rgba(30,58,138,.22);color:#9ba3af;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;text-align:center}
+  .prod-card{transition:transform .2s ease,box-shadow .2s ease}
+  .prod-card:hover{transform:translateY(-3px);box-shadow:0 16px 36px -22px rgba(28,36,52,.38)}
+  .prod-card.hidden-card{display:none}
+  .chip{transition:all .14s ease;cursor:pointer;user-select:none}
+  .chip.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}
+  .chip:not(.active):hover{border-color:#1e3a8a;color:#1e3a8a}
+  .filter-group{border-bottom:1px solid #e7e6df;padding-bottom:1.25rem;margin-bottom:1.25rem}
+  .filter-group:last-child{border-bottom:none;padding-bottom:0;margin-bottom:0}
+  .subgroup{margin-top:.625rem;padding-left:.75rem;border-left:2px solid #e7e6df}
+  .subgroup-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#5b6473;margin-bottom:.5rem}
+</style>
+</head>
+<body class="antialiased">
+
+<!-- NAVBAR -->
+<header class="sticky top-0 z-50 board-tex border-b border-white/10">
+  <nav class="max-w-content mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+    <a href="Landing — Planeaciones NEM.html" class="flex items-center gap-2.5 shrink-0">
+      <img src="assets/jissez-wordmark-white.png" alt="Jissez" class="h-7 w-auto" />
+    </a>
+    <div class="hidden lg:flex items-center gap-1 text-[15px] text-white/85">
+      <a href="Landing — Planeaciones NEM.html#como" class="px-3.5 h-10 inline-flex items-center rounded-lg hover:bg-white/10 transition">Cómo funciona</a>
+      <a href="Landing — Planeaciones NEM.html#precios" class="px-3.5 h-10 inline-flex items-center rounded-lg hover:bg-white/10 transition">Precios</a>
+      <a href="Landing — Planeaciones NEM.html#faq" class="px-3.5 h-10 inline-flex items-center rounded-lg hover:bg-white/10 transition">Preguntas</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="Mis compras — Planeaciones NEM.html" class="hidden sm:inline-flex items-center h-11 px-4 rounded-xl text-white/90 font-semibold hover:bg-white/10 transition">Iniciar sesión</a>
+      <button onclick="toggleMenu()" class="lg:hidden w-11 h-11 rounded-xl text-white hover:bg-white/10 flex items-center justify-center">
+        <i data-lucide="menu" class="w-6 h-6"></i>
+      </button>
+    </div>
+  </nav>
+  <div id="mobileMenu" class="hidden lg:hidden board-tex border-t border-white/10">
+    <div class="px-4 py-3 flex flex-col text-white/90">
+      <a href="Landing — Planeaciones NEM.html" class="h-12 flex items-center border-b border-white/5">Inicio</a>
+      <a href="Mis compras — Planeaciones NEM.html" class="h-12 flex items-center font-semibold">Iniciar sesión</a>
+    </div>
+  </div>
+</header>
+
+<!-- PAGE HEADER -->
+<div class="border-b border-line bg-white">
+  <div class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-10">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 text-[13px] text-mute mb-2">
+          <a href="Landing — Planeaciones NEM.html" class="hover:text-ink transition">Inicio</a>
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+          <span class="text-ink font-medium">Catálogo</span>
+        </div>
+        <h1 class="font-black text-ink text-[clamp(1.8rem,3.5vw,2.6rem)] tracking-tight leading-tight">Catálogo de planeaciones</h1>
+        <p class="mt-2 text-mute">Elige tu grado o modalidad. Seleccionas T1, T2, T3 o ciclo completo en la página del paquete.</p>
+      </div>
+      <p class="text-[14px] text-mute"><span id="countNum">—</span> paquetes</p>
+    </div>
+  </div>
+</div>
+
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8">
+  <div class="lg:grid lg:grid-cols-[236px_1fr] gap-8">
+
+    <!-- DESKTOP SIDEBAR -->
+    <aside class="hidden lg:block">
+      <div class="bg-white border border-line rounded-2xl p-5">
+
+        <!-- Organización completa -->
+        <div class="filter-group" id="sectionRegular">
+          <label class="flex items-center justify-between cursor-pointer mb-1 select-none">
+            <span class="text-[12px] font-bold uppercase tracking-[0.12em] text-board flex items-center gap-2">
+              <i data-lucide="layout-grid" class="w-4 h-4"></i> Organización completa
+            </span>
+            <input type="checkbox" id="masterRegular" class="w-4 h-4 accent-board" checked onchange="toggleSection('regular', this.checked)" />
+          </label>
+          <p class="text-[12px] text-mute mb-3">Un docente, un grado</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+              <input type="checkbox" class="w-4 h-4 accent-board" data-filter="regular" value="1" onchange="applyFilters()" checked />
+              <span class="w-7 h-7 rounded-lg bg-gisAmarillo text-board/80 text-xs font-black flex items-center justify-center shrink-0">1°</span>
+              <span class="text-[14px] text-ink group-hover:text-board transition">1° grado</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+              <input type="checkbox" class="w-4 h-4 accent-board" data-filter="regular" value="2" onchange="applyFilters()" checked />
+              <span class="w-7 h-7 rounded-lg bg-gisCoral text-white text-xs font-black flex items-center justify-center shrink-0">2°</span>
+              <span class="text-[14px] text-ink group-hover:text-board transition">2° grado</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+              <input type="checkbox" class="w-4 h-4 accent-board" data-filter="regular" value="3" onchange="applyFilters()" checked />
+              <span class="w-7 h-7 rounded-lg bg-gisMenta text-board/80 text-xs font-black flex items-center justify-center shrink-0">3°</span>
+              <span class="text-[14px] text-ink group-hover:text-board transition">3° grado</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+              <input type="checkbox" class="w-4 h-4 accent-board" data-filter="regular" value="4" onchange="applyFilters()" checked />
+              <span class="w-7 h-7 rounded-lg bg-gisLavanda text-white text-xs font-black flex items-center justify-center shrink-0">4°</span>
+              <span class="text-[14px] text-ink group-hover:text-board transition">4° grado</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+              <input type="checkbox" class="w-4 h-4 accent-board" data-filter="regular" value="5" onchange="applyFilters()" checked />
+              <span class="w-7 h-7 rounded-lg bg-gisCielo text-board/80 text-xs font-black flex items-center justify-center shrink-0">5°</span>
+              <span class="text-[14px] text-ink group-hover:text-board transition">5° grado</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+              <input type="checkbox" class="w-4 h-4 accent-board" data-filter="regular" value="6" onchange="applyFilters()" checked />
+              <span class="w-7 h-7 rounded-lg bg-gisDurazno text-board/80 text-xs font-black flex items-center justify-center shrink-0">6°</span>
+              <span class="text-[14px] text-ink group-hover:text-board transition">6° grado</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Multigrado -->
+        <div>
+          <label class="flex items-center justify-between cursor-pointer mb-1 select-none">
+            <span class="text-[12px] font-bold uppercase tracking-[0.12em] text-board flex items-center gap-2">
+              <i data-lucide="users" class="w-4 h-4"></i> Multigrado
+            </span>
+            <input type="checkbox" id="masterMulti" class="w-4 h-4 accent-board" checked onchange="toggleSection('multi', this.checked)" />
+          </label>
+
+          <!-- Bidocente -->
+          <div class="subgroup mt-3">
+            <p class="subgroup-label">Bidocente</p>
+            <p class="text-[11px] text-mute mb-2.5 leading-tight">2 docentes · 3 grados c/u</p>
+            <div class="space-y-2.5">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" class="w-4 h-4 accent-board shrink-0" data-filter="bidocente" value="1-2-3" onchange="applyFilters()" checked />
+                <span class="flex items-center gap-1">
+                  <span class="w-6 h-6 rounded bg-gisAmarillo text-board/80 text-[10px] font-black flex items-center justify-center">1°</span>
+                  <span class="w-6 h-6 rounded bg-gisCoral text-white text-[10px] font-black flex items-center justify-center">2°</span>
+                  <span class="w-6 h-6 rounded bg-gisMenta text-board/80 text-[10px] font-black flex items-center justify-center">3°</span>
+                  <span class="text-[13px] font-semibold text-ink group-hover:text-board transition ml-1">1°-2°-3°</span>
+                </span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" class="w-4 h-4 accent-board shrink-0" data-filter="bidocente" value="4-5-6" onchange="applyFilters()" checked />
+                <span class="flex items-center gap-1">
+                  <span class="w-6 h-6 rounded bg-gisLavanda text-white text-[10px] font-black flex items-center justify-center">4°</span>
+                  <span class="w-6 h-6 rounded bg-gisCielo text-board/80 text-[10px] font-black flex items-center justify-center">5°</span>
+                  <span class="w-6 h-6 rounded bg-gisDurazno text-board/80 text-[10px] font-black flex items-center justify-center">6°</span>
+                  <span class="text-[13px] font-semibold text-ink group-hover:text-board transition ml-1">4°-5°-6°</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Tridocente -->
+          <div class="subgroup mt-4">
+            <p class="subgroup-label">Tridocente</p>
+            <p class="text-[11px] text-mute mb-2.5 leading-tight">3 docentes · 2 grados c/u</p>
+            <div class="space-y-2.5">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" class="w-4 h-4 accent-board shrink-0" data-filter="tridocente" value="1-2" onchange="applyFilters()" checked />
+                <span class="flex items-center gap-1">
+                  <span class="w-6 h-6 rounded bg-gisAmarillo text-board/80 text-[10px] font-black flex items-center justify-center">1°</span>
+                  <span class="w-6 h-6 rounded bg-gisCoral text-white text-[10px] font-black flex items-center justify-center">2°</span>
+                  <span class="text-[13px] font-semibold text-ink group-hover:text-board transition ml-1">1°-2°</span>
+                </span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" class="w-4 h-4 accent-board shrink-0" data-filter="tridocente" value="3-4" onchange="applyFilters()" checked />
+                <span class="flex items-center gap-1">
+                  <span class="w-6 h-6 rounded bg-gisMenta text-board/80 text-[10px] font-black flex items-center justify-center">3°</span>
+                  <span class="w-6 h-6 rounded bg-gisLavanda text-white text-[10px] font-black flex items-center justify-center">4°</span>
+                  <span class="text-[13px] font-semibold text-ink group-hover:text-board transition ml-1">3°-4°</span>
+                </span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" class="w-4 h-4 accent-board shrink-0" data-filter="tridocente" value="5-6" onchange="applyFilters()" checked />
+                <span class="flex items-center gap-1">
+                  <span class="w-6 h-6 rounded bg-gisCielo text-board/80 text-[10px] font-black flex items-center justify-center">5°</span>
+                  <span class="w-6 h-6 rounded bg-gisDurazno text-board/80 text-[10px] font-black flex items-center justify-center">6°</span>
+                  <span class="text-[13px] font-semibold text-ink group-hover:text-board transition ml-1">5°-6°</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <button onclick="resetFilters()" class="mt-5 w-full h-10 rounded-xl border border-line text-[13px] font-semibold text-mute hover:text-ink hover:border-ink transition flex items-center justify-center gap-2">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Limpiar filtros
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENT -->
+    <div>
+      <!-- Mobile chips -->
+      <div class="lg:hidden mb-5 space-y-2">
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          <button onclick="mobileMode('all')"        id="mAll"  class="chip active shrink-0 h-10 px-4 rounded-full border-2 border-board bg-board text-white text-sm font-bold">Todos</button>
+          <button onclick="mobileMode('regular')"    id="mReg"  class="chip shrink-0 h-10 px-4 rounded-full border-2 border-line bg-white text-ink text-sm font-semibold">Org. completa</button>
+          <button onclick="mobileMode('bidocente')"  id="mBi"   class="chip shrink-0 h-10 px-4 rounded-full border-2 border-line bg-white text-ink text-sm font-semibold">Bidocente</button>
+          <button onclick="mobileMode('tridocente')" id="mTri"  class="chip shrink-0 h-10 px-4 rounded-full border-2 border-line bg-white text-ink text-sm font-semibold">Tridocente</button>
+        </div>
+        <div id="gradeRow" class="flex gap-2 overflow-x-auto pb-1"></div>
+      </div>
+
+      <!-- Sort bar -->
+      <div class="flex items-center justify-between mb-5 gap-3">
+        <p class="text-[14px] text-mute"><span id="countNum2">—</span> resultados</p>
+        <select onchange="sortCards(this.value)" class="h-10 px-3 rounded-xl border border-line bg-white text-[14px] text-ink font-medium focus:outline-none focus:border-board">
+          <option value="default">Ordenar: Grado</option>
+          <option value="price-asc">Precio: menor a mayor</option>
+          <option value="price-desc">Precio: mayor a menor</option>
+        </select>
+      </div>
+
+      <!-- Grid -->
+      <div id="productGrid" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-5"></div>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="hidden py-20 text-center">
+        <div class="w-16 h-16 rounded-2xl bg-board/8 text-board flex items-center justify-center mx-auto mb-4">
+          <i data-lucide="search-x" class="w-8 h-8"></i>
+        </div>
+        <h3 class="font-bold text-ink text-xl mb-2">Sin resultados</h3>
+        <p class="text-mute mb-5">Ajusta los filtros para ver más paquetes.</p>
+        <button onclick="resetFilters()" class="h-11 px-5 rounded-xl bg-board text-white font-semibold text-sm">Ver todos</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- FOOTER -->
+<footer class="mt-12 border-t border-line bg-white">
+  <div class="max-w-content mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-mute">
+    <img src="assets/jissez-wordmark-blue.png" alt="Jissez" class="h-6 w-auto" />
+    <p>© 2026 Jissez · Planeaciones NEM</p>
+    <div class="flex gap-5">
+      <a href="Landing — Planeaciones NEM.html" class="hover:text-ink transition">Inicio</a>
+      <a href="#" class="hover:text-ink transition">Contacto</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+lucide.createIcons();
+
+const GC = {
+  1:{bg:'bg-gisAmarillo',tx:'text-board/80'},2:{bg:'bg-gisCoral',tx:'text-white'},
+  3:{bg:'bg-gisMenta',tx:'text-board/80'}, 4:{bg:'bg-gisLavanda',tx:'text-white'},
+  5:{bg:'bg-gisCielo',tx:'text-board/80'}, 6:{bg:'bg-gisDurazno',tx:'text-board/80'},
+};
+
+// One card per grade/combo — coverage selected on product page
+const PRODUCTS = [
+  // Organización completa
+  {tipo:'regular',grado:1,combo:'1',basePrice:149,label:'1° grado'},
+  {tipo:'regular',grado:2,combo:'2',basePrice:149,label:'2° grado'},
+  {tipo:'regular',grado:3,combo:'3',basePrice:149,label:'3° grado'},
+  {tipo:'regular',grado:4,combo:'4',basePrice:149,label:'4° grado'},
+  {tipo:'regular',grado:5,combo:'5',basePrice:149,label:'5° grado'},
+  {tipo:'regular',grado:6,combo:'6',basePrice:149,label:'6° grado'},
+  // Bidocente
+  {tipo:'bidocente',combo:'1-2-3',basePrice:249,label:'Bidocente 1°-2°-3°'},
+  {tipo:'bidocente',combo:'4-5-6',basePrice:249,label:'Bidocente 4°-5°-6°'},
+  // Tridocente
+  {tipo:'tridocente',combo:'1-2',basePrice:199,label:'Tridocente 1°-2°'},
+  {tipo:'tridocente',combo:'3-4',basePrice:199,label:'Tridocente 3°-4°'},
+  {tipo:'tridocente',combo:'5-6',basePrice:199,label:'Tridocente 5°-6°'},
+];
+
+function gradeChipsHTML(p){
+  if(p.tipo==='regular'){
+    const gc=GC[p.grado];
+    return `<span class="w-10 h-10 rounded-xl ${gc.bg} ${gc.tx} text-base font-black flex items-center justify-center shadow-sm">${p.grado}°</span>`;
+  }
+  return p.combo.split('-').map(g=>{
+    const gc=GC[+g];
+    return `<span class="w-8 h-8 rounded-lg ${gc.bg} ${gc.tx} text-xs font-black flex items-center justify-center">${g}°</span>`;
+  }).join('');
+}
+
+function coverageNote(p){
+  const cicloPrice = p.tipo==='regular' ? 349 : (p.tipo==='bidocente' ? 549 : 449);
+  return `<span class="text-[11px] text-mute">T1 · T2 · T3 · Ciclo completo</span>`;
+}
+
+function buildCard(p){
+  const chips = gradeChipsHTML(p);
+  const tipoLabel = p.tipo==='regular'?'Organización completa':(p.tipo==='bidocente'?'Bidocente':'Tridocente');
+  const desc = p.tipo==='regular'
+    ? 'Proyectos, PDAs, anexos y examen para todo el ciclo.'
+    : (p.tipo==='bidocente'
+      ? '2 docentes · 3 grados compartidos · actividades diferenciadas.'
+      : '3 docentes · 2 grados compartidos · actividades diferenciadas.');
+  return `
+  <article class="prod-card bg-white border border-line rounded-3xl overflow-hidden flex flex-col"
+    data-tipo="${p.tipo}" data-combo="${p.combo}" data-price="${p.basePrice}">
+    <div class="relative">
+      <div class="ph h-40 border-x-0 border-t-0" style="border-radius:0">${p.label}</div>
+      <div class="absolute top-3 left-3 flex items-center gap-1">${chips}</div>
+      <span class="absolute top-3 right-3 text-[11px] font-semibold px-2.5 h-6 rounded-full bg-white/90 border border-line text-mute flex items-center">${tipoLabel}</span>
+    </div>
+    <div class="p-5 flex flex-col flex-1">
+      <h3 class="font-bold text-lg text-ink leading-snug">${p.label}</h3>
+      <p class="mt-1 text-sm text-mute">${desc}</p>
+      <div class="mt-3 flex flex-wrap gap-1.5">
+        <span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md bg-paper border border-line text-mute">PDF</span>
+        <span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md bg-gisCielo/20 border border-gisCielo/40 text-board/60">+ Word disponible</span>
+      </div>
+      <div class="mt-auto pt-4 border-t border-line mt-5">
+        <div class="flex items-end justify-between gap-2 mb-3">
+          <div>
+            <p class="text-[11px] text-mute mb-0.5">desde</p>
+            <div class="flex items-baseline gap-1">
+              <span class="text-2xl font-black text-ink">$${p.basePrice}</span>
+              <span class="text-sm text-mute">por trimestre</span>
+            </div>
+          </div>
+          <div class="text-right text-[11px] text-mute leading-tight">T1 · T2 · T3<br/>o ciclo completo</div>
+        </div>
+        <a href="Producto — Planeaciones NEM.html"
+          class="w-full h-11 rounded-xl bg-action hover:bg-action-dark text-white text-sm font-bold transition flex items-center justify-center gap-2">
+          Ver paquete <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+      </div>
+    </div>
+  </article>`;
+}
+
+const grid = document.getElementById('productGrid');
+PRODUCTS.forEach(p => grid.insertAdjacentHTML('beforeend', buildCard(p)));
+lucide.createIcons();
+
+// ─── Filter ──────────────────────────────────────────────────────
+function getChecked(f){ return [...document.querySelectorAll(`input[data-filter="${f}"]:checked`)].map(e=>e.value); }
+
+function applyFilters(){
+  const reg = getChecked('regular');
+  const bi  = getChecked('bidocente');
+  const tri = getChecked('tridocente');
+  let n=0;
+  document.querySelectorAll('.prod-card').forEach(c=>{
+    const t=c.dataset.tipo, combo=c.dataset.combo;
+    const ok = (t==='regular'&&reg.includes(combo))||(t==='bidocente'&&bi.includes(combo))||(t==='tridocente'&&tri.includes(combo));
+    c.classList.toggle('hidden-card',!ok);
+    if(ok)n++;
+  });
+  document.getElementById('countNum').textContent=n;
+  document.getElementById('countNum2').textContent=n;
+  document.getElementById('emptyState').classList.toggle('hidden',n>0);
+  syncMasters();
+}
+
+function resetFilters(){
+  document.querySelectorAll('input[data-filter]').forEach(e=>e.checked=true);
+  mobileMode('all');
+  applyFilters();
+}
+
+// ─── Section master toggle ───────────────────────────────────────
+function toggleSection(section, checked){
+  if(section==='regular'){
+    document.querySelectorAll('input[data-filter="regular"]').forEach(e=>{ e.checked=checked; });
+  } else {
+    document.querySelectorAll('input[data-filter="bidocente"], input[data-filter="tridocente"]').forEach(e=>{ e.checked=checked; });
+  }
+  applyFilters();
+}
+
+function syncMasters(){
+  const regInputs = [...document.querySelectorAll('input[data-filter="regular"]')];
+  const mReg = document.getElementById('masterRegular');
+  if(mReg){
+    const all=regInputs.every(e=>e.checked), some=regInputs.some(e=>e.checked);
+    mReg.checked=some; mReg.indeterminate=some&&!all;
+  }
+  const multiInputs = [...document.querySelectorAll('input[data-filter="bidocente"], input[data-filter="tridocente"]')];
+  const mMul = document.getElementById('masterMulti');
+  if(mMul){
+    const all=multiInputs.every(e=>e.checked), some=multiInputs.some(e=>e.checked);
+    mMul.checked=some; mMul.indeterminate=some&&!all;
+  }
+}
+
+// ─── Mobile quick ────────────────────────────────────────────────
+let mMode='all', mGrade=null;
+function mobileMode(mode){
+  mMode=mode; mGrade=null;
+  ['All','Reg','Bi','Tri'].forEach(k=>{
+    const m={'All':'all','Reg':'regular','Bi':'bidocente','Tri':'tridocente'}[k];
+    const el=document.getElementById('m'+k);
+    if(el)el.classList.toggle('active',m===mode);
+  });
+  renderSubChips();
+  renderMobile();
+}
+
+// ─── Context-aware sub-chips ─────────────────────────────────────
+function renderSubChips(){
+  const row=document.getElementById('gradeRow');
+  if(!row)return;
+  const base='chip shrink-0 h-9 rounded-full border-2 border-line bg-white text-ink text-sm font-semibold';
+  if(mMode==='all'||mMode==='regular'){
+    row.innerHTML=[1,2,3,4,5,6].map(g=>
+      `<button onclick="mobileGrade('${g}')" data-g="${g}" class="${base} px-3">${g}°</button>`
+    ).join('');
+  } else if(mMode==='bidocente'){
+    row.innerHTML=[
+      `<button onclick="mobileCombo('1-2-3')" data-combo="1-2-3" class="${base} px-4">1°-2°-3°</button>`,
+      `<button onclick="mobileCombo('4-5-6')" data-combo="4-5-6" class="${base} px-4">4°-5°-6°</button>`,
+    ].join('');
+  } else if(mMode==='tridocente'){
+    row.innerHTML=[
+      `<button onclick="mobileCombo('1-2')" data-combo="1-2" class="${base} px-4">1°-2°</button>`,
+      `<button onclick="mobileCombo('3-4')" data-combo="3-4" class="${base} px-4">3°-4°</button>`,
+      `<button onclick="mobileCombo('5-6')" data-combo="5-6" class="${base} px-4">5°-6°</button>`,
+    ].join('');
+  } else {
+    row.innerHTML='';
+  }
+}
+
+function mobileCombo(combo){
+  const btn=document.querySelector(`[data-combo="${combo}"]`);
+  const wasActive=btn&&btn.classList.contains('active');
+  document.querySelectorAll('[data-combo]').forEach(c=>c.classList.remove('active'));
+  mGrade = wasActive ? null : combo;
+  if(!wasActive&&btn) btn.classList.add('active');
+  renderMobile();
+}
+function mobileGrade(g){
+  mMode='regular';
+  document.getElementById('mAll').classList.remove('active');
+  document.getElementById('mReg').classList.add('active');
+  document.getElementById('mBi').classList.remove('active');
+  document.getElementById('mTri').classList.remove('active');
+  mGrade = mGrade===g ? null : g;
+  document.querySelectorAll('[data-g]').forEach(c=>c.classList.toggle('active',c.dataset.g===mGrade));
+  renderMobile();
+}
+function renderMobile(){
+  let n=0;
+  document.querySelectorAll('.prod-card').forEach(c=>{
+    let ok=true;
+    if(mMode==='regular')    ok=c.dataset.tipo==='regular'   &&(!mGrade||c.dataset.combo===mGrade);
+    if(mMode==='bidocente')  ok=c.dataset.tipo==='bidocente' &&(!mGrade||c.dataset.combo===mGrade);
+    if(mMode==='tridocente') ok=c.dataset.tipo==='tridocente'&&(!mGrade||c.dataset.combo===mGrade);
+    c.classList.toggle('hidden-card',!ok);
+    if(ok)n++;
+  });
+  document.getElementById('countNum').textContent=n;
+  document.getElementById('countNum2').textContent=n;
+  document.getElementById('emptyState').classList.toggle('hidden',n>0);
+}
+
+// ─── Sort ────────────────────────────────────────────────────────
+function sortCards(mode){
+  const cards=[...document.querySelectorAll('.prod-card')];
+  const order={regular:0,bidocente:1,tridocente:2};
+  cards.sort((a,b)=>{
+    if(mode==='price-asc') return +a.dataset.price - +b.dataset.price;
+    if(mode==='price-desc')return +b.dataset.price - +a.dataset.price;
+    return (order[a.dataset.tipo]||0)-(order[b.dataset.tipo]||0)||+a.dataset.combo-+b.dataset.combo;
+  });
+  cards.forEach(c=>grid.appendChild(c));
+}
+
+function toggleMenu(){ document.getElementById('mobileMenu').classList.toggle('hidden'); }
+applyFilters();
+renderSubChips();
+</script>
+</body>
+</html>

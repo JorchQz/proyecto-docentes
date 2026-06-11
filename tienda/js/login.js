@@ -172,9 +172,10 @@ document.addEventListener("DOMContentLoaded", function () {
 			form.insertAdjacentElement("afterend", box);
 		}
 		box.textContent = text;
-		box.className =
-			"mt-4 rounded-lg px-4 py-3 text-sm " +
-			(type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700");
+		box.className = "mt-4 rounded-xl px-4 py-3 text-sm font-medium";
+		box.style.cssText = type === "success"
+			? "background:#ecfdf5;color:#047a55;border:1px solid #a7f3d0"
+			: "background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5";
 	}
 
 	function clearMessage() {

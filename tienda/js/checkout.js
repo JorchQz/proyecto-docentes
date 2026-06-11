@@ -149,11 +149,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (itemRes.error) { throw itemRes.error; }
 
 			bloqueTransferencia.innerHTML =
-				'<div class="text-center py-3 flex flex-col items-center">' +
-				'<i data-lucide="circle-check" class="w-9 h-9 text-emerald-600 mb-2"></i>' +
-				'<p class="font-semibold text-blue-900">Compra registrada</p>' +
-				'<p class="text-gray-600 mt-1">En cuanto confirmemos tu transferencia activaremos tu acceso. Te avisaremos por correo.</p>' +
-				'<a href="mis-compras.html" class="inline-block mt-3 text-blue-700 underline font-medium">Ir a Mis compras</a>' +
+				'<div class="text-center py-3 flex flex-col items-center gap-2">' +
+				'<i data-lucide="circle-check" style="width:2.5rem;height:2.5rem;color:#059669"></i>' +
+				'<p class="font-bold text-lg" style="color:#1c2434">Compra registrada</p>' +
+				'<p class="text-sm" style="color:#5b6473">En cuanto confirmemos tu transferencia activaremos tu acceso. Te avisaremos por correo.</p>' +
+				'<a href="mis-compras.html" class="inline-block mt-2 font-semibold text-sm" style="color:#1e3a8a">Ir a Mis compras &rarr;</a>' +
 				"</div>";
 			Tienda.iconos();
 		} catch (err) {

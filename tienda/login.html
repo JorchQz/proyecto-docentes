@@ -3,83 +3,107 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Planeaciones NEM — Acceder</title>
-	<script src="https://cdn.tailwindcss.com"></script>
+	<title>Acceder — Jissez</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<script>
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
+						ink: '#1c2434', mute: '#5b6473', line: '#e7e6df',
+						action: { DEFAULT: '#059669', dark: '#047a55' },
+						paper: '#faf9f4',
+					},
+					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+				},
+			},
+		};
+	</script>
+	<style>
+		body { font-family: 'Inter', system-ui, sans-serif; background: #1e3a8a; background-image: radial-gradient(circle at 18% 12%, rgba(255,255,255,.08), transparent 38%), radial-gradient(rgba(255,255,255,.04) .6px, transparent .6px); background-size: auto, 4px 4px; -webkit-font-smoothing: antialiased; }
+		input { outline: none; transition: border-color .14s ease, box-shadow .14s ease; }
+		input:focus { border-color: #1e3a8a !important; box-shadow: 0 0 0 3px rgba(30,58,138,.12); }
+	</style>
 </head>
-<body class="bg-blue-900 flex flex-col items-center justify-center min-h-screen p-4 text-gray-800">
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-	<a href="index.html" class="inline-flex items-center gap-1 text-sm text-blue-100 hover:text-white font-medium mb-4">← Volver a la tienda</a>
-
-	<div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-		<div class="text-center mb-8 flex flex-col items-center">
-			<div class="w-12 h-12 rounded-xl bg-blue-900 text-white flex items-center justify-center mb-2"><i data-lucide="graduation-cap" class="w-7 h-7"></i></div>
-			<a href="index.html" class="inline-block text-2xl font-extrabold text-blue-900 mb-1">Planeaciones NEM</a>
-			<p class="text-gray-500 text-sm" id="subtitulo">Inicia sesión para acceder a tus planeaciones</p>
+	<div class="w-full max-w-md">
+		<div class="text-center mb-8">
+			<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" class="mx-auto mb-3" onerror="this.style.display='none';this.nextSibling.style.display='block'">
+			<span style="display:none;color:#fff;font-weight:800;font-size:20px;display:block;margin-bottom:.75rem">Jissez</span>
+			<a href="index.html" class="text-sm text-white/60 hover:text-white transition">← Volver a la tienda</a>
 		</div>
 
-		<form id="loginForm" class="space-y-5">
-			<div id="nombreField" class="hidden">
-				<label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
-				<input type="text" id="nombre" maxlength="100" autocomplete="name"
-					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-					placeholder="Ej. María Fernanda López">
+		<div class="bg-white rounded-3xl shadow-2xl p-8">
+			<div class="text-center mb-7">
+				<h1 class="text-2xl font-black text-ink tracking-tight">Acceder</h1>
+				<p class="mt-1 text-sm text-mute" id="subtitulo">Inicia sesión para acceder a tus planeaciones</p>
 			</div>
 
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
-				<input type="email" id="email" required autocomplete="email"
-					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-					placeholder="maestra@correo.com">
+			<form id="loginForm" class="flex flex-col gap-4">
+				<div id="nombreField" class="hidden">
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Nombre completo</label>
+					<input type="text" id="nombre" maxlength="100" autocomplete="name"
+						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+						placeholder="Ej. María Fernanda López">
+				</div>
+
+				<div>
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Correo electrónico</label>
+					<input type="email" id="email" required autocomplete="email"
+						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+						placeholder="maestra@correo.com">
+				</div>
+
+				<div>
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Contraseña</label>
+					<input type="password" id="password" required autocomplete="current-password"
+						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+						placeholder="••••••••">
+				</div>
+
+				<div id="cctField" class="hidden">
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">CCT <span style="color:#5b6473;font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
+					<input type="text" id="cct" maxlength="10" inputmode="text" autocapitalize="characters"
+						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink uppercase" style="border-color:#e7e6df"
+						placeholder="Ej. 21DPR1234X">
+					<p class="mt-1 text-xs text-mute">Aparece en tus materiales descargados.</p>
+				</div>
+
+				<div id="escuelaField" class="hidden">
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Escuela <span style="color:#5b6473;font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
+					<input type="text" id="escuela" maxlength="120"
+						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+						placeholder="Nombre de tu escuela">
+				</div>
+
+				<button type="submit" class="w-full h-12 rounded-xl text-sm font-bold text-white transition" style="background:#059669">
+					Iniciar sesión
+				</button>
+			</form>
+
+			<div class="mt-5 text-center">
+				<p class="text-sm text-mute">
+					¿No tienes cuenta? <a href="#" id="toggleLink" class="font-semibold text-board hover:underline">Regístrate</a>
+				</p>
 			</div>
 
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-				<input type="password" id="password" required autocomplete="current-password"
-					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-					placeholder="••••••••">
+			<div class="mt-5 pt-5 border-t border-line flex items-center justify-center gap-x-5 gap-y-1 flex-wrap text-xs text-mute">
+				<span class="inline-flex items-center gap-1.5"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Pago seguro</span>
+				<span class="inline-flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato</span>
 			</div>
-
-			<div id="cctField" class="hidden">
-				<label class="block text-sm font-medium text-gray-700 mb-1">CCT <span class="text-gray-400 font-normal">(opcional)</span></label>
-				<input type="text" id="cct" maxlength="10" inputmode="text" autocapitalize="characters"
-					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
-					placeholder="Ej. 21DPR1234X">
-				<p class="mt-1 text-xs text-gray-500">Aparece en tus materiales descargados.</p>
-			</div>
-
-			<div id="escuelaField" class="hidden">
-				<label class="block text-sm font-medium text-gray-700 mb-1">Escuela <span class="text-gray-400 font-normal">(opcional)</span></label>
-				<input type="text" id="escuela" maxlength="120"
-					class="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-					placeholder="Nombre de tu escuela">
-			</div>
-
-			<button type="submit"
-				class="w-full flex justify-center py-3 px-4 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors min-h-[44px]">
-				Iniciar sesión
-			</button>
-		</form>
-
-		<div class="mt-6 text-center">
-			<p class="text-sm text-gray-500">
-				¿No tienes cuenta? <a href="#" id="toggleLink" class="font-semibold text-blue-700 hover:text-blue-800">Regístrate</a>
-			</p>
-		</div>
-
-		<div class="mt-6 pt-5 border-t border-gray-100 flex items-center justify-center gap-x-4 gap-y-1 flex-wrap text-xs text-gray-400">
-			<span class="inline-flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Pago seguro</span>
-			<span class="inline-flex items-center gap-1"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato</span>
 		</div>
 	</div>
 
-	<script src="https://unpkg.com/lucide@latest"></script>
-	<script src="../js/supabase.js"></script>
-	<script src="js/tienda-common.js"></script>
-	<script src="js/login.js"></script>
-	<script>document.addEventListener("DOMContentLoaded", function () { if (window.lucide) { lucide.createIcons(); } });</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script src="js/login.js"></script>
+<script>document.addEventListener("DOMContentLoaded", function () { if (window.lucide) { lucide.createIcons(); } });</script>
 </body>
 </html>

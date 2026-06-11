@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Checkout · Jissez</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        board:{ DEFAULT:'#1e3a8a', deep:'#16276b' },
+        ink:'#1c2434', mute:'#5b6473', line:'#e7e6df',
+        action:{ DEFAULT:'#059669', dark:'#047a55' },
+        paper:'#faf9f4',
+        danger:'#dc2626',
+        gisMenta:'#79c8a6', gisAmarillo:'#f2cf6b',
+      },
+      fontFamily:{ sans:['Inter','system-ui','sans-serif'] },
+      maxWidth:{ content:'1180px' },
+    }},
+  };
+</script>
+<style>
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter',system-ui,sans-serif;background:#faf9f4;color:#1c2434;-webkit-font-smoothing:antialiased}
+  .board-tex{background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 14%,rgba(255,255,255,.07),transparent 38%),radial-gradient(rgba(255,255,255,.04) .6px,transparent .6px);background-size:auto,4px 4px}
+
+  /* Step indicator */
+  .step-dot{transition:all .2s ease}
+
+  /* Input */
+  .inp{width:100%;height:52px;border-radius:14px;border:2px solid #e7e6df;background:#fff;padding:0 16px;font-size:16px;color:#1c2434;font-family:inherit;outline:none;transition:border-color .15s ease}
+  .inp:focus{border-color:#1e3a8a}
+  .inp.error{border-color:#dc2626}
+  .inp-wrap{position:relative}
+  .inp-icon{position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9ca3af}
+  .inp-icon.show-pass{pointer-events:all;cursor:pointer;color:#5b6473}
+
+  /* Payment method selector */
+  .pay-btn{transition:all .16s ease;cursor:pointer}
+  .pay-btn.selected{border-color:#1e3a8a;background:#f0f4ff}
+  .pay-btn:not(.selected):hover{border-color:#a99fe0}
+
+  /* Auth tabs */
+  .auth-tab{transition:all .14s ease;cursor:pointer}
+  .auth-tab.active{color:#1c2434;border-bottom-color:#1e3a8a}
+  .auth-tab:not(.active){color:#5b6473;border-bottom-color:transparent}
+
+  /* Slide transition for auth panels */
+  .panel{transition:opacity .2s ease,transform .2s ease}
+  .panel.hidden-panel{opacity:0;pointer-events:none;position:absolute;transform:translateX(16px)}
+
+  /* Confirmation overlay */
+  #confirmOverlay{transition:opacity .35s ease}
+  #confirmOverlay.hidden-overlay{opacity:0;pointer-events:none}
+</style>
+</head>
+<body class="antialiased">
+
+<!-- NAVBAR (minimal in checkout) -->
+<header class="board-tex border-b border-white/10">
+  <div class="max-w-content mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+    <a href="Landing — Planeaciones NEM.html">
+      <img src="assets/jissez-wordmark-white.png" alt="Jissez" class="h-7 w-auto" />
+    </a>
+    <div class="flex items-center gap-2 text-white/80 text-[14px]">
+      <i data-lucide="lock" class="w-4 h-4 text-gisMenta"></i>
+      Pago seguro
+    </div>
+  </div>
+</header>
+
+<!-- STEP INDICATOR -->
+<div class="bg-white border-b border-line">
+  <div class="max-w-content mx-auto px-4 sm:px-6 py-4">
+    <div class="flex items-center gap-0 max-w-md mx-auto">
+      <!-- step 1 -->
+      <div class="flex flex-col items-center gap-1 flex-1" id="stepWrap1">
+        <div class="step-dot w-8 h-8 rounded-full bg-board text-white text-sm font-bold flex items-center justify-center" id="stepDot1">1</div>
+        <span class="text-[12px] font-semibold text-board" id="stepLabel1">Mi cuenta</span>
+      </div>
+      <div class="h-px flex-1 bg-line -mt-4" id="stepLine1"></div>
+      <!-- step 2 -->
+      <div class="flex flex-col items-center gap-1 flex-1" id="stepWrap2">
+        <div class="step-dot w-8 h-8 rounded-full bg-line text-mute text-sm font-bold flex items-center justify-center" id="stepDot2">2</div>
+        <span class="text-[12px] font-semibold text-mute" id="stepLabel2">Pago</span>
+      </div>
+      <div class="h-px flex-1 bg-line -mt-4" id="stepLine2"></div>
+      <!-- step 3 -->
+      <div class="flex flex-col items-center gap-1 flex-1" id="stepWrap3">
+        <div class="step-dot w-8 h-8 rounded-full bg-line text-mute text-sm font-bold flex items-center justify-center" id="stepDot3">3</div>
+        <span class="text-[12px] font-semibold text-mute" id="stepLabel3">Listo</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-10">
+  <div class="grid lg:grid-cols-[1fr_360px] gap-8 items-start">
+
+    <!-- ======= LEFT COLUMN ======= -->
+    <div>
+
+      <!-- ─── STEP 1: AUTH ─── -->
+      <div id="step1" class="">
+        <h2 class="font-black text-ink text-2xl mb-6">Tu cuenta</h2>
+
+        <!-- Auth tabs -->
+        <div class="flex border-b border-line mb-6">
+          <button onclick="setAuthTab('login')" id="tabLogin" class="auth-tab active h-12 px-5 font-bold text-base border-b-2 -mb-px">Iniciar sesión</button>
+          <button onclick="setAuthTab('register')" id="tabRegister" class="auth-tab h-12 px-5 font-bold text-base border-b-2 -mb-px">Crear cuenta</button>
+        </div>
+
+        <!-- Auth panels (relative container) -->
+        <div class="relative" style="min-height:280px">
+          <!-- LOGIN -->
+          <div id="panelLogin" class="panel space-y-4">
+            <div>
+              <label class="block text-sm font-semibold text-ink mb-1.5">Correo electrónico</label>
+              <div class="inp-wrap">
+                <input type="email" class="inp" placeholder="tu@correo.com" id="loginEmail" oninput="clearErr(this)" />
+                <i data-lucide="mail" class="inp-icon w-5 h-5"></i>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-sm font-semibold text-ink">Contraseña</label>
+                <a href="#" class="text-[13px] text-board font-semibold hover:text-board-deep transition">¿Olvidaste tu contraseña?</a>
+              </div>
+              <div class="inp-wrap">
+                <input type="password" class="inp pr-12" placeholder="••••••••" id="loginPass" oninput="clearErr(this)" />
+                <span onclick="togglePass('loginPass', this)" class="inp-icon show-pass">
+                  <i data-lucide="eye" class="w-5 h-5"></i>
+                </span>
+              </div>
+            </div>
+            <p id="loginError" class="hidden text-[13px] text-danger flex items-center gap-2"><i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i> <span></span></p>
+            <button onclick="submitLogin()" class="w-full h-14 rounded-2xl bg-board hover:bg-board-deep text-white font-bold text-lg transition mt-1">
+              Iniciar sesión y continuar
+            </button>
+            <p class="text-center text-[13px] text-mute">¿No tienes cuenta? <button onclick="setAuthTab('register')" class="font-semibold text-board hover:text-board-deep transition">Crear una gratis</button></p>
+          </div>
+
+          <!-- REGISTER -->
+          <div id="panelRegister" class="panel hidden-panel space-y-4">
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-semibold text-ink mb-1.5">Nombre</label>
+                <input type="text" class="inp" placeholder="Rosa" id="regNombre" oninput="clearErr(this)" />
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-ink mb-1.5">Apellido</label>
+                <input type="text" class="inp" placeholder="Martínez" id="regApellido" oninput="clearErr(this)" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-ink mb-1.5">Correo electrónico</label>
+              <div class="inp-wrap">
+                <input type="email" class="inp" placeholder="tu@correo.com" id="regEmail" oninput="clearErr(this)" />
+                <i data-lucide="mail" class="inp-icon w-5 h-5"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-ink mb-1.5">Contraseña</label>
+              <div class="inp-wrap">
+                <input type="password" class="inp pr-12" placeholder="Mínimo 8 caracteres" id="regPass" oninput="clearErr(this); checkPassStrength(this.value)" />
+                <span onclick="togglePass('regPass', this)" class="inp-icon show-pass">
+                  <i data-lucide="eye" class="w-5 h-5"></i>
+                </span>
+              </div>
+              <!-- password strength -->
+              <div class="mt-2 flex gap-1">
+                <div class="h-1.5 flex-1 rounded-full bg-line" id="ps1"></div>
+                <div class="h-1.5 flex-1 rounded-full bg-line" id="ps2"></div>
+                <div class="h-1.5 flex-1 rounded-full bg-line" id="ps3"></div>
+              </div>
+              <p id="psLabel" class="text-[12px] text-mute mt-1"></p>
+            </div>
+            <p id="regError" class="hidden text-[13px] text-danger flex items-center gap-2"><i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i> <span></span></p>
+            <button onclick="submitRegister()" class="w-full h-14 rounded-2xl bg-board hover:bg-board-deep text-white font-bold text-lg transition">
+              Crear cuenta y continuar
+            </button>
+            <p class="text-center text-[13px] text-mute">Al registrarte aceptas nuestros <a href="#" class="font-semibold text-board">Términos de servicio</a>.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── STEP 2: PAYMENT ─── -->
+      <div id="step2" class="hidden">
+        <div class="flex items-center gap-3 mb-6">
+          <button onclick="goToStep(1)" class="w-9 h-9 rounded-xl border border-line flex items-center justify-center text-mute hover:text-ink hover:border-ink transition">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          </button>
+          <h2 class="font-black text-ink text-2xl">Método de pago</h2>
+        </div>
+
+        <!-- Payment methods -->
+        <div class="grid sm:grid-cols-3 gap-3 mb-6">
+          <button onclick="selectPay('mp')" data-pay="mp" class="pay-btn selected border-2 border-board bg-board/5 rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
+            <i data-lucide="credit-card" class="w-6 h-6 text-board"></i>
+            <span class="text-sm font-bold text-ink">Mercado Pago</span>
+            <span class="text-[11px] text-mute">Tarjeta / débito</span>
+          </button>
+          <button onclick="selectPay('spei')" data-pay="spei" class="pay-btn border-2 border-line bg-white rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
+            <i data-lucide="landmark" class="w-6 h-6 text-board"></i>
+            <span class="text-sm font-bold text-ink">Transferencia</span>
+            <span class="text-[11px] text-mute">SPEI · banco</span>
+          </button>
+          <button onclick="selectPay('oxxo')" data-pay="oxxo" class="pay-btn border-2 border-line bg-white rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
+            <i data-lucide="store" class="w-6 h-6 text-board"></i>
+            <span class="text-sm font-bold text-ink">Efectivo</span>
+            <span class="text-[11px] text-mute">OXXO</span>
+          </button>
+        </div>
+
+        <!-- Payment detail panels -->
+        <div id="payDetail" class="bg-white border border-line rounded-2xl p-5">
+          <!-- Mercado Pago -->
+          <div id="payMp" class="space-y-4">
+            <p class="text-sm font-semibold text-mute mb-1">Serás redirigido a Mercado Pago para completar el pago de forma segura.</p>
+            <div class="flex items-center gap-3 bg-paper rounded-xl p-3.5 text-[13px] text-mute">
+              <i data-lucide="shield-check" class="w-5 h-5 text-action shrink-0"></i>
+              Tu información de pago nunca pasa por nuestros servidores.
+            </div>
+          </div>
+          <!-- SPEI -->
+          <div id="paySpei" class="hidden space-y-3">
+            <p class="text-sm text-mute">Realiza una transferencia SPEI a la siguiente CLABE. El acceso se activa en cuanto se acredite (generalmente en minutos).</p>
+            <div class="bg-paper rounded-xl border border-line p-4">
+              <p class="text-[12px] font-bold uppercase tracking-wide text-mute mb-1">CLABE interbancaria</p>
+              <div class="flex items-center justify-between gap-3">
+                <span class="font-mono text-lg font-bold text-ink tracking-widest">0021 8000 1234 5678 90</span>
+                <button onclick="copyClabe()" class="h-9 px-3 rounded-xl border border-line text-[13px] font-semibold text-mute hover:text-ink hover:border-ink transition flex items-center gap-1.5">
+                  <i data-lucide="copy" class="w-4 h-4"></i> Copiar
+                </button>
+              </div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-3 text-[13px]">
+              <div class="bg-paper rounded-xl p-3"><span class="text-mute block mb-0.5">Titular</span><strong class="text-ink">Jissez SAPI de CV</strong></div>
+              <div class="bg-paper rounded-xl p-3"><span class="text-mute block mb-0.5">Referencia</span><strong class="text-ink font-mono">#JZ-<span id="speiRef">4892</span></strong></div>
+            </div>
+            <p class="text-[12px] text-mute">Incluye la referencia en tu transferencia para que el sistema la identifique automáticamente.</p>
+          </div>
+          <!-- OXXO -->
+          <div id="payOxxo" class="hidden space-y-3">
+            <p class="text-sm text-mute">Al confirmar generamos un ficha de pago para OXXO. Tienes 48 horas para pagar en efectivo. El acceso se activa al confirmarse el pago.</p>
+            <div class="bg-paper rounded-xl border border-line p-4 flex items-center gap-4">
+              <div class="w-16 h-16 bg-white border border-line rounded-xl flex items-center justify-center shrink-0">
+                <i data-lucide="qr-code" class="w-8 h-8 text-board/40"></i>
+              </div>
+              <div>
+                <p class="text-[11px] text-mute font-semibold mb-1">CÓDIGO DE BARRAS</p>
+                <p class="font-mono text-sm font-bold text-ink tracking-widest">3456 7891 2345 6789</p>
+                <p class="text-[12px] text-mute mt-1">Muestra este código en caja</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 bg-gisAmarillo/20 rounded-xl p-3.5 text-[13px] text-ink">
+              <i data-lucide="clock" class="w-5 h-5 text-board/60 shrink-0"></i>
+              El acceso se activa dentro de los 30 minutos posteriores al pago en OXXO.
+            </div>
+          </div>
+        </div>
+
+        <button onclick="submitPayment()" id="payBtn" class="mt-5 w-full h-14 rounded-2xl bg-action hover:bg-action-dark text-white font-black text-lg transition shadow-[0_10px_28px_-16px_rgba(5,150,105,1)] flex items-center justify-center gap-2.5">
+          <i data-lucide="lock" class="w-5 h-5"></i>
+          <span id="payBtnLabel">Ir a Mercado Pago</span>
+        </button>
+        <p class="mt-3 text-center text-[12px] text-mute flex items-center justify-center gap-1.5">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-action"></i>
+          Transacción cifrada · Sin cargos adicionales
+        </p>
+      </div>
+
+    </div>
+
+    <!-- ======= RIGHT: ORDER SUMMARY ======= -->
+    <div class="lg:sticky lg:top-24">
+      <div class="bg-white border border-line rounded-3xl p-5">
+        <h3 class="font-bold text-ink text-lg mb-4">Resumen del pedido</h3>
+
+        <!-- Product row -->
+        <div class="flex items-start gap-3 pb-4 border-b border-line">
+          <div class="w-14 h-14 rounded-2xl bg-gisMenta/20 text-action-dark flex items-center justify-center shrink-0 text-xl font-black">3°</div>
+          <div class="flex-1">
+            <p class="font-bold text-ink text-[15px] leading-tight">Planeaciones 3° grado</p>
+            <p class="text-[13px] text-mute mt-0.5" id="summaryConfig">Trimestre 1 · Solo PDF</p>
+            <div class="mt-1.5 flex flex-wrap gap-1">
+              <span class="text-[10px] font-semibold px-2 h-5 rounded-full bg-paper border border-line text-mute inline-flex items-center">PDF</span>
+              <span class="text-[10px] font-semibold px-2 h-5 rounded-full bg-gisMenta/20 border border-gisMenta/40 text-action-dark inline-flex items-center">Acceso inmediato</span>
+            </div>
+          </div>
+          <a href="Producto — Planeaciones NEM.html" class="text-[12px] text-board font-semibold hover:text-board-deep transition shrink-0">Cambiar</a>
+        </div>
+
+        <!-- Price breakdown -->
+        <div class="py-4 border-b border-line space-y-2.5 text-[14px]">
+          <div class="flex justify-between">
+            <span class="text-mute">Subtotal</span>
+            <span class="text-ink font-semibold" id="subTotal">$149</span>
+          </div>
+          <div class="flex justify-between" id="wordRow">
+            <span class="text-mute">Versión Word editable</span>
+            <span class="text-ink font-semibold">$50</span>
+          </div>
+          <div class="flex justify-between text-mute">
+            <span>IVA incluido</span>
+            <span>—</span>
+          </div>
+        </div>
+
+        <!-- Total -->
+        <div class="flex justify-between items-center pt-4">
+          <span class="font-black text-ink text-lg">Total</span>
+          <span class="font-black text-ink text-3xl" id="orderTotal">$149</span>
+        </div>
+
+        <!-- Trust mini -->
+        <div class="mt-4 space-y-2">
+          <div class="flex items-center gap-2 text-[12px] text-mute">
+            <i data-lucide="zap" class="w-3.5 h-3.5 text-action"></i> Acceso inmediato al confirmar
+          </div>
+          <div class="flex items-center gap-2 text-[12px] text-mute">
+            <i data-lucide="infinity" class="w-3.5 h-3.5 text-board"></i> Sin caducidad · sin límite de descargas
+          </div>
+          <div class="flex items-center gap-2 text-[12px] text-mute">
+            <i data-lucide="lock" class="w-3.5 h-3.5 text-mute"></i> Pago procesado por Mercado Pago
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ======= CONFIRMATION OVERLAY ======= -->
+<div id="confirmOverlay" class="hidden-overlay fixed inset-0 z-50 bg-white/95 flex items-center justify-center p-6">
+  <div class="max-w-md w-full text-center">
+    <div class="w-20 h-20 rounded-full bg-action/12 text-action flex items-center justify-center mx-auto mb-5">
+      <i data-lucide="check" class="w-10 h-10"></i>
+    </div>
+    <h2 class="font-black text-ink text-3xl mb-3">¡Compra confirmada!</h2>
+    <p class="text-mute text-lg mb-6">Tu paquete está listo. Revisa tu correo y accede a tu biblioteca en cualquier momento.</p>
+    <a href="Biblioteca — Planeaciones NEM.html" class="w-full h-14 rounded-2xl bg-board hover:bg-board-deep text-white font-bold text-lg transition flex items-center justify-center gap-2 mb-3">
+      <i data-lucide="library" class="w-5 h-5"></i> Ir a mi biblioteca
+    </a>
+    <a href="Catálogo — Planeaciones NEM.html" class="text-[14px] font-semibold text-board hover:text-board-deep transition">Ver más planeaciones</a>
+  </div>
+</div>
+
+<script>
+lucide.createIcons();
+
+// ─── State (read from product page localStorage) ─────────────────
+const pkgLabels = { t1:'Trimestre 1', t2:'Trimestre 2', t3:'Trimestre 3', ciclo:'Ciclo completo' };
+let selPkg = 't1', selFmt = 'pdf';
+try { selPkg = localStorage.getItem('jissez_pkg') || 't1'; selFmt = localStorage.getItem('jissez_fmt') || 'pdf'; } catch(e){}
+
+const prices = { t1:{pdf:149,word:199}, t2:{pdf:149,word:199}, t3:{pdf:149,word:199}, ciclo:{pdf:349,word:449} };
+function getPrice(){ return prices[selPkg][selFmt]; }
+
+function updateSummary(){
+  const price = getPrice();
+  document.getElementById('summaryConfig').textContent = pkgLabels[selPkg] + ' · ' + (selFmt==='pdf' ? 'Solo PDF' : 'PDF + Word');
+  document.getElementById('subTotal').textContent = '$' + prices[selPkg]['pdf'];
+  document.getElementById('wordRow').style.display = selFmt==='word' ? 'flex' : 'none';
+  document.getElementById('orderTotal').textContent = '$' + price;
+}
+updateSummary();
+
+// ─── Steps ───────────────────────────────────────────────────────
+let currentStep = 1;
+function goToStep(n){
+  document.getElementById('step1').classList.toggle('hidden', n !== 1);
+  document.getElementById('step2').classList.toggle('hidden', n !== 2);
+  currentStep = n;
+  [1,2,3].forEach(i=>{
+    const dot = document.getElementById('stepDot'+i);
+    const lbl = document.getElementById('stepLabel'+i);
+    const isDone = i < n;
+    const isActive = i === n;
+    dot.classList.toggle('bg-board', isActive || isDone);
+    dot.classList.toggle('text-white', isActive || isDone);
+    dot.classList.toggle('bg-line', !isActive && !isDone);
+    dot.classList.toggle('text-mute', !isActive && !isDone);
+    lbl.classList.toggle('text-board', isActive);
+    lbl.classList.toggle('text-mute', !isActive);
+    if(isDone) dot.innerHTML='<i data-lucide="check" class="w-4 h-4"></i>';
+  });
+  lucide.createIcons();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── Auth tabs ───────────────────────────────────────────────────
+function setAuthTab(tab){
+  const isLogin = tab === 'login';
+  document.getElementById('tabLogin').classList.toggle('active', isLogin);
+  document.getElementById('tabRegister').classList.toggle('active', !isLogin);
+  document.getElementById('panelLogin').classList.toggle('hidden-panel', !isLogin);
+  document.getElementById('panelRegister').classList.toggle('hidden-panel', isLogin);
+}
+
+// ─── Password visibility ─────────────────────────────────────────
+function togglePass(id, btn){
+  const inp = document.getElementById(id);
+  const isPass = inp.type === 'password';
+  inp.type = isPass ? 'text' : 'password';
+  btn.innerHTML = isPass
+    ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
+    : '<i data-lucide="eye" class="w-5 h-5"></i>';
+  lucide.createIcons();
+}
+
+// ─── Password strength ───────────────────────────────────────────
+function checkPassStrength(v){
+  const len = v.length >= 8;
+  const mix = /[A-Z]/.test(v) && /[0-9]/.test(v);
+  const sym = /[^A-Za-z0-9]/.test(v);
+  const score = [len, mix, sym].filter(Boolean).length;
+  const colors = ['', 'bg-danger', 'bg-gisAmarillo', 'bg-action'];
+  const labels = ['', 'Contraseña débil', 'Contraseña regular', 'Contraseña segura'];
+  [1,2,3].forEach(i=>{
+    const el = document.getElementById('ps'+i);
+    el.className = 'h-1.5 flex-1 rounded-full ' + (i <= score ? colors[score] : 'bg-line');
+  });
+  document.getElementById('psLabel').textContent = v.length > 0 ? labels[score] : '';
+}
+
+// ─── Form validation ─────────────────────────────────────────────
+function clearErr(el){ el.classList.remove('error'); }
+
+function showErr(id, msg){
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.querySelector('span').textContent = msg;
+}
+function hideErr(id){ document.getElementById(id).classList.add('hidden'); }
+
+function submitLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPass').value;
+  hideErr('loginError');
+  if(!email || !email.includes('@')){
+    document.getElementById('loginEmail').classList.add('error');
+    showErr('loginError','Ingresa un correo válido.'); return;
+  }
+  if(pass.length < 6){
+    document.getElementById('loginPass').classList.add('error');
+    showErr('loginError','Contraseña incorrecta.'); return;
+  }
+  goToStep(2);
+}
+
+function submitRegister(){
+  const nombre = document.getElementById('regNombre').value.trim();
+  const email  = document.getElementById('regEmail').value.trim();
+  const pass   = document.getElementById('regPass').value;
+  hideErr('regError');
+  if(!nombre){ document.getElementById('regNombre').classList.add('error'); showErr('regError','Ingresa tu nombre.'); return; }
+  if(!email || !email.includes('@')){ document.getElementById('regEmail').classList.add('error'); showErr('regError','Ingresa un correo válido.'); return; }
+  if(pass.length < 8){ document.getElementById('regPass').classList.add('error'); showErr('regError','La contraseña debe tener al menos 8 caracteres.'); return; }
+  goToStep(2);
+}
+
+// ─── Payment ─────────────────────────────────────────────────────
+let selPay = 'mp';
+const payLabels = { mp:'Ir a Mercado Pago', spei:'Ya realicé la transferencia', oxxo:'Generar ficha OXXO' };
+
+function selectPay(method){
+  selPay = method;
+  document.querySelectorAll('[data-pay]').forEach(b=>{
+    b.classList.toggle('selected', b.dataset.pay === method);
+    b.classList.toggle('border-board', b.dataset.pay === method);
+    b.classList.toggle('bg-board/5', b.dataset.pay === method);
+    b.classList.toggle('border-line', b.dataset.pay !== method);
+    b.classList.toggle('bg-white', b.dataset.pay !== method);
+  });
+  ['mp','spei','oxxo'].forEach(m=>{
+    document.getElementById('pay'+m.charAt(0).toUpperCase()+m.slice(1)).classList.toggle('hidden', m !== method);
+  });
+  document.getElementById('payBtnLabel').textContent = payLabels[method];
+}
+
+function copyClabe(){
+  try{ navigator.clipboard.writeText('002180001234567890'); } catch(e){}
+  const btn = event.currentTarget;
+  btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Copiado';
+  lucide.createIcons();
+  setTimeout(()=>{ btn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i> Copiar'; lucide.createIcons(); }, 2000);
+}
+
+function submitPayment(){
+  const btn = document.getElementById('payBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Procesando…</span>';
+  lucide.createIcons();
+  setTimeout(()=>{
+    goToStep(3);
+    document.getElementById('confirmOverlay').classList.remove('hidden-overlay');
+    lucide.createIcons();
+  }, 1800);
+}
+</script>
+</body>
+</html>

@@ -3,31 +3,54 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Biblioteca — Planeaciones NEM</title>
-	<script src="https://cdn.tailwindcss.com"></script>
+	<title>Biblioteca — Jissez</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
-</head>
-<body class="bg-gray-50 min-h-screen pt-14 text-gray-800">
-
-	<div class="max-w-4xl mx-auto px-4 py-6 flex flex-col gap-5">
-		<a href="mis-compras.html" class="inline-flex items-center gap-1 text-sm text-blue-700 hover:text-blue-800 font-medium">← Mis compras</a>
-
-		<header class="flex flex-col gap-1">
-			<h1 id="titulo" class="text-2xl md:text-3xl font-extrabold text-blue-900">Biblioteca</h1>
-			<p id="subtitulo" class="text-gray-500 text-sm">Abre, imprime o descarga tus materiales.</p>
-		</header>
-
-		<div id="estado" class="text-center py-16 text-gray-400">Cargando…</div>
-		<div id="lista" class="hidden flex flex-col gap-3"></div>
-		<p class="text-xs text-gray-400 text-center mt-2">Al abrir un PDF se abre en una pestaña nueva; desde ahí puedes imprimir y sus enlaces a anexos funcionan.</p>
-	</div>
-
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
 	<script src="https://unpkg.com/lucide@latest"></script>
-	<script src="../js/supabase.js"></script>
-	<script src="js/tienda-common.js"></script>
-	<script src="js/biblioteca.js"></script>
+	<script>
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
+						ink: '#1c2434', mute: '#5b6473', line: '#e7e6df',
+						action: { DEFAULT: '#059669', dark: '#047a55' },
+						paper: '#faf9f4',
+					},
+					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+					maxWidth: { content: '1180px' },
+				},
+			},
+		};
+	</script>
+	<style>
+		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; }
+	</style>
+</head>
+<body class="antialiased min-h-screen">
+
+<!-- Encabezado -->
+<div class="border-b border-line bg-white">
+	<div class="max-w-content mx-auto px-4 sm:px-6 py-8">
+		<div class="flex items-center gap-2 text-[13px] text-mute mb-3">
+			<a href="mis-compras.html" class="hover:text-ink transition inline-flex items-center gap-1"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Mis compras</a>
+		</div>
+		<h1 id="titulo" class="font-black text-ink text-[clamp(1.8rem,3.5vw,2.6rem)] tracking-tight">Biblioteca</h1>
+		<p id="subtitulo" class="mt-1 text-mute">Abre, imprime o descarga tus materiales.</p>
+	</div>
+</div>
+
+<main class="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-4">
+	<div id="estado" class="text-center py-20" style="color:#5b6473">Cargando...</div>
+	<div id="lista" class="hidden flex flex-col gap-3"></div>
+	<p class="text-xs text-center text-mute mt-2">Al abrir un PDF se abre en una pestaña nueva; desde ahí puedes imprimir y sus enlaces a anexos funcionan.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script src="js/biblioteca.js"></script>
 </body>
 </html>

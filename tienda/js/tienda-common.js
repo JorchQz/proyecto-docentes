@@ -6,12 +6,12 @@
 	var EDGE_BASE = SUPABASE_URL + "/functions/v1";
 	var ADMIN_EMAIL = "jorgequezadarm@gmail.com";
 
-	// Colores por campo formativo (del brand system).
+	// Colores por campo formativo (design tokens).
 	var CF_COLOR = {
-		LEN: { bg: "bg-green-100", text: "text-green-800", nombre: "Lenguajes" },
-		SAB: { bg: "bg-orange-100", text: "text-orange-800", nombre: "Saberes y Pensamiento Científico" },
-		DHL: { bg: "bg-blue-100", text: "text-blue-800", nombre: "De lo Humano y lo Comunitario" },
-		ETI: { bg: "bg-yellow-100", text: "text-yellow-800", nombre: "Ética, Naturaleza y Sociedades" },
+		LEN: { bg: "bg-gisMenta/25", text: "text-action-dark", nombre: "Lenguajes" },
+		SAB: { bg: "bg-gisCoral/25", text: "text-gisCoral", nombre: "Saberes y Pensamiento Científico" },
+		DHL: { bg: "bg-gisCielo/25", text: "text-board", nombre: "De lo Humano y lo Comunitario" },
+		ETI: { bg: "bg-gisAmarillo/25", text: "text-amber-800", nombre: "Ética, Naturaleza y Sociedades" },
 	};
 
 	function esc(str) {
@@ -41,10 +41,12 @@
 	function toast(mensaje, tipo) {
 		if (toastEl) { toastEl.remove(); }
 		toastEl = document.createElement("div");
-		var bg = tipo === "error" ? "bg-red-600" : (tipo === "info" ? "bg-blue-700" : "bg-emerald-600");
-		toastEl.className =
-			"fixed bottom-5 right-5 z-50 " + bg +
-			" text-white px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-xs";
+		var bg = tipo === "error"
+			? "background:#dc2626"
+			: (tipo === "info" ? "background:#1e3a8a" : "background:#059669");
+		toastEl.setAttribute("style",
+			"position:fixed;bottom:1.25rem;right:1.25rem;z-index:9999;" + bg +
+			";color:#fff;padding:.75rem 1rem;border-radius:.75rem;box-shadow:0 10px 28px -8px rgba(0,0,0,.35);font-size:.875rem;font-weight:500;max-width:20rem");
 		toastEl.textContent = mensaje;
 		document.body.appendChild(toastEl);
 		var ref = toastEl;
@@ -118,34 +120,41 @@
 		var admin = esAdmin(session);
 		var nombre = nombreUsuario(session);
 
-		function link(href, label, key) {
+		function navLink(href, label, key) {
 			var act = activo === key;
 			var cls = act
-				? "text-white bg-blue-700"
-				: "text-blue-100 hover:text-white hover:bg-blue-700";
-			return '<a href="' + href + '" class="inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium transition-colors ' + cls + '">' + label + "</a>";
+				? "bg-white/15 text-white font-semibold"
+				: "text-white/85 hover:bg-white/10 hover:text-white";
+			return '<a href="' + href + '" class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] transition ' + cls + '">' + label + '</a>';
 		}
 
 		var derecha = "";
 		if (session) {
-			derecha += link("mis-compras.html", "Mis compras", "mis-compras");
-			if (admin) { derecha += link("admin.html", "Admin", "admin"); }
-			derecha += '<button id="tiendaLogoutBtn" class="inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium text-blue-100 hover:text-white hover:bg-blue-700 transition-colors">Salir</button>';
+			derecha += navLink("mis-compras.html", "Mis compras", "mis-compras");
+			if (admin) { derecha += navLink("admin.html", "Admin", "admin"); }
+			if (nombre) { derecha += '<span class="hidden sm:inline text-white/60 text-[13px] px-2 truncate max-w-[130px]">' + esc(nombre) + '</span>'; }
+			derecha += '<button id="tiendaLogoutBtn" class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
 		} else {
-			derecha += link("login.html", "Iniciar sesión", "login");
+			derecha += '<a href="login.html" class="hidden sm:inline-flex items-center h-11 px-4 rounded-xl text-white/90 font-semibold hover:bg-white/10 transition text-[15px]">Iniciar sesión</a>';
 		}
 
 		var html =
-			'<nav class="fixed top-0 left-0 right-0 z-30 bg-blue-900 shadow-md">' +
-			'<div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-2">' +
-			'<div class="flex items-center gap-1 min-w-0">' +
-			'<a href="index.html" class="font-bold text-white text-base mr-2 shrink-0">Planeaciones NEM</a>' +
-			link("catalogo.html", "Catálogo", "catalogo") +
-			"</div>" +
+			'<header class="sticky top-0 z-50" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,4px 4px;border-bottom:1px solid rgba(255,255,255,.1)">' +
+			'<nav class="max-w-[1180px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">' +
+			'<div class="flex items-center gap-4 min-w-0">' +
+			'<a href="index.html" class="shrink-0 flex items-center gap-2">' +
+			'<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline\'" />' +
+			'<span style="display:none;color:#fff;font-weight:800;font-size:17px;letter-spacing:-.01em">Jissez</span>' +
+			'</a>' +
+			'<div class="hidden md:flex items-center gap-1">' +
+			navLink("catalogo.html", "Catálogo", "catalogo") +
+			'</div>' +
+			'</div>' +
 			'<div class="flex items-center gap-1 shrink-0">' +
-			(nombre && session ? '<span class="hidden sm:inline text-blue-200 text-xs mr-1 truncate max-w-[140px]">' + esc(nombre) + "</span>" : "") +
 			derecha +
-			"</div></div></nav>";
+			'</div>' +
+			'</nav>' +
+			'</header>';
 
 		var wrapper = document.createElement("div");
 		wrapper.innerHTML = html;
