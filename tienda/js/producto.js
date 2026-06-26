@@ -16,6 +16,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var opcionesEl = document.getElementById("opcionesCompra");
 	var previewFrame = document.getElementById("previewFrame");
 	var previewVacio = document.getElementById("previewVacio");
+	var previewCargando = document.getElementById("previewCargando");
+	var previewLabel = document.getElementById("previewLabel");
+	var previewBlobUrl = null;
+	var previewReqId = 0;
 	var incluyeWrap = document.getElementById("incluyeWrap");
 	var incluyeLista = document.getElementById("incluyeLista");
 
@@ -24,6 +28,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var g = params.get("g");
 	var combo = params.get("combo");
 	var esMulti = org === "multigrado";
+
+	var GRADO_COLOR = { "1":"#f2cf6b","2":"#ef9277","3":"#79c8a6","4":"#a99fe0","5":"#85b8e6","6":"#f0b285" };
+	var GRADO_TXT = { "1":"rgba(30,58,138,.85)","2":"#fff","3":"rgba(30,58,138,.85)","4":"#fff","5":"rgba(30,58,138,.85)","6":"rgba(30,58,138,.85)" };
 
 	// Cargar el grupo (todos los paquetes del grado/combinación).
 	var q = window.sb
@@ -88,9 +95,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function etiquetaOpcion(p) {
 		return p.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre " + p.trimestre;
 	}
-
-	var GRADO_COLOR = { "1":"#f2cf6b","2":"#ef9277","3":"#79c8a6","4":"#a99fe0","5":"#85b8e6","6":"#f0b285" };
-	var GRADO_TXT = { "1":"rgba(30,58,138,.85)","2":"#fff","3":"rgba(30,58,138,.85)","4":"#fff","5":"rgba(30,58,138,.85)","6":"rgba(30,58,138,.85)" };
 
 	function renderHeader() {
 		var tituloGrupo = esMulti
@@ -199,14 +203,48 @@ document.addEventListener("DOMContentLoaded", async function () {
 		);
 	}
 
-	function renderPreview() {
-		previewFrame.classList.remove("hidden");
-		previewVacio.classList.add("hidden");
-		previewFrame.src = Tienda.EDGE_BASE + "/previsualizar?producto_id=" + encodeURIComponent(seleccionado.id);
-		previewFrame.onerror = function () {
-			previewFrame.classList.add("hidden");
-			previewVacio.classList.remove("hidden");
-		};
+	function previewEstado(estado) {
+		// estado: "cargando" | "ok" | "vacio"
+		previewCargando.classList.toggle("hidden", estado !== "cargando");
+		previewVacio.classList.toggle("hidden", estado !== "vacio");
+		previewFrame.classList.toggle("hidden", estado !== "ok");
+	}
+
+	async function renderPreview() {
+		var p = seleccionado;
+		var esCiclo = p.tipo_paquete === "ciclo";
+		previewLabel.textContent = "Primeras páginas · " +
+			(esCiclo ? "Ciclo completo" : "Trimestre " + p.trimestre) + " · " + comboDisplay();
+
+		var reqId = ++previewReqId;
+		previewEstado("cargando");
+		liberarPreviewBlob();
+
+		try {
+			var resp = await fetch(Tienda.EDGE_BASE + "/previsualizar?producto_id=" + encodeURIComponent(p.id));
+			if (reqId !== previewReqId) { return; } // se seleccionó otro paquete entretanto
+			var tipo = resp.headers.get("content-type") || "";
+			if (!resp.ok || tipo.indexOf("application/pdf") === -1) {
+				previewEstado("vacio");
+				return;
+			}
+			var blob = await resp.blob();
+			if (reqId !== previewReqId) { return; }
+			previewBlobUrl = URL.createObjectURL(blob);
+			// #toolbar=0 oculta los controles del visor; el marco propio ya da contexto.
+			previewFrame.src = previewBlobUrl + "#toolbar=0&view=FitH";
+			previewEstado("ok");
+		} catch (_) {
+			if (reqId !== previewReqId) { return; }
+			previewEstado("vacio");
+		}
+	}
+
+	function liberarPreviewBlob() {
+		if (previewBlobUrl) {
+			URL.revokeObjectURL(previewBlobUrl);
+			previewBlobUrl = null;
+		}
 	}
 
 	async function cargarIncluye() {

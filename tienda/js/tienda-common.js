@@ -115,18 +115,34 @@
 	}
 
 	// Header/navegación compartido. Se inserta al inicio del body.
-	async function montarNav(activo) {
+	// montarNav(activo, opts?)
+	//   opts.anchors: [{href,label}] → en el landing, anclas de sección en el centro.
+	//   opts.cta: {href,label,icon?} → botón verde de acción (p. ej. "Ver planeaciones").
+	async function montarNav(activo, opts) {
+		opts = opts || {};
 		var session = await getSession();
 		var admin = esAdmin(session);
 		var nombre = nombreUsuario(session);
+		var anchors = opts.anchors || null;
+		// En el landing (con anclas + CTA) la barra es más ancha: usar breakpoint lg
+		// para no amontonar en tablets; en el resto, md.
+		var bp = anchors ? "lg" : "md";
 
-		// Enlaces de navegación (centro). Visibles en desktop y dentro del menú móvil.
+		// Enlaces de navegación (centro). En el landing: enlaces de app relevantes + anclas
+		// de sección; en el resto: los enlaces de la app.
 		function navLinks(extraCls) {
-			var items = [{ href: "catalogo.html", label: "Catálogo", key: "catalogo" }];
-			if (session) { items.push({ href: "mis-compras.html", label: "Mis compras", key: "mis-compras" }); }
-			if (admin) { items.push({ href: "admin.html", label: "Admin", key: "admin" }); }
+			var items = [];
+			if (anchors) {
+				if (session) { items.push({ href: "mis-compras.html", label: "Mis compras", key: "mis-compras" }); }
+				if (admin) { items.push({ href: "admin.html", label: "Admin", key: "admin" }); }
+				anchors.forEach(function (a) { items.push({ href: a.href, label: a.label, key: null }); });
+			} else {
+				items.push({ href: "catalogo.html", label: "Catálogo", key: "catalogo" });
+				if (session) { items.push({ href: "mis-compras.html", label: "Mis compras", key: "mis-compras" }); }
+				if (admin) { items.push({ href: "admin.html", label: "Admin", key: "admin" }); }
+			}
 			return items.map(function (it) {
-				var act = activo === it.key;
+				var act = it.key && activo === it.key;
 				var cls = act
 					? "bg-white/15 text-white font-semibold"
 					: "text-white/85 hover:bg-white/10 hover:text-white";
@@ -134,14 +150,37 @@
 			}).join("");
 		}
 
+		// CTA opcional. Si hay CTA, "Iniciar sesión" pasa a estilo fantasma para no
+		// duplicar botones verdes.
+		var cta = opts.cta || null;
+		var ctaDesktop = cta
+			? '<a href="' + cta.href + '" class="inline-flex items-center gap-2 h-11 px-4 sm:px-5 rounded-xl text-white font-bold text-[15px] transition" style="background-color:#059669;box-shadow:0 8px 24px -12px rgba(5,150,105,.9)">' + (cta.icon ? '<i data-lucide="' + cta.icon + '" style="width:18px;height:18px"></i>' : '') + esc(cta.label) + '</a>'
+			: '';
+		var ctaMobile = cta
+			? '<a href="' + cta.href + '" class="flex items-center justify-center gap-2 h-12 mt-2 rounded-xl text-white font-bold text-[15px]" style="background-color:#059669">' + esc(cta.label) + '</a>'
+			: '';
+
+		var loginDesktop = cta
+			? '<a href="login.html" class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Iniciar sesión</a>'
+			: '<a href="login.html" class="inline-flex items-center h-11 px-4 sm:px-5 rounded-xl bg-action hover:bg-action-dark text-white font-bold text-[15px] transition" style="background-color:#059669;box-shadow:0 8px 24px -12px rgba(5,150,105,.9)">Iniciar sesión</a>';
+		var loginMobile = cta
+			? '<a href="login.html" class="flex items-center h-12 px-3 rounded-lg text-[15px] text-white/85 hover:bg-white/10 transition">Iniciar sesión</a>'
+			: '<a href="login.html" class="flex items-center justify-center h-12 mt-2 rounded-xl text-white font-bold text-[15px]" style="background-color:#059669">Iniciar sesión</a>';
+
 		// Lado derecho desktop: nombre + Salir, o Iniciar sesión.
 		var derecha = "";
 		if (session) {
 			if (nombre) { derecha += '<span class="hidden lg:inline text-white/60 text-[13px] px-2 truncate max-w-[150px]">' + esc(nombre) + '</span>'; }
 			derecha += '<button data-logout class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
 		} else {
-			derecha += '<a href="login.html" class="inline-flex items-center h-11 px-4 sm:px-5 rounded-xl bg-action hover:bg-action-dark text-white font-bold text-[15px] transition" style="background-color:#059669;box-shadow:0 8px 24px -12px rgba(5,150,105,.9)">Iniciar sesión</a>';
+			derecha += loginDesktop;
 		}
+
+		// Bloque sesión/login para el menú móvil.
+		var movilSesion = session
+			? ((nombre ? '<span class="px-3 pt-3 mt-1 border-t border-white/10 text-white/55 text-[13px] truncate">' + esc(nombre) + '</span>' : '') +
+				'<button data-logout class="flex items-center h-12 px-3 rounded-lg text-[15px] text-white/85 hover:bg-white/10 transition text-left">Salir</button>')
+			: loginMobile;
 
 		var html =
 			'<header class="sticky top-0 z-50" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(circle at 86% 78%,rgba(255,255,255,.06),transparent 42%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,auto,4px 4px;border-bottom:1px solid rgba(255,255,255,.1)">' +
@@ -152,26 +191,23 @@
 			'<span style="display:none;color:#fff;font-weight:800;font-size:17px;letter-spacing:-.01em">Jissez</span>' +
 			'</a>' +
 			// Enlaces centro (solo desktop)
-			'<div class="hidden md:flex items-center gap-1 min-w-0">' +
+			'<div class="hidden ' + bp + ':flex items-center gap-1 min-w-0">' +
 			navLinks() +
 			'</div>' +
 			// Lado derecho
 			'<div class="flex items-center gap-2 shrink-0">' +
-			'<div class="hidden md:flex items-center gap-1">' + derecha + '</div>' +
+			'<div class="hidden ' + bp + ':flex items-center gap-2">' + derecha + ctaDesktop + '</div>' +
 			// Botón hamburguesa (solo móvil)
-			'<button data-menu-toggle class="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-xl text-white hover:bg-white/10 transition" aria-label="Menú" aria-expanded="false">' +
+			'<button data-menu-toggle class="' + bp + ':hidden inline-flex items-center justify-center w-11 h-11 rounded-xl text-white hover:bg-white/10 transition" aria-label="Menú" aria-expanded="false">' +
 			'<i data-lucide="menu" style="width:24px;height:24px"></i>' +
 			'</button>' +
 			'</div>' +
 			'</nav>' +
 			// Menú móvil desplegable
-			'<div data-mobile-menu class="hidden md:hidden border-t border-white/10" style="background-color:#16276b">' +
+			'<div data-mobile-menu class="hidden ' + bp + ':hidden border-t border-white/10" style="background-color:#16276b">' +
 			'<div class="px-4 py-3 flex flex-col text-white/90 gap-0.5">' +
 			navLinks("flex items-center h-12 px-3 rounded-lg text-[15px] transition") +
-			(session
-				? (nombre ? '<span class="px-3 pt-3 mt-1 border-t border-white/10 text-white/55 text-[13px] truncate">' + esc(nombre) + '</span>' : '') +
-					'<button data-logout class="flex items-center h-12 px-3 rounded-lg text-[15px] text-white/85 hover:bg-white/10 transition text-left">Salir</button>'
-				: '<a href="login.html" class="flex items-center justify-center h-12 mt-2 rounded-xl text-white font-bold text-[15px]" style="background-color:#059669">Iniciar sesión</a>') +
+			movilSesion + ctaMobile +
 			'</div>' +
 			'</div>' +
 			'</header>';
@@ -229,6 +265,23 @@
 		document.body.appendChild(wrapper.firstChild);
 	}
 
+	// Anima los elementos .reveal al entrar en viewport (respeta prefers-reduced-motion).
+	function revelar() {
+		var els = document.querySelectorAll(".reveal");
+		if (!els.length) { return; }
+		if (!("IntersectionObserver" in window) ||
+			window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			els.forEach(function (el) { el.classList.add("in"); });
+			return;
+		}
+		var obs = new IntersectionObserver(function (entries) {
+			entries.forEach(function (e) {
+				if (e.isIntersecting) { e.target.classList.add("in"); obs.unobserve(e.target); }
+			});
+		}, { threshold: 0.12 });
+		els.forEach(function (el) { obs.observe(el); });
+	}
+
 	window.Tienda = {
 		SUPABASE_URL: SUPABASE_URL,
 		EDGE_BASE: EDGE_BASE,
@@ -246,5 +299,6 @@
 		descargarArchivo: descargarArchivo,
 		montarNav: montarNav,
 		montarFooter: montarFooter,
+		revelar: revelar,
 	};
 })();

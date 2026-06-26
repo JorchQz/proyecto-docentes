@@ -9,53 +9,9 @@
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
 	<script src="https://unpkg.com/lucide@latest"></script>
-	<script>
-		tailwind.config = {
-			theme: {
-				extend: {
-					colors: {
-						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
-						ink: '#1c2434',
-						mute: '#5b6473',
-						line: '#e7e6df',
-						action: { DEFAULT: '#059669', dark: '#047a55' },
-						paper: '#faf9f4',
-						gisAmarillo: '#f2cf6b',
-						gisCoral: '#ef9277',
-						gisMenta: '#79c8a6',
-						gisLavanda: '#a99fe0',
-						gisCielo: '#85b8e6',
-						gisDurazno: '#f0b285',
-					},
-					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-					maxWidth: { content: '1180px' },
-				},
-			},
-		};
-	</script>
-	<style>
-		html { scroll-behavior: smooth; }
-		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; overflow-x: clip; }
-
-		.board-tex {
-			background-color: #1e3a8a;
-			background-image: radial-gradient(circle at 18% 14%, rgba(255,255,255,.07), transparent 38%), radial-gradient(rgba(255,255,255,.04) .6px, transparent .6px);
-			background-size: auto, 4px 4px;
-		}
-		.ph {
-			background-color: #f1f0ea;
-			background-image: repeating-linear-gradient(135deg, rgba(30,58,138,.06) 0 8px, transparent 8px 16px);
-			border: 1px dashed rgba(30,58,138,.22);
-			color: #9ba3af; display: flex; align-items: center; justify-content: center;
-			font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-align: center;
-		}
-		.prod-card { transition: transform .2s ease, box-shadow .2s ease; }
-		.prod-card:hover { transform: translateY(-3px); box-shadow: 0 16px 36px -22px rgba(28,36,52,.38); }
-		.chip { transition: all .14s ease; cursor: pointer; user-select: none; }
-		.chip.active { background: #1e3a8a; color: #fff; border-color: #1e3a8a; }
-		.chip:not(.active):hover { border-color: #1e3a8a; color: #1e3a8a; }
-	</style>
+	<link rel="stylesheet" href="css/tienda.css">
 </head>
 <body class="antialiased min-h-screen">
 

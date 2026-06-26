@@ -8,44 +8,9 @@
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
 	<script src="https://unpkg.com/lucide@latest"></script>
-	<script>
-		tailwind.config = {
-			theme: {
-				extend: {
-					colors: {
-						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
-						ink: '#1c2434',
-						mute: '#5b6473',
-						line: '#e7e6df',
-						action: { DEFAULT: '#059669', dark: '#047a55' },
-						paper: '#faf9f4',
-						gisAmarillo: '#f2cf6b',
-						gisCoral: '#ef9277',
-						gisMenta: '#79c8a6',
-						gisLavanda: '#a99fe0',
-						gisCielo: '#85b8e6',
-						gisDurazno: '#f0b285',
-					},
-					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-					maxWidth: { content: '1180px' },
-				},
-			},
-		};
-	</script>
-	<style>
-		html { scroll-behavior: smooth; }
-		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; overflow-x: clip; }
-		.board-tex { background-color: #1e3a8a; background-image: radial-gradient(circle at 20% 10%, rgba(255,255,255,.07), transparent 35%), radial-gradient(rgba(255,255,255,.04) 0.6px, transparent 0.6px); background-size: auto, 4px 4px; }
-		.ph { background-color: #f1f0ea; background-image: repeating-linear-gradient(135deg, rgba(30,58,138,.06) 0 8px, transparent 8px 16px); border: 1px dashed rgba(30,58,138,.22); color: #9ba3af; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-align: center; }
-		.opt-btn { transition: all .14s ease; }
-		.opt-btn.selected { background: #1e3a8a; color: #fff; border-color: #1e3a8a; }
-		.opt-btn:not(.selected):hover { border-color: #1e3a8a; color: #1e3a8a; }
-		details > summary { list-style: none; cursor: pointer; }
-		details > summary::-webkit-details-marker { display: none; }
-		details[open] .faq-plus { transform: rotate(45deg); }
-		.faq-plus { transition: transform .25s ease; }
-	</style>
+	<link rel="stylesheet" href="css/tienda.css">
 </head>
 <body class="antialiased min-h-screen">
 
@@ -69,15 +34,25 @@
 		<!-- Columna izquierda: preview -->
 		<div class="lg:sticky lg:top-24 flex flex-col gap-4">
 			<div class="bg-white rounded-3xl border border-line overflow-hidden shadow-sm">
-				<div class="bg-paper border-b border-line px-4 py-3 flex items-center justify-between text-[13px] text-mute">
-					<span class="flex items-center gap-1.5"><i data-lucide="file-text" class="w-4 h-4"></i> Vista previa · primeras páginas</span>
-					<span>muestra gratuita</span>
+				<div class="bg-paper border-b border-line px-4 py-3 flex items-center justify-between gap-3 text-[13px] text-mute">
+					<span class="flex items-center gap-1.5 min-w-0">
+						<i data-lucide="file-text" class="w-4 h-4 shrink-0"></i>
+						<span id="previewLabel" class="truncate">Vista previa · primeras páginas</span>
+					</span>
+					<span class="shrink-0 inline-flex items-center gap-1.5 font-medium" style="color:#047a55"><i data-lucide="unlock" class="w-3.5 h-3.5"></i> muestra gratuita</span>
 				</div>
-				<div id="previewWrap" class="bg-paper" style="height:520px">
-					<div id="previewVacio" class="hidden h-full flex items-center justify-center text-mute text-sm px-6 text-center">
+				<div id="previewWrap" class="relative bg-paper" style="height:520px">
+					<!-- Cargando -->
+					<div id="previewCargando" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mute text-sm">
+						<span class="w-7 h-7 rounded-full border-2 border-line border-t-board animate-spin"></span>
+						Cargando vista previa...
+					</div>
+					<!-- Sin muestra disponible -->
+					<div id="previewVacio" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-2 text-mute text-sm px-6 text-center">
+						<i data-lucide="file-x" class="w-6 h-6" style="color:#9ba3af"></i>
 						La vista previa estará disponible pronto.
 					</div>
-					<iframe id="previewFrame" class="w-full h-full" title="Vista previa"></iframe>
+					<iframe id="previewFrame" class="hidden w-full h-full" title="Vista previa"></iframe>
 				</div>
 			</div>
 			<p class="text-center text-[12px] text-mute">Esta es una muestra. La planeación completa se entrega al comprar.</p>

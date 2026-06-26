@@ -74,8 +74,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	});
 
-	await cargarProductos();
-
 	async function cargarProductos() {
 		var res = await window.sb
 			.from("marketplace_productos")
@@ -345,4 +343,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Tienda.toast("Acceso otorgado a " + email, "ok");
 		document.getElementById("accesoEmail").value = "";
 	});
+
+	// Carga inicial: al final, cuando gridEl y accesoProductoSel ya están referenciados.
+	await cargarProductos();
 });

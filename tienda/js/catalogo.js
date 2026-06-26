@@ -22,7 +22,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var modalidadActiva = null; // null = ambas
 
 	bindFiltros();
-	await cargar();
 
 	async function cargar() {
 		mostrarCargando();
@@ -143,6 +142,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var precios = grupo.productos
 			.map(function (p) { return p.precio_pdf != null ? Number(p.precio_pdf) : Infinity; });
 		var precioDesde = Math.min.apply(null, precios);
+		var tieneWord = grupo.productos.some(function (p) { return p.precio_editable != null; });
 
 		var titulo = esMulti
 			? "Multigrado " + comboDisplay(grupo.combo)
@@ -178,7 +178,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<div class="p-5 flex flex-col flex-1">' +
 			'<h3 class="font-bold text-lg leading-snug" style="color:#1c2434">' + esc(titulo) + '</h3>' +
 			'<p class="mt-1 text-sm" style="color:#5b6473">Proyectos, PDAs, anexos y examen. Por trimestre o ciclo completo.</p>' +
-			'<div class="mt-5 pt-4 flex items-center justify-between" style="border-top:1px solid #e7e6df">' +
+			'<div class="mt-3 flex flex-wrap gap-1.5">' +
+			'<span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md bg-paper border border-line text-mute">PDF</span>' +
+			(tieneWord ? '<span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md text-board/70" style="background:rgba(133,184,230,.18);border:1px solid rgba(133,184,230,.4)">+ Word disponible</span>' : '') +
+			'</div>' +
+			'<div class="mt-4 pt-4 flex items-center justify-between" style="border-top:1px solid #e7e6df">' +
 			'<div>' +
 			(isFinite(precioDesde)
 				? '<span class="font-black text-lg" style="color:#1c2434">Desde ' + money(precioDesde) + '</span><span class="text-sm" style="color:#5b6473"> / trim</span>'
@@ -218,4 +222,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<p style="color:#5b6473;font-weight:500">Aún no hay paquetes disponibles aquí.</p>' +
 			'<p style="color:#9ba3af;font-size:.875rem;margin-top:.25rem">Prueba con otra organización o modalidad.</p>';
 	}
+
+	// Carga inicial: al final, cuando GRADO_COLOR y el resto ya están definidos.
+	await cargar();
 });
