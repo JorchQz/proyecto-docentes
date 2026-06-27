@@ -33,7 +33,8 @@
       "Bash(node --check \"c:/proyecto-docentes/js/importador.js\")",
       "Bash(node --check \"c:/proyecto-docentes/js/marketplace.js\")",
       "mcp__claude_ai_Supabase__deploy_edge_function",
-      "mcp__claude_ai_Supabase__list_edge_functions"
+      "mcp__claude_ai_Supabase__list_edge_functions",
+      "Bash(node --check tienda/js/biblioteca.js)"
     ]
   }
 }

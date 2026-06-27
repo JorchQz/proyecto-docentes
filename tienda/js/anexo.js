@@ -89,11 +89,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.classList.remove("hidden");
 		visor.classList.add("hidden");
 		estadoEl.innerHTML =
-			'<div class="flex flex-col items-center gap-3 text-gray-200">' +
-			'<i data-lucide="lock" class="w-12 h-12 text-gray-400"></i>' +
-			'<p class="text-lg font-semibold">Este material es de pago</p>' +
-			'<p class="text-sm text-gray-400 max-w-sm">Necesitas comprar el paquete de ' + esc(aula.indexOf("-") !== -1 ? "multigrado " + aula.split("-").map(function (n) { return n + "°"; }).join("-") : aula + "° grado") + ' · trimestre ' + Math.ceil(Number(pr) / 4) + ' para verlo.</p>' +
-			'<a href="catalogo.html" class="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl text-sm">Ver en el catálogo</a>' +
+			'<div class="flex flex-col items-center gap-3">' +
+			'<span class="w-16 h-16 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="lock" class="w-8 h-8"></i></span>' +
+			'<p class="text-lg font-bold text-ink">Este material es de pago</p>' +
+			'<p class="text-sm text-mute max-w-sm">Necesitas comprar el paquete de ' + esc(aula.indexOf("-") !== -1 ? "multigrado " + aula.split("-").map(function (n) { return n + "°"; }).join("-") : aula + "° grado") + ' · trimestre ' + Math.ceil(Number(pr) / 4) + ' para verlo.</p>' +
+			'<a href="catalogo.html" class="mt-2 inline-flex items-center gap-2 text-white font-bold px-6 py-3 rounded-xl text-sm transition" style="background:#059669">Ver en el catálogo <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
 			"</div>";
 		Tienda.iconos();
 	}

@@ -8,26 +8,9 @@
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
 	<script src="https://unpkg.com/lucide@latest"></script>
-	<script>
-		tailwind.config = {
-			theme: {
-				extend: {
-					colors: {
-						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
-						ink: '#1c2434', mute: '#5b6473', line: '#e7e6df',
-						action: { DEFAULT: '#059669', dark: '#047a55' },
-						paper: '#faf9f4',
-					},
-					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-					maxWidth: { content: '1180px' },
-				},
-			},
-		};
-	</script>
-	<style>
-		body { font-family: 'Inter', system-ui, sans-serif; background: #faf9f4; color: #1c2434; -webkit-font-smoothing: antialiased; overflow-x: clip; }
-	</style>
+	<link rel="stylesheet" href="css/tienda.css">
 </head>
 <body class="antialiased min-h-screen">
 
@@ -40,64 +23,102 @@
 	</div>
 </div>
 
-<main class="max-w-lg mx-auto px-4 py-10">
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-10">
 	<h1 class="font-black tracking-tight text-[clamp(1.7rem,3vw,2.3rem)] text-ink mb-8">Finalizar compra</h1>
 
 	<div id="estado" class="text-center py-16" style="color:#5b6473">Cargando...</div>
 
-	<div id="contenido" class="hidden flex flex-col gap-5">
+	<div id="contenido" class="hidden grid lg:grid-cols-[1fr_360px] gap-8 items-start">
 
-		<!-- Resumen de compra -->
-		<div class="bg-white rounded-2xl border border-line p-5 shadow-sm">
-			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-3">Tu compra</p>
-			<div class="flex items-start justify-between gap-3">
-				<div>
-					<p id="resumenTitulo" class="font-bold text-ink text-base"></p>
-					<p id="resumenTipo" class="text-sm text-mute mt-1"></p>
+		<!-- ===== Columna izquierda: acciones de pago ===== -->
+		<div class="flex flex-col gap-5">
+
+			<!-- Sin sesión: ir a login -->
+			<div id="bloqueLogin" class="hidden bg-white rounded-3xl border border-line p-6 shadow-sm">
+				<div class="flex items-center gap-3 mb-3">
+					<span class="w-10 h-10 rounded-xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="user-round" class="w-5 h-5"></i></span>
+					<div>
+						<p class="font-bold text-ink">Inicia sesión para continuar</p>
+						<p class="text-sm text-mute">Necesitas una cuenta para completar tu compra.</p>
+					</div>
 				</div>
-				<p id="resumenPrecio" class="text-xl font-black text-ink shrink-0"></p>
-			</div>
-		</div>
-
-		<!-- Sin sesión: ir a login -->
-		<div id="bloqueLogin" class="hidden bg-white rounded-2xl border border-line p-5 shadow-sm">
-			<p class="text-sm text-mute mb-4">Inicia sesión o crea tu cuenta para continuar:</p>
-			<a id="irLoginBtn" href="#" class="flex items-center justify-center h-12 rounded-xl font-semibold text-white transition" style="background:#1e3a8a">Iniciar sesión / Registrarme</a>
-		</div>
-
-		<!-- Con sesión: pago -->
-		<div id="bloquePago" class="hidden flex flex-col gap-4">
-			<div class="bg-white rounded-2xl border border-line p-4 text-sm text-mute flex items-center gap-2">
-				<i data-lucide="user-check" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i>
-				Comprando como <span id="usuarioEmail" class="font-semibold text-ink ml-1"></span>
+				<a id="irLoginBtn" href="#" class="flex items-center justify-center gap-2 h-12 rounded-xl font-bold text-white transition" style="background:#1e3a8a">
+					Iniciar sesión / Registrarme <i data-lucide="arrow-right" class="w-4 h-4"></i>
+				</a>
 			</div>
 
-			<button id="pagarMpBtn" class="w-full h-14 rounded-2xl font-bold text-white text-base transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.8)]" style="background:#059669">
-				Pagar con Mercado Pago
-			</button>
-			<div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-mute">
-				<span class="inline-flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i> Pago seguro</span>
-				<span>·</span>
-				<span class="inline-flex items-center gap-1"><i data-lucide="credit-card" class="w-3.5 h-3.5"></i> Tarjeta</span>
-				<span>· OXXO</span>
-				<span>· SPEI</span>
-			</div>
-
-			<button id="toggleTransferencia" class="text-sm font-medium text-center transition" style="color:#1e3a8a">
-				Prefiero pagar por transferencia directa
-			</button>
-
-			<div id="bloqueTransferencia" class="hidden bg-white rounded-2xl border border-line p-5 flex flex-col gap-3 text-sm">
-				<p class="font-bold text-ink">Pago por transferencia (SPEI)</p>
-				<div class="rounded-xl p-3 border border-line" style="background:#faf9f4">
-					<p class="text-[11px] font-semibold uppercase tracking-wide text-mute">CLABE</p>
-					<p id="clabeTexto" class="font-mono font-bold text-ink text-base select-all mt-0.5">—</p>
-					<p id="bancoTexto" class="text-xs text-mute mt-1"></p>
+			<!-- Con sesión: pago -->
+			<div id="bloquePago" class="hidden flex flex-col gap-4">
+				<div class="bg-white rounded-2xl border border-line p-4 text-sm text-mute flex items-center gap-2">
+					<i data-lucide="user-check" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i>
+					Comprando como <span id="usuarioEmail" class="font-semibold text-ink ml-1"></span>
 				</div>
-				<p class="text-mute">Transfiere <span id="montoTransferencia" class="font-bold text-ink"></span> y registra tu compra para que la confirmemos. Recibirás acceso en cuanto verifiquemos el pago.</p>
-				<button id="registrarTransferenciaBtn" class="h-12 rounded-xl font-semibold text-white transition" style="background:#1e3a8a">
-					Ya transferí — registrar mi compra
+
+				<!-- Mercado Pago (incluye tarjeta, OXXO y SPEI) -->
+				<div class="bg-white rounded-3xl border border-line p-6 shadow-sm flex flex-col gap-4">
+					<div class="flex items-start gap-3">
+						<span class="w-11 h-11 rounded-2xl bg-action/12 text-action-dark flex items-center justify-center shrink-0"><i data-lucide="credit-card" class="w-5 h-5"></i></span>
+						<div>
+							<p class="font-bold text-ink">Pago con Mercado Pago</p>
+							<p class="text-sm text-mute">Tarjeta, débito, efectivo en OXXO o SPEI. Acceso inmediato al confirmarse.</p>
+						</div>
+					</div>
+					<button id="pagarMpBtn" class="w-full h-14 rounded-2xl font-bold text-white text-base transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.8)] flex items-center justify-center gap-2" style="background:#059669">
+						<i data-lucide="lock" class="w-5 h-5"></i> Pagar con Mercado Pago
+					</button>
+					<div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-mute">
+						<span class="inline-flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-action"></i> Pago seguro</span>
+						<span>·</span>
+						<span class="inline-flex items-center gap-1"><i data-lucide="credit-card" class="w-3.5 h-3.5"></i> Tarjeta</span>
+						<span>· OXXO</span>
+						<span>· SPEI</span>
+					</div>
+				</div>
+
+				<!-- Transferencia directa -->
+				<button id="toggleTransferencia" class="inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-center transition" style="color:#1e3a8a">
+					<i data-lucide="landmark" class="w-4 h-4"></i> Prefiero pagar por transferencia directa
 				</button>
+
+				<div id="bloqueTransferencia" class="hidden bg-white rounded-3xl border border-line p-6 flex flex-col gap-3 text-sm shadow-sm">
+					<p class="font-bold text-ink flex items-center gap-2"><i data-lucide="landmark" class="w-4 h-4 text-board"></i> Pago por transferencia (SPEI)</p>
+					<div class="rounded-2xl p-4 border border-line" style="background:#faf9f4">
+						<p class="text-[11px] font-semibold uppercase tracking-wide text-mute">CLABE</p>
+						<p id="clabeTexto" class="font-mono font-bold text-ink text-lg select-all mt-0.5 tracking-wide">—</p>
+						<p id="bancoTexto" class="text-xs text-mute mt-1"></p>
+					</div>
+					<p class="text-mute leading-relaxed">Transfiere <span id="montoTransferencia" class="font-bold text-ink"></span> y registra tu compra para que la confirmemos. Recibirás acceso en cuanto verifiquemos el pago.</p>
+					<button id="registrarTransferenciaBtn" class="h-12 rounded-xl font-semibold text-white transition" style="background:#1e3a8a">
+						Ya transferí — registrar mi compra
+					</button>
+				</div>
+			</div>
+
+		</div>
+
+		<!-- ===== Columna derecha: resumen del pedido ===== -->
+		<div class="lg:sticky lg:top-24">
+			<div class="bg-white border border-line rounded-3xl p-6 shadow-sm">
+				<h3 class="font-bold text-ink text-lg mb-4">Resumen del pedido</h3>
+
+				<div class="flex items-start gap-3 pb-4 border-b border-line">
+					<span class="w-12 h-12 rounded-2xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="file-text" class="w-6 h-6"></i></span>
+					<div class="min-w-0">
+						<p id="resumenTitulo" class="font-bold text-ink text-[15px] leading-tight"></p>
+						<p id="resumenTipo" class="text-[13px] text-mute mt-0.5"></p>
+					</div>
+				</div>
+
+				<div class="flex justify-between items-center pt-4">
+					<span class="font-black text-ink text-lg">Total</span>
+					<span id="resumenPrecio" class="font-black text-ink text-2xl"></span>
+				</div>
+
+				<div class="mt-5 pt-4 border-t border-line space-y-2">
+					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="zap" class="w-3.5 h-3.5 text-action"></i> Acceso inmediato al confirmar</div>
+					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="infinity" class="w-3.5 h-3.5 text-board"></i> Sin caducidad · sin límite de descargas</div>
+					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="lock" class="w-3.5 h-3.5 text-mute"></i> Pago procesado por Mercado Pago</div>
+				</div>
 			</div>
 		</div>
 

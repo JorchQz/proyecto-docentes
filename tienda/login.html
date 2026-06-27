@@ -8,97 +8,116 @@
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
 	<script src="https://unpkg.com/lucide@latest"></script>
-	<script>
-		tailwind.config = {
-			theme: {
-				extend: {
-					colors: {
-						board: { DEFAULT: '#1e3a8a', deep: '#16276b' },
-						ink: '#1c2434', mute: '#5b6473', line: '#e7e6df',
-						action: { DEFAULT: '#059669', dark: '#047a55' },
-						paper: '#faf9f4',
-					},
-					fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-				},
-			},
-		};
-	</script>
+	<link rel="stylesheet" href="css/tienda.css">
 	<style>
-		body { font-family: 'Inter', system-ui, sans-serif; background: #1e3a8a; background-image: radial-gradient(circle at 18% 12%, rgba(255,255,255,.08), transparent 38%), radial-gradient(rgba(255,255,255,.04) .6px, transparent .6px); background-size: auto, 4px 4px; -webkit-font-smoothing: antialiased; }
 		input { outline: none; transition: border-color .14s ease, box-shadow .14s ease; }
 		input:focus { border-color: #1e3a8a !important; box-shadow: 0 0 0 3px rgba(30,58,138,.12); }
 	</style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4">
+<body class="min-h-screen">
 
-	<div class="w-full max-w-md">
-		<div class="text-center mb-8">
-			<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" class="mx-auto mb-3" onerror="this.style.display='none';this.nextSibling.style.display='block'">
-			<span style="display:none;color:#fff;font-weight:800;font-size:20px;display:block;margin-bottom:.75rem">Jissez</span>
-			<a href="index.html" class="text-sm text-white/60 hover:text-white transition">← Volver a la tienda</a>
-		</div>
+	<main class="min-h-screen grid lg:grid-cols-2">
 
-		<div class="bg-white rounded-3xl shadow-2xl p-8">
-			<div class="text-center mb-7">
-				<h1 class="text-2xl font-black text-ink tracking-tight">Acceder</h1>
-				<p class="mt-1 text-sm text-mute" id="subtitulo">Inicia sesión para acceder a tus planeaciones</p>
-			</div>
+		<!-- Panel de marca (solo desktop) -->
+		<aside class="hidden lg:flex board-tex text-white flex-col justify-between p-12 xl:p-16 relative overflow-hidden">
+			<a href="index.html" class="relative z-10 inline-flex items-center gap-2 shrink-0">
+				<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:30px;width:auto" onerror="this.style.display='none';this.nextSibling.style.display='inline'">
+				<span style="display:none;color:#fff;font-weight:800;font-size:20px">Jissez</span>
+			</a>
 
-			<form id="loginForm" class="flex flex-col gap-4">
-				<div id="nombreField" class="hidden">
-					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Nombre completo</label>
-					<input type="text" id="nombre" maxlength="100" autocomplete="name"
-						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
-						placeholder="Ej. María Fernanda López">
-				</div>
-
-				<div>
-					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Correo electrónico</label>
-					<input type="email" id="email" required autocomplete="email"
-						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
-						placeholder="maestra@correo.com">
-				</div>
-
-				<div>
-					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Contraseña</label>
-					<input type="password" id="password" required autocomplete="current-password"
-						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
-						placeholder="••••••••">
-				</div>
-
-				<div id="cctField" class="hidden">
-					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">CCT <span style="color:#5b6473;font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
-					<input type="text" id="cct" maxlength="10" inputmode="text" autocapitalize="characters"
-						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink uppercase" style="border-color:#e7e6df"
-						placeholder="Ej. 21DPR1234X">
-					<p class="mt-1 text-xs text-mute">Aparece en tus materiales descargados.</p>
-				</div>
-
-				<div id="escuelaField" class="hidden">
-					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Escuela <span style="color:#5b6473;font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
-					<input type="text" id="escuela" maxlength="120"
-						class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
-						placeholder="Nombre de tu escuela">
-				</div>
-
-				<button type="submit" class="w-full h-12 rounded-xl text-sm font-bold text-white transition" style="background:#059669">
-					Iniciar sesión
-				</button>
-			</form>
-
-			<div class="mt-5 text-center">
-				<p class="text-sm text-mute">
-					¿No tienes cuenta? <a href="#" id="toggleLink" class="font-semibold text-board hover:underline">Regístrate</a>
+			<div class="relative z-10 max-w-md">
+				<h2 class="font-black tracking-tight leading-[1.05] text-[clamp(2rem,3vw,2.8rem)]">
+					Recupera<br>tus <span class="chalk-u" style="--accent:#f2cf6b">tardes</span>.
+				</h2>
+				<p class="mt-4 text-white/75 text-lg leading-relaxed">
+					Entra para acceder a tus planeaciones alineadas a la Nueva Escuela Mexicana, listas para imprimir.
 				</p>
+				<ul class="mt-8 flex flex-col gap-3.5 text-[15px]">
+					<li class="flex items-center gap-3"><span class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0"><i data-lucide="badge-check" class="w-[18px] h-[18px] text-gisMenta"></i></span> Alineado a la NEM</li>
+					<li class="flex items-center gap-3"><span class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0"><i data-lucide="infinity" class="w-[18px] h-[18px] text-gisCielo"></i></span> Acceso permanente, sin caducidad</li>
+					<li class="flex items-center gap-3"><span class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0"><i data-lucide="shield-check" class="w-[18px] h-[18px] text-gisAmarillo"></i></span> Pago seguro con Mercado Pago, SPEI u OXXO</li>
+				</ul>
 			</div>
 
-			<div class="mt-5 pt-5 border-t border-line flex items-center justify-center gap-x-5 gap-y-1 flex-wrap text-xs text-mute">
-				<span class="inline-flex items-center gap-1.5"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Pago seguro</span>
-				<span class="inline-flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato</span>
+			<img src="assets/jissez-icon-white.png" alt="" class="absolute -bottom-10 -right-10 w-56 opacity-10 select-none pointer-events-none">
+		</aside>
+
+		<!-- Formulario -->
+		<section class="flex items-center justify-center p-4 sm:p-8 bg-paper">
+			<div class="w-full max-w-md">
+				<!-- Logo + volver (móvil) -->
+				<div class="lg:hidden text-center mb-6">
+					<img src="assets/jissez-wordmark-blue.png" alt="Jissez" style="height:26px;width:auto" class="mx-auto mb-3" onerror="this.style.display='none';this.nextSibling.style.display='inline-block'">
+					<span style="display:none;color:#1e3a8a;font-weight:800;font-size:20px;margin-bottom:.75rem">Jissez</span>
+				</div>
+				<div class="mb-5">
+					<a href="index.html" class="inline-flex items-center gap-1.5 text-sm text-mute hover:text-ink transition"><i data-lucide="arrow-left" class="w-4 h-4"></i> Volver a la tienda</a>
+				</div>
+
+				<div class="bg-white rounded-3xl border border-line shadow-sm p-7 sm:p-8">
+					<div class="mb-7">
+						<h1 class="text-2xl font-black text-ink tracking-tight">Acceder</h1>
+						<p class="mt-1 text-sm text-mute" id="subtitulo">Inicia sesión para acceder a tus planeaciones</p>
+					</div>
+
+					<form id="loginForm" class="flex flex-col gap-4">
+						<div id="nombreField" class="hidden">
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Nombre completo</label>
+							<input type="text" id="nombre" maxlength="100" autocomplete="name"
+								class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+								placeholder="Ej. María Fernanda López">
+						</div>
+
+						<div>
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Correo electrónico</label>
+							<input type="email" id="email" required autocomplete="email"
+								class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+								placeholder="maestra@correo.com">
+						</div>
+
+						<div>
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Contraseña</label>
+							<input type="password" id="password" required autocomplete="current-password"
+								class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+								placeholder="••••••••">
+						</div>
+
+						<div id="cctField" class="hidden">
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">CCT <span style="color:#5b6473;font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
+							<input type="text" id="cct" maxlength="10" inputmode="text" autocapitalize="characters"
+								class="block w-full px-4 py-3 border rounded-xl text-sm text-ink uppercase" style="border-color:#e7e6df"
+								placeholder="Ej. 21DPR1234X">
+							<p class="mt-1 text-xs text-mute">Aparece en tus materiales descargados.</p>
+						</div>
+
+						<div id="escuelaField" class="hidden">
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Escuela <span style="color:#5b6473;font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
+							<input type="text" id="escuela" maxlength="120"
+								class="block w-full px-4 py-3 border rounded-xl text-sm text-ink" style="border-color:#e7e6df"
+								placeholder="Nombre de tu escuela">
+						</div>
+
+						<button type="submit" class="w-full h-12 rounded-xl text-sm font-bold text-white transition" style="background:#059669">
+							Iniciar sesión
+						</button>
+					</form>
+
+					<div class="mt-5 text-center">
+						<p class="text-sm text-mute">
+							¿No tienes cuenta? <a href="#" id="toggleLink" class="font-semibold text-board hover:underline">Regístrate</a>
+						</p>
+					</div>
+
+					<div class="mt-5 pt-5 border-t border-line flex items-center justify-center gap-x-5 gap-y-1 flex-wrap text-xs text-mute">
+						<span class="inline-flex items-center gap-1.5"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Pago seguro</span>
+						<span class="inline-flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato</span>
+					</div>
+				</div>
 			</div>
-		</div>
-	</div>
+		</section>
+	</main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../js/supabase.js"></script>

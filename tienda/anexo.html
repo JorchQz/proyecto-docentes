@@ -3,32 +3,39 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Anexo — Planeaciones NEM</title>
-	<script src="https://cdn.tailwindcss.com"></script>
+	<title>Anexo — Jissez</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<style>body{font-family:'Inter',system-ui,sans-serif}</style>
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<link rel="stylesheet" href="css/tienda.css">
 </head>
-<body class="bg-gray-900 min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col bg-paper">
 
 	<!-- Barra superior -->
-	<div class="bg-blue-900 text-white px-4 h-12 flex items-center justify-between shrink-0">
-		<span id="titulo" class="text-sm font-semibold truncate">Anexo</span>
-		<div class="flex items-center gap-2">
-			<button id="btnImprimir" class="hidden text-blue-100 hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg hover:bg-blue-800">Imprimir</button>
-			<button id="btnDescargar" class="hidden text-blue-100 hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg hover:bg-blue-800">Descargar</button>
-			<a href="mis-compras.html" class="text-blue-100 hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg hover:bg-blue-800">Mis compras</a>
+	<header class="board-tex text-white px-4 sm:px-6 h-14 flex items-center justify-between gap-3 shrink-0 border-b border-white/10">
+		<div class="flex items-center gap-2.5 min-w-0">
+			<a href="mis-compras.html" class="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/10 transition shrink-0" aria-label="Mis compras"><i data-lucide="arrow-left" class="w-5 h-5"></i></a>
+			<span id="titulo" class="text-sm font-semibold truncate">Anexo</span>
 		</div>
-	</div>
+		<div class="flex items-center gap-1.5 shrink-0">
+			<button id="btnImprimir" class="hidden inline-flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-medium px-3 h-9 rounded-lg hover:bg-white/10 transition"><i data-lucide="printer" class="w-4 h-4"></i><span class="hidden sm:inline">Imprimir</span></button>
+			<button id="btnDescargar" class="hidden inline-flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-medium px-3 h-9 rounded-lg hover:bg-white/10 transition"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">Descargar</span></button>
+		</div>
+	</header>
 
 	<!-- Estado / visor -->
-	<div id="estado" class="flex-1 flex items-center justify-center text-gray-300 text-sm px-6 text-center">Cargando anexo…</div>
+	<div id="estado" class="flex-1 flex items-center justify-center text-mute text-sm px-6 text-center">
+		<span class="inline-flex items-center gap-2"><span class="w-5 h-5 rounded-full border-2 border-line border-t-board animate-spin"></span> Cargando anexo…</span>
+	</div>
 	<iframe id="visor" class="hidden flex-1 w-full bg-white" title="Anexo"></iframe>
 
-	<script src="https://unpkg.com/lucide@latest"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="../js/supabase.js"></script>
 	<script src="js/tienda-common.js"></script>
 	<script src="js/anexo.js"></script>
+	<script>document.addEventListener("DOMContentLoaded", function () { if (window.lucide) { lucide.createIcons(); } });</script>
 </body>
 </html>

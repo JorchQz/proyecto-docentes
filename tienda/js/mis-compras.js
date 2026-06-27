@@ -15,6 +15,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var seccionPendientes = document.getElementById("seccionPendientes");
 	var listaPendientes = document.getElementById("listaPendientes");
 
+	var GRADO_COLOR = {
+		"1": { bg: "#f2cf6b", txt: "rgba(30,58,138,.85)" },
+		"2": { bg: "#ef9277", txt: "#fff" },
+		"3": { bg: "#79c8a6", txt: "rgba(30,58,138,.85)" },
+		"4": { bg: "#a99fe0", txt: "#fff" },
+		"5": { bg: "#85b8e6", txt: "rgba(30,58,138,.85)" },
+		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
+	};
+
 	var status = new URLSearchParams(location.search).get("status");
 	if (status === "approved") {
 		banner("¡Pago exitoso! Tu paquete ya está disponible para descargar.", "ok");
@@ -75,25 +84,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var esEditable = !!info.tipos.editable;
 			var accesoId = esEditable ? info.tipos.editable : info.tipos.pdf;
 			var versionTxt = esEditable ? "Word + PDF + anexos" : "PDF + anexos";
-			var iconoNombre = esCiclo ? "library" : "folder";
-			var iconoBg = esCiclo ? "rgba(30,58,138,.1)" : "rgba(5,150,105,.1)";
-			var iconoColor = esCiclo ? "#1e3a8a" : "#059669";
+
+			var avatar;
+			if (prod.grado) {
+				var gc = GRADO_COLOR[String(prod.grado)] || { bg: "#e7e6df", txt: "#1c2434" };
+				avatar = '<div class="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black" style="background:' + gc.bg + ';color:' + gc.txt + '">' + esc(prod.grado) + '°</div>';
+			} else {
+				avatar = '<div class="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center" style="background:rgba(30,58,138,.1)"><i data-lucide="library" style="width:1.6rem;height:1.6rem;color:#1e3a8a"></i></div>';
+			}
 
 			var card = document.createElement("div");
-			card.className = "bg-white rounded-2xl border p-5 flex flex-col sm:flex-row sm:items-center gap-4";
-			card.style.borderColor = "#e7e6df";
+			card.className = "lift bg-white rounded-3xl border border-line p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm";
 			card.innerHTML =
-				'<div class="flex items-start gap-3 flex-1 min-w-0">' +
-				'<div class="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center" style="background:' + iconoBg + '">' +
-				'<i data-lucide="' + iconoNombre + '" style="width:1.5rem;height:1.5rem;color:' + iconoColor + '"></i></div>' +
+				'<div class="flex items-start gap-4 flex-1 min-w-0">' +
+				avatar +
 				'<div class="min-w-0 flex-1">' +
-				'<h3 class="font-bold leading-snug" style="color:#1c2434">' + esc(prod.titulo || "Paquete") + "</h3>" +
+				'<h3 class="font-bold text-ink leading-snug">' + esc(prod.titulo || "Paquete") + "</h3>" +
 				'<div class="flex flex-wrap gap-1.5 mt-2">' +
-				'<span class="text-[12px] font-medium h-6 px-2 rounded-md inline-flex items-center" style="background:#f1f0ea;color:#5b6473">' + esc(etiquetaTipo) + "</span>" +
-				(prod.grado ? '<span class="text-[12px] font-medium h-6 px-2 rounded-md inline-flex items-center" style="background:#f1f0ea;color:#5b6473">' + esc(prod.grado) + '°</span>' : "") +
-				'<span class="text-[12px] font-medium h-6 px-2 rounded-md inline-flex items-center" style="background:#f1f0ea;color:#5b6473">Incluye: ' + esc(versionTxt) + "</span>" +
+				'<span class="text-[12px] font-semibold h-6 px-2.5 rounded-full inline-flex items-center bg-paper border border-line text-mute">' + esc(etiquetaTipo) + "</span>" +
+				'<span class="text-[12px] font-semibold h-6 px-2.5 rounded-full inline-flex items-center bg-paper border border-line text-mute">' + esc(versionTxt) + "</span>" +
 				"</div></div></div>" +
-				'<a href="biblioteca.html?acceso_id=' + encodeURIComponent(accesoId) + '" class="shrink-0 h-11 px-5 rounded-xl text-sm font-bold text-white inline-flex items-center justify-center transition" style="background:#1e3a8a">Abrir biblioteca</a>';
+				'<a href="biblioteca.html?acceso_id=' + encodeURIComponent(accesoId) + '" class="shrink-0 h-11 px-5 rounded-xl text-sm font-bold text-white inline-flex items-center justify-center gap-1.5 transition" style="background:#1e3a8a">Abrir biblioteca <i data-lucide="arrow-right" class="w-4 h-4"></i></a>';
 
 			listaEl.appendChild(card);
 		});

@@ -13,8 +13,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var estadoEl = document.getElementById("estado");
 	var listaEl = document.getElementById("lista");
+	var bibGrid = document.getElementById("bibGrid");
 	var tituloEl = document.getElementById("titulo");
 	var subtituloEl = document.getElementById("subtitulo");
+	var bibAvatar = document.getElementById("bibAvatar");
+	var bibBadges = document.getElementById("bibBadges");
+	var resumenPaquete = document.getElementById("resumenPaquete");
+
+	var GRADO_COLOR = {
+		"1": { bg: "#f2cf6b", txt: "rgba(30,58,138,.85)" },
+		"2": { bg: "#ef9277", txt: "#fff" },
+		"3": { bg: "#79c8a6", txt: "rgba(30,58,138,.85)" },
+		"4": { bg: "#a99fe0", txt: "#fff" },
+		"5": { bg: "#85b8e6", txt: "rgba(30,58,138,.85)" },
+		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
+	};
 
 	var accesoId = new URLSearchParams(location.search).get("acceso_id");
 	if (!accesoId) { estadoEl.textContent = "Paquete no especificado."; return; }
@@ -22,7 +35,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Datos del paquete (valida que el acceso es del usuario por RLS).
 	var accRes = await window.sb
 		.from("marketplace_accesos")
-		.select("tipo, marketplace_productos(titulo)")
+		.select("tipo, marketplace_productos(titulo, grado, tipo_paquete, trimestre)")
 		.eq("id", accesoId)
 		.eq("user_id", session.user.id)
 		.maybeSingle();
@@ -38,6 +51,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 		? "Versión editable · abre, imprime o descarga (PDF y Word)."
 		: "Versión PDF · abre, imprime o descarga.";
 
+	// Avatar de grado + badges del encabezado.
+	if (prod.grado && bibAvatar) {
+		var gc = GRADO_COLOR[String(prod.grado)] || { bg: "#e7e6df", txt: "#1c2434" };
+		bibAvatar.textContent = prod.grado + "°";
+		bibAvatar.style.background = gc.bg;
+		bibAvatar.style.color = gc.txt;
+		bibAvatar.classList.remove("bg-board/8", "text-board");
+	}
+	if (bibBadges) {
+		var esCiclo = prod.tipo_paquete === "ciclo";
+		var contenido = esCiclo ? "Ciclo completo" : (prod.trimestre ? "Trimestre " + prod.trimestre : "Trimestre");
+		bibBadges.innerHTML =
+			'<span class="inline-flex items-center gap-1"><i data-lucide="badge-check" class="w-3.5 h-3.5 text-action"></i> Alineado a la NEM</span>' +
+			'<span class="inline-flex items-center gap-1"><i data-lucide="book-open" class="w-3.5 h-3.5"></i> ' + esc(contenido) + '</span>' +
+			'<span class="inline-flex items-center gap-1"><i data-lucide="' + (esEditable ? "file-pen-line" : "file-text") + '" class="w-3.5 h-3.5"></i> ' + (esEditable ? "PDF + Word" : "PDF") + '</span>' +
+			'<span class="inline-flex items-center gap-1"><i data-lucide="infinity" class="w-3.5 h-3.5"></i> Sin caducidad</span>';
+	}
+
 	// Lista de proyectos del paquete.
 	var proyectos = await llamarJson("/contenido-paquete?acceso_id=" + encodeURIComponent(accesoId));
 	if (!proyectos) { return; }
@@ -48,20 +79,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	estadoEl.classList.add("hidden");
-	listaEl.classList.remove("hidden");
+	bibGrid.classList.remove("hidden");
 	lista.forEach(function (p) { listaEl.appendChild(cardProyecto(p)); });
+	if (resumenPaquete) {
+		resumenPaquete.innerHTML =
+			'<div class="flex items-center justify-between"><span class="flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4"></i> Proyectos</span><span class="font-bold text-ink">' + lista.length + '</span></div>' +
+			'<div class="flex items-center justify-between"><span class="flex items-center gap-2"><i data-lucide="' + (esEditable ? "file-pen-line" : "file-text") + '" class="w-4 h-4"></i> Formato</span><span class="font-bold text-ink">' + (esEditable ? "PDF + Word" : "PDF") + '</span></div>';
+	}
 	Tienda.iconos();
 
 	function cardProyecto(p) {
 		var card = document.createElement("div");
-		card.className = "bg-white rounded-2xl overflow-hidden";
-		card.style.border = "1px solid #e7e6df";
+		card.className = "bg-white rounded-3xl border border-line overflow-hidden";
 		card.innerHTML =
-			'<button class="cab w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition" style="border-radius:1rem">' +
-			'<span class="font-bold" style="color:#1c2434">' + esc(p.nombre) + "</span>" +
-			'<i data-lucide="chevron-down" class="chevron transition-transform -rotate-90" style="width:1.25rem;height:1.25rem;color:#5b6473"></i>' +
+			'<button class="cab w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-paper transition">' +
+			'<span class="flex items-center gap-3 min-w-0">' +
+			'<span class="w-9 h-9 rounded-xl bg-gisMenta/20 text-action-dark flex items-center justify-center shrink-0"><i data-lucide="folder" class="w-5 h-5"></i></span>' +
+			'<span class="font-bold text-ink truncate">' + esc(p.nombre) + "</span>" +
+			"</span>" +
+			'<i data-lucide="chevron-down" class="chevron transition-transform -rotate-90 w-5 h-5 text-mute shrink-0"></i>' +
 			"</button>" +
-			'<div class="cuerpo hidden px-5 py-4" style="border-top:1px solid #e7e6df"><p class="text-sm" style="color:#5b6473">Cargando...</p></div>';
+			'<div class="cuerpo hidden px-5 py-4 border-t border-line"><p class="text-sm text-mute">Cargando...</p></div>';
 
 		var cab = card.querySelector(".cab");
 		var cuerpo = card.querySelector(".cuerpo");
@@ -118,16 +156,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 			btns += boton("ver", index, a, '<i data-lucide="eye" style="width:.875rem;height:.875rem"></i> Ver', "background:#1e3a8a;color:#fff");
 		}
 		if (a.ext === "docx") {
-			btns += boton("descargar", index, a, '<i data-lucide="pencil" style="width:.875rem;height:.875rem"></i> Editar (Word)', "background:#059669;color:#fff");
+			btns += boton("descargar", index, a, '<i data-lucide="pencil" style="width:.875rem;height:.875rem"></i> Editar', "background:#059669;color:#fff");
 		} else {
 			btns += boton("descargar", index, a, '<i data-lucide="download" style="width:.875rem;height:.875rem"></i> Descargar', "background:#475569;color:#fff");
 		}
 		var iconoName = a.ext === "pdf" ? "file-text" : (a.ext === "docx" ? "file-pen-line" : "paperclip");
+		var fmtBadge = a.ext === "pdf"
+			? '<span class="text-[10px] font-bold px-2 h-5 rounded-full inline-flex items-center shrink-0" style="background:#e8f5e9;color:#1b5e20;border:1px solid #c8e6c9">PDF</span>'
+			: (a.ext === "docx"
+				? '<span class="text-[10px] font-bold px-2 h-5 rounded-full inline-flex items-center shrink-0" style="background:#e3f2fd;color:#0d47a1;border:1px solid #bbdefb">Word</span>'
+				: "");
 		return (
-			'<div class="flex items-center justify-between gap-3 rounded-xl px-3 py-2" style="background:#faf9f4">' +
-			'<span class="text-sm min-w-0 truncate flex items-center gap-2" style="color:#1c2434">' +
-			'<i data-lucide="' + iconoName + '" style="width:1rem;height:1rem;shrink:0;color:#5b6473"></i>' + esc(a.nombre) + "</span>" +
-			'<div class="flex items-center gap-2 shrink-0">' + btns + "</div></div>"
+			'<div class="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-paper">' +
+			'<span class="text-sm min-w-0 truncate flex items-center gap-2 text-ink">' +
+			'<i data-lucide="' + iconoName + '" class="w-4 h-4 shrink-0 text-mute"></i>' + esc(a.nombre) + "</span>" +
+			'<div class="flex items-center gap-2 shrink-0">' + fmtBadge + btns + "</div></div>"
 		);
 	}
 
