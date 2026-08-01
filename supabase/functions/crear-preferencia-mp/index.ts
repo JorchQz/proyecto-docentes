@@ -17,6 +17,11 @@ import {
   mensajeError,
 } from "../_shared/db.ts";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import {
+  FOLDER_MIME,
+  listDriveFolder,
+  primerProyectoFolder,
+} from "../_shared/google-drive.ts";
 
 // La preferencia caduca a los 7 días: da margen de sobra a un pago en efectivo
 // (OXXO acredita en horas, a veces 1-3 días) sin dejar órdenes vivas para siempre.
@@ -76,12 +81,31 @@ Deno.serve(async (req: Request) => {
 
     const { data: producto, error: prodErr } = await admin
       .from("marketplace_productos")
-      .select("id, titulo, precio_pdf, precio_editable, activo")
+      .select(
+        "id, titulo, precio_pdf, precio_editable, activo, tipo_paquete, proyecto_folder_drive_id, archivo_pdf_drive_id, archivo_docx_drive_id",
+      )
       .eq("id", productoId)
       .maybeSingle();
 
     if (prodErr || !producto || !producto.activo) {
       return jsonResponse({ error: "Producto no disponible" }, 404);
+    }
+
+    // Nunca cobrar por un paquete que no tiene nada que entregar.
+    //
+    // No basta con mirar los campos: un producto puede tener
+    // `proyecto_folder_drive_id` apuntando a una carpeta de Drive todavía
+    // vacía. Los paquetes se publican en el catálogo antes de que su material
+    // esté cargado, así que comprobamos contra Drive de verdad.
+    if (!(await puedeEntregarse(producto))) {
+      return jsonResponse(
+        {
+          error:
+            "Este paquete todavía no está disponible para compra. Estamos terminando de prepararlo.",
+          sin_contenido: true,
+        },
+        409,
+      );
     }
 
     const precio = tipo === "pdf" ? producto.precio_pdf : producto.precio_editable;
@@ -212,6 +236,44 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+/**
+ * ¿Hay material real que entregar por este paquete?
+ *
+ * No basta con que exista la carpeta del proyecto: el bot generador crea la
+ * estructura de carpetas antes de que se suban los archivos, así que una
+ * carpeta de proyecto puede estar vacía. Exigimos un documento descargable
+ * (PDF o DOCX) dentro del primer proyecto.
+ *
+ * Si Drive no responde no bloqueamos la venta: un fallo transitorio de Google
+ * no debe costar una compra, y el acceso queda otorgado igual — la descarga
+ * funcionará cuando Drive vuelva.
+ */
+async function puedeEntregarse(
+  producto: Record<string, unknown>,
+): Promise<boolean> {
+  if (producto.archivo_pdf_drive_id || producto.archivo_docx_drive_id) {
+    return true;
+  }
+  const folderId = producto.proyecto_folder_drive_id as string | null;
+  if (!folderId) return false;
+
+  try {
+    const tipoPaquete = (producto.tipo_paquete || "trimestre") as
+      | "trimestre"
+      | "ciclo";
+    const proyecto = await primerProyectoFolder(folderId, tipoPaquete);
+    if (!proyecto) return false;
+
+    const archivos = await listDriveFolder(proyecto.id);
+    return archivos.some((f) =>
+      f.mimeType !== FOLDER_MIME && /\.(pdf|docx?)$/i.test(f.name)
+    );
+  } catch (err) {
+    console.error("no se pudo verificar Drive, se permite la compra:", err);
+    return true;
+  }
+}
 
 /**
  * Devuelve el id de la orden pendiente que ya existe para este producto+versión,
