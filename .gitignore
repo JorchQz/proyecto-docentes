@@ -11,3 +11,11 @@ Thumbs.db
 # Logs y temporales
 *.log
 *.tmp
+
+# Estado local de la CLI de Supabase
+supabase/.temp/
+
+# Secretos locales (tokens de Supabase y Mercado Pago) — NUNCA subir.
+# Se ignora todo .env*; solo la plantilla vacía queda versionada.
+.env*
+!.env.ejemplo

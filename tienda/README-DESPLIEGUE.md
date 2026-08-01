@@ -2,8 +2,11 @@
 
 Esta tienda vende planeaciones (PDF y DOCX) que viven en **Google Drive**. El
 comprador nunca ve Drive: descarga desde la plataforma y el PDF/DOCX se entrega
-con un **pie de página** con sus datos. Pagos por **Mercado Pago** (tarjeta,
-OXXO, SPEI) o **transferencia directa** (confirmación manual en el admin).
+con un **pie de página** con sus datos.
+
+Todo el cobro pasa por **Mercado Pago (Checkout Pro)**, que ofrece por sí solo
+cuenta MP, tarjeta, dos tarjetas, efectivo y transferencia SPEI. La entrega es
+automática: **no hay confirmación manual en el flujo normal**.
 
 ---
 
@@ -12,11 +15,37 @@ OXXO, SPEI) o **transferencia directa** (confirmación manual en el admin).
 ```
 Comprador → tienda/ (HTML/JS) ──┬─► Supabase (catálogo, órdenes, accesos, RLS)
                                  ├─► Edge Function crear-preferencia-mp ─► Mercado Pago
+                                 ├─► Edge Function confirmar-pago ─► Mercado Pago (verificación)
                                  ├─► Edge Function descargar-archivo ─► Google Drive (+ pie de página)
                                  └─► Edge Function previsualizar ─► Google Drive (muestra)
 
 Mercado Pago ──(webhook)──► Edge Function webhook-mercadopago ─► otorga accesos
 ```
+
+### Doble vía de acreditación (importante)
+
+El pago se acredita por **dos caminos independientes** que terminan en la misma
+función idempotente (`_shared/pagos.ts → procesarPago`):
+
+1. **Webhook** — MP nos avisa. Es la vía normal.
+2. **`confirmar-pago`** — red de seguridad. Se dispara cuando el comprador
+   vuelve al sitio y cuando pulsa *"Ya pagué — verificar"*. Consulta el pago
+   real en la API de MP y entrega el acceso aunque el webhook nunca haya
+   llegado.
+
+Sin la segunda vía, un webhook perdido significa un comprador que pagó y se
+quedó sin su paquete. Nunca quites `confirmar-pago`.
+
+### Tiempos de acreditación
+
+| Método | Cuándo llega el acceso |
+|---|---|
+| Tarjeta / cuenta Mercado Pago | Al instante |
+| Efectivo (OXXO y otros) | De horas a 3 días |
+| Transferencia SPEI | Minutos a horas |
+
+La UI ya dice esto explícitamente en checkout y en Mis compras. No lo suavices:
+prometer "acceso inmediato" en efectivo genera reclamos.
 
 Tablas nuevas: `marketplace_productos`, `marketplace_ordenes`,
 `marketplace_orden_items`, `marketplace_accesos` (+ columnas nuevas en `perfiles`).
@@ -70,8 +99,10 @@ En el **Dashboard de Supabase → Edge Functions → Secrets** (o con la CLI), d
 |---|---|
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Contenido **completo** del JSON de la cuenta de servicio (paso 1.4) |
 | `MP_ACCESS_TOKEN` | Access Token de Mercado Pago (paso 2) |
-| `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de MP (opcional) |
-| `SITE_URL` | URL pública del sitio, **sin** slash final. Ej. `https://tudominio.com` o la URL de Cloudflare Pages |
+| `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de MP. Si está definida, se **exige** firma válida; si falta, el webhook la omite |
+| `SITE_URL` | `https://jissez.com` — **sin** slash final y **con https**. Si no es https, `crear-preferencia-mp` falla a propósito: `auto_return` de MP rechaza back_urls que no lo sean |
+| `RESEND_API_KEY` | *(opcional)* Clave de [Resend](https://resend.com) para el correo de confirmación. Sin ella la compra funciona igual, solo no se envía el aviso |
+| `MAIL_FROM` | *(opcional)* Remitente del correo. Por defecto `Jissez <no-reply@jissez.com>`. El dominio debe estar verificado en Resend |
 
 > `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` ya están
 > disponibles automáticamente en las Edge Functions; no las definas tú.
@@ -87,26 +118,34 @@ supabase secrets set SITE_URL="https://tudominio.com"
 
 ## 4. Desplegar las Edge Functions
 
-Las 4 funciones están en `supabase/functions/`. La config de `verify_jwt` está en
-`supabase/config.toml` (todas en `false`: validan identidad por su cuenta).
+Las funciones están en `supabase/functions/`. La config de `verify_jwt` está en
+`supabase/config.toml` (en `false`: validan identidad por su cuenta).
 
-Con la CLI de Supabase (desde la raíz del repo):
+No hace falta instalar nada: la CLI corre con `npx`.
+
 ```bash
-supabase functions deploy descargar-archivo   --no-verify-jwt
-supabase functions deploy crear-preferencia-mp --no-verify-jwt
-supabase functions deploy previsualizar        --no-verify-jwt
-supabase functions deploy webhook-mercadopago  --no-verify-jwt
+npx supabase@latest functions deploy descargar-archivo    --no-verify-jwt
+npx supabase@latest functions deploy crear-preferencia-mp --no-verify-jwt
+npx supabase@latest functions deploy confirmar-pago       --no-verify-jwt
+npx supabase@latest functions deploy previsualizar        --no-verify-jwt
+npx supabase@latest functions deploy webhook-mercadopago  --no-verify-jwt
 ```
 
 > `--no-verify-jwt` es necesario: `webhook-mercadopago` y `previsualizar` son
-> públicas, y las otras dos leen el JWT manualmente para dar errores claros.
+> públicas, y las demás leen el JWT manualmente para dar errores claros.
+
+Antes de desplegar conviene verificar tipos (evita subir código roto):
+```bash
+npx deno@latest check supabase/functions/*/index.ts
+```
 
 ### Registrar el webhook en Mercado Pago
 En el panel de MP → **Webhooks**, agrega la URL:
 ```
 https://cluvaxxqvhtxxiwctpnl.supabase.co/functions/v1/webhook-mercadopago
 ```
-Evento: **Pagos** (`payment`).
+Evento: **Pagos** (`payment`). Copia la **clave secreta** que MP muestra ahí y
+guárdala como `MP_WEBHOOK_SECRET`.
 
 ---
 
@@ -126,23 +165,24 @@ ambos lugares.
 1. **Productos**: cada proyecto de `dosificacion_proyectos` aparece listado.
    Haz clic en **Vincular**, pega los **file IDs de Drive** (PDF, DOCX, previews,
    anexos), pon precios y marca **activo**. Guarda → aparece en el catálogo.
-2. **Órdenes**: revisa pagos. Las transferencias llegan como *pendiente*; al
-   confirmar el depósito, clic en **Confirmar pago** → se otorga el acceso.
+2. **Órdenes**: monitoreo. En el flujo normal **no tienes que hacer nada**: los
+   pagos se acreditan solos. Una orden en *pendiente* es un pago en efectivo o
+   SPEI que el banco aún no confirma, o un intento abandonado (se archiva sola
+   a los 8 días). **Confirmar pago** queda solo para casos excepcionales.
 3. **Acceso manual**: da acceso a alguien por correo (p. ej. cortesías o ventas
    por fuera).
 
 ---
 
-## 7. Editar datos de transferencia (SPEI)
+## 7. Si un comprador dice que pagó y no ve su paquete
 
-En `tienda/js/checkout.js`, al inicio, edita:
-```js
-var DATOS_TRANSFERENCIA = {
-  clabe: "TU_CLABE",
-  banco: "Tu banco",
-  titular: "Tu nombre",
-};
-```
+1. Que entre a **Mis compras** y pulse *"Ya pagué — verificar ahora"*. Eso
+   consulta el pago real en MP y entrega el acceso al momento si está aprobado.
+2. Si sigue sin aparecer, revisa los logs de `webhook-mercadopago` y
+   `confirmar-pago` en el Dashboard de Supabase → Edge Functions → Logs.
+3. Comprueba en el panel de MP si el pago está *approved* o aún *pending*
+   (efectivo y SPEI tardan). Con `external_reference` localizas la orden.
+4. Último recurso: **Acceso manual** en el admin.
 
 ---
 

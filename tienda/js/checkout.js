@@ -1,17 +1,11 @@
 document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) { return; }
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// DATOS PARA PAGO POR TRANSFERENCIA — Jorge: edita estos valores.
-	// ─────────────────────────────────────────────────────────────────────────
-	var DATOS_TRANSFERENCIA = {
-		clabe: "722969015731430609",
-		banco: "Mercado Pago W",
-		titular: "Jorge Ivan Martinez Quezada",
-	};
+	// Todo el cobro pasa por Mercado Pago (Checkout Pro): ahí el comprador elige
+	// cuenta MP, tarjeta, dos tarjetas, efectivo o transferencia SPEI, y la
+	// entrega se activa sola. No hay confirmación manual de por medio.
 
 	var session = await Tienda.montarNav("");
-	var esc = Tienda.esc;
 	var money = Tienda.formatMoney;
 
 	var estadoEl = document.getElementById("estado");
@@ -24,12 +18,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var irLoginBtn = document.getElementById("irLoginBtn");
 	var usuarioEmail = document.getElementById("usuarioEmail");
 	var pagarMpBtn = document.getElementById("pagarMpBtn");
-	var toggleTransferencia = document.getElementById("toggleTransferencia");
-	var bloqueTransferencia = document.getElementById("bloqueTransferencia");
-	var clabeTexto = document.getElementById("clabeTexto");
-	var bancoTexto = document.getElementById("bancoTexto");
-	var montoTransferencia = document.getElementById("montoTransferencia");
-	var registrarTransferenciaBtn = document.getElementById("registrarTransferenciaBtn");
 	var volverLink = document.getElementById("volverLink");
 
 	var params = new URLSearchParams(location.search);
@@ -79,14 +67,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Sesión activa
 	bloquePago.classList.remove("hidden");
 	usuarioEmail.textContent = session.user.email || "";
-	clabeTexto.textContent = DATOS_TRANSFERENCIA.clabe;
-	bancoTexto.textContent = DATOS_TRANSFERENCIA.banco + " · " + DATOS_TRANSFERENCIA.titular;
-	montoTransferencia.textContent = money(precio);
 
-	// ── Pago con Mercado Pago ────────────────────────────────────────────────
+	var etiquetaBoton = pagarMpBtn.innerHTML;
+
 	pagarMpBtn.addEventListener("click", async function () {
 		pagarMpBtn.disabled = true;
-		pagarMpBtn.textContent = "Redirigiendo a Mercado Pago...";
+		pagarMpBtn.textContent = "Abriendo Mercado Pago...";
 		try {
 			var token = Tienda.getAccessToken(session);
 			var resp = await fetch(Tienda.EDGE_BASE + "/crear-preferencia-mp", {
@@ -114,52 +100,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (err) {
 			Tienda.toast(err.message || "Error al iniciar el pago.", "error");
 			pagarMpBtn.disabled = false;
-			pagarMpBtn.textContent = "Pagar con Mercado Pago";
-		}
-	});
-
-	// ── Transferencia directa ────────────────────────────────────────────────
-	toggleTransferencia.addEventListener("click", function () {
-		bloqueTransferencia.classList.toggle("hidden");
-	});
-
-	registrarTransferenciaBtn.addEventListener("click", async function () {
-		registrarTransferenciaBtn.disabled = true;
-		registrarTransferenciaBtn.textContent = "Registrando...";
-		try {
-			// El usuario crea su propia orden pendiente (RLS lo permite).
-			var ordRes = await window.sb
-				.from("marketplace_ordenes")
-				.insert({
-					user_id: session.user.id,
-					monto_total: precio,
-					estado: "pendiente",
-					metodo_pago: "transferencia",
-				})
-				.select("id")
-				.single();
-			if (ordRes.error) { throw ordRes.error; }
-
-			var itemRes = await window.sb.from("marketplace_orden_items").insert({
-				orden_id: ordRes.data.id,
-				producto_id: productoId,
-				tipo: tipo,
-				precio_unitario: precio,
-			});
-			if (itemRes.error) { throw itemRes.error; }
-
-			bloqueTransferencia.innerHTML =
-				'<div class="text-center py-3 flex flex-col items-center gap-2">' +
-				'<i data-lucide="circle-check" style="width:2.5rem;height:2.5rem;color:#059669"></i>' +
-				'<p class="font-bold text-lg" style="color:#1c2434">Compra registrada</p>' +
-				'<p class="text-sm" style="color:#5b6473">En cuanto confirmemos tu transferencia activaremos tu acceso. Te avisaremos por correo.</p>' +
-				'<a href="mis-compras.html" class="inline-block mt-2 font-semibold text-sm" style="color:#1e3a8a">Ir a Mis compras &rarr;</a>' +
-				"</div>";
+			pagarMpBtn.innerHTML = etiquetaBoton;
 			Tienda.iconos();
-		} catch (err) {
-			Tienda.toast(err.message || "No se pudo registrar. Intenta de nuevo.", "error");
-			registrarTransferenciaBtn.disabled = false;
-			registrarTransferenciaBtn.textContent = "Ya transferí — registrar mi compra";
 		}
 	});
 });

@@ -16,3 +16,6 @@ verify_jwt = false   # pública: cualquiera puede ver la muestra
 
 [functions.webhook-mercadopago]
 verify_jwt = false   # la llama Mercado Pago, no un usuario
+
+[functions.confirmar-pago]
+verify_jwt = false   # valida el JWT manualmente

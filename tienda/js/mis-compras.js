@@ -24,17 +24,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
 	};
 
-	var status = new URLSearchParams(location.search).get("status");
-	if (status === "approved") {
-		banner("¡Pago exitoso! Tu paquete ya está disponible para descargar.", "ok");
-	} else if (status === "pending") {
-		banner("Tu pago está en proceso. En cuanto se confirme verás las descargas aquí.", "info");
-	} else if (status === "failure") {
+	// ── Regreso desde Mercado Pago ──────────────────────────────────────────
+	// No creemos lo que dice la URL: el parámetro `status` lo pone Mercado Pago
+	// en el navegador y puede ir por delante del webhook (o el webhook puede
+	// fallar). Consultamos el pago real antes de prometer nada.
+	var params = new URLSearchParams(location.search);
+	var paymentId = limpio(params.get("payment_id") || params.get("collection_id"));
+	var externalRef = limpio(params.get("external_reference"));
+	var statusUrl = limpio(params.get("status") || params.get("collection_status"));
+
+	if (paymentId || externalRef || statusUrl) {
+		// Quitamos los parámetros para que un F5 no reprocese ni confunda.
+		history.replaceState({}, "", location.pathname);
+	}
+
+	if (paymentId || externalRef) {
+		banner("Confirmando tu pago con Mercado Pago...", "info", true);
+		var confirmacion = await confirmarPago(
+			paymentId ? { payment_id: paymentId } : { orden_id: externalRef },
+		);
+		mostrarResultadoConfirmacion(confirmacion);
+	} else if (statusUrl === "failure") {
 		banner("El pago no se completó. Puedes intentarlo de nuevo desde el catálogo.", "error");
 	}
 
 	await cargar();
 
+	// ── Carga de datos ──────────────────────────────────────────────────────
 	async function cargar() {
 		var accRes = await window.sb
 			.from("marketplace_accesos")
@@ -50,16 +66,72 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.order("created_at", { ascending: false });
 
 		estadoEl.classList.add("hidden");
+		listaEl.classList.add("hidden");
+		seccionPendientes.classList.add("hidden");
 
-		var accesos = (accRes.data || []);
+		var accesos = accRes.data || [];
+		var pendientes = ordRes.data || [];
+
 		renderCompras(accesos);
-		renderPendientes(ordRes.data || []);
+		renderPendientes(pendientes);
 
-		if (!accesos.length && !(ordRes.data || []).length) {
+		if (!accesos.length && !pendientes.length) {
 			vacio();
 		}
 	}
 
+	// ── Confirmación de pago contra Mercado Pago ────────────────────────────
+	async function confirmarPago(cuerpo) {
+		try {
+			var token = Tienda.getAccessToken(session);
+			var resp = await fetch(Tienda.EDGE_BASE + "/confirmar-pago", {
+				method: "POST",
+				headers: {
+					Authorization: "Bearer " + token,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(cuerpo || {}),
+			});
+			var data = await resp.json();
+			if (!resp.ok) { throw new Error(data.error || "No se pudo verificar el pago."); }
+			return data;
+		} catch (err) {
+			return { error: err.message || "No se pudo verificar el pago." };
+		}
+	}
+
+	function mostrarResultadoConfirmacion(data) {
+		if (!data || data.error) {
+			banner(
+				"No pudimos verificar tu pago en este momento. Si ya pagaste, tu acceso aparecerá aquí en unos minutos; también puedes usar el botón de verificar.",
+				"error",
+			);
+			return;
+		}
+
+		var resultados = data.resultados || [];
+		if (!resultados.length) {
+			banner("No encontramos pagos pendientes de confirmar.", "info");
+			return;
+		}
+
+		var pagado = resultados.some(function (r) { return r.estado === "pagado"; });
+		var enProceso = resultados.some(function (r) { return r.estado === "pendiente"; });
+		var fallido = resultados.some(function (r) { return r.estado === "fallido"; });
+
+		if (pagado) {
+			banner("Pago confirmado. Tu paquete ya está disponible para descargar.", "ok");
+		} else if (enProceso) {
+			banner(
+				"Tu pago está registrado pero el banco aún no lo acredita. Si pagaste en efectivo o por SPEI puede tardar de unos minutos a 3 días. Te avisaremos por correo en cuanto se active.",
+				"info",
+			);
+		} else if (fallido) {
+			banner("El pago no se completó. Puedes intentarlo de nuevo desde el catálogo.", "error");
+		}
+	}
+
+	// ── Render ──────────────────────────────────────────────────────────────
 	function renderCompras(accesos) {
 		var porProducto = {};
 		accesos.forEach(function (a) {
@@ -115,21 +187,60 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!ordenes.length) { return; }
 		seccionPendientes.classList.remove("hidden");
 		listaPendientes.innerHTML = "";
+
 		ordenes.forEach(function (o) {
-			var items = (o.marketplace_orden_items || []);
+			var items = o.marketplace_orden_items || [];
 			var titulo = items.length && items[0].marketplace_productos
 				? items[0].marketplace_productos.titulo : "Paquete";
-			var metodo = o.metodo_pago === "transferencia" ? "Transferencia (por confirmar)" : "Pago en proceso";
+
 			var div = document.createElement("div");
-			div.className = "rounded-2xl p-4 flex items-center justify-between gap-3";
+			div.className = "rounded-2xl p-4 flex flex-col gap-3";
 			div.style.cssText = "background:#fffbeb;border:1px solid #fbbf24";
 			div.innerHTML =
-				'<div>' +
+				'<div class="flex items-start justify-between gap-3">' +
+				'<div class="min-w-0">' +
 				'<p class="font-semibold text-sm" style="color:#1c2434">' + esc(titulo) + "</p>" +
-				'<p class="text-xs mt-0.5" style="color:#b45309">' + esc(metodo) + "</p></div>" +
-				'<span class="text-xs font-bold h-7 px-3 rounded-full inline-flex items-center shrink-0" style="background:#fef3c7;color:#b45309">En proceso</span>';
+				'<p class="text-xs mt-1 leading-relaxed" style="color:#b45309">Esperando que el banco confirme tu pago. En efectivo o SPEI puede tardar de unos minutos a 3 días.</p>' +
+				"</div>" +
+				'<span class="text-xs font-bold h-7 px-3 rounded-full inline-flex items-center shrink-0" style="background:#fef3c7;color:#b45309">En proceso</span>' +
+				"</div>" +
+				'<button data-verificar="' + esc(o.id) + '" class="self-start inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-xs font-bold transition" style="background:#fff;border:1px solid #fbbf24;color:#b45309">' +
+				'<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Ya pagué — verificar ahora</button>';
+
 			listaPendientes.appendChild(div);
 		});
+
+		listaPendientes.querySelectorAll("[data-verificar]").forEach(function (btn) {
+			btn.addEventListener("click", function () { verificarOrden(btn); });
+		});
+		Tienda.iconos();
+	}
+
+	async function verificarOrden(btn) {
+		var ordenId = btn.getAttribute("data-verificar");
+		btn.disabled = true;
+		btn.textContent = "Verificando...";
+
+		var data = await confirmarPago({ orden_id: ordenId });
+		var r = (data && data.resultados && data.resultados[0]) || null;
+
+		if (data && data.error) {
+			Tienda.toast(data.error, "error");
+		} else if (r && r.estado === "pagado") {
+			Tienda.toast("Pago confirmado. Ya puedes descargar tu paquete.", "ok");
+			await cargar();
+			return;
+		} else if (r && r.estado === "fallido") {
+			Tienda.toast("Ese pago no se completó.", "error");
+			await cargar();
+			return;
+		} else {
+			Tienda.toast("Aún no se acredita el pago. Te avisaremos por correo en cuanto se active.", "info");
+		}
+
+		btn.disabled = false;
+		btn.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Ya pagué — verificar ahora';
+		Tienda.iconos();
 	}
 
 	function vacio() {
@@ -143,11 +254,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Tienda.iconos();
 	}
 
-	function banner(texto, tipo) {
+	function banner(texto, tipo, conSpinner) {
 		var bg, border, color;
 		if (tipo === "ok") { bg = "#f0fdf4"; border = "#86efac"; color = "#166534"; }
 		else if (tipo === "error") { bg = "#fef2f2"; border = "#fca5a5"; color = "#991b1b"; }
 		else { bg = "#eff6ff"; border = "#93c5fd"; color = "#1e40af"; }
-		bannerEl.innerHTML = '<div class="rounded-2xl px-4 py-3 text-sm font-medium" style="background:' + bg + ';border:1px solid ' + border + ';color:' + color + '">' + esc(texto) + "</div>";
+		var icono = conSpinner
+			? '<i data-lucide="loader-circle" class="w-4 h-4 shrink-0 animate-spin"></i>'
+			: "";
+		bannerEl.innerHTML =
+			'<div class="rounded-2xl px-4 py-3 text-sm font-medium flex items-start gap-2.5 leading-relaxed" style="background:' + bg + ';border:1px solid ' + border + ';color:' + color + '">' +
+			icono + "<span>" + esc(texto) + "</span></div>";
+		Tienda.iconos();
+	}
+
+	// Mercado Pago a veces devuelve la cadena "null" en los parámetros.
+	function limpio(v) {
+		if (!v || v === "null" || v === "undefined") { return null; }
+		return v;
 	}
 });

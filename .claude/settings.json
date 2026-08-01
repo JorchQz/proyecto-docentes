@@ -34,7 +34,21 @@
       "Bash(node --check \"c:/proyecto-docentes/js/marketplace.js\")",
       "mcp__claude_ai_Supabase__deploy_edge_function",
       "mcp__claude_ai_Supabase__list_edge_functions",
-      "Bash(node --check tienda/js/biblioteca.js)"
+      "Bash(node --check tienda/js/biblioteca.js)",
+      "mcp__claude_ai_Google_Drive__search_files",
+      "Bash(npx --yes supabase@latest --version)",
+      "Bash(npx --yes supabase@latest projects list)",
+      "Bash(curl -s \"https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/\" -H \"apikey: sb_publishable_wLxZz4wDwk9xorJw4vIXsQ_6kndSDFg\" --max-time 30 -o \"C:/Users/jorge/AppData/Local/Temp/claude/c--proyecto-docentes/4fddd593-5af3-407a-a67a-4b127e322259/scratchpad/schema.json\" -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/ -H 'apikey: sb_publishable_wLxZz4wDwk9xorJw4vIXsQ_6kndSDFg' -H 'Authorization: Bearer sb_publishable_wLxZz4wDwk9xorJw4vIXsQ_6kndSDFg' -H 'Accept: application/openapi+json' --max-time 30 -o C:/Users/jorge/AppData/Local/Temp/claude/c--proyecto-docentes/4fddd593-5af3-407a-a67a-4b127e322259/scratchpad/schema.json -w '%{http_code}\\\\n')",
+      "Bash(npx --yes supabase@latest functions --help)",
+      "Bash(npx --yes deno@latest check supabase/functions/crear-preferencia-mp/index.ts supabase/functions/webhook-mercadopago/index.ts supabase/functions/confirmar-pago/index.ts)",
+      "Bash(python -)",
+      "Bash(sed -i '/^este no abre/d' .env.local)",
+      "Bash(sed -i 's/^MP_ACCESS_TOKEN_PublicKey=/MP_PUBLIC_KEY=/' .env.local)",
+      "Bash(git check-ignore *)",
+      "Bash(curl -s -o /dev/null -w \"index: HTTP %{http_code}\\\\n\" https://jissez.com --max-time 20)",
+      "Bash(curl -s -o /dev/null -w \"tienda/mis-compras.html: HTTP %{http_code}\\\\n\" https://jissez.com/tienda/mis-compras.html --max-time 20)",
+      "Bash(git checkout *)"
     ]
   }
 }
