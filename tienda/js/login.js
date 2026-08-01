@@ -94,7 +94,12 @@ document.addEventListener("DOMContentLoaded", function () {
 				await ingresar(email, password);
 			}
 		} catch (err) {
-			showMessage("error", err.message || "Ocurrió un error.");
+			// Supabase devuelve los errores en inglés; los traducimos siempre.
+			showMessage("error", window.mensajeAuth
+				? window.mensajeAuth(err, mode === "register"
+					? "No se pudo crear la cuenta. Inténtalo de nuevo."
+					: "No se pudo iniciar sesión. Inténtalo de nuevo.")
+				: "Ocurrió un error. Inténtalo de nuevo.");
 			setLoading(false);
 		}
 	});

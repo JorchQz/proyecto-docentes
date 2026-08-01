@@ -166,28 +166,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		strengthHint.textContent = "Excelente contraseña.";
 	}
 
+	// La traducción vive en js/auth-mensajes.js para no repetirla en cada
+	// pantalla. Aquí solo se adelanta el caso del enlace caducado, que en esta
+	// página conviene explicar con más contexto que el mensaje genérico.
 	function translateResetError(error) {
 		var message = ((error && error.message) || "").toLowerCase();
-
-		if (
-			message.indexOf("same") !== -1 &&
-			message.indexOf("password") !== -1
-		) {
-			return "La nueva contraseña no puede ser igual a la anterior.";
-		}
-
-		if (message.indexOf("password") !== -1 && message.indexOf("weak") !== -1) {
-			return "La contraseña es muy débil. Usa una más segura.";
-		}
 
 		if (message.indexOf("expired") !== -1 || message.indexOf("invalid") !== -1) {
 			return "El enlace de recuperación no es válido o ya expiró. Solicita uno nuevo.";
 		}
 
-		if (message.indexOf("rate limit") !== -1) {
-			return "Demasiados intentos. Espera un momento y vuelve a intentar.";
-		}
-
-		return error && error.message ? error.message : "";
+		return window.mensajeAuth
+			? window.mensajeAuth(error, "No se pudo actualizar la contraseña.")
+			: "No se pudo actualizar la contraseña.";
 	}
 });
