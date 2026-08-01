@@ -15,10 +15,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var esc = Tienda.esc;
 	var money = Tienda.formatMoney;
 
-	// Precios predeterminados por organización.
+	// Precios de arranque al crear un paquete nuevo (tarifario nivel 1).
+	// La fuente de verdad es la tabla marketplace_precios: en cuanto se acredita
+	// una venta, marketplace_aplicar_precios() reescribe estos valores.
 	var PRECIO = {
-		completa: { trimestre: { pdf: 400, editable: 600 }, ciclo: { pdf: 1050, editable: 1550 } },
-		multigrado: { trimestre: { pdf: 500, editable: 700 }, ciclo: { pdf: 1300, editable: 1800 } },
+		completa: { trimestre: { pdf: 399, editable: 468 }, ciclo: { pdf: 649, editable: 818 } },
+		multigrado: { trimestre: { pdf: 599, editable: 668 }, ciclo: { pdf: 999, editable: 1168 } },
 	};
 
 	// Combinaciones multigrado (orden de muestra).
@@ -58,6 +60,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tabs = document.querySelectorAll(".tab-btn");
 	var paneles = {
 		productos: document.getElementById("panelProductos"),
+		precios: document.getElementById("panelPrecios"),
 		ordenes: document.getElementById("panelOrdenes"),
 		acceso: document.getElementById("panelAcceso"),
 	};
@@ -71,6 +74,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				paneles[k].classList.toggle("hidden", k !== tab);
 			});
 			if (tab === "ordenes") { cargarOrdenes(); }
+			if (tab === "precios") { cargarPrecios(); }
 		});
 	});
 
@@ -342,6 +346,102 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
 		Tienda.toast("Acceso otorgado a " + email, "ok");
 		document.getElementById("accesoEmail").value = "";
+	});
+
+	// ── Precios y escalón de lanzamiento ──────────────────────────────────────
+	// El precio del ciclo completo sube al cruzar 50 y 100 ventas. Aquí solo se
+	// consulta y, si hace falta, se corrige a mano; el cambio lo aplica sola la
+	// base cada vez que se acredita un pago.
+	var MODALIDAD_ETIQUETA = {
+		un_grado: "1 grado",
+		tridocente: "Tridocente (2 grados)",
+		bidocente: "Bidocente (3 grados)",
+	};
+	var NIVEL_ETIQUETA = { 1: "Lanzamiento", 2: "Intermedio", 3: "Lista" };
+
+	var ventasCicloEl = document.getElementById("ventasCiclo");
+	var faltanTextoEl = document.getElementById("faltanTexto");
+	var nivelActualEl = document.getElementById("nivelActual");
+	var barraProgresoEl = document.getElementById("barraProgreso");
+	var avisoForzadoEl = document.getElementById("avisoForzado");
+	var tablaTarifasEl = document.getElementById("tablaTarifas");
+	var nivelForzadoSel = document.getElementById("nivelForzado");
+	var ajusteContadorInput = document.getElementById("ajusteContador");
+	var guardarLanzamientoBtn = document.getElementById("guardarLanzamientoBtn");
+
+	async function cargarPrecios() {
+		var res = await window.sb.rpc("admin_estado_precios");
+		if (res.error) {
+			Tienda.toast("No se pudo cargar el estado de precios: " + res.error.message, "error");
+			return;
+		}
+		renderPrecios(res.data);
+	}
+
+	function renderPrecios(d) {
+		var ventas = d.ventas_ciclo || 0;
+		ventasCicloEl.textContent = ventas;
+		nivelActualEl.textContent = d.nivel;
+
+		if (d.faltan_para_siguiente != null && d.faltan_para_siguiente > 0) {
+			faltanTextoEl.textContent = "faltan " + d.faltan_para_siguiente + " para subir de nivel";
+		} else if (d.nivel === 3) {
+			faltanTextoEl.textContent = "precio de lista alcanzado";
+		} else {
+			faltanTextoEl.textContent = "";
+		}
+
+		// La barra cubre 0-100 ventas, que es donde ocurren los dos escalones.
+		barraProgresoEl.style.width = Math.min(100, (ventas / 100) * 100) + "%";
+
+		if (d.nivel_forzado) {
+			avisoForzadoEl.classList.remove("hidden");
+			avisoForzadoEl.textContent =
+				"Nivel fijado a mano en " + d.nivel_forzado +
+				". El conteo de ventas no lo cambiará hasta que vuelvas a ponerlo en automático.";
+		} else {
+			avisoForzadoEl.classList.add("hidden");
+		}
+
+		nivelForzadoSel.value = d.nivel_forzado ? String(d.nivel_forzado) : "";
+		ajusteContadorInput.value = d.ajuste_contador ? String(d.ajuste_contador) : "";
+
+		var tarifas = d.tarifas || [];
+		tablaTarifasEl.innerHTML = tarifas.map(function (t) {
+			var esCiclo = t.tipo_paquete === "ciclo";
+			var estilo = t.vigente ? "font-weight:700;color:#1c2434" : "color:#9ba3af";
+			var nivelTxt = esCiclo
+				? t.nivel + " · " + (NIVEL_ETIQUETA[t.nivel] || "")
+				: "fijo";
+			return '<tr class="border-b border-line" style="' + estilo + '">' +
+				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
+				'<td class="py-2 pr-3">' + (esCiclo ? "Ciclo completo" : "Trimestre") + "</td>" +
+				'<td class="py-2 pr-3">' + esc(nivelTxt) + (t.vigente ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#dcfce7;color:#166534">VIGENTE</span>' : "") + "</td>" +
+				'<td class="py-2 pr-3 text-right">' + money(t.precio_base) + "</td>" +
+				'<td class="py-2 pr-3 text-right">' + money(t.precio_con_editable) + "</td>" +
+				"</tr>";
+		}).join("");
+	}
+
+	guardarLanzamientoBtn.addEventListener("click", async function () {
+		var nivel = nivelForzadoSel.value ? Number(nivelForzadoSel.value) : null;
+		var ajusteTxt = (ajusteContadorInput.value || "").trim();
+		var ajuste = ajusteTxt === "" ? 0 : Number(ajusteTxt);
+		if (isNaN(ajuste)) { Tienda.toast("El ajuste debe ser un número.", "error"); return; }
+
+		guardarLanzamientoBtn.disabled = true;
+		guardarLanzamientoBtn.textContent = "Aplicando...";
+		var res = await window.sb.rpc("admin_ajustar_lanzamiento", {
+			p_nivel_forzado: nivel,
+			p_ajuste_contador: ajuste,
+		});
+		guardarLanzamientoBtn.disabled = false;
+		guardarLanzamientoBtn.textContent = "Guardar y aplicar precios";
+
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		Tienda.toast("Precios aplicados a " + (res.data.productos_actualizados || 0) + " paquetes.", "ok");
+		await cargarPrecios();
+		await cargarProductos();
 	});
 
 	// Carga inicial: al final, cuando gridEl y accesoProductoSel ya están referenciados.

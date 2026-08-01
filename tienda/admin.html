@@ -52,8 +52,88 @@
 		<div class="bg-white rounded-2xl border border-line shadow-sm overflow-hidden">
 			<div class="flex border-b border-line">
 				<button data-tab="productos" class="tab-btn active flex-1 py-4 text-sm font-semibold border-b-2 transition">Paquetes</button>
+				<button data-tab="precios" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Precios</button>
 				<button data-tab="ordenes" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Órdenes</button>
 				<button data-tab="acceso" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Acceso manual</button>
+			</div>
+
+			<!-- Tab Precios: escalón de lanzamiento -->
+			<div id="panelPrecios" class="hidden p-5 flex flex-col gap-5">
+
+				<!-- Contador de ventas de ciclo completo -->
+				<div class="rounded-2xl border border-line p-5 flex flex-col gap-4" style="background:#faf9f4">
+					<div class="flex items-start justify-between gap-4 flex-wrap">
+						<div>
+							<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-mute">Ventas de ciclo completo</p>
+							<p class="mt-1"><span id="ventasCiclo" class="font-black text-ink" style="font-size:2.5rem;line-height:1">—</span>
+								<span id="faltanTexto" class="text-sm text-mute ml-2"></span></p>
+						</div>
+						<div class="text-right">
+							<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-mute">Nivel de precio</p>
+							<p id="nivelActual" class="mt-1 font-black text-ink" style="font-size:2.5rem;line-height:1">—</p>
+						</div>
+					</div>
+
+					<!-- Progreso hacia el siguiente escalón -->
+					<div>
+						<div class="h-2.5 rounded-full overflow-hidden" style="background:#e7e6df">
+							<div id="barraProgreso" class="h-full rounded-full transition-all" style="background:#059669;width:0%"></div>
+						</div>
+						<div class="flex justify-between mt-1.5 text-[11px] font-semibold text-mute">
+							<span>0</span><span>50</span><span>100</span>
+						</div>
+					</div>
+
+					<p id="avisoForzado" class="hidden text-xs rounded-xl px-3 py-2" style="background:#fffbeb;border:1px solid #fbbf24;color:#b45309"></p>
+				</div>
+
+				<!-- Tarifario vigente -->
+				<div>
+					<h3 class="font-bold text-ink mb-2">Tarifario</h3>
+					<p class="text-sm text-mute mb-3">El precio del ciclo completo sube solo al llegar a 50 y a 100 ventas. El trimestre y el add-on de Word son fijos.</p>
+					<div class="overflow-x-auto">
+						<table class="w-full text-sm">
+							<thead>
+								<tr class="text-left text-[11px] font-bold uppercase tracking-[0.08em] text-mute border-b border-line">
+									<th class="py-2 pr-3">Modalidad</th>
+									<th class="py-2 pr-3">Paquete</th>
+									<th class="py-2 pr-3">Nivel</th>
+									<th class="py-2 pr-3 text-right">PDF</th>
+									<th class="py-2 pr-3 text-right">+ Word</th>
+								</tr>
+							</thead>
+							<tbody id="tablaTarifas"></tbody>
+						</table>
+					</div>
+				</div>
+
+				<!-- Controles manuales de respaldo -->
+				<div class="rounded-2xl border border-line p-5 flex flex-col gap-4">
+					<div>
+						<h3 class="font-bold text-ink">Ajuste manual</h3>
+						<p class="text-sm text-mute mt-0.5">Solo si algo no cuadra. Normalmente no hace falta tocar nada.</p>
+					</div>
+					<div class="grid sm:grid-cols-2 gap-4">
+						<div>
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Forzar nivel</label>
+							<select id="nivelForzado" class="w-full px-3 py-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+								<option value="">Automático (según ventas)</option>
+								<option value="1">Nivel 1 — lanzamiento</option>
+								<option value="2">Nivel 2 — intermedio</option>
+								<option value="3">Nivel 3 — precio de lista</option>
+							</select>
+						</div>
+						<div>
+							<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Ajuste al contador</label>
+							<input id="ajusteContador" type="number" step="1" placeholder="0"
+								class="w-full px-3 py-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+							<p class="text-xs text-mute mt-1">Suma o resta ventas al conteo. Ej. <strong>-2</strong> descuenta dos ventas.</p>
+						</div>
+					</div>
+					<button id="guardarLanzamientoBtn" class="self-start h-11 px-5 rounded-xl font-semibold text-white text-sm transition" style="background:#059669">
+						Guardar y aplicar precios
+					</button>
+				</div>
 			</div>
 
 			<!-- Tab Paquetes -->

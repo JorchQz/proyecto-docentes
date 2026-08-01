@@ -112,6 +112,8 @@ export async function procesarPago(
       .update({ estado: "fallido", referencia_pago: paymentId })
       .eq("id", ordenId);
     await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
+    // La venta deja de contar para el escalón de lanzamiento.
+    await recalcularPrecios(admin);
     return { ok: true, estado: "fallido", statusMp: status, detalleMp: detalle };
   }
 
@@ -144,6 +146,10 @@ export async function procesarPago(
 
   const accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
 
+  // Escalón de lanzamiento: si esta venta cruzó los 50 o los 100 paquetes de
+  // ciclo, el precio de los ciclos sube a partir de la siguiente compra.
+  await recalcularPrecios(admin);
+
   // El correo nunca debe tumbar la entrega: si falla, queda en logs y ya.
   try {
     await avisarCompraPorCorreo(admin, ordenId, orden.user_id, opts);
@@ -152,6 +158,26 @@ export async function procesarPago(
   }
 
   return { ok: true, estado: "pagado", accesos, statusMp: status };
+}
+
+/**
+ * Reaplica el tarifario tras un cambio en las ventas.
+ *
+ * El precio del ciclo completo escala con las ventas acumuladas (1-50, 51-100,
+ * 101+). La cuenta y el nivel viven en la base (`marketplace_aplicar_precios`),
+ * que reescribe el precio vigente en cada producto para que el catálogo muestre
+ * exactamente lo que se va a cobrar.
+ *
+ * Nunca bloquea la entrega: si falla, el comprador ya pagó y tiene su acceso;
+ * el precio se corregirá en la siguiente venta o desde el admin.
+ */
+async function recalcularPrecios(admin: Cliente): Promise<void> {
+  try {
+    const { error } = await admin.rpc("marketplace_aplicar_precios");
+    if (error) console.error("recalcular precios falló:", error);
+  } catch (err) {
+    console.error("recalcular precios lanzó excepción:", err);
+  }
 }
 
 /**

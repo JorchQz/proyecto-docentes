@@ -48,7 +48,28 @@
       "Bash(git check-ignore *)",
       "Bash(curl -s -o /dev/null -w \"index: HTTP %{http_code}\\\\n\" https://jissez.com --max-time 20)",
       "Bash(curl -s -o /dev/null -w \"tienda/mis-compras.html: HTTP %{http_code}\\\\n\" https://jissez.com/tienda/mis-compras.html --max-time 20)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(git commit *)",
+      "Bash(git merge *)",
+      "Bash(git stash *)",
+      "Bash(curl -s 'https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/marketplace_productos?select=*&limit=1' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' --max-time 25)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{try{const j=JSON.parse\\(d\\);const p=Array.isArray\\(j\\)?j[0]:j;if\\(!p\\){console.log\\('sin productos'\\);return;}Object.keys\\(p\\).sort\\(\\).forEach\\(k=>{let v=p[k];if\\(v&&typeof v==='object'\\)v=JSON.stringify\\(v\\).slice\\(0,120\\);if\\(typeof v==='string'&&v.length>90\\)v=v.slice\\(0,90\\)+'...';console.log\\('  '+k.padEnd\\(24\\),'=',v\\);}\\);}catch\\(e\\){console.log\\('resp:',d.slice\\(0,300\\)\\);}}\\)\")",
+      "Bash(curl -s https://jissez.com/tienda/checkout --max-time 20)",
+      "Bash(node \"C:/Users/jorge/AppData/Local/Temp/claude/c--proyecto-docentes/4fddd593-5af3-407a-a67a-4b127e322259/scratchpad/crear-productos.js\")",
+      "Bash(curl -s 'https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/marketplace_productos?select=id,titulo,grado,trimestre,tipo_paquete,organizacion,grados_combo,modalidad,activo,precio_pdf,precio_editable,proyecto_folder_drive_id,archivo_pdf_drive_id&order=organizacion,grado,trimestre' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' --max-time 25)",
+      "Bash(node -e 'let d='\\\\'''\\\\'';process.stdin.on\\('\\\\''data'\\\\'',c=>d+=c\\).on\\('\\\\''end'\\\\'',\\(\\)=>{const j=JSON.parse\\(d\\); *)",
+      "Bash(npx --yes deno@latest check supabase/functions/crear-preferencia-mp/index.ts)",
+      "Bash(curl -s -X PATCH https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/marketplace_productos?activo=eq.false -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -H 'Prefer: return=representation' -d '{\"activo\":true}' --max-time 30)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{try{const j=JSON.parse\\(d\\);console.log\\('activados:',Array.isArray\\(j\\)?j.length:JSON.stringify\\(j\\).slice\\(0,200\\)\\);}catch\\(e\\){console.log\\(d.slice\\(0,300\\)\\);}}\\)\")",
+      "Bash(curl -s 'https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/marketplace_productos?select=organizacion,grado,grados_combo,modalidad,tipo_paquete&activo=eq.true' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' --max-time 25)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('visibles:',j.length\\);const g=new Set\\(j.map\\(p=>p.organizacion==='multigrado'?'multigrado '+p.grados_combo+' \\('+p.modalidad+'\\)':'completa '+p.grado+'°'\\)\\);console.log\\('tarjetas en catalogo:',g.size\\);[...g].sort\\(\\).forEach\\(x=>console.log\\('  ',x\\)\\);}\\)\")",
+      "Bash(node \"C:/Users/jorge/AppData/Local/Temp/claude/c--proyecto-docentes/4fddd593-5af3-407a-a67a-4b127e322259/scratchpad/probar-backend.js\")",
+      "Bash(curl -s 'https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/marketplace_productos?select=titulo,organizacion,grado,trimestre,tipo_paquete,proyecto_folder_drive_id&order=organizacion,grado,trimestre' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' --max-time 25)",
+      "Bash(node \"C:/Users/jorge/AppData/Local/Temp/claude/c--proyecto-docentes/4fddd593-5af3-407a-a67a-4b127e322259/scratchpad/diagnostico-drive.js\")",
+      "Bash(curl -s 'https://cluvaxxqvhtxxiwctpnl.supabase.co/rest/v1/marketplace_productos?select=organizacion,modalidad,tipo_paquete,precio_pdf,precio_editable&order=organizacion' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' --max-time 25)",
+      "Bash(node -e 'let d='\\\\'''\\\\'';process.stdin.on\\('\\\\''data'\\\\'',c=>d+=c\\).on\\('\\\\''end'\\\\'',\\(\\)=>{const j=JSON.parse\\(d\\);const m={};j.forEach\\(p=>{const k=\\(p.organizacion==='\\\\''multigrado'\\\\''?'\\\\''Multigrado \\('\\\\''+p.modalidad+'\\\\''\\)'\\\\'':'\\\\''Grado completo'\\\\''\\)+'\\\\'' · '\\\\''+\\(p.tipo_paquete==='\\\\''ciclo'\\\\''?'\\\\''Ciclo'\\\\'':'\\\\''Trimestre'\\\\''\\);\\(m[k]=m[k]||new Set\\(\\)\\).add\\(p.precio_pdf+'\\\\'' / '\\\\''+p.precio_editable\\);}\\); *)",
+      "Bash(node --check tienda/js/admin.js)",
+      "Bash(npx --yes deno@latest check supabase/functions/webhook-mercadopago/index.ts supabase/functions/confirmar-pago/index.ts)"
     ]
   }
 }
