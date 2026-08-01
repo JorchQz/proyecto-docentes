@@ -223,10 +223,22 @@ Deno.serve(async (req: Request) => {
       .update({ referencia_pago: pref.id })
       .eq("id", ordenId);
 
+    // Mercado Pago devuelve dos URLs y usar la equivocada rompe el pago:
+    //   credenciales TEST-...   → sandbox_init_point (entorno de pruebas)
+    //   credenciales APP_USR-.. → init_point
+    // Ojo: un APP_USR- puede pertenecer a un usuario de prueba; en ese caso
+    // también va por init_point, pero el comprador NO debe tener sesión con
+    // una cuenta real de MP o el pago se rechaza por mezclar entornos.
+    const esCredencialSandbox = mpToken.startsWith("TEST-");
+    const destino = esCredencialSandbox
+      ? (pref.sandbox_init_point || pref.init_point)
+      : pref.init_point;
+
     return jsonResponse({
       orden_id: ordenId,
       preference_id: pref.id,
-      init_point: pref.init_point,
+      init_point: destino,
+      sandbox: esCredencialSandbox,
     });
   } catch (err) {
     console.error("crear-preferencia-mp error:", err);
