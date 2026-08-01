@@ -174,7 +174,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 			html += filaOpcion({ tipo: "pdf", nombre: "Versión PDF", detalle: "Lista para imprimir, con pie de página de tu compra. Incluye anexos y examen.", precio: p.precio_pdf, comprado: !!acc.pdf, prod: p });
 		}
 		if (p.precio_editable != null) {
-			html += filaOpcion({ tipo: "editable", nombre: "Versión editable (Word)", detalle: "Personalízala a tu grupo. Incluye también el PDF, anexos y examen.", precio: p.precio_editable, comprado: !!acc.editable, prod: p });
+			html += filaOpcion({
+				tipo: "editable",
+				nombre: "Versión editable (Word)",
+				detalle: "Personalízala a tu grupo. Incluye también el PDF, anexos y examen.",
+				precio: p.precio_editable,
+				comprado: !!acc.editable,
+				prod: p,
+				// El add-on es la diferencia con el PDF: así el desglose sigue
+				// siendo correcto solo cuando el ciclo sube de precio.
+				desglose: desgloseEditable(p),
+			});
 		}
 		if (!html) { html = '<p class="text-gray-400 text-sm">Esta opción aún no tiene precios.</p>'; }
 		opcionesEl.innerHTML = html;
@@ -189,16 +199,57 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	// Importe compacto para el desglose: "$399" en vez de "$399.00 MXN", que
+	// repetido dos veces en una línea se vuelve ilegible.
+	function montoCorto(n) {
+		var num = Number(n || 0);
+		return "$" + num.toLocaleString("es-MX", {
+			minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+			maximumFractionDigits: 2,
+		});
+	}
+
+	// Desglose del add-on: hace visible que el PDF cuesta lo mismo que si se
+	// comprara suelto y que el extra es exactamente el precio del Word.
+	function desgloseEditable(p) {
+		if (p.precio_pdf == null || p.precio_editable == null) { return null; }
+		var addon = Number(p.precio_editable) - Number(p.precio_pdf);
+		if (!(addon > 0)) { return null; }
+		var proyectos = p.num_proyectos || (p.tipo_paquete === "ciclo" ? 12 : 4);
+		return {
+			base: Number(p.precio_pdf),
+			addon: addon,
+			nota: p.tipo_paquete === "ciclo"
+				? "Los " + proyectos + " proyectos del ciclo en Word — el triple que un trimestre suelto."
+				: "Los " + proyectos + " proyectos del trimestre en Word.",
+		};
+	}
+
 	function filaOpcion(o) {
 		var precioTxt = money(o.precio);
 		var accion = o.comprado
 			? '<button data-descargar="1" class="shrink-0 h-11 px-4 rounded-xl text-sm font-semibold text-white transition" style="background:#1e3a8a">Ya lo tienes — Abrir</button>'
 			: '<button data-comprar="' + o.tipo + '" data-pid="' + esc(o.prod.id) + '" class="shrink-0 h-11 px-5 rounded-xl text-sm font-bold text-white transition" style="background:#059669">Comprar ' + precioTxt + "</button>";
+
+		var desglose = "";
+		if (o.desglose && !o.comprado) {
+			desglose =
+				'<p class="text-[13px] mt-2 flex flex-wrap items-baseline gap-x-1.5" style="color:#1c2434">' +
+				'<span class="font-semibold">' + esc(montoCorto(o.desglose.base)) + "</span>" +
+				'<span style="color:#5b6473">del PDF</span>' +
+				'<span class="font-semibold" style="color:#5b6473">+</span>' +
+				'<span class="font-semibold">' + esc(montoCorto(o.desglose.addon)) + "</span>" +
+				'<span style="color:#5b6473">por el Word editable</span>' +
+				"</p>" +
+				'<p class="text-xs mt-1" style="color:#5b6473">' + esc(o.desglose.nota) + "</p>";
+		}
+
 		return (
 			'<div class="flex items-center justify-between gap-3 bg-white border rounded-2xl p-4" style="border-color:#e7e6df">' +
 			'<div class="min-w-0">' +
 			'<p class="font-semibold text-sm" style="color:#1c2434">' + esc(o.nombre) + "</p>" +
 			'<p class="text-xs mt-0.5" style="color:#5b6473">' + esc(o.detalle) + "</p>" +
+			desglose +
 			"</div>" + accion + "</div>"
 		);
 	}

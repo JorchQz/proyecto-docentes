@@ -54,6 +54,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 	resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable (Word) — incluye PDF";
 	resumenPrecio.textContent = money(precio);
 
+	// Con el add-on de Word mostramos de dónde sale el total: el PDF cuesta lo
+	// mismo que suelto y el resto es exactamente el precio del editable.
+	if (tipo === "editable" && p.precio_pdf != null) {
+		var addon = Number(p.precio_editable) - Number(p.precio_pdf);
+		if (addon > 0) {
+			document.getElementById("desglosePdf").textContent = money(p.precio_pdf);
+			document.getElementById("desgloseWord").textContent = "+ " + money(addon);
+			document.getElementById("resumenDesglose").classList.remove("hidden");
+			document.getElementById("filaTotal").style.borderTop = "1px solid #e7e6df";
+			document.getElementById("filaTotal").style.marginTop = "0.5rem";
+		}
+	}
+
 	estadoEl.classList.add("hidden");
 	contenidoEl.classList.remove("hidden");
 
