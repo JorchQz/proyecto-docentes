@@ -33,9 +33,58 @@ function minPrecio(prods, filtro) {
 }
 
 function llenarPrecios(prods) {
-	setPrecio("precioTrim", minPrecio(prods, function (p) { return p.organizacion === "completa" && p.tipo_paquete === "trimestre"; }), "por grado y trimestre", false);
-	setPrecio("precioCiclo", minPrecio(prods, function (p) { return p.organizacion === "completa" && p.tipo_paquete === "ciclo"; }), "el ciclo completo", true);
+	var esUnGradoTrim = function (p) { return p.organizacion === "completa" && p.tipo_paquete === "trimestre"; };
+	var esUnGradoCiclo = function (p) { return p.organizacion === "completa" && p.tipo_paquete === "ciclo"; };
+
+	var trim = minPrecio(prods, esUnGradoTrim);
+	var ciclo = minPrecio(prods, esUnGradoCiclo);
+
+	setPrecio("precioTrim", trim, "por grado y trimestre", false);
+	setPrecio("precioCiclo", ciclo, "el ciclo completo", true);
 	setPrecio("precioMulti", minPrecio(prods, function (p) { return p.organizacion === "multigrado"; }), "2 o 3 grados", false);
+
+	// El ahorro en pesos, no la idea vaga de "ahorra": tres trimestres sueltos
+	// contra el ciclo. Sale de los precios reales, así que sigue siendo cierto
+	// cuando el ciclo cambie de tramo de lanzamiento.
+	if (trim != null && ciclo != null) {
+		var ahorro = trim * 3 - ciclo;
+		var el = document.getElementById("ahorroCiclo");
+		if (el && ahorro > 0) {
+			el.textContent = "Ahorras " + montoCorto(ahorro) + " frente a comprar los tres trimestres sueltos";
+			el.classList.remove("hidden");
+		}
+	}
+
+	// El Word es un add-on que se suma al paquete: se muestra cuánto cuesta
+	// aparte, en vez de dejarlo en "costo adicional" sin número.
+	setAddon("addonTrim", prods, esUnGradoTrim, "Versión Word editable");
+	setAddon("addonCiclo", prods, esUnGradoCiclo, "Versión Word editable");
+	setAddon("addonMulti", prods, function (p) {
+		return p.organizacion === "multigrado" && p.tipo_paquete === "trimestre";
+	}, "Versión Word editable");
+}
+
+// Importe compacto: "$349" en vez de "$349.00 MXN", que repetido en una línea
+// se vuelve ilegible.
+function montoCorto(n) {
+	var num = Number(n || 0);
+	return "$" + num.toLocaleString("es-MX", {
+		minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+		maximumFractionDigits: 2,
+	});
+}
+
+// El add-on es la diferencia entre las dos versiones del mismo paquete.
+function setAddon(id, prods, filtro, etiqueta) {
+	var el = document.getElementById(id);
+	if (!el) { return; }
+	var candidatos = prods.filter(filtro).filter(function (p) {
+		return p.precio_pdf != null && p.precio_editable != null;
+	});
+	if (!candidatos.length) { return; }
+	var addon = Number(candidatos[0].precio_editable) - Number(candidatos[0].precio_pdf);
+	if (!(addon > 0)) { return; }
+	el.textContent = etiqueta + ": + " + montoCorto(addon);
 }
 
 // Si hay precio real lo muestra ("Desde $X"); si no, deja el texto genérico ya presente.

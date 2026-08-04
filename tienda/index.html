@@ -4,7 +4,7 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Planeaciones NEM listas para tu salón — Jissez</title>
-	<meta name="description" content="Planeaciones de primaria alineadas a la Nueva Escuela Mexicana, listas para imprimir o editar. Compra por trimestre o el ciclo completo. Pago seguro y acceso inmediato.">
+	<meta name="description" content="Planeaciones de primaria alineadas a la Nueva Escuela Mexicana, listas para imprimir o editar. Compra por trimestre o el ciclo completo. Pago seguro y acceso permanente.">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -27,7 +27,7 @@
 				Recupera<br />tus <span class="chalk-u" style="--accent:#1e3a8a">tardes</span>.
 			</h1>
 			<p class="mt-6 text-[clamp(1.05rem,1.6vw,1.3rem)] leading-relaxed text-mute max-w-xl">
-				Materiales didácticos alineados a la Nueva Escuela Mexicana, organizados por grado y listos para llevar al salón. Un solo pago, acceso inmediato y permanente.
+				Materiales didácticos alineados a la Nueva Escuela Mexicana, organizados por grado y listos para llevar al salón. Un solo pago y acceso permanente, sin suscripciones.
 			</p>
 			<div class="mt-8 flex flex-wrap items-center gap-3">
 				<a href="catalogo.html" class="inline-flex items-center justify-center gap-2 h-14 px-7 rounded-2xl bg-action hover:bg-action-dark text-white font-bold text-lg transition shadow-[0_14px_34px_-16px_rgba(5,150,105,1)]">
@@ -40,7 +40,7 @@
 				</a>
 			</div>
 			<div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[15px] text-mute">
-				<span class="inline-flex items-center gap-2"><i data-lucide="zap" class="w-[18px] h-[18px] text-action"></i> Acceso inmediato</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="zap" class="w-[18px] h-[18px] text-action"></i> Acceso al confirmar tu pago</span>
 				<span class="inline-flex items-center gap-2"><i data-lucide="shield-check" class="w-[18px] h-[18px] text-action"></i> Pago seguro</span>
 				<span class="inline-flex items-center gap-2"><i data-lucide="badge-check" class="w-[18px] h-[18px] text-action"></i> Alineado a la NEM</span>
 			</div>
@@ -77,6 +77,8 @@
 						<span class="w-7 h-7 rounded-lg bg-gisCoral text-white text-xs font-black flex items-center justify-center">2°</span>
 						<span class="w-7 h-7 rounded-lg bg-gisMenta text-board/80 text-xs font-black flex items-center justify-center">3°</span>
 						<span class="w-7 h-7 rounded-lg bg-gisLavanda text-white text-xs font-black flex items-center justify-center">4°</span>
+						<span class="w-7 h-7 rounded-lg bg-gisCielo text-board/80 text-xs font-black flex items-center justify-center">5°</span>
+						<span class="w-7 h-7 rounded-lg bg-gisDurazno text-board/80 text-xs font-black flex items-center justify-center">6°</span>
 					</div>
 				</div>
 			</div>
@@ -146,7 +148,7 @@
 					<span class="text-5xl font-black text-line">03</span>
 				</div>
 				<h3 class="mt-5 text-xl font-bold text-ink">Descarga e imprime</h3>
-				<p class="mt-2 text-mute leading-relaxed">Accede de inmediato a tu biblioteca de archivos PDF, listos para imprimir. La versión editable Word se puede agregar al comprar.</p>
+				<p class="mt-2 text-mute leading-relaxed">En cuanto se confirma tu pago, tu biblioteca de archivos PDF queda lista para imprimir. La versión editable Word se puede agregar al comprar.</p>
 			</div>
 		</div>
 	</div>
@@ -312,7 +314,7 @@
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> 1 trimestre, 1 grado</li>
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> PDF listo para imprimir</li>
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> Anexos y examen incluidos</li>
-					<li class="flex gap-2.5 text-mute text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-mute/40 shrink-0"></i> Versión Word editable (costo adicional)</li>
+					<li class="flex gap-2.5 text-mute text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-mute/40 shrink-0"></i> <span id="addonTrim">Versión Word editable (costo adicional)</span></li>
 				</ul>
 				<a href="catalogo.html" class="mt-7 inline-flex items-center justify-center h-12 rounded-xl border border-board/30 text-board font-bold hover:bg-board/5 transition">Elegir trimestre</a>
 			</div>
@@ -321,11 +323,13 @@
 				<h3 class="font-bold text-lg">Ciclo completo</h3>
 				<p class="mt-1 text-sm text-white/70">Los 3 trimestres del grado.</p>
 				<div class="mt-5" id="precioCiclo"><span class="text-2xl font-black">Pago único</span><span class="text-white/70"> · el ciclo completo</span></div>
+				<!-- El ahorro lo calcula landing.js con los precios reales -->
+				<p id="ahorroCiclo" class="hidden mt-2 text-[14px] font-bold" style="color:#79c8a6"></p>
 				<ul class="mt-6 space-y-2.5 text-[15px] flex-1">
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-gisMenta shrink-0"></i> 3 trimestres, 1 grado</li>
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-gisMenta shrink-0"></i> PDF incluido en los tres</li>
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-gisMenta shrink-0"></i> Todo el ciclo escolar resuelto</li>
-					<li class="flex gap-2.5 text-white/50 text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-white/25 shrink-0"></i> Versión Word disponible</li>
+					<li class="flex gap-2.5 text-white/50 text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-white/25 shrink-0"></i> <span id="addonCiclo">Versión Word disponible</span></li>
 				</ul>
 				<a href="catalogo.html" class="mt-7 inline-flex items-center justify-center h-12 rounded-xl bg-action hover:bg-action-dark text-white font-bold transition">Elegir ciclo completo</a>
 			</div>
@@ -337,7 +341,7 @@
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> 2 o 3 grados en un solo paquete</li>
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> Actividades diferenciadas por grado</li>
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> Examen por cada grado</li>
-					<li class="flex gap-2.5 text-mute text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-mute/40 shrink-0"></i> Versión Word (costo adicional)</li>
+					<li class="flex gap-2.5 text-mute text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-mute/40 shrink-0"></i> <span id="addonMulti">Versión Word (costo adicional)</span></li>
 				</ul>
 				<a href="catalogo.html" class="mt-7 inline-flex items-center justify-center h-12 rounded-xl border border-board/30 text-board font-bold hover:bg-board/5 transition">Ver multigrado</a>
 			</div>
@@ -378,7 +382,7 @@
 		</div>
 		<div class="reveal flex items-start gap-3" style="transition-delay:.05s">
 			<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="zap" class="w-5 h-5"></i></span>
-			<div><h3 class="font-bold text-ink">Acceso inmediato</h3><p class="text-sm text-mute mt-0.5">Tu biblioteca se desbloquea al confirmar el pago.</p></div>
+			<div><h3 class="font-bold text-ink">Acceso al confirmar</h3><p class="text-sm text-mute mt-0.5">Con tarjeta o SPEI se desbloquea al momento. En efectivo, cuando la tienda reporte el pago.</p></div>
 		</div>
 		<div class="reveal flex items-start gap-3" style="transition-delay:.1s">
 			<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="store" class="w-5 h-5"></i></span>
@@ -409,7 +413,7 @@
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Cómo recibo mi compra? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
-				<p class="pb-5 text-mute leading-relaxed">Al confirmar el pago, tu biblioteca se desbloquea de inmediato. Entras con tu cuenta y descargas desde cualquier dispositivo, las veces que quieras.</p>
+				<p class="pb-5 text-mute leading-relaxed">Con tarjeta o transferencia SPEI, tu biblioteca se desbloquea al momento. Si pagas en efectivo, se activa sola en cuanto la tienda reporte el pago (suele ser el mismo día, a veces hasta 3). Entras con tu cuenta y descargas desde cualquier dispositivo, las veces que quieras.</p>
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">No tengo tarjeta, ¿puedo pagar en efectivo? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
