@@ -19,8 +19,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// La fuente de verdad es la tabla marketplace_precios: en cuanto se acredita
 	// una venta, marketplace_aplicar_precios() reescribe estos valores.
 	var PRECIO = {
-		completa: { trimestre: { pdf: 399, editable: 468 }, ciclo: { pdf: 649, editable: 818 } },
-		multigrado: { trimestre: { pdf: 599, editable: 668 }, ciclo: { pdf: 999, editable: 1168 } },
+		completa: { trimestre: { pdf: 349, editable: 418 }, ciclo: { pdf: 699, editable: 868 } },
+		multigrado: { trimestre: { pdf: 499, editable: 568 }, ciclo: { pdf: 999, editable: 1168 } },
 	};
 
 	// Combinaciones multigrado (orden de muestra).
@@ -352,10 +352,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// El precio del ciclo completo sube al cruzar 50 y 100 ventas. Aquí solo se
 	// consulta y, si hace falta, se corrige a mano; el cambio lo aplica sola la
 	// base cada vez que se acredita un pago.
+	// Bidocente y tridocente comparten tarifa: el maestro no elige cuál le toca,
+	// se lo dicta su escuela, así que el tarifario no los distingue.
 	var MODALIDAD_ETIQUETA = {
 		un_grado: "1 grado",
-		tridocente: "Tridocente (2 grados)",
-		bidocente: "Bidocente (3 grados)",
+		multigrado: "Multigrado (bi y tridocente)",
 	};
 	var NIVEL_ETIQUETA = { 1: "Lanzamiento", 2: "Intermedio", 3: "Lista" };
 
