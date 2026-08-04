@@ -33,23 +33,47 @@
 		<!-- ===== Columna izquierda: acciones de pago ===== -->
 		<div class="flex flex-col gap-5">
 
-			<!-- Sin sesión: ir a login -->
-			<div id="bloqueLogin" class="hidden bg-white rounded-3xl border border-line p-6 shadow-sm">
-				<div class="flex items-center gap-3 mb-3">
+			<!-- Sin sesión: los datos van aquí mismo, no en otra pantalla.
+			     Mandar a "inicia sesión" en pleno pago es donde más gente
+			     abandona. El mismo formulario sirve para entrar o crear la
+			     cuenta: si el correo ya existe se inicia sesión, si no, se
+			     crea al vuelo. -->
+			<div id="bloqueDatos" class="hidden bg-white rounded-3xl border border-line p-6 shadow-sm flex flex-col gap-4">
+				<div class="flex items-center gap-3">
 					<span class="w-10 h-10 rounded-xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="user-round" class="w-5 h-5"></i></span>
 					<div>
-						<p class="font-bold text-ink">Inicia sesión para continuar</p>
-						<p class="text-sm text-mute">Necesitas una cuenta para completar tu compra.</p>
+						<p class="font-bold text-ink">Tus datos</p>
+						<p class="text-sm text-mute">Para guardarte el acceso y que descargues cuando quieras.</p>
 					</div>
 				</div>
-				<a id="irLoginBtn" href="#" class="flex items-center justify-center gap-2 h-12 rounded-xl font-bold text-white transition" style="background:#1e3a8a">
-					Iniciar sesión / Registrarme <i data-lucide="arrow-right" class="w-4 h-4"></i>
-				</a>
+
+				<div>
+					<label for="fNombre" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Tu nombre</label>
+					<input id="fNombre" type="text" autocomplete="name" placeholder="Ana López Martínez"
+						class="w-full h-12 px-3.5 border border-line rounded-xl text-[15px]" style="color:#1c2434;background:#fff">
+					<p class="text-xs text-mute mt-1">Aparecerá en tus planeaciones como docente.</p>
+				</div>
+
+				<div>
+					<label for="fCorreo" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Correo</label>
+					<input id="fCorreo" type="email" autocomplete="email" inputmode="email" placeholder="maestra@ejemplo.com"
+						class="w-full h-12 px-3.5 border border-line rounded-xl text-[15px]" style="color:#1c2434;background:#fff">
+				</div>
+
+				<div>
+					<label for="fClave" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Contraseña</label>
+					<input id="fClave" type="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres"
+						class="w-full h-12 px-3.5 border border-line rounded-xl text-[15px]" style="color:#1c2434;background:#fff">
+					<p class="text-xs text-mute mt-1">Si ya compraste antes, usa la misma con la que entras.</p>
+				</div>
+
+				<div id="mensajeDatos" class="hidden rounded-xl px-3.5 py-2.5 text-sm font-medium"></div>
 			</div>
 
-			<!-- Con sesión: pago -->
+			<!-- El pago se ve siempre, con cuenta o sin ella: esconderlo detrás
+			     del registro hacía parecer que faltaba mucho para terminar. -->
 			<div id="bloquePago" class="hidden flex flex-col gap-4">
-				<div class="bg-white rounded-2xl border border-line p-4 text-sm text-mute flex items-center gap-2">
+				<div id="barraUsuario" class="hidden bg-white rounded-2xl border border-line p-4 text-sm text-mute flex items-center gap-2">
 					<i data-lucide="user-check" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i>
 					Comprando como <span id="usuarioEmail" class="font-semibold text-ink ml-1"></span>
 				</div>
@@ -150,6 +174,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../js/supabase.js"></script>
+<script src="../js/auth-mensajes.js"></script>
 <script src="js/tienda-common.js"></script>
 <script src="js/checkout.js"></script>
 </body>
