@@ -70,7 +70,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (infoExtra) { infoExtra.classList.remove("hidden"); }
 	Tienda.iconos();
 
-	await cargarVistaPrevia();
+	// La vista previa se carga AL FINAL del archivo, no aquí: necesita las
+	// variables que se declaran más abajo y, si se llama antes, revienta y se
+	// lleva por delante el registro de los botones de compra.
 
 	// ── Helpers de datos ──────────────────────────────────────────────────────
 	function ordenOpcion(p) { return p.tipo_paquete === "ciclo" ? 4 : (p.trimestre || 0); }
@@ -329,8 +331,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tipoElegido = null; // 'pdf' | 'editable'
 
 	document.getElementById("comprarBtn").addEventListener("click", abrirModal);
-	var ctaBtn = document.getElementById("ctaBtn");
-	if (ctaBtn) { ctaBtn.addEventListener("click", abrirModal); }
 	document.getElementById("modalCerrar").addEventListener("click", cerrarModal);
 	document.getElementById("modalFondo").addEventListener("click", cerrarModal);
 	modalVolver.addEventListener("click", function () { irPaso(1); });
@@ -497,4 +497,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!elegido || !tipoElegido) { return; }
 		location.href = "checkout.html?producto_id=" + encodeURIComponent(elegido.id) + "&tipo=" + tipoElegido;
 	});
+
+	// Al final del todo: ya están declaradas las variables de la galería y
+	// registrados los botones, así que un fallo aquí no deja la página muerta.
+	// Aun así se aísla: sin vista previa se puede comprar; sin botones, no.
+	try {
+		await cargarVistaPrevia();
+	} catch (err) {
+		console.error("vista previa:", err);
+		previewCargando.classList.add("hidden");
+		previewVacio.classList.remove("hidden");
+		previewVacio.classList.add("flex");
+		Tienda.iconos();
+	}
 });
