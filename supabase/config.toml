@@ -19,3 +19,6 @@ verify_jwt = false   # la llama Mercado Pago, no un usuario
 
 [functions.confirmar-pago]
 verify_jwt = false   # valida el JWT manualmente
+
+[functions.recuperar-clave]
+verify_jwt = false   # pública: la usa quien no puede entrar a su cuenta

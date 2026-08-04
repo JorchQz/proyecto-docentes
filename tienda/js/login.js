@@ -66,17 +66,30 @@ document.addEventListener("DOMContentLoaded", function () {
 				return;
 			}
 			olvideLink.textContent = "Enviando...";
-			var res = await window.sb.auth.resetPasswordForEmail(correo, {
-				// Sin ".html": Cloudflare redirige esa ruta y es un salto de más.
-				redirectTo: location.origin + "/reset-password",
-			});
-			olvideLink.textContent = "¿Olvidaste tu contraseña?";
-			if (res.error) {
-				showMessage("error", window.mensajeAuth
-					? window.mensajeAuth(res.error, "No se pudo enviar el correo.")
-					: "No se pudo enviar el correo.");
-				return;
+			// Vía propia en vez de resetPasswordForEmail: las plantillas de
+			// Supabase llegaban en inglés y sus versiones personalizadas no se
+			// aplicaban. Así el correo va en español y con la marca.
+			var enviado = false;
+			try {
+				var resp = await fetch(Tienda.EDGE_BASE + "/recuperar-clave", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						email: correo,
+						// Sin ".html": Cloudflare redirige esa ruta y es un salto de más.
+						redirect_to: location.origin + "/reset-password",
+					}),
+				});
+				enviado = resp.ok;
+				if (!enviado) {
+					var cuerpo = await resp.json().catch(function () { return {}; });
+					showMessage("error", cuerpo.error || "No se pudo enviar el correo. Inténtalo en unos minutos.");
+				}
+			} catch (_) {
+				showMessage("error", "No hay conexión. Revisa tu internet e inténtalo de nuevo.");
 			}
+			olvideLink.textContent = "¿Olvidaste tu contraseña?";
+			if (!enviado) { return; }
 			// Respuesta igual exista o no la cuenta: decir "ese correo no está
 			// registrado" revelaría qué direcciones tienen cuenta.
 			showMessage("success", "Si ese correo tiene cuenta, te enviamos un enlace para crear una contraseña nueva. Revisa tu bandeja y el correo no deseado.");

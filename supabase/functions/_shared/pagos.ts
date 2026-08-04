@@ -10,6 +10,15 @@
 // mil veces con el mismo pago sin duplicar accesos ni correos.
 
 import type { Cliente } from "./db.ts";
+import {
+  botonCorreo,
+  enviarCorreo,
+  escaparHtml,
+  estiloNota,
+  estiloTexto,
+  estiloTitulo,
+  plantillaCorreo,
+} from "./correo.ts";
 
 // Estados que MP puede devolver para un pago.
 //   approved   → cobrado, entregar
@@ -257,48 +266,29 @@ async function avisarCompraPorCorreo(
       const version = i.tipo === "editable"
         ? "Word editable + PDF + anexos"
         : "PDF + anexos";
-      return `<li style="margin-bottom:6px"><strong>${escapeHtml(titulo)}</strong><br><span style="color:#5b6473;font-size:14px">${version}</span></li>`;
+      return `<li style="margin-bottom:6px"><strong>${escaparHtml(titulo)}</strong><br><span style="color:#5b6473;font-size:14px">${version}</span></li>`;
     })
     .join("");
 
   const siteUrl = (opts.siteUrl || "").replace(/\/+$/, "");
-  const enlace = siteUrl + "/tienda/mis-compras.html";
+  const enlace = siteUrl + "/tienda/mis-compras";
 
-  const html = `
-<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1c2434">
-  <h1 style="font-size:22px;margin:0 0 8px">Tu compra está lista</h1>
-  <p style="color:#5b6473;line-height:1.6;margin:0 0 20px">Confirmamos tu pago. Ya puedes descargar tu material desde tu biblioteca.</p>
-  <ul style="padding-left:18px;margin:0 0 24px">${lista}</ul>
-  <a href="${escapeHtml(enlace)}" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:12px">Ir a mis compras</a>
-  <p style="color:#8a93a2;font-size:13px;line-height:1.6;margin:28px 0 0">Tus descargas no caducan y no tienen límite. Si algo no funciona, responde a este correo.</p>
-  <p style="color:#8a93a2;font-size:13px;margin:16px 0 0">Jissez · Planeaciones NEM</p>
-</div>`;
+  const html = plantillaCorreo(`
+    <h1 style="${estiloTitulo}">Tu compra está lista</h1>
+    <p style="${estiloTexto}">
+      Confirmamos tu pago. Ya puedes descargar tu material desde tu biblioteca.
+    </p>
+    <ul style="padding-left:18px;margin:20px 0 0;color:#1c2434;font-size:15px">${lista}</ul>
+    ${botonCorreo(enlace, "Ir a mis compras")}
+    <p style="${estiloNota}">
+      Tus descargas no caducan ni tienen límite. Si algo no funciona, responde a
+      este correo.
+    </p>
+  `);
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + resendKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: Deno.env.get("MAIL_FROM") || "Jissez <no-reply@jissez.com>",
-      to: [email],
-      subject: "Tu compra en Jissez está lista",
-      html,
-    }),
-  });
-  if (!resp.ok) {
-    console.error("Resend error:", await resp.text());
-  }
+  await enviarCorreo(resendKey, email, "Tu compra en Jissez está lista", html);
 }
 
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 /**
  * Valida la firma `x-signature` que Mercado Pago envía en cada webhook.
