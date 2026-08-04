@@ -169,26 +169,52 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
+	// Los proyectos son lo más concreto de la ficha: aquí el maestro comprueba
+	// de qué trata el material. Van agrupados por trimestre —y no en una lista
+	// corrida— porque si no, no se entiende qué entra en cada paquete: un
+	// trimestre trae cuatro, el ciclo los doce.
 	async function cargarIncluye() {
-		var esCiclo = productoPorDefecto().tipo_paquete === "ciclo";
 		var qd = window.sb
 			.from("dosificacion_proyectos")
-			.select("nombre_proyecto, trimestre, grados")
-			.order("trimestre", { ascending: true });
+			.select("nombre_proyecto, trimestre, grados, numero_proyecto")
+			// numero_proyecto es continuo por grado (1-4 en T1, 5-8 en T2…),
+			// que es el orden en que se enseñan.
+			.order("numero_proyecto", { ascending: true });
 		comboArr.forEach(function (gr) { qd = qd.contains("grados", [gr]); });
-		if (!esCiclo) { qd = qd.eq("trimestre", productoPorDefecto().trimestre); }
 
 		var r = await qd;
 		if (r.error || !r.data) { return; }
 		var filas = r.data.filter(function (d) { return (d.grados || []).length === comboArr.length; });
 		if (!filas.length) { return; }
 
-		incluyeLista.innerHTML = filas.map(function (d) {
-			var t = d.trimestre ? '<span class="text-[11px]" style="color:#5b6473">T' + esc(d.trimestre) + " · </span>" : "";
-			return '<li class="flex items-start gap-2">' +
-				'<i data-lucide="check" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>' +
-				'<span>' + t + esc(d.nombre_proyecto || "Proyecto") + "</span></li>";
+		var porTrimestre = {};
+		filas.forEach(function (d) {
+			var t = d.trimestre || 0;
+			(porTrimestre[t] = porTrimestre[t] || []).push(d);
+		});
+
+		var trimestres = Object.keys(porTrimestre).sort();
+		incluyeLista.innerHTML = trimestres.map(function (t) {
+			var proyectos = porTrimestre[t];
+			return '<li>' +
+				'<p class="text-[11px] font-bold uppercase tracking-[0.1em] mb-1.5 mt-3 first:mt-0" style="color:#1e3a8a">' +
+				"Trimestre " + esc(t) + " · " + proyectos.length + " proyectos</p>" +
+				'<ul class="flex flex-col gap-1.5">' +
+				proyectos.map(function (d) {
+					return '<li class="flex items-start gap-2">' +
+						'<i data-lucide="check" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>' +
+						'<span>' + esc(d.nombre_proyecto || "Proyecto") + "</span></li>";
+				}).join("") +
+				"</ul></li>";
 		}).join("");
+
+		var total = filas.length;
+		var nota = document.getElementById("incluyeNota");
+		if (nota) {
+			nota.textContent = trimestres.length > 1
+				? "Los " + total + " proyectos del ciclo completo. Si compras un trimestre suelto, recibes los de ese trimestre."
+				: "Los " + total + " proyectos de este paquete.";
+		}
 		incluyeWrap.classList.remove("hidden");
 		Tienda.iconos();
 	}
