@@ -104,15 +104,20 @@
 						</button>
 					</form>
 
-					<div class="mt-5 text-center">
+					<div class="mt-5 text-center flex flex-col gap-2">
 						<p class="text-sm text-mute">
 							¿No tienes cuenta? <a href="#" id="toggleLink" class="font-semibold text-board hover:underline">Regístrate</a>
+						</p>
+						<!-- Sin esto, quien olvidaba su contraseña se quedaba sin acceso
+						     a lo que ya había comprado. -->
+						<p id="olvideWrap" class="text-sm">
+							<a href="#" id="olvideLink" class="text-mute hover:text-ink hover:underline">¿Olvidaste tu contraseña?</a>
 						</p>
 					</div>
 
 					<div class="mt-5 pt-5 border-t border-line flex items-center justify-center gap-x-5 gap-y-1 flex-wrap text-xs text-mute">
 						<span class="inline-flex items-center gap-1.5"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Pago seguro</span>
-						<span class="inline-flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso inmediato</span>
+						<span class="inline-flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Acceso al confirmar tu pago</span>
 					</div>
 				</div>
 			</div>

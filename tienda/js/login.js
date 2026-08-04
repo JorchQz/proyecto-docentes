@@ -53,6 +53,36 @@ document.addEventListener("DOMContentLoaded", function () {
 		clearMessage();
 	});
 
+	// Recuperación de contraseña. El enlace del correo lleva a la página de
+	// cambio con la sesión de recuperación ya establecida.
+	var olvideLink = document.getElementById("olvideLink");
+	if (olvideLink) {
+		olvideLink.addEventListener("click", async function (e) {
+			e.preventDefault();
+			var correo = (emailInput.value || "").trim();
+			if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+				showMessage("error", "Escribe tu correo arriba y vuelve a pulsar aquí.");
+				emailInput.focus();
+				return;
+			}
+			olvideLink.textContent = "Enviando...";
+			var res = await window.sb.auth.resetPasswordForEmail(correo, {
+				// Sin ".html": Cloudflare redirige esa ruta y es un salto de más.
+				redirectTo: location.origin + "/reset-password",
+			});
+			olvideLink.textContent = "¿Olvidaste tu contraseña?";
+			if (res.error) {
+				showMessage("error", window.mensajeAuth
+					? window.mensajeAuth(res.error, "No se pudo enviar el correo.")
+					: "No se pudo enviar el correo.");
+				return;
+			}
+			// Respuesta igual exista o no la cuenta: decir "ese correo no está
+			// registrado" revelaría qué direcciones tienen cuenta.
+			showMessage("success", "Si ese correo tiene cuenta, te enviamos un enlace para crear una contraseña nueva. Revisa tu bandeja y el correo no deseado.");
+		});
+	}
+
 	form.addEventListener("submit", async function (e) {
 		e.preventDefault();
 		var nombre = (nombreInput.value || "").trim();
