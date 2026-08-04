@@ -37,7 +37,7 @@
 				<div class="bg-paper border-b border-line px-4 py-3 flex items-center justify-between gap-3 text-[13px] text-mute">
 					<span class="flex items-center gap-1.5 min-w-0">
 						<i data-lucide="file-text" class="w-4 h-4 shrink-0"></i>
-						<span id="previewLabel" class="truncate">Vista previa · primeras páginas</span>
+						<span id="previewLabel" class="truncate">Vista previa</span>
 					</span>
 					<span class="shrink-0 inline-flex items-center gap-1.5 font-medium" style="color:#047a55"><i data-lucide="unlock" class="w-3.5 h-3.5"></i> muestra gratuita</span>
 				</div>
@@ -52,8 +52,28 @@
 						<i data-lucide="file-x" class="w-6 h-6" style="color:#9ba3af"></i>
 						La vista previa estará disponible pronto.
 					</div>
+
+					<!-- Galería de imágenes (vía preferida) -->
+					<div id="galeria" class="hidden absolute inset-0 flex items-center justify-center bg-paper">
+						<img id="galeriaImg" alt="Página de muestra de la planeación"
+							class="max-w-full max-h-full object-contain select-none" draggable="false">
+						<button id="galeriaPrev" type="button" aria-label="Anterior"
+							class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
+							<i data-lucide="chevron-left" class="w-5 h-5 text-ink"></i>
+						</button>
+						<button id="galeriaNext" type="button" aria-label="Siguiente"
+							class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
+							<i data-lucide="chevron-right" class="w-5 h-5 text-ink"></i>
+						</button>
+						<span id="galeriaEtiqueta" class="absolute top-3 left-3 text-[11px] font-bold px-2.5 py-1 rounded-full" style="background:rgba(30,58,138,.9);color:#fff"></span>
+						<span id="galeriaContador" class="absolute bottom-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full" style="background:rgba(28,36,52,.75);color:#fff"></span>
+					</div>
+
+					<!-- Respaldo: PDF recortado, si aún no hay imágenes -->
 					<iframe id="previewFrame" class="hidden w-full h-full" title="Vista previa"></iframe>
 				</div>
+				<!-- Miniaturas -->
+				<div id="galeriaTiras" class="hidden border-t border-line p-3 gap-2 overflow-x-auto"></div>
 			</div>
 			<p class="text-center text-[12px] text-mute">Esta es una muestra. La planeación completa se entrega al comprar.</p>
 
@@ -86,22 +106,28 @@
 
 			<dl id="meta" class="grid grid-cols-2 gap-3 text-sm"></dl>
 
-			<!-- Selector de paquete -->
-			<div id="selectorWrap" class="border-t border-line pt-4">
-				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Elige tu paquete</p>
-				<div id="selectorOpcion" class="flex flex-wrap gap-2"></div>
+			<!-- Compra: precio de entrada + un solo botón -->
+			<div class="border-t border-line pt-5 flex flex-col gap-3">
+				<div class="flex items-end justify-between gap-3 flex-wrap">
+					<div>
+						<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute">Desde</p>
+						<p id="precioDesde" class="font-black text-ink text-[2rem] leading-none mt-1"></p>
+						<p id="precioNota" class="text-[13px] text-mute mt-1"></p>
+					</div>
+					<span id="ahorroBadge" class="hidden text-[12px] font-bold px-3 py-1.5 rounded-full" style="background:#dcfce7;color:#166534"></span>
+				</div>
+
+				<button id="comprarBtn" class="w-full h-14 rounded-2xl font-bold text-white text-base transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.8)] flex items-center justify-center gap-2" style="background:#059669">
+					Elegir mi paquete <i data-lucide="arrow-right" class="w-5 h-5"></i>
+				</button>
+				<p class="text-xs text-mute text-center">Eliges trimestre o ciclo completo, y si lo quieres editable en Word.</p>
 			</div>
 
 			<!-- Lista de proyectos incluidos -->
 			<div id="incluyeWrap" class="hidden">
-				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Qué incluye este paquete</p>
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Qué incluye</p>
 				<ul id="incluyeLista" class="flex flex-col gap-1.5 text-sm text-ink"></ul>
 			</div>
-
-			<!-- Opciones de compra -->
-			<div id="opcionesCompra" class="flex flex-col gap-3 border-t border-line pt-5"></div>
-
-			<p class="text-xs text-mute">Los anexos y el examen se incluyen sin costo adicional en ambas versiones.</p>
 
 			<!-- Confianza -->
 			<div class="bg-white rounded-2xl border border-line p-4 flex flex-col gap-2 text-sm text-mute">
@@ -197,6 +223,44 @@
 		</section>
 	</div>
 </main>
+
+<!-- ===== Modal de compra: paquete primero, versión después ===== -->
+<!-- En móvil sube desde abajo (hoja); en escritorio se centra. -->
+<div id="modalCompra" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="modalTituloPaso">
+	<div id="modalFondo" class="absolute inset-0" style="background:rgba(28,36,52,.55)"></div>
+
+	<div class="absolute inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center sm:p-6">
+		<div class="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[88vh] sm:max-h-[85vh]">
+
+			<!-- Encabezado -->
+			<div class="px-5 py-4 border-b border-line flex items-center gap-3 shrink-0">
+				<button id="modalVolver" type="button" class="hidden w-9 h-9 -ml-1 rounded-xl flex items-center justify-center transition hover:bg-paper" aria-label="Volver">
+					<i data-lucide="arrow-left" class="w-5 h-5 text-ink"></i>
+				</button>
+				<div class="min-w-0 flex-1">
+					<p id="modalTituloPaso" class="font-bold text-ink leading-tight">¿Qué paquete necesitas?</p>
+					<p id="modalSubtitulo" class="text-[13px] text-mute truncate"></p>
+				</div>
+				<button id="modalCerrar" type="button" class="w-9 h-9 rounded-xl flex items-center justify-center transition hover:bg-paper" aria-label="Cerrar">
+					<i data-lucide="x" class="w-5 h-5 text-mute"></i>
+				</button>
+			</div>
+
+			<!-- Paso 1: paquete -->
+			<div id="paso1" class="overflow-y-auto p-5 flex flex-col gap-3"></div>
+
+			<!-- Paso 2: versión -->
+			<div id="paso2" class="hidden overflow-y-auto p-5 flex flex-col gap-3"></div>
+
+			<!-- Pie -->
+			<div id="modalPie" class="hidden px-5 py-4 border-t border-line shrink-0">
+				<button id="modalPagar" class="w-full h-14 rounded-2xl font-bold text-white transition flex items-center justify-center gap-2" style="background:#059669">
+					<i data-lucide="lock" class="w-4 h-4"></i> <span id="modalPagarTexto">Continuar al pago</span>
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../js/supabase.js"></script>

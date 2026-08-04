@@ -12,14 +12,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tituloEl = document.getElementById("titulo");
 	var descripcionEl = document.getElementById("descripcion");
 	var metaEl = document.getElementById("meta");
-	var selectorEl = document.getElementById("selectorOpcion");
-	var opcionesEl = document.getElementById("opcionesCompra");
-	var previewFrame = document.getElementById("previewFrame");
-	var previewVacio = document.getElementById("previewVacio");
-	var previewCargando = document.getElementById("previewCargando");
-	var previewLabel = document.getElementById("previewLabel");
-	var previewBlobUrl = null;
-	var previewReqId = 0;
 	var incluyeWrap = document.getElementById("incluyeWrap");
 	var incluyeLista = document.getElementById("incluyeLista");
 
@@ -32,7 +24,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var GRADO_COLOR = { "1":"#f2cf6b","2":"#ef9277","3":"#79c8a6","4":"#a99fe0","5":"#85b8e6","6":"#f0b285" };
 	var GRADO_TXT = { "1":"rgba(30,58,138,.85)","2":"#fff","3":"rgba(30,58,138,.85)","4":"#fff","5":"rgba(30,58,138,.85)","6":"rgba(30,58,138,.85)" };
 
-	// Cargar el grupo (todos los paquetes del grado/combinación).
+	// Todas las variantes del grado o de la combinación multigrado.
 	var q = window.sb
 		.from("marketplace_productos")
 		.select("id, titulo, grado, trimestre, tipo_paquete, num_proyectos, precio_pdf, precio_editable, grados_combo, modalidad")
@@ -51,7 +43,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var gradoNum = info.grado;
 	var comboArr = esMulti ? (info.grados_combo || "").split("-") : [String(gradoNum)];
 
-	// Accesos del usuario sobre estos productos.
+	// Qué ha comprado ya el usuario, para no ofrecérselo otra vez.
 	var accesosPorProd = {};
 	if (session) {
 		var ids = productos.map(function (p) { return p.id; });
@@ -67,25 +59,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
-	var seleccionado = productos[0];
-
 	renderHeader();
-	renderSelector();
-	seleccionar(productos[0]);
+	renderMeta(productoPorDefecto());
+	renderPrecios();
+	cargarIncluye();
 
 	estadoEl.classList.add("hidden");
 	contenidoEl.classList.remove("hidden");
 	var infoExtra = document.getElementById("infoExtra");
-	if (infoExtra) { infoExtra.classList.remove("hidden"); Tienda.iconos(); }
+	if (infoExtra) { infoExtra.classList.remove("hidden"); }
+	Tienda.iconos();
 
-	var ctaBtn = document.getElementById("ctaBtn");
-	if (ctaBtn) {
-		ctaBtn.addEventListener("click", function () {
-			document.getElementById("selectorWrap").scrollIntoView({ behavior: "smooth", block: "center" });
-		});
-	}
+	await cargarVistaPrevia();
 
-	// ── Helpers ───────────────────────────────────────────────────────────────
+	// ── Helpers de datos ──────────────────────────────────────────────────────
 	function ordenOpcion(p) { return p.tipo_paquete === "ciclo" ? 4 : (p.trimestre || 0); }
 	function comboDisplay() {
 		return esMulti
@@ -95,17 +82,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function etiquetaOpcion(p) {
 		return p.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre " + p.trimestre;
 	}
+	function elCiclo() {
+		return productos.find(function (p) { return p.tipo_paquete === "ciclo"; }) || null;
+	}
+	function losTrimestres() {
+		return productos.filter(function (p) { return p.tipo_paquete === "trimestre"; });
+	}
+	/** Lo que costaría comprar los trimestres sueltos en vez del ciclo. */
+	function ahorroDelCiclo() {
+		var ciclo = elCiclo();
+		var tris = losTrimestres();
+		if (!ciclo || tris.length < 2 || ciclo.precio_pdf == null) { return 0; }
+		var suelto = tris.reduce(function (t, p) { return t + Number(p.precio_pdf || 0); }, 0);
+		var dif = suelto - Number(ciclo.precio_pdf);
+		return dif > 0 ? dif : 0;
+	}
+	function productoPorDefecto() { return elCiclo() || productos[0]; }
+	function montoCorto(n) {
+		var num = Number(n || 0);
+		return "$" + num.toLocaleString("es-MX", {
+			minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+			maximumFractionDigits: 2,
+		});
+	}
 
+	// ── Cabecera y datos ──────────────────────────────────────────────────────
 	function renderHeader() {
-		var tituloGrupo = esMulti
-			? "Multigrado " + comboDisplay()
-			: gradoNum + "° Primaria";
+		var tituloGrupo = esMulti ? "Multigrado " + comboDisplay() : gradoNum + "° Primaria";
 		tituloEl.textContent = tituloGrupo;
 		descripcionEl.textContent = esMulti
 			? "Planeación multigrado para un aula de " + comboDisplay() + ", con actividades diferenciadas por grado, alineada a la NEM."
 			: "Planeaciones de " + gradoNum + "° grado alineadas a la Nueva Escuela Mexicana.";
 
-		// Actualizar breadcrumb
 		var bc = document.getElementById("breadcrumbNombre");
 		if (bc) { bc.textContent = tituloGrupo; }
 
@@ -114,7 +122,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var gc = GRADO_COLOR[String(gradoNum)] || "#e7e6df";
 			var gt = GRADO_TXT[String(gradoNum)] || "#1c2434";
 			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:' + gc + ';color:' + gt + '">' +
-				'<span class="w-5 h-5 rounded-md text-[11px] font-black flex items-center justify-center" style="background:' + gc + ';color:' + gt + '">' + esc(gradoNum) + '°</span>' +
 				gradoNum + '° grado</span>';
 		} else {
 			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:rgba(30,58,138,.1);color:#1e3a8a">' + esc(comboDisplay() + " multigrado") + '</span>';
@@ -124,40 +131,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			b += '<span class="inline-flex items-center h-8 px-3 rounded-full text-[13px]" style="background:#f1f0ea;color:#5b6473">' + (info.modalidad === "bidocente" ? "Bidocente" : "Tridocente") + "</span>";
 		}
 		badgesEl.innerHTML = b;
-		Tienda.iconos();
 	}
 
-	function renderSelector() {
-		selectorEl.innerHTML = productos.map(function (p) {
-			return '<button data-prod="' + esc(p.id) + '" class="opt-btn border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl transition">' + esc(etiquetaOpcion(p)) + "</button>";
-		}).join("");
-		selectorEl.querySelectorAll("[data-prod]").forEach(function (btn) {
-			btn.addEventListener("click", function () {
-				var p = productos.find(function (x) { return String(x.id) === btn.getAttribute("data-prod"); });
-				if (p) { seleccionar(p); }
-			});
-		});
-	}
-
-	function seleccionar(p) {
-		seleccionado = p;
-		selectorEl.querySelectorAll(".opt-btn").forEach(function (b) {
-			var on = b.getAttribute("data-prod") === String(p.id);
-			if (on) { b.classList.add("selected"); } else { b.classList.remove("selected"); }
-		});
-		renderMeta();
-		renderOpciones();
-		renderPreview();
-		cargarIncluye();
-	}
-
-	function renderMeta() {
-		var p = seleccionado;
+	function renderMeta(p) {
 		var esCiclo = p.tipo_paquete === "ciclo";
 		var meta = [
 			[esMulti ? "Aula multigrado" : "Grado", comboDisplay()],
-			["Contenido", esCiclo ? "Ciclo completo (3 trimestres)" : "Trimestre " + p.trimestre],
-			["Proyectos", String(p.num_proyectos || (esCiclo ? 12 : 4))],
+			["Disponible por", losTrimestres().length ? "Trimestre o ciclo completo" : etiquetaOpcion(p)],
+			["Proyectos", esCiclo ? String(p.num_proyectos || 12) + " en el ciclo" : String(p.num_proyectos || 4) + " por trimestre"],
 			["Incluye", "Planeación + anexos + examen"],
 		];
 		metaEl.innerHTML = meta.map(function (m) {
@@ -166,156 +147,42 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}).join("");
 	}
 
-	function renderOpciones() {
-		var p = seleccionado;
-		var acc = accesosPorProd[p.id] || {};
-		var html = "";
-		if (p.precio_pdf != null) {
-			html += filaOpcion({ tipo: "pdf", nombre: "Versión PDF", detalle: "Lista para imprimir, con pie de página de tu compra. Incluye anexos y examen.", precio: p.precio_pdf, comprado: !!acc.pdf, prod: p });
-		}
-		if (p.precio_editable != null) {
-			html += filaOpcion({
-				tipo: "editable",
-				nombre: "Versión editable (Word)",
-				detalle: "Personalízala a tu grupo. Incluye también el PDF, anexos y examen.",
-				precio: p.precio_editable,
-				comprado: !!acc.editable,
-				prod: p,
-				// El add-on es la diferencia con el PDF: así el desglose sigue
-				// siendo correcto solo cuando el ciclo sube de precio.
-				desglose: desgloseEditable(p),
-			});
-		}
-		if (!html) { html = '<p class="text-gray-400 text-sm">Esta opción aún no tiene precios.</p>'; }
-		opcionesEl.innerHTML = html;
+	function renderPrecios() {
+		var precios = productos
+			.map(function (p) { return p.precio_pdf; })
+			.filter(function (v) { return v != null; })
+			.map(Number);
+		var minimo = precios.length ? Math.min.apply(null, precios) : null;
 
-		opcionesEl.querySelectorAll("[data-comprar]").forEach(function (btn) {
-			btn.addEventListener("click", function () {
-				location.href = "checkout.html?producto_id=" + encodeURIComponent(btn.getAttribute("data-pid")) + "&tipo=" + btn.getAttribute("data-comprar");
-			});
-		});
-		opcionesEl.querySelectorAll("[data-descargar]").forEach(function (btn) {
-			btn.addEventListener("click", function () { location.href = "mis-compras.html"; });
-		});
-	}
+		document.getElementById("precioDesde").textContent = minimo != null ? money(minimo) : "—";
+		document.getElementById("precioNota").textContent = losTrimestres().length
+			? "por trimestre · el ciclo completo sale más barato"
+			: "pago único, sin caducidad";
 
-	// Importe compacto para el desglose: "$399" en vez de "$399.00 MXN", que
-	// repetido dos veces en una línea se vuelve ilegible.
-	function montoCorto(n) {
-		var num = Number(n || 0);
-		return "$" + num.toLocaleString("es-MX", {
-			minimumFractionDigits: num % 1 === 0 ? 0 : 2,
-			maximumFractionDigits: 2,
-		});
-	}
-
-	// Desglose del add-on: hace visible que el PDF cuesta lo mismo que si se
-	// comprara suelto y que el extra es exactamente el precio del Word.
-	function desgloseEditable(p) {
-		if (p.precio_pdf == null || p.precio_editable == null) { return null; }
-		var addon = Number(p.precio_editable) - Number(p.precio_pdf);
-		if (!(addon > 0)) { return null; }
-		var proyectos = p.num_proyectos || (p.tipo_paquete === "ciclo" ? 12 : 4);
-		return {
-			base: Number(p.precio_pdf),
-			addon: addon,
-			nota: p.tipo_paquete === "ciclo"
-				? "Los " + proyectos + " proyectos del ciclo en Word — el triple que un trimestre suelto."
-				: "Los " + proyectos + " proyectos del trimestre en Word.",
-		};
-	}
-
-	function filaOpcion(o) {
-		var precioTxt = money(o.precio);
-		var accion = o.comprado
-			? '<button data-descargar="1" class="shrink-0 h-11 px-4 rounded-xl text-sm font-semibold text-white transition" style="background:#1e3a8a">Ya lo tienes — Abrir</button>'
-			: '<button data-comprar="' + o.tipo + '" data-pid="' + esc(o.prod.id) + '" class="shrink-0 h-11 px-5 rounded-xl text-sm font-bold text-white transition" style="background:#059669">Comprar ' + precioTxt + "</button>";
-
-		var desglose = "";
-		if (o.desglose && !o.comprado) {
-			desglose =
-				'<p class="text-[13px] mt-2 flex flex-wrap items-baseline gap-x-1.5" style="color:#1c2434">' +
-				'<span class="font-semibold">' + esc(montoCorto(o.desglose.base)) + "</span>" +
-				'<span style="color:#5b6473">del PDF</span>' +
-				'<span class="font-semibold" style="color:#5b6473">+</span>' +
-				'<span class="font-semibold">' + esc(montoCorto(o.desglose.addon)) + "</span>" +
-				'<span style="color:#5b6473">por el Word editable</span>' +
-				"</p>" +
-				'<p class="text-xs mt-1" style="color:#5b6473">' + esc(o.desglose.nota) + "</p>";
-		}
-
-		return (
-			'<div class="flex items-center justify-between gap-3 bg-white border rounded-2xl p-4" style="border-color:#e7e6df">' +
-			'<div class="min-w-0">' +
-			'<p class="font-semibold text-sm" style="color:#1c2434">' + esc(o.nombre) + "</p>" +
-			'<p class="text-xs mt-0.5" style="color:#5b6473">' + esc(o.detalle) + "</p>" +
-			desglose +
-			"</div>" + accion + "</div>"
-		);
-	}
-
-	function previewEstado(estado) {
-		// estado: "cargando" | "ok" | "vacio"
-		previewCargando.classList.toggle("hidden", estado !== "cargando");
-		previewVacio.classList.toggle("hidden", estado !== "vacio");
-		previewFrame.classList.toggle("hidden", estado !== "ok");
-	}
-
-	async function renderPreview() {
-		var p = seleccionado;
-		var esCiclo = p.tipo_paquete === "ciclo";
-		previewLabel.textContent = "Primeras páginas · " +
-			(esCiclo ? "Ciclo completo" : "Trimestre " + p.trimestre) + " · " + comboDisplay();
-
-		var reqId = ++previewReqId;
-		previewEstado("cargando");
-		liberarPreviewBlob();
-
-		try {
-			var resp = await fetch(Tienda.EDGE_BASE + "/previsualizar?producto_id=" + encodeURIComponent(p.id));
-			if (reqId !== previewReqId) { return; } // se seleccionó otro paquete entretanto
-			var tipo = resp.headers.get("content-type") || "";
-			if (!resp.ok || tipo.indexOf("application/pdf") === -1) {
-				previewEstado("vacio");
-				return;
-			}
-			var blob = await resp.blob();
-			if (reqId !== previewReqId) { return; }
-			previewBlobUrl = URL.createObjectURL(blob);
-			// #toolbar=0 oculta los controles del visor; el marco propio ya da contexto.
-			previewFrame.src = previewBlobUrl + "#toolbar=0&view=FitH";
-			previewEstado("ok");
-		} catch (_) {
-			if (reqId !== previewReqId) { return; }
-			previewEstado("vacio");
-		}
-	}
-
-	function liberarPreviewBlob() {
-		if (previewBlobUrl) {
-			URL.revokeObjectURL(previewBlobUrl);
-			previewBlobUrl = null;
+		var ahorro = ahorroDelCiclo();
+		var badge = document.getElementById("ahorroBadge");
+		if (ahorro > 0) {
+			badge.textContent = "Ahorras " + montoCorto(ahorro) + " con el ciclo";
+			badge.classList.remove("hidden");
 		}
 	}
 
 	async function cargarIncluye() {
-		var p = seleccionado;
-		var esCiclo = p.tipo_paquete === "ciclo";
+		var esCiclo = productoPorDefecto().tipo_paquete === "ciclo";
 		var qd = window.sb
 			.from("dosificacion_proyectos")
 			.select("nombre_proyecto, trimestre, grados")
 			.order("trimestre", { ascending: true });
 		comboArr.forEach(function (gr) { qd = qd.contains("grados", [gr]); });
-		if (!esCiclo) { qd = qd.eq("trimestre", p.trimestre); }
+		if (!esCiclo) { qd = qd.eq("trimestre", productoPorDefecto().trimestre); }
 
 		var r = await qd;
-		if (r.error || !r.data) { incluyeWrap.classList.add("hidden"); return; }
-		// Mantener solo los de la combinación exacta (longitud de grados igual).
+		if (r.error || !r.data) { return; }
 		var filas = r.data.filter(function (d) { return (d.grados || []).length === comboArr.length; });
-		if (!filas.length) { incluyeWrap.classList.add("hidden"); return; }
+		if (!filas.length) { return; }
 
 		incluyeLista.innerHTML = filas.map(function (d) {
-			var t = esCiclo && d.trimestre ? '<span class="text-[11px]" style="color:#5b6473">T' + esc(d.trimestre) + " · </span>" : "";
+			var t = d.trimestre ? '<span class="text-[11px]" style="color:#5b6473">T' + esc(d.trimestre) + " · </span>" : "";
 			return '<li class="flex items-start gap-2">' +
 				'<i data-lucide="check" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>' +
 				'<span>' + t + esc(d.nombre_proyecto || "Proyecto") + "</span></li>";
@@ -323,4 +190,311 @@ document.addEventListener("DOMContentLoaded", async function () {
 		incluyeWrap.classList.remove("hidden");
 		Tienda.iconos();
 	}
+
+	// ── Vista previa ──────────────────────────────────────────────────────────
+	// Preferimos imágenes: cargan al instante desde el CDN y se ven bien en
+	// móvil, donde el visor de PDF incrustado es incómodo. Si todavía no hay
+	// imágenes subidas para este grado, se recurre al PDF recortado de siempre.
+	var previewFrame = document.getElementById("previewFrame");
+	var previewVacio = document.getElementById("previewVacio");
+	var previewCargando = document.getElementById("previewCargando");
+	var previewLabel = document.getElementById("previewLabel");
+	var galeriaEl = document.getElementById("galeria");
+	var galeriaImg = document.getElementById("galeriaImg");
+	var galeriaTiras = document.getElementById("galeriaTiras");
+	var galeriaEtiqueta = document.getElementById("galeriaEtiqueta");
+	var galeriaContador = document.getElementById("galeriaContador");
+
+	// Carpeta de imágenes de este grado o combinación.
+	var SLUG = esMulti ? "multi-" + (info.grados_combo || "") : "grado-" + gradoNum;
+	var imagenes = [];
+	var imgActual = 0;
+
+	function etiquetaDeArchivo(nombre) {
+		var n = nombre.toLowerCase();
+		if (n.indexOf("anexo") !== -1) { return "Anexo para el alumno"; }
+		if (n.indexOf("examen") !== -1) { return "Examen del trimestre"; }
+		return "Planeación";
+	}
+
+	async function cargarVistaPrevia() {
+		try {
+			var r = await window.sb.storage.from("assets").list("previews/" + SLUG, {
+				limit: 60,
+				sortBy: { column: "name", order: "asc" },
+			});
+			if (!r.error && r.data) {
+				imagenes = r.data
+					// El listado incluye un marcador de carpeta vacía; fuera.
+					.filter(function (f) { return f.name && /\.(jpe?g|png|webp)$/i.test(f.name); })
+					.map(function (f) {
+						return {
+							nombre: f.name,
+							etiqueta: etiquetaDeArchivo(f.name),
+							url: window.sb.storage.from("assets")
+								.getPublicUrl("previews/" + SLUG + "/" + f.name).data.publicUrl,
+						};
+					});
+			}
+		} catch (_) {
+			imagenes = [];
+		}
+
+		if (imagenes.length) { mostrarGaleria(); return; }
+		await mostrarPdf();
+	}
+
+	function mostrarGaleria() {
+		previewCargando.classList.add("hidden");
+		previewVacio.classList.add("hidden");
+		previewFrame.classList.add("hidden");
+		galeriaEl.classList.remove("hidden");
+		galeriaEl.classList.add("flex");
+
+		galeriaTiras.innerHTML = imagenes.map(function (im, i) {
+			return '<button type="button" data-tira="' + i + '" class="shrink-0 w-16 h-20 rounded-lg overflow-hidden border-2 transition" style="border-color:' + (i === 0 ? "#1e3a8a" : "#e7e6df") + '">' +
+				'<img src="' + esc(im.url) + '" alt="" class="w-full h-full object-cover" loading="lazy">' +
+				"</button>";
+		}).join("");
+		galeriaTiras.classList.remove("hidden");
+		galeriaTiras.classList.add("flex");
+
+		galeriaTiras.querySelectorAll("[data-tira]").forEach(function (b) {
+			b.addEventListener("click", function () { irA(Number(b.getAttribute("data-tira"))); });
+		});
+		document.getElementById("galeriaPrev").addEventListener("click", function () { irA(imgActual - 1); });
+		document.getElementById("galeriaNext").addEventListener("click", function () { irA(imgActual + 1); });
+		document.addEventListener("keydown", function (e) {
+			if (document.getElementById("modalCompra").classList.contains("hidden")) {
+				if (e.key === "ArrowLeft") { irA(imgActual - 1); }
+				if (e.key === "ArrowRight") { irA(imgActual + 1); }
+			}
+		});
+
+		var soloUna = imagenes.length < 2;
+		document.getElementById("galeriaPrev").classList.toggle("hidden", soloUna);
+		document.getElementById("galeriaNext").classList.toggle("hidden", soloUna);
+
+		irA(0);
+		Tienda.iconos();
+	}
+
+	function irA(i) {
+		if (!imagenes.length) { return; }
+		imgActual = (i + imagenes.length) % imagenes.length;
+		var im = imagenes[imgActual];
+		galeriaImg.src = im.url;
+		galeriaEtiqueta.textContent = im.etiqueta;
+		galeriaContador.textContent = (imgActual + 1) + " / " + imagenes.length;
+		previewLabel.textContent = "Vista previa · " + imagenes.length + " páginas de muestra";
+		galeriaTiras.querySelectorAll("[data-tira]").forEach(function (b) {
+			b.style.borderColor = Number(b.getAttribute("data-tira")) === imgActual ? "#1e3a8a" : "#e7e6df";
+		});
+	}
+
+	async function mostrarPdf() {
+		var p = productoPorDefecto();
+		previewLabel.textContent = "Vista previa · primeras páginas";
+		try {
+			var resp = await fetch(Tienda.EDGE_BASE + "/previsualizar?producto_id=" + encodeURIComponent(p.id));
+			var tipo = resp.headers.get("content-type") || "";
+			if (!resp.ok || tipo.indexOf("application/pdf") === -1) { throw new Error("sin muestra"); }
+			var blob = await resp.blob();
+			previewFrame.src = URL.createObjectURL(blob) + "#toolbar=0&view=FitH";
+			previewCargando.classList.add("hidden");
+			previewFrame.classList.remove("hidden");
+		} catch (_) {
+			previewCargando.classList.add("hidden");
+			previewVacio.classList.remove("hidden");
+			previewVacio.classList.add("flex");
+			Tienda.iconos();
+		}
+	}
+
+	// ── Modal de compra ───────────────────────────────────────────────────────
+	// Dos decisiones, una por pantalla: primero QUÉ paquete, luego EN QUÉ
+	// formato. Antes se mostraban las ocho combinaciones a la vez y había que
+	// multiplicar mentalmente para ver que el ciclo sale mucho más barato.
+	var modal = document.getElementById("modalCompra");
+	var paso1 = document.getElementById("paso1");
+	var paso2 = document.getElementById("paso2");
+	var modalPie = document.getElementById("modalPie");
+	var modalVolver = document.getElementById("modalVolver");
+	var modalTituloPaso = document.getElementById("modalTituloPaso");
+	var modalSubtitulo = document.getElementById("modalSubtitulo");
+	var modalPagar = document.getElementById("modalPagar");
+	var modalPagarTexto = document.getElementById("modalPagarTexto");
+
+	var elegido = null;   // producto seleccionado
+	var tipoElegido = null; // 'pdf' | 'editable'
+
+	document.getElementById("comprarBtn").addEventListener("click", abrirModal);
+	var ctaBtn = document.getElementById("ctaBtn");
+	if (ctaBtn) { ctaBtn.addEventListener("click", abrirModal); }
+	document.getElementById("modalCerrar").addEventListener("click", cerrarModal);
+	document.getElementById("modalFondo").addEventListener("click", cerrarModal);
+	modalVolver.addEventListener("click", function () { irPaso(1); });
+	document.addEventListener("keydown", function (e) {
+		if (e.key === "Escape" && !modal.classList.contains("hidden")) { cerrarModal(); }
+	});
+
+	function abrirModal() {
+		renderPaso1();
+		irPaso(1);
+		modal.classList.remove("hidden");
+		document.body.style.overflow = "hidden";
+		Tienda.iconos();
+	}
+	function cerrarModal() {
+		modal.classList.add("hidden");
+		document.body.style.overflow = "";
+	}
+	function irPaso(n) {
+		paso1.classList.toggle("hidden", n !== 1);
+		paso2.classList.toggle("hidden", n !== 2);
+		modalPie.classList.toggle("hidden", n !== 2);
+		modalVolver.classList.toggle("hidden", n !== 2);
+		modalTituloPaso.textContent = n === 1 ? "¿Qué paquete necesitas?" : "¿Cómo lo quieres?";
+		modalSubtitulo.textContent = n === 1
+			? comboDisplay() + (esMulti ? " multigrado" : " Primaria")
+			: etiquetaOpcion(elegido);
+	}
+
+	function renderPaso1() {
+		var ahorro = ahorroDelCiclo();
+		var ciclo = elCiclo();
+		var orden = [];
+		if (ciclo) { orden.push(ciclo); }
+		losTrimestres().forEach(function (p) { orden.push(p); });
+
+		paso1.innerHTML = orden.map(function (p) {
+			var esCiclo = p.tipo_paquete === "ciclo";
+			var acc = accesosPorProd[p.id] || {};
+			var yaLoTiene = !!(acc.pdf || acc.editable);
+			var proyectos = p.num_proyectos || (esCiclo ? 12 : 4);
+
+			var destacado = esCiclo && ahorro > 0;
+			var borde = destacado ? "#059669" : "#e7e6df";
+			var fondo = destacado ? "rgba(5,150,105,.04)" : "#fff";
+
+			return '<button type="button" data-paquete="' + esc(p.id) + '" ' +
+				(yaLoTiene ? 'data-comprado="1" ' : "") +
+				'class="text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
+				'style="border-color:' + borde + ';background:' + fondo + (yaLoTiene ? ";opacity:.6" : "") + '">' +
+				'<div class="min-w-0 flex-1">' +
+				(destacado
+					? '<span class="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded mb-1.5" style="background:#059669;color:#fff">Más conveniente</span><br>'
+					: "") +
+				'<span class="font-bold text-ink">' + esc(esCiclo ? "Ciclo completo" : "Trimestre " + p.trimestre) + "</span>" +
+				'<p class="text-[13px] text-mute mt-0.5">' + proyectos + " proyectos" +
+				(esCiclo ? " · los tres trimestres" : " · anexos y examen") + "</p>" +
+				(destacado
+					? '<p class="text-[13px] font-bold mt-1.5" style="color:#166534">Ahorras ' + montoCorto(ahorro) + " frente a comprarlos sueltos</p>"
+					: "") +
+				(yaLoTiene ? '<p class="text-[12px] font-semibold mt-1" style="color:#1e3a8a">Ya lo tienes</p>' : "") +
+				"</div>" +
+				'<div class="shrink-0 text-right">' +
+				'<span class="font-black text-ink text-lg">' + (p.precio_pdf != null ? montoCorto(p.precio_pdf) : "—") + "</span>" +
+				'<p class="text-[11px] text-mute">desde</p>' +
+				"</div></button>";
+		}).join("");
+
+		paso1.querySelectorAll("[data-paquete]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				if (b.getAttribute("data-comprado")) {
+					location.href = "mis-compras.html";
+					return;
+				}
+				elegido = productos.find(function (x) { return String(x.id) === b.getAttribute("data-paquete"); });
+				tipoElegido = null;
+				renderPaso2();
+				irPaso(2);
+				Tienda.iconos();
+			});
+		});
+	}
+
+	function renderPaso2() {
+		var p = elegido;
+		var acc = accesosPorProd[p.id] || {};
+		var addon = (p.precio_editable != null && p.precio_pdf != null)
+			? Number(p.precio_editable) - Number(p.precio_pdf) : 0;
+		var proyectos = p.num_proyectos || (p.tipo_paquete === "ciclo" ? 12 : 4);
+
+		var opciones = [];
+		if (p.precio_pdf != null) {
+			opciones.push({
+				tipo: "pdf",
+				nombre: "Solo PDF",
+				detalle: "Lista para imprimir, con anexos y examen.",
+				precio: p.precio_pdf,
+				desglose: null,
+				comprado: !!acc.pdf,
+			});
+		}
+		if (p.precio_editable != null) {
+			opciones.push({
+				tipo: "editable",
+				nombre: "PDF + Word editable",
+				detalle: "Adáptala a tu grupo: cambia nombres, tiempos y actividades.",
+				precio: p.precio_editable,
+				desglose: addon > 0
+					? montoCorto(p.precio_pdf) + " del PDF + " + montoCorto(addon) + " por el Word · los " + proyectos + " proyectos editables"
+					: null,
+				comprado: !!acc.editable,
+				recomendado: true,
+			});
+		}
+
+		paso2.innerHTML = opciones.map(function (o) {
+			return '<button type="button" data-tipo="' + o.tipo + '" ' + (o.comprado ? 'data-comprado="1" ' : "") +
+				'class="opcion-tipo text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
+				'style="border-color:#e7e6df;background:#fff' + (o.comprado ? ";opacity:.6" : "") + '">' +
+				'<div class="min-w-0 flex-1">' +
+				'<span class="font-bold text-ink">' + esc(o.nombre) + "</span>" +
+				(o.recomendado && !o.comprado ? ' <span class="text-[10px] font-black uppercase px-1.5 py-0.5 rounded ml-1" style="background:rgba(30,58,138,.1);color:#1e3a8a">recomendado</span>' : "") +
+				'<p class="text-[13px] text-mute mt-0.5">' + esc(o.detalle) + "</p>" +
+				(o.desglose ? '<p class="text-[12px] mt-1.5" style="color:#1c2434">' + esc(o.desglose) + "</p>" : "") +
+				(o.comprado ? '<p class="text-[12px] font-semibold mt-1" style="color:#1e3a8a">Ya lo tienes</p>' : "") +
+				"</div>" +
+				'<span class="shrink-0 font-black text-ink text-lg">' + montoCorto(o.precio) + "</span>" +
+				"</button>";
+		}).join("");
+
+		paso2.querySelectorAll("[data-tipo]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				if (b.getAttribute("data-comprado")) { location.href = "mis-compras.html"; return; }
+				tipoElegido = b.getAttribute("data-tipo");
+				paso2.querySelectorAll(".opcion-tipo").forEach(function (x) {
+					var on = x === b;
+					x.style.borderColor = on ? "#059669" : "#e7e6df";
+					x.style.background = on ? "rgba(5,150,105,.04)" : "#fff";
+				});
+				actualizarPie();
+			});
+		});
+
+		// Preseleccionamos la primera opción disponible para que el botón de
+		// pago nunca aparezca inerte.
+		var primera = paso2.querySelector("[data-tipo]:not([data-comprado])");
+		if (primera) { primera.click(); } else { actualizarPie(); }
+	}
+
+	function actualizarPie() {
+		if (!tipoElegido) {
+			modalPagar.disabled = true;
+			modalPagar.style.opacity = ".5";
+			modalPagarTexto.textContent = "Elige una versión";
+			return;
+		}
+		var precio = tipoElegido === "pdf" ? elegido.precio_pdf : elegido.precio_editable;
+		modalPagar.disabled = false;
+		modalPagar.style.opacity = "1";
+		modalPagarTexto.textContent = "Continuar al pago · " + money(precio);
+	}
+
+	modalPagar.addEventListener("click", function () {
+		if (!elegido || !tipoElegido) { return; }
+		location.href = "checkout.html?producto_id=" + encodeURIComponent(elegido.id) + "&tipo=" + tipoElegido;
+	});
 });
