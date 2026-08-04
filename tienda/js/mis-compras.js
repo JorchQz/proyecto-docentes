@@ -204,14 +204,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"</div>" +
 				'<span class="text-xs font-bold h-7 px-3 rounded-full inline-flex items-center shrink-0" style="background:#fef3c7;color:#b45309">En proceso</span>' +
 				"</div>" +
-				'<button data-verificar="' + esc(o.id) + '" class="self-start inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-xs font-bold transition" style="background:#fff;border:1px solid #fbbf24;color:#b45309">' +
-				'<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Ya pagué — verificar ahora</button>';
+				'<div class="flex flex-wrap items-center gap-2">' +
+				'<button data-verificar="' + esc(o.id) + '" class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-xs font-bold transition" style="background:#fff;border:1px solid #fbbf24;color:#b45309">' +
+				'<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Ya pagué — verificar ahora</button>' +
+				'<button data-cancelar="' + esc(o.id) + '" class="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-xs font-semibold transition" style="color:#b45309;opacity:.75">' +
+				'No lo compré — quitar</button>' +
+				"</div>";
 
 			listaPendientes.appendChild(div);
 		});
 
 		listaPendientes.querySelectorAll("[data-verificar]").forEach(function (btn) {
 			btn.addEventListener("click", function () { verificarOrden(btn); });
+		});
+		listaPendientes.querySelectorAll("[data-cancelar]").forEach(function (btn) {
+			btn.addEventListener("click", function () { cancelarOrden(btn); });
 		});
 		Tienda.iconos();
 	}
@@ -231,7 +238,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			await cargar();
 			return;
 		} else if (r && r.estado === "fallido") {
-			Tienda.toast("Ese pago no se completó.", "error");
+			// `abandonada` = nunca hubo pago y ya pasó el margen: era un intento
+			// que quedó a medias, no un pago rechazado.
+			Tienda.toast(
+				r.statusMp === "abandonada"
+					? "Ese intento de compra quedó sin completar, lo quitamos de la lista."
+					: "Ese pago no se completó.",
+				"info",
+			);
 			await cargar();
 			return;
 		} else {
@@ -241,6 +255,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 		btn.disabled = false;
 		btn.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Ya pagué — verificar ahora';
 		Tienda.iconos();
+	}
+
+	// Quitar de la lista un intento que el comprador sabe que no completó.
+	// Si luego llegara el pago, se acredita igual: cancelar no pierde la compra.
+	async function cancelarOrden(btn) {
+		btn.disabled = true;
+		btn.textContent = "Quitando...";
+		var data = await confirmarPago({ orden_id: btn.getAttribute("data-cancelar"), accion: "cancelar" });
+		if (data && data.error) {
+			Tienda.toast(data.error, "error");
+			btn.disabled = false;
+			btn.textContent = "No lo compré — quitar";
+			return;
+		}
+		Tienda.toast("Listo, lo quitamos de tu lista.", "ok");
+		await cargar();
 	}
 
 	function vacio() {
