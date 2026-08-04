@@ -19,6 +19,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var org = params.get("org") || "completa";
 	var g = params.get("g");
 	var combo = params.get("combo");
+
+	// Tolerancia a enlaces del tipo `producto.html?id=<uuid>`: la página se
+	// identifica por grado o combinación, no por producto, así que se resuelve
+	// el id a sus coordenadas en vez de mostrar "no está disponible".
+	var idSuelto = params.get("id");
+	if (idSuelto && !g && !combo) {
+		var refRes = await window.sb
+			.from("marketplace_productos")
+			.select("organizacion, grado, grados_combo")
+			.eq("id", idSuelto)
+			.maybeSingle();
+		if (refRes.data) {
+			org = refRes.data.organizacion || "completa";
+			g = refRes.data.grado;
+			combo = refRes.data.grados_combo;
+		}
+	}
+
 	var esMulti = org === "multigrado";
 
 	var GRADO_COLOR = { "1":"#f2cf6b","2":"#ef9277","3":"#79c8a6","4":"#a99fe0","5":"#85b8e6","6":"#f0b285" };

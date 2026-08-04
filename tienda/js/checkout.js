@@ -29,7 +29,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var productoId = params.get("producto_id");
 	var tipo = params.get("tipo");
 
-	volverLink.href = productoId ? "producto.html?id=" + encodeURIComponent(productoId) : "catalogo.html";
+	// Provisional hasta saber a qué grado pertenece el paquete; se afina abajo.
+	volverLink.href = "catalogo.html";
 
 	if (!productoId || (tipo !== "pdf" && tipo !== "editable")) {
 		estadoEl.textContent = "Compra inválida.";
@@ -38,7 +39,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var res = await window.sb
 		.from("marketplace_productos")
-		.select("id, titulo, precio_pdf, precio_editable, activo")
+		.select("id, titulo, precio_pdf, precio_editable, activo, organizacion, grado, grados_combo")
 		.eq("id", productoId)
 		.eq("activo", true)
 		.maybeSingle();
@@ -53,6 +54,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.textContent = "Esta versión no tiene precio configurado.";
 		return;
 	}
+
+	// "Volver" tiene que llevar a la ficha del paquete, y esa página se
+	// identifica por grado o por combinación multigrado, nunca por el id del
+	// producto: con `?id=` no encontraba nada y decía "no está disponible".
+	volverLink.href = p.organizacion === "multigrado"
+		? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
+		: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || "");
 
 	// Resumen
 	resumenTitulo.textContent = p.titulo;
