@@ -355,6 +355,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var elegido = null;   // producto seleccionado
 	var tipoElegido = null; // 'pdf' | 'editable'
+	var pasoActual = 1;
+
+	// Círculo de selección: hace visible qué opción está elegida antes de
+	// avanzar. Sin él, el único indicio era el borde, que en la tarjeta
+	// destacada ya venía verde por ser la recomendada.
+	function radio(activo) {
+		return '<span class="shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center transition" ' +
+			'style="border-color:' + (activo ? "#059669" : "#c8ccd4") + '">' +
+			(activo ? '<span class="w-2.5 h-2.5 rounded-full" style="background:#059669"></span>' : "") +
+			"</span>";
+	}
+
+	function pintarSeleccion(contenedor, atributo, valor) {
+		contenedor.querySelectorAll("[" + atributo + "]").forEach(function (b) {
+			var activo = b.getAttribute(atributo) === String(valor);
+			var comprado = b.hasAttribute("data-comprado");
+			b.style.borderColor = activo ? "#059669" : "#e7e6df";
+			b.style.background = activo ? "rgba(5,150,105,.06)" : "#fff";
+			var marca = b.querySelector("[data-radio]");
+			if (marca) { marca.innerHTML = radio(activo && !comprado); }
+		});
+	}
 
 	document.getElementById("comprarBtn").addEventListener("click", abrirModal);
 	document.getElementById("modalCerrar").addEventListener("click", cerrarModal);
@@ -376,14 +398,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		document.body.style.overflow = "";
 	}
 	function irPaso(n) {
+		pasoActual = n;
 		paso1.classList.toggle("hidden", n !== 1);
 		paso2.classList.toggle("hidden", n !== 2);
-		modalPie.classList.toggle("hidden", n !== 2);
 		modalVolver.classList.toggle("hidden", n !== 2);
+		// El pie está en los dos pasos: en el primero avanza, en el segundo paga.
+		modalPie.classList.remove("hidden");
 		modalTituloPaso.textContent = n === 1 ? "¿Qué paquete necesitas?" : "¿Cómo lo quieres?";
 		modalSubtitulo.textContent = n === 1
 			? comboDisplay() + (esMulti ? " multigrado" : " Primaria")
 			: etiquetaOpcion(elegido);
+		actualizarPie();
 	}
 
 	function renderPaso1() {
@@ -407,6 +432,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				(yaLoTiene ? 'data-comprado="1" ' : "") +
 				'class="text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
 				'style="border-color:' + borde + ';background:' + fondo + (yaLoTiene ? ";opacity:.6" : "") + '">' +
+				'<span data-radio>' + radio(false) + "</span>" +
 				'<div class="min-w-0 flex-1">' +
 				(destacado
 					? '<span class="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded mb-1.5" style="background:#059669;color:#fff">Más conveniente</span><br>'
@@ -425,6 +451,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"</div></button>";
 		}).join("");
 
+		// Elegir no avanza: marca la opción y espera al botón "Siguiente", para
+		// que se vea qué se eligió antes de pasar a la siguiente pregunta.
 		paso1.querySelectorAll("[data-paquete]").forEach(function (b) {
 			b.addEventListener("click", function () {
 				if (b.getAttribute("data-comprado")) {
@@ -433,11 +461,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 				}
 				elegido = productos.find(function (x) { return String(x.id) === b.getAttribute("data-paquete"); });
 				tipoElegido = null;
-				renderPaso2();
-				irPaso(2);
-				Tienda.iconos();
+				pintarSeleccion(paso1, "data-paquete", elegido.id);
+				actualizarPie();
 			});
 		});
+
+		// El ciclo viene marcado de entrada: es el recomendado y así el botón
+		// nunca aparece inerte.
+		var inicial = paso1.querySelector("[data-paquete]:not([data-comprado])");
+		if (inicial) {
+			elegido = productos.find(function (x) { return String(x.id) === inicial.getAttribute("data-paquete"); });
+			pintarSeleccion(paso1, "data-paquete", elegido.id);
+		}
 	}
 
 	function renderPaso2() {
@@ -476,6 +511,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return '<button type="button" data-tipo="' + o.tipo + '" ' + (o.comprado ? 'data-comprado="1" ' : "") +
 				'class="opcion-tipo text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
 				'style="border-color:#e7e6df;background:#fff' + (o.comprado ? ";opacity:.6" : "") + '">' +
+				'<span data-radio>' + radio(false) + "</span>" +
 				'<div class="min-w-0 flex-1">' +
 				'<span class="font-bold text-ink">' + esc(o.nombre) + "</span>" +
 				(o.recomendado && !o.comprado ? ' <span class="text-[10px] font-black uppercase px-1.5 py-0.5 rounded ml-1" style="background:rgba(30,58,138,.1);color:#1e3a8a">recomendado</span>' : "") +
@@ -491,22 +527,35 @@ document.addEventListener("DOMContentLoaded", async function () {
 			b.addEventListener("click", function () {
 				if (b.getAttribute("data-comprado")) { location.href = "mis-compras.html"; return; }
 				tipoElegido = b.getAttribute("data-tipo");
-				paso2.querySelectorAll(".opcion-tipo").forEach(function (x) {
-					var on = x === b;
-					x.style.borderColor = on ? "#059669" : "#e7e6df";
-					x.style.background = on ? "rgba(5,150,105,.04)" : "#fff";
-				});
+				pintarSeleccion(paso2, "data-tipo", tipoElegido);
 				actualizarPie();
 			});
 		});
 
-		// Preseleccionamos la primera opción disponible para que el botón de
-		// pago nunca aparezca inerte.
+		// Primera opción disponible marcada de entrada, igual que en el paso 1.
 		var primera = paso2.querySelector("[data-tipo]:not([data-comprado])");
-		if (primera) { primera.click(); } else { actualizarPie(); }
+		if (primera) {
+			tipoElegido = primera.getAttribute("data-tipo");
+			pintarSeleccion(paso2, "data-tipo", tipoElegido);
+		}
+		actualizarPie();
 	}
 
 	function actualizarPie() {
+		var icono = modalPagar.querySelector("[data-lucide], svg");
+
+		if (pasoActual === 1) {
+			var listo = !!elegido;
+			modalPagar.disabled = !listo;
+			modalPagar.style.opacity = listo ? "1" : ".5";
+			modalPagarTexto.textContent = listo
+				? "Siguiente · " + etiquetaOpcion(elegido)
+				: "Elige un paquete";
+			if (icono) { icono.style.display = "none"; }
+			return;
+		}
+
+		if (icono) { icono.style.display = ""; }
 		if (!tipoElegido) {
 			modalPagar.disabled = true;
 			modalPagar.style.opacity = ".5";
@@ -519,7 +568,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		modalPagarTexto.textContent = "Continuar al pago · " + money(precio);
 	}
 
+	// El mismo botón sirve a los dos pasos: primero avanza, después cobra.
 	modalPagar.addEventListener("click", function () {
+		if (pasoActual === 1) {
+			if (!elegido) { return; }
+			renderPaso2();
+			irPaso(2);
+			Tienda.iconos();
+			return;
+		}
 		if (!elegido || !tipoElegido) { return; }
 		location.href = "checkout.html?producto_id=" + encodeURIComponent(elegido.id) + "&tipo=" + tipoElegido;
 	});
