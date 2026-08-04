@@ -18,9 +18,10 @@ import {
 } from "../_shared/db.ts";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import {
+  carpetaTrimestreDeGrado,
   FOLDER_MIME,
   listDriveFolder,
-  primerProyectoFolder,
+  proyectosDeTrimestre,
 } from "../_shared/google-drive.ts";
 
 // La preferencia caduca a los 7 días: da margen de sobra a un pago en efectivo
@@ -274,17 +275,39 @@ async function puedeEntregarse(
     const tipoPaquete = (producto.tipo_paquete || "trimestre") as
       | "trimestre"
       | "ciclo";
-    const proyecto = await primerProyectoFolder(folderId, tipoPaquete);
-    if (!proyecto) return false;
 
-    const archivos = await listDriveFolder(proyecto.id);
-    return archivos.some((f) =>
-      f.mimeType !== FOLDER_MIME && /\.(pdf|docx?)$/i.test(f.name)
+    if (tipoPaquete === "trimestre") {
+      return await trimestreTieneMaterial(folderId);
+    }
+
+    // El ciclo promete los tres trimestres. Mirar solo el primer proyecto no
+    // basta: un paquete con T1 lleno y T2/T3 vacíos pasaría el filtro y el
+    // comprador pagaría 12 proyectos para recibir 4. Se exige que los tres
+    // trimestres tengan material. En paralelo, para no alargar el checkout.
+    const carpetas = await Promise.all(
+      [1, 2, 3].map((t) => carpetaTrimestreDeGrado(folderId, t)),
     );
+    if (carpetas.some((c) => !c)) return false;
+
+    const conMaterial = await Promise.all(
+      carpetas.map((c) => trimestreTieneMaterial(c!.id)),
+    );
+    return conMaterial.every(Boolean);
   } catch (err) {
     console.error("no se pudo verificar Drive, se permite la compra:", err);
     return true;
   }
+}
+
+/** ¿La carpeta de un trimestre tiene al menos un documento descargable? */
+async function trimestreTieneMaterial(trimestreFolderId: string): Promise<boolean> {
+  const proyectos = await proyectosDeTrimestre(trimestreFolderId);
+  if (!proyectos.length) return false;
+
+  const archivos = await listDriveFolder(proyectos[0].id);
+  return archivos.some((f) =>
+    f.mimeType !== FOLDER_MIME && /\.(pdf|docx?)$/i.test(f.name)
+  );
 }
 
 /**
