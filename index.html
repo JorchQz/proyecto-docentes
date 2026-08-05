@@ -6,11 +6,37 @@
 	<title>Planeaciones NEM</title>
 	<!-- La entrada pública es la tienda de planeaciones. El SaaS completo está
 	     oculto: los usuarios con activo_saas=true entran al dashboard tras
-	     iniciar sesión desde la tienda. -->
-	<meta http-equiv="refresh" content="0; url=tienda/index.html">
-	<script>window.location.replace("tienda/index.html");</script>
+	     iniciar sesión desde la tienda.
+
+	     Sin meta refresh a propósito: el reencaminamiento se decide en JS
+	     porque hay un caso que no puede resolverse con una URL fija. -->
+	<script>
+		(function () {
+			// Los enlaces de recuperación de contraseña aterrizan aquí y no en
+			// la página de cambio: Supabase descarta la ruta del destino y deja
+			// solo el dominio, aun teniéndola en su lista de permitidos. En vez
+			// de esperar a que lo aplique, reencaminamos nosotros conservando el
+			// token, que viaja en el fragmento (#) o como ?code=.
+			var hash = window.location.hash || "";
+			var query = window.location.search || "";
+			var esRecuperacion =
+				hash.indexOf("type=recovery") !== -1 ||
+				query.indexOf("type=recovery") !== -1 ||
+				(hash.indexOf("access_token=") !== -1 && hash.indexOf("recovery") !== -1);
+
+			if (esRecuperacion) {
+				window.location.replace("/reset-password" + query + hash);
+				return;
+			}
+			window.location.replace("tienda/index.html");
+		})();
+	</script>
 </head>
 <body>
 	<p>Redirigiendo a <a href="tienda/index.html">Planeaciones NEM</a>…</p>
+	<noscript>
+		<p>Necesitas JavaScript. Entra directamente a
+			<a href="tienda/index.html">la tienda</a>.</p>
+	</noscript>
 </body>
 </html>
