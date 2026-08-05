@@ -16,10 +16,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var chipsGradoEl = document.getElementById("chipsGrado");
 	var chipsModalidadEl = document.getElementById("chipsModalidad");
 
+	var chipsComboEl = document.getElementById("chipsCombo");
+
 	var todos = [];
 	var orgActiva = "completa";
 	var gradosActivos = new Set();
 	var modalidadActiva = null; // null = ambas
+	var combosActivos = new Set(); // combinaciones de grados elegidas
 
 	bindFiltros();
 
@@ -32,6 +35,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		if (res.error) { mostrarError(); return; }
 		todos = res.data || [];
+		renderCombos();
 		aplicarFiltros();
 	}
 
@@ -43,6 +47,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			chipsOrgEl.querySelectorAll(".chip-org").forEach(function (x) { setChip(x, x === c); });
 			subCompleta.classList.toggle("hidden", orgActiva !== "completa");
 			subMultigrado.classList.toggle("hidden", orgActiva !== "multigrado");
+			subMultigrado.classList.toggle("flex", orgActiva === "multigrado");
 			aplicarFiltros();
 		});
 		chipsGradoEl.addEventListener("click", function (e) {
@@ -62,8 +67,48 @@ document.addEventListener("DOMContentLoaded", async function () {
 				modalidadActiva = m;
 				chipsModalidadEl.querySelectorAll(".chip-mod").forEach(function (x) { setChip(x, x === c); });
 			}
+			// Al cambiar de modalidad, las combinaciones anteriores ya no
+			// aplican: un combo de dos grados no existe en bidocente.
+			combosActivos.clear();
+			renderCombos();
 			aplicarFiltros();
 		});
+
+		chipsComboEl.addEventListener("click", function (e) {
+			var c = e.target.closest(".chip-combo");
+			if (!c) { return; }
+			var combo = c.getAttribute("data-combo");
+			if (combosActivos.has(combo)) { combosActivos.delete(combo); setChip(c, false); }
+			else { combosActivos.add(combo); setChip(c, true); }
+			aplicarFiltros();
+		});
+	}
+
+	/**
+	 * Pinta las combinaciones que existen de verdad en el catálogo, filtradas
+	 * por la modalidad elegida. Se generan desde los productos y no a mano
+	 * para no ofrecer combos que nadie puede comprar.
+	 */
+	function renderCombos() {
+		var vistos = {};
+		todos.forEach(function (p) {
+			if (p.organizacion !== "multigrado" || !p.grados_combo) { return; }
+			if (modalidadActiva && p.modalidad !== modalidadActiva) { return; }
+			vistos[p.grados_combo] = p.modalidad;
+		});
+
+		var combos = Object.keys(vistos).sort(function (a, b) {
+			var na = a.split("-").length, nb = b.split("-").length;
+			if (na !== nb) { return na - nb; }
+			return Number(a.split("-")[0]) - Number(b.split("-")[0]);
+		});
+
+		chipsComboEl.innerHTML = combos.map(function (c) {
+			var activo = combosActivos.has(c);
+			return '<button data-combo="' + esc(c) + '" class="chip-combo chip ' +
+				(activo ? "active" : "border border-line text-ink bg-white") +
+				' text-sm font-semibold h-10 px-4 rounded-xl">' + esc(comboDisplay(c)) + "</button>";
+		}).join("");
 	}
 
 	function setChip(chip, activo) {
@@ -90,6 +135,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				clave = "g" + p.grado;
 			} else {
 				if (modalidadActiva && p.modalidad !== modalidadActiva) { return; }
+				if (combosActivos.size && !combosActivos.has(p.grados_combo)) { return; }
 				clave = "c" + p.grados_combo;
 			}
 			if (!(clave in mapa)) {

@@ -55,11 +55,21 @@
 				<button data-grado="6" class="chip-grado chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">6°</button>
 			</div>
 		</div>
-		<div id="subMultigrado" class="hidden">
-			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Modalidad</p>
-			<div id="chipsModalidad" class="flex flex-wrap gap-2">
-				<button data-mod="tridocente" class="chip-mod chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Tridocente · 1°-2° · 3°-4° · 5°-6°</button>
-				<button data-mod="bidocente" class="chip-mod chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Bidocente · 1°-2°-3° · 4°-5°-6°</button>
+		<div id="subMultigrado" class="hidden flex flex-col gap-4">
+			<div>
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Modalidad</p>
+				<!-- Sin la lista de combinaciones en la etiqueta: ocupaba dos
+				     líneas en el celular y ahora se eligen abajo. -->
+				<div id="chipsModalidad" class="flex flex-wrap gap-2">
+					<button data-mod="tridocente" class="chip-mod chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Tridocente · 2 grados</button>
+					<button data-mod="bidocente" class="chip-mod chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Bidocente · 3 grados</button>
+				</div>
+			</div>
+			<!-- Combinaciones concretas. Se generan desde los paquetes reales
+			     para no listar combos que no existen. -->
+			<div id="bloqueCombos">
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Grados que atiendes</p>
+				<div id="chipsCombo" class="flex flex-wrap gap-2"></div>
 			</div>
 		</div>
 	</div>
