@@ -256,7 +256,7 @@
 			'<div class="flex gap-5">' +
 			'<a href="index.html" class="hover:text-ink transition">Inicio</a>' +
 			'<a href="catalogo.html" class="hover:text-ink transition">Catálogo</a>' +
-			'<a href="mailto:jorgequezadarm@gmail.com" class="hover:text-ink transition">Contacto</a>' +
+			'<a href="mailto:soporte@jissez.com" class="hover:text-ink transition">Contacto</a>' +
 			'</div>' +
 			'</div>' +
 			'</footer>';
