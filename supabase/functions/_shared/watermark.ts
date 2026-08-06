@@ -12,9 +12,14 @@ import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 // aplicarse y el archivo salía sin el nombre del comprador.
 import { unzipSync, zipSync, strToU8, strFromU8 } from "https://esm.sh/fflate@0.8.2";
 
+// Decía "Uso docente exclusivo", que restringe el TIPO de uso (docente y no
+// comercial) cuando lo que hay que restringir es la PERSONA. "Personal e
+// intransferible" es la fórmula habitual para eso y no choca con enseñarle la
+// planeación al director, que es parte del trabajo: por eso también se cambió
+// "distribución" —demasiado amplia— por la reventa y el reparto entre colegas.
 export function textoPie(nombre: string, cct?: string | null): string {
   const id = cct ? `${nombre} · CCT ${cct}` : nombre;
-  return `Creado por Jissez para ${id} · Uso docente exclusivo · Prohibida su distribución o reventa`;
+  return `Creado por Jissez para ${id} · Uso personal e intransferible · Prohibida su reventa`;
 }
 
 // ── PDF ─────────────────────────────────────────────────────────────────────
