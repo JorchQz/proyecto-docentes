@@ -19,7 +19,10 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from "https://esm.sh/fflate@0.
 // "distribución" —demasiado amplia— por la reventa y el reparto entre colegas.
 export function textoPie(nombre: string, cct?: string | null): string {
   const id = cct ? `${nombre} · CCT ${cct}` : nombre;
-  return `Creado por Jissez para ${id} · Uso personal e intransferible · Prohibida su reventa`;
+  // El dominio va escrito, no enlazado: estos archivos se imprimen y en papel
+  // un hipervínculo no sirve. Lo que importa es que quien reciba una copia
+  // compartida vea dónde comprar la suya.
+  return `Creado por JISSEZ (jissez.com) para ${id} · Uso personal e intransferible · Prohibida su reventa`;
 }
 
 // ── PDF ─────────────────────────────────────────────────────────────────────
@@ -29,7 +32,7 @@ export async function aplicarPiePdf(
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const size = 8;
+  const SIZE_BASE = 8;
   const pages = pdfDoc.getPages();
 
   // Altura del texto sobre el borde inferior, en puntos (1 pt = 0,353 mm).
@@ -46,10 +49,24 @@ export async function aplicarPiePdf(
   const BANDA_DESDE = 12;
   const BANDA_ALTO = 22;
 
+  const MARGEN = 10;
+  const SIZE_MIN = 6;
+
   for (const page of pages) {
     const { width } = page.getSize();
+
+    // Si no cabe se encoge la letra en vez de escribir fuera de la hoja. Pasa
+    // con un nombre largo más el CCT en A4, que es más estrecha que la carta:
+    // el código anterior fijaba x en el margen y el texto se salía por la
+    // derecha.
+    let size = SIZE_BASE;
+    const util = width - MARGEN * 2;
+    while (size > SIZE_MIN && font.widthOfTextAtSize(texto, size) > util) {
+      size -= 0.5;
+    }
+
     const textWidth = font.widthOfTextAtSize(texto, size);
-    const x = Math.max((width - textWidth) / 2, 10);
+    const x = Math.max((width - textWidth) / 2, MARGEN);
     // Banda blanca semitransparente para legibilidad + texto gris.
     page.drawRectangle({
       x: 0,
