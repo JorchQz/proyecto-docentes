@@ -236,13 +236,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"</ul></li>";
 		}).join("");
 
-		var total = filas.length;
-		var nota = document.getElementById("incluyeNota");
-		if (nota) {
-			nota.textContent = trimestres.length > 1
-				? "Los " + total + " proyectos del ciclo completo. Si compras un trimestre suelto, recibes los de ese trimestre."
-				: "Los " + total + " proyectos de este paquete.";
-		}
 		incluyeWrap.classList.remove("hidden");
 		Tienda.iconos();
 	}
