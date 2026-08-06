@@ -185,8 +185,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		precioMinimo = minimo;
 
 		document.getElementById("precioDesde").textContent = minimo != null ? money(minimo) : "—";
+		// Solo la unidad del precio. Que el ciclo salga mejor ya lo dice el badge
+		// de al lado, y con la cifra exacta en vez de una vaguedad.
 		document.getElementById("precioNota").textContent = losTrimestres().length
-			? "por trimestre · el ciclo completo sale más barato"
+			? "por trimestre"
 			: "pago único, sin caducidad";
 
 		var ahorro = ahorroDelCiclo();
