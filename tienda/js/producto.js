@@ -222,7 +222,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function cargarIncluye() {
 		var qd = window.sb
 			.from("dosificacion_proyectos")
-			.select("nombre_proyecto, trimestre, grados, numero_proyecto")
+			// La metodología y las sesiones estaban en la base sin usarse, y son
+			// lo más concreto que puede leer el maestro antes de pagar: cuatro
+			// proyectos de diez sesiones son más de cuarenta clases preparadas.
+			.select("nombre_proyecto, trimestre, grados, numero_proyecto, metodologia, num_sesiones_estimadas")
 			// numero_proyecto es continuo por grado (1-4 en T1, 5-8 en T2…),
 			// que es el orden en que se enseñan.
 			.order("numero_proyecto", { ascending: true });
@@ -242,14 +245,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var trimestres = Object.keys(porTrimestre).sort();
 		incluyeLista.innerHTML = trimestres.map(function (t) {
 			var proyectos = porTrimestre[t];
+			// Las sesiones del trimestre, sumadas: convierte un precio abstracto
+			// en algo medible frente a las tardes que cuesta prepararlas.
+			var sesiones = proyectos.reduce(function (n, d) {
+				return n + (Number(d.num_sesiones_estimadas) || 0);
+			}, 0);
+
 			return '<li>' +
-				'<p class="text-[11px] font-bold uppercase tracking-[0.1em] mb-1.5 mt-3 first:mt-0" style="color:#1e3a8a">' +
-				"Trimestre " + esc(t) + " · " + proyectos.length + " proyectos</p>" +
-				'<ul class="flex flex-col gap-1.5">' +
+				'<p class="text-[11px] font-bold uppercase tracking-[0.1em] mb-2 mt-4 first:mt-0" style="color:#1e3a8a">' +
+				"Trimestre " + esc(t) + " · " + proyectos.length + " proyectos" +
+				(sesiones ? " · " + sesiones + " sesiones" : "") + "</p>" +
+				'<ul class="flex flex-col gap-2.5">' +
 				proyectos.map(function (d) {
+					// Metodología y sesiones bajo el título: sin ellas la lista es
+					// solo nombres y no deja juzgar si el material tiene fondo.
+					var detalle = [];
+					if (d.metodologia) { detalle.push(esc(d.metodologia)); }
+					if (d.num_sesiones_estimadas) { detalle.push(d.num_sesiones_estimadas + " sesiones"); }
+
 					return '<li class="flex items-start gap-2">' +
 						'<i data-lucide="check" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>' +
-						'<span>' + esc(d.nombre_proyecto || "Proyecto") + "</span></li>";
+						'<span class="min-w-0">' + esc(d.nombre_proyecto || "Proyecto") +
+						(detalle.length
+							? '<span class="block text-[12px] text-mute mt-0.5">' + detalle.join(" · ") + "</span>"
+							: "") +
+						"</span></li>";
 				}).join("") +
 				"</ul></li>";
 		}).join("");
