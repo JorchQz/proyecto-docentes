@@ -148,16 +148,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:rgba(30,58,138,.1);color:#1e3a8a">' + esc(comboDisplay() + " multigrado") + '</span>';
 		}
 		b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-semibold" style="background:rgba(30,58,138,.08);color:#1e3a8a"><i data-lucide="badge-check" class="w-3.5 h-3.5"></i> Alineado a la NEM</span>';
-		if (esMulti) {
-			b += '<span class="inline-flex items-center h-8 px-3 rounded-full text-[13px]" style="background:#f1f0ea;color:#5b6473">' + (info.modalidad === "bidocente" ? "Bidocente" : "Tridocente") + "</span>";
+		// Sin etiqueta si la modalidad no es una de las dos conocidas, en vez de
+		// caer en "Tridocente" por descarte.
+		var modalidad = info.modalidad === "bidocente" ? "Bidocente"
+			: info.modalidad === "tridocente" ? "Tridocente" : "";
+		if (esMulti && modalidad) {
+			b += '<span class="inline-flex items-center h-8 px-3 rounded-full text-[13px]" style="background:#f1f0ea;color:#5b6473">' + modalidad + "</span>";
 		}
 		badgesEl.innerHTML = b;
 	}
 
 	function renderMeta(p) {
 		var esCiclo = p.tipo_paquete === "ciclo";
+		// El aula/grado no se repite aquí: ya está en el badge y en el título,
+		// y en móvil este bloque va antes de la galería. En su lugar, el formato,
+		// que sí pesa en la decisión y no aparece en ningún otro dato.
+		var hayEditable = productos.some(function (x) { return x.precio_editable != null; });
 		var meta = [
-			[esMulti ? "Aula multigrado" : "Grado", comboDisplay()],
+			["Formato", hayEditable ? "PDF o PDF + Word editable" : "PDF listo para imprimir"],
 			["Disponible por", losTrimestres().length ? "Trimestre o ciclo completo" : etiquetaOpcion(p)],
 			["Proyectos", esCiclo ? String(p.num_proyectos || 12) + " en el ciclo" : String(p.num_proyectos || 4) + " por trimestre"],
 			["Incluye", "Planeación + anexos + examen"],
