@@ -6,7 +6,11 @@
 //        la versión editable cuesta más): es un disuasivo, no un candado.
 
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
-import { unzip, zip, strToU8, strFromU8 } from "https://esm.sh/fflate@0.8.2";
+// Las variantes SÍNCRONAS a propósito: `unzip`/`zip` (asíncronas) arrancan un
+// Web Worker y el runtime de las Edge Functions no los admite —fallaban con
+// "Classic workers are not supported"—, así que el pie del DOCX nunca llegó a
+// aplicarse y el archivo salía sin el nombre del comprador.
+import { unzipSync, zipSync, strToU8, strFromU8 } from "https://esm.sh/fflate@0.8.2";
 
 export function textoPie(nombre: string, cct?: string | null): string {
   const id = cct ? `${nombre} · CCT ${cct}` : nombre;
@@ -63,17 +67,6 @@ export async function aplicarPiePdf(
 }
 
 // ── DOCX ────────────────────────────────────────────────────────────────────
-function unzipAsync(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
-  return new Promise((resolve, reject) => {
-    unzip(bytes, (err, data) => (err ? reject(err) : resolve(data)));
-  });
-}
-
-function zipAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    zip(files, (err, data) => (err ? reject(err) : resolve(data)));
-  });
-}
 
 // Párrafo OOXML con el texto del pie (gris, pequeño, centrado).
 function parrafoPie(texto: string): string {
@@ -88,11 +81,8 @@ function parrafoPie(texto: string): string {
   );
 }
 
-export async function aplicarPieDocx(
-  bytes: Uint8Array,
-  texto: string,
-): Promise<Uint8Array> {
-  const files = await unzipAsync(bytes);
+export function aplicarPieDocx(bytes: Uint8Array, texto: string): Uint8Array {
+  const files = unzipSync(bytes);
   const parrafo = parrafoPie(texto);
   let inyectado = false;
 
@@ -109,15 +99,19 @@ export async function aplicarPieDocx(
     }
   }
 
-  // 2. Respaldo: si no había footers, agregar el párrafo al final del cuerpo.
+  // 2. Respaldo: si no había footers, un párrafo al final del cuerpo. Va antes
+  //    del <w:sectPr> final, que debe ser el último hijo de <w:body>: colgarlo
+  //    después deja el OOXML inválido y Word pide reparar el archivo.
   if (!inyectado && files["word/document.xml"]) {
     let xml = strFromU8(files["word/document.xml"]);
-    const idx = xml.lastIndexOf("</w:body>");
-    if (idx !== -1) {
+    const fin = xml.lastIndexOf("</w:body>");
+    if (fin !== -1) {
+      const sect = xml.lastIndexOf("<w:sectPr");
+      const idx = sect !== -1 && sect < fin ? sect : fin;
       xml = xml.slice(0, idx) + parrafo + xml.slice(idx);
       files["word/document.xml"] = strToU8(xml);
     }
   }
 
-  return await zipAsync(files);
+  return zipSync(files);
 }

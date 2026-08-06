@@ -30,8 +30,11 @@ const DIAS_VIGENCIA = 7;
 // Órdenes pendientes más viejas que esto ya no pueden cobrarse: se archivan
 // para que no salgan eternamente como "en proceso" en Mis compras.
 const DIAS_CADUCIDAD_ORDEN = 8;
-// Máximo de mensualidades a ofrecer.
-const MAX_MSI = 12;
+// Máximo de mensualidades a ofrecer. NO son meses sin intereses: no hay
+// promociones MSI contratadas con Mercado Pago, y el interés lo aplica el
+// banco del comprador. El nombre anterior (MAX_MSI) hizo que la web lo
+// anunciara como "sin intereses", que era falso.
+const MAX_MENSUALIDADES = 12;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -183,7 +186,7 @@ Deno.serve(async (req: Request) => {
       // `excluded_payment_types` vacío hace que MP lo guarde como [{"id":""}],
       // así que simplemente no mandamos el campo.
       payment_methods: {
-        installments: MAX_MSI,
+        installments: MAX_MENSUALIDADES,
       },
       expires: true,
       expiration_date_from: ahora.toISOString(),
