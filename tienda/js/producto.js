@@ -251,21 +251,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return n + (Number(d.num_sesiones_estimadas) || 0);
 			}, 0);
 
-			// Un desplegable por trimestre, con el mismo patrón que las preguntas
-			// frecuentes. El resumen queda SIEMPRE visible: las sesiones son el
-			// argumento que justifica el precio y esconderlas sería tirarlo.
-			// El primero abierto, para que se vea qué hay dentro sin adivinarlo.
-			var abierto = t === trimestres[0] ? " open" : "";
-
-			return '<li class="border-t border-line first:border-0">' +
-				"<details" + abierto + ">" +
-				'<summary class="flex items-center justify-between gap-3 py-3">' +
+			// Una tarjeta desplegable por trimestre, idéntica a las preguntas
+			// frecuentes: mismo borde, mismo redondeo y todas cerradas de inicio.
+			// Dejar la primera abierta hacía que el primer toque cerrara en vez
+			// de abrir, y el bloque saltaba hacia arriba.
+			// El resumen no se pliega: las sesiones son el argumento que
+			// justifica el precio y esconderlas sería tirarlo.
+			return '<li>' +
+				'<details class="bg-white border border-line rounded-2xl px-5">' +
+				'<summary class="flex items-center justify-between gap-4 py-4">' +
 				'<span class="text-[11px] font-bold uppercase tracking-[0.1em]" style="color:#1e3a8a">' +
 				"Trimestre " + esc(t) + " · " + proyectos.length + " proyectos" +
 				(sesiones ? " · " + sesiones + " sesiones" : "") + "</span>" +
-				'<i data-lucide="plus" class="faq-plus w-4 h-4 shrink-0" style="color:#1e3a8a"></i>' +
+				'<i data-lucide="plus" class="faq-plus w-5 h-5 shrink-0" style="color:#1e3a8a"></i>' +
 				"</summary>" +
-				'<ul class="flex flex-col gap-2.5 pb-4">' +
+				'<ul class="flex flex-col gap-2.5 pb-5">' +
 				proyectos.map(function (d) {
 					// Metodología y sesiones bajo el título: sin ellas la lista es
 					// solo nombres y no deja juzgar si el material tiene fondo.
