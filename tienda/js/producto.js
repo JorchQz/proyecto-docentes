@@ -129,23 +129,39 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── Cabecera y datos ──────────────────────────────────────────────────────
 	function renderHeader() {
-		var tituloGrupo = esMulti ? "Multigrado " + comboDisplay() : gradoNum + "° Primaria";
-		tituloEl.textContent = tituloGrupo;
+		// "Primaria" se conserva en el titulo de las dos variantes: es la palabra
+		// con la que busca un maestro, y "1° grado" a secas se confunde con
+		// secundaria. El breadcrumb usa la version corta, que en el celular ya va
+		// justo de ancho.
+		var nombreCorto = esMulti ? "Multigrado " + comboDisplay() : gradoNum + "° Primaria";
+		var tituloPagina = esMulti
+			? "Multigrado " + comboDisplay() + " de Primaria"
+			: gradoNum + "° de Primaria";
+
+		tituloEl.textContent = tituloPagina;
+		// La descripción decía otra vez el grado y otra vez la NEM, que ya están
+		// en el título y en el badge. Aquí se aprovecha para contar algo nuevo.
 		descripcionEl.textContent = esMulti
-			? "Planeación multigrado para un aula de " + comboDisplay() + ", con actividades diferenciadas por grado, alineada a la NEM."
-			: "Planeaciones de " + gradoNum + "° grado alineadas a la Nueva Escuela Mexicana.";
+			? "Un mismo proyecto para toda el aula, con actividades y anexos diferenciados para cada grado."
+			: "Proyectos completos con PDAs, actividades y anexos por sesión, listos para llevar al salón.";
+
+		// Las 11 fichas compartían el título "Planeación — Jissez", así que en
+		// Google y en las pestañas eran indistinguibles.
+		document.title = "Planeaciones " + tituloPagina + " — Jissez";
 
 		var bc = document.getElementById("breadcrumbNombre");
-		if (bc) { bc.textContent = tituloGrupo; }
+		if (bc) { bc.textContent = nombreCorto; }
 
+		// El badge lleva solo el grado, sin la palabra: el título ya la dice. Lo
+		// que aporta es el color, que enlaza con la tarjeta del catálogo.
 		var b = "";
 		if (!esMulti) {
 			var gc = GRADO_COLOR[String(gradoNum)] || "#e7e6df";
 			var gt = GRADO_TXT[String(gradoNum)] || "#1c2434";
 			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:' + gc + ';color:' + gt + '">' +
-				gradoNum + '° grado</span>';
+				gradoNum + '°</span>';
 		} else {
-			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:rgba(30,58,138,.1);color:#1e3a8a">' + esc(comboDisplay() + " multigrado") + '</span>';
+			b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:rgba(30,58,138,.1);color:#1e3a8a">' + esc(comboDisplay()) + '</span>';
 		}
 		b += '<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-semibold" style="background:rgba(30,58,138,.08);color:#1e3a8a"><i data-lucide="badge-check" class="w-3.5 h-3.5"></i> Alineado a la NEM</span>';
 		// Sin etiqueta si la modalidad no es una de las dos conocidas, en vez de
