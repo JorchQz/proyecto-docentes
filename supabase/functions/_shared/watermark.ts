@@ -23,6 +23,15 @@ export async function aplicarPiePdf(
   const size = 8;
   const pages = pdfDoc.getPages();
 
+  // Altura del texto sobre el borde inferior, en puntos (1 pt = 0,353 mm).
+  // Estaba en 5 pt = 1,76 mm, dentro del margen que NO imprime la mayoría de
+  // impresoras domésticas (entre 5 y 12 mm): el pie se perdía justo al
+  // imprimir, que es por donde más se redistribuye el material. A 18 pt son
+  // 6,3 mm, fuera de la zona recortada de casi cualquier equipo.
+  const BASE_TEXTO = 18;
+  const BANDA_DESDE = 8;
+  const BANDA_ALTO = 24;
+
   for (const page of pages) {
     const { width } = page.getSize();
     const textWidth = font.widthOfTextAtSize(texto, size);
@@ -30,15 +39,15 @@ export async function aplicarPiePdf(
     // Banda blanca semitransparente para legibilidad + texto gris.
     page.drawRectangle({
       x: 0,
-      y: 0,
+      y: BANDA_DESDE,
       width,
-      height: 16,
+      height: BANDA_ALTO,
       color: rgb(1, 1, 1),
       opacity: 0.7,
     });
     page.drawText(texto, {
       x,
-      y: 5,
+      y: BASE_TEXTO,
       size,
       font,
       color: rgb(0.45, 0.45, 0.45),
