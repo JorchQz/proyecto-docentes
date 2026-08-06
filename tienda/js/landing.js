@@ -75,6 +75,15 @@ async function renderMuestra(prods) {
 	if (cta) { cta.href = elegido.href; }
 
 	seccion.classList.remove("hidden");
+
+	// Ya hay muestra que enseñar: el botón secundario del hero pasa a ofrecerla.
+	// Es mejor gancho que "Qué incluye", y solo aparece cuando de verdad existe.
+	var heroSec = document.getElementById("heroSecundario");
+	if (heroSec) {
+		heroSec.href = "#muestra";
+		heroSec.innerHTML = '<i data-lucide="eye" class="w-5 h-5"></i> Ver muestra gratis';
+	}
+
 	Tienda.iconos();
 	Tienda.revelar();
 }

@@ -34,9 +34,13 @@
 					Ver planeaciones
 					<i data-lucide="arrow-right" class="w-5 h-5"></i>
 				</a>
-				<a href="#como" class="inline-flex items-center justify-center gap-2 h-14 px-6 rounded-2xl border border-board/25 text-board font-semibold text-lg hover:bg-board/5 transition">
-					<i data-lucide="play" class="w-5 h-5"></i>
-					Cómo funciona
+				<!-- Apunta a la primera sección que responde "qué me llevo". Antes
+				     iba a "Cómo funciona", que ahora está casi al final: el lector
+				     aterrizaba abajo del todo y tenía que volver a subir.
+				     landing.js lo cambia por la muestra gratuita si hay imágenes. -->
+				<a id="heroSecundario" href="#incluye" class="inline-flex items-center justify-center gap-2 h-14 px-6 rounded-2xl border border-board/25 text-board font-semibold text-lg hover:bg-board/5 transition">
+					<i data-lucide="package-open" class="w-5 h-5"></i>
+					Qué incluye
 				</a>
 			</div>
 			<div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[15px] text-mute">
@@ -495,11 +499,13 @@
 <script>
 	document.addEventListener("DOMContentLoaded", function () {
 		Tienda.montarNav("", {
+			// En el mismo orden en que aparecen abajo: si no, el menú manda al
+			// lector de un lado a otro de la página.
 			anchors: [
-				{ href: "#como", label: "Cómo funciona" },
-				{ href: "#incluye", label: "Qué incluye" },
 				{ href: "#multigrado", label: "Multigrado" },
+				{ href: "#incluye", label: "Qué incluye" },
 				{ href: "#precios", label: "Precios" },
+				{ href: "#como", label: "Cómo funciona" },
 				{ href: "#faq", label: "Preguntas" },
 			],
 			cta: { href: "catalogo.html", label: "Ver planeaciones", icon: "book-open" },
