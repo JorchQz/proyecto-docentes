@@ -75,6 +75,26 @@
 		</div>
 	</div>
 
+	<!-- Aplica ?org= ANTES del primer pintado. Si se deja para catalogo.js, la
+	     caja se dibuja en "Organización completa" y salta a multigrado a la
+	     vista, con su cambio de altura. catalogo.js lo repite sin efecto. -->
+	<script>
+		(function () {
+			if (new URLSearchParams(location.search).get("org") !== "multigrado") { return; }
+			var chips = document.querySelectorAll("#chipsOrg .chip-org");
+			for (var i = 0; i < chips.length; i++) {
+				var activo = chips[i].getAttribute("data-org") === "multigrado";
+				chips[i].classList.toggle("active", activo);
+				chips[i].classList.toggle("border-line", !activo);
+				chips[i].classList.toggle("text-ink", !activo);
+			}
+			document.getElementById("subCompleta").classList.add("hidden");
+			var multi = document.getElementById("subMultigrado");
+			multi.classList.remove("hidden");
+			multi.classList.add("flex");
+		})();
+	</script>
+
 	<!-- Estado / grid -->
 	<div id="estado" class="text-center py-20 text-mute"></div>
 	<div id="grid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>

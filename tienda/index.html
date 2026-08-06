@@ -119,30 +119,31 @@
 <section id="multigrado" class="bg-paper">
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-20 lg:py-24 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 		<div class="reveal order-2 lg:order-1 relative">
-			<div class="relative bg-white border border-line rounded-3xl p-6">
-				<div class="flex items-center gap-2 mb-4">
-					<span class="w-9 h-9 rounded-xl bg-board text-white flex items-center justify-center"><i data-lucide="users" class="w-5 h-5"></i></span>
-					<span class="font-bold text-ink">Un docente · varios grados</span>
+			<!-- Reproduce en pequeño la tabla real de una sesión: cabecera de
+			     sesión, banda de momento y una columna por grado. Antes eran
+			     cajas rayadas con la clase .ph, que es la que marca "imagen
+			     pendiente", y hacía parecer la sección a medio hacer. -->
+			<div class="relative bg-white border border-line rounded-3xl overflow-hidden shadow-sm">
+				<div class="bg-ink text-white px-4 py-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em]">
+					<i data-lucide="table-2" class="w-4 h-4 shrink-0"></i>
+					<span class="truncate">Sesión 1 · Lenguajes · Presentemos</span>
 				</div>
-				<!-- Sin la clase .ph: el texto de estas filas es contenido real, y
-				     con el rayado de "imagen pendiente" la sección entera parecía
-				     a medio hacer. Cuando haya capturas del material, este es el
-				     sitio natural para sustituirlo por una imagen de verdad. -->
-				<div class="space-y-3">
-					<div class="flex items-center gap-3 bg-paper border border-line rounded-2xl p-3.5">
-						<span class="w-9 h-9 rounded-lg bg-gisAmarillo text-board/80 text-sm font-black flex items-center justify-center shrink-0">1°</span>
-						<span class="text-sm text-ink">Actividades y anexos para 1°</span>
+				<div class="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-white" style="background:#ef9277">Inicio</div>
+				<div class="grid grid-cols-3 divide-x divide-line">
+					<div class="p-3">
+						<span class="inline-flex w-7 h-7 rounded-lg bg-gisAmarillo text-board/80 text-[13px] font-black items-center justify-center mb-2">1°</span>
+						<p class="text-[11px] leading-snug text-ink">Dice su nombre completo en voz alta.</p>
 					</div>
-					<div class="flex items-center gap-3 bg-paper border border-line rounded-2xl p-3.5">
-						<span class="w-9 h-9 rounded-lg bg-gisCoral text-white text-sm font-black flex items-center justify-center shrink-0">2°</span>
-						<span class="text-sm text-ink">Actividades y anexos para 2°</span>
+					<div class="p-3">
+						<span class="inline-flex w-7 h-7 rounded-lg bg-gisCoral text-white text-[13px] font-black items-center justify-center mb-2">2°</span>
+						<p class="text-[11px] leading-snug text-ink">Escribe su nombre y apellidos en una tarjeta.</p>
 					</div>
-					<div class="flex items-center gap-3 bg-paper border border-line rounded-2xl p-3.5">
-						<span class="w-9 h-9 rounded-lg bg-gisMenta text-board/80 text-sm font-black flex items-center justify-center shrink-0">3°</span>
-						<span class="text-sm text-ink">Actividades y anexos para 3°</span>
+					<div class="p-3">
+						<span class="inline-flex w-7 h-7 rounded-lg bg-gisMenta text-board/80 text-[13px] font-black items-center justify-center mb-2">3°</span>
+						<p class="text-[11px] leading-snug text-ink">Describe a una persona sin decir su nombre.</p>
 					</div>
 				</div>
-				<p class="mt-4 pt-4 border-t border-line text-[13px] text-mute text-center">Un solo proyecto para toda el aula, tres niveles de trabajo.</p>
+				<p class="px-4 py-3 border-t border-line text-[12px] text-mute text-center">Mismo proyecto y mismo momento; cada grado con su propia consigna.</p>
 			</div>
 		</div>
 		<div class="reveal order-1 lg:order-2">
