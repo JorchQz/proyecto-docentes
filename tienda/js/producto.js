@@ -414,16 +414,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// función decide si se ve, para que el estado del observador y el del modal
 	// no se puedan desincronizar.
 	var barra = document.getElementById("barraCompra");
-	var botonVisible = true;  // el CTA original está a la vista
-	var botonArriba = false;  // el CTA original se fue por arriba
-	var tituloFuera = false;  // el encabezado se fue por arriba
+	var botonArriba = false;  // el CTA original se fue por ARRIBA
 
 	function sincronizarBarra() {
 		if (!barra) { return; }
-		// Se muestra si el CTA no está a la vista y el maestro ya bajó lo
-		// suficiente: o el botón quedó arriba, o al menos el título ya pasó.
-		var visible = !botonVisible && (botonArriba || tituloFuera) &&
-			modal.classList.contains("hidden");
+		// Solo cuando el botón quedó por encima del viewport. Si está por debajo
+		// —al cargar, o al volver hacia el encabezado— no sale: el maestro
+		// todavía no ha pasado por él.
+		var visible = botonArriba && modal.classList.contains("hidden");
 		barra.classList.toggle("hidden", !visible);
 		document.body.classList.toggle("con-barra-compra", visible);
 	}
@@ -438,21 +436,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var barraBtn = document.getElementById("barraCompraBtn");
 		if (barraBtn) { barraBtn.addEventListener("click", abrirModal); }
 
-		// El título hace de centinela. Sin él la barra nunca saldría para quien
-		// se queda a media galería: el observador del botón no vuelve a
-		// dispararse mientras el botón siga por debajo del pliegue.
 		new IntersectionObserver(function (entradas) {
 			entradas.forEach(function (e) {
-				tituloFuera = !e.isIntersecting && e.boundingClientRect.top < 0;
-			});
-			sincronizarBarra();
-		}, { threshold: 0 }).observe(tituloEl);
-
-		new IntersectionObserver(function (entradas) {
-			entradas.forEach(function (e) {
-				botonVisible = e.isIntersecting;
-				// top < 0 ⇒ quedó ARRIBA. En la carga inicial está por debajo
-				// (top > 0), así que la barra no sale de entrada.
+				// top < 0 ⇒ quedó ARRIBA. Si no interseca pero top > 0 es que
+				// está por debajo: al cargar la página o al subir de vuelta.
 				botonArriba = !e.isIntersecting && e.boundingClientRect.top < 0;
 			});
 			sincronizarBarra();
