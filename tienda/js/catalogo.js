@@ -190,9 +190,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var precioDesde = Math.min.apply(null, precios);
 		var tieneWord = grupo.productos.some(function (p) { return p.precio_editable != null; });
 
+		// Mismo nombre que el h1 de la ficha: lo que se toca y lo que se abre
+		// deben llamarse igual. Las de multigrado no decian "primaria" en ningun
+		// sitio, que es la palabra con la que busca un maestro.
 		var titulo = esMulti
-			? "Multigrado " + comboDisplay(grupo.combo)
-			: grupo.grado + "° Primaria";
+			? "Multigrado " + comboDisplay(grupo.combo) + " de Primaria"
+			: grupo.grado + "° de Primaria";
 		// bidocente = 2 docentes en la escuela = 3 grados por maestro;
 		// tridocente = 3 docentes = 2 grados. Es la convención del proyecto
 		// (supabase/marketplace_precios.sql). Si llegara otra cosa, mejor sin

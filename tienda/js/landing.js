@@ -221,7 +221,10 @@ function renderDestacados(prods) {
 function cardHtml(g) {
 	var esMulti = g.org === "multigrado";
 	var esc = Tienda.esc, money = Tienda.formatMoney;
-	var titulo = esMulti ? ("Multigrado " + comboDisplay(g.combo)) : (g.grado + "° Primaria");
+	// Mismo nombre que el h1 de la ficha y que la tarjeta del catálogo.
+	var titulo = esMulti
+		? "Multigrado " + comboDisplay(g.combo) + " de Primaria"
+		: g.grado + "° de Primaria";
 	var precioDesde = minPrecio(g.prods, function () { return true; });
 	var href = esMulti
 		? "producto.html?org=multigrado&combo=" + encodeURIComponent(g.combo)
