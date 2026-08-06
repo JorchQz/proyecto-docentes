@@ -251,11 +251,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return n + (Number(d.num_sesiones_estimadas) || 0);
 			}, 0);
 
-			return '<li>' +
-				'<p class="text-[11px] font-bold uppercase tracking-[0.1em] mb-2 mt-4 first:mt-0" style="color:#1e3a8a">' +
+			// Un desplegable por trimestre, con el mismo patrón que las preguntas
+			// frecuentes. El resumen queda SIEMPRE visible: las sesiones son el
+			// argumento que justifica el precio y esconderlas sería tirarlo.
+			// El primero abierto, para que se vea qué hay dentro sin adivinarlo.
+			var abierto = t === trimestres[0] ? " open" : "";
+
+			return '<li class="border-t border-line first:border-0">' +
+				"<details" + abierto + ">" +
+				'<summary class="flex items-center justify-between gap-3 py-3">' +
+				'<span class="text-[11px] font-bold uppercase tracking-[0.1em]" style="color:#1e3a8a">' +
 				"Trimestre " + esc(t) + " · " + proyectos.length + " proyectos" +
-				(sesiones ? " · " + sesiones + " sesiones" : "") + "</p>" +
-				'<ul class="flex flex-col gap-2.5">' +
+				(sesiones ? " · " + sesiones + " sesiones" : "") + "</span>" +
+				'<i data-lucide="plus" class="faq-plus w-4 h-4 shrink-0" style="color:#1e3a8a"></i>' +
+				"</summary>" +
+				'<ul class="flex flex-col gap-2.5 pb-4">' +
 				proyectos.map(function (d) {
 					// Metodología y sesiones bajo el título: sin ellas la lista es
 					// solo nombres y no deja juzgar si el material tiene fondo.
@@ -271,7 +281,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 							: "") +
 						"</span></li>";
 				}).join("") +
-				"</ul></li>";
+				"</ul></details></li>";
 		}).join("");
 
 		incluyeWrap.classList.remove("hidden");
