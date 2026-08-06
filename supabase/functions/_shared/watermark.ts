@@ -24,13 +24,18 @@ export async function aplicarPiePdf(
   const pages = pdfDoc.getPages();
 
   // Altura del texto sobre el borde inferior, en puntos (1 pt = 0,353 mm).
-  // Estaba en 5 pt = 1,76 mm, dentro del margen que NO imprime la mayoría de
-  // impresoras domésticas (entre 5 y 12 mm): el pie se perdía justo al
-  // imprimir, que es por donde más se redistribuye el material. A 18 pt son
-  // 6,3 mm, fuera de la zona recortada de casi cualquier equipo.
-  const BASE_TEXTO = 18;
-  const BANDA_DESDE = 8;
-  const BANDA_ALTO = 24;
+  //
+  // Empezó en 5 pt = 1,76 mm, dentro del margen que NO imprime ninguna
+  // impresora doméstica: el pie desaparecía justo al imprimir, que es por
+  // donde más se redistribuye el material.
+  //
+  // 24 pt = 8,5 mm. Las láser recortan unos 5 mm y las de inyección hasta 12,
+  // y el margen inferior es el mayor de los cuatro por el arrastre del papel.
+  // No se sube más porque el número de página del documento está alrededor de
+  // los 38 pt y hay que dejarle aire.
+  const BASE_TEXTO = 24;
+  const BANDA_DESDE = 12;
+  const BANDA_ALTO = 22;
 
   for (const page of pages) {
     const { width } = page.getSize();
