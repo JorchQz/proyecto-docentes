@@ -222,12 +222,22 @@
 		var toggle = header.querySelector("[data-menu-toggle]");
 		var menu = header.querySelector("[data-mobile-menu]");
 		if (toggle && menu) {
-			toggle.addEventListener("click", function () {
-				var abierto = !menu.classList.contains("hidden");
-				menu.classList.toggle("hidden", abierto);
-				toggle.setAttribute("aria-expanded", String(!abierto));
-				toggle.innerHTML = '<i data-lucide="' + (abierto ? "menu" : "x") + '" style="width:24px;height:24px"></i>';
+			var pintarMenu = function (abrir) {
+				menu.classList.toggle("hidden", !abrir);
+				toggle.setAttribute("aria-expanded", String(abrir));
+				toggle.innerHTML = '<i data-lucide="' + (abrir ? "x" : "menu") + '" style="width:24px;height:24px"></i>';
 				iconos();
+			};
+
+			toggle.addEventListener("click", function () {
+				pintarMenu(menu.classList.contains("hidden"));
+			});
+
+			// Elegir una opción cierra el menú. Con los enlaces de ancla es
+			// imprescindible: la página salta a la sección pero el menú se queda
+			// encima, tapando justo lo que se acaba de pedir ver.
+			menu.addEventListener("click", function (e) {
+				if (e.target.closest("a")) { pintarMenu(false); }
 			});
 		}
 
