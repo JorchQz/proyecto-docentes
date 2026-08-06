@@ -85,7 +85,7 @@
 			<p class="order-4 lg:order-none text-center text-[12px] text-mute">Esta es una muestra. La planeación completa se entrega al comprar.</p>
 
 			<!-- Por qué te sirve -->
-			<div class="order-7 lg:order-none bg-white rounded-2xl border border-line p-5">
+			<div class="order-8 lg:order-none bg-white rounded-2xl border border-line p-5">
 				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-3">Por qué te va a servir</p>
 				<ul class="flex flex-col gap-2.5 text-sm text-ink">
 					<li class="flex items-start gap-2"><i data-lucide="clock" class="w-4 h-4 mt-0.5 shrink-0" style="color:#059669"></i>Ahorra horas de planeación cada semana.</li>
@@ -125,21 +125,25 @@
 				<p class="text-xs text-mute text-center">Eliges trimestre o ciclo completo, y si lo quieres editable en Word.</p>
 			</div>
 
+			<!-- Confianza: pegada al botón, no al final de la página. Responde lo
+			     que frena el clic —sobre todo que se puede pagar en efectivo, que
+			     en México decide si alguien puede comprar— en el momento en que
+			     la duda aparece. Al final del todo casi nadie la veía. -->
+			<div class="order-6 lg:order-none bg-white rounded-2xl border border-line p-4 flex flex-col gap-2 text-sm text-mute">
+				<span class="inline-flex items-center gap-2 font-semibold text-ink"><i data-lucide="shield-check" class="w-4 h-4" style="color:#059669"></i> Compra protegida</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4"></i> Tarjeta, efectivo o SPEI con Mercado Pago</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> Acceso inmediato tras confirmar el pago</span>
+				<span class="inline-flex items-center gap-2"><i data-lucide="infinity" class="w-4 h-4"></i> Sin caducidad — queda en tu cuenta para siempre</span>
+			</div>
+
 			<!-- Proyectos que se enseñan, agrupados por trimestre -->
-			<div id="incluyeWrap" class="order-6 lg:order-none hidden border-t border-line pt-5">
+			<div id="incluyeWrap" class="order-7 lg:order-none hidden border-t border-line pt-5">
 				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute">Qué vas a enseñar</p>
 				<!-- Sin nota explicativa: el encabezado de cada grupo ("Trimestre 1 ·
 				     4 proyectos") ya dice qué entra en cada compra. -->
 				<ul id="incluyeLista" class="flex flex-col text-sm text-ink mt-3"></ul>
 			</div>
 
-			<!-- Confianza -->
-			<div class="order-8 lg:order-none bg-white rounded-2xl border border-line p-4 flex flex-col gap-2 text-sm text-mute">
-				<span class="inline-flex items-center gap-2 font-semibold text-ink"><i data-lucide="shield-check" class="w-4 h-4" style="color:#059669"></i> Compra protegida</span>
-				<span class="inline-flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4"></i> Tarjeta, efectivo o SPEI con Mercado Pago</span>
-				<span class="inline-flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> Acceso inmediato tras confirmar el pago</span>
-				<span class="inline-flex items-center gap-2"><i data-lucide="infinity" class="w-4 h-4"></i> Sin caducidad — queda en tu cuenta para siempre</span>
-			</div>
 		</div>
 	</div>
 
