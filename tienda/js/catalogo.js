@@ -26,6 +26,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	bindFiltros();
 
+	// Se puede llegar filtrado: catalogo.html?org=multigrado&mod=bidocente
+	var params = new URLSearchParams(location.search);
+	if (params.get("org") === "multigrado") { activarOrg("multigrado"); }
+	var modInicial = params.get("mod");
+	if (modInicial === "bidocente" || modInicial === "tridocente") {
+		modalidadActiva = modInicial;
+		chipsModalidadEl.querySelectorAll(".chip-mod").forEach(function (x) {
+			setChip(x, x.getAttribute("data-mod") === modInicial);
+		});
+	}
+
 	async function cargar() {
 		mostrarCargando();
 		var res = await window.sb
@@ -39,15 +50,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 		aplicarFiltros();
 	}
 
+	// Deja el filtro de organización en `org` y ajusta los chips y subfiltros.
+	// Se usa al pulsar un chip y también al llegar con ?org=multigrado desde la
+	// portada, para que los botones que prometen multigrado lo cumplan.
+	function activarOrg(org) {
+		orgActiva = org;
+		chipsOrgEl.querySelectorAll(".chip-org").forEach(function (x) {
+			setChip(x, x.getAttribute("data-org") === org);
+		});
+		subCompleta.classList.toggle("hidden", org !== "completa");
+		subMultigrado.classList.toggle("hidden", org !== "multigrado");
+		subMultigrado.classList.toggle("flex", org === "multigrado");
+	}
+
 	function bindFiltros() {
 		chipsOrgEl.addEventListener("click", function (e) {
 			var c = e.target.closest(".chip-org");
 			if (!c) { return; }
-			orgActiva = c.getAttribute("data-org");
-			chipsOrgEl.querySelectorAll(".chip-org").forEach(function (x) { setChip(x, x === c); });
-			subCompleta.classList.toggle("hidden", orgActiva !== "completa");
-			subMultigrado.classList.toggle("hidden", orgActiva !== "multigrado");
-			subMultigrado.classList.toggle("flex", orgActiva === "multigrado");
+			activarOrg(c.getAttribute("data-org"));
 			aplicarFiltros();
 		});
 		chipsGradoEl.addEventListener("click", function (e) {
