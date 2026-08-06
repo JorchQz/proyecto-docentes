@@ -282,6 +282,55 @@
 		els.forEach(function (el) { obs.observe(el); });
 	}
 
+	// ── Portadas desde las imágenes de vista previa ───────────────────────────
+	// Las tarjetas del catálogo y de la portada reutilizan la primera imagen de
+	// `previews/<slug>/` — la misma carpeta que alimenta la galería de la ficha,
+	// para que subir las imágenes una vez sirva para todo. Mientras la carpeta
+	// esté vacía, quien llama se queda con su marcador rayado.
+	function slugPreview(org, grado, combo) {
+		return org === "multigrado"
+			? "multi-" + (combo || "")
+			: "grado-" + grado;
+	}
+
+	var portadaCache = {}; // slug → Promise<url|null>; evita repedir al filtrar
+
+	function portadaPreview(slug) {
+		if (!slug || !window.sb) { return Promise.resolve(null); }
+		if (portadaCache[slug]) { return portadaCache[slug]; }
+
+		portadaCache[slug] = window.sb.storage
+			.from("assets")
+			.list("previews/" + slug, { limit: 10, sortBy: { column: "name", order: "asc" } })
+			.then(function (r) {
+				if (r.error || !r.data) { return null; }
+				// El listado incluye un marcador de carpeta vacía; fuera.
+				var img = r.data.filter(function (f) {
+					return f.name && /\.(jpe?g|png|webp)$/i.test(f.name);
+				})[0];
+				if (!img) { return null; }
+				return window.sb.storage.from("assets")
+					.getPublicUrl("previews/" + slug + "/" + img.name).data.publicUrl;
+			})
+			.catch(function () { return null; });
+
+		return portadaCache[slug];
+	}
+
+	// Cambia el marcador rayado por la portada real, si la hay. Se llama después
+	// de pintar la tarjeta: así el grid aparece de inmediato y las imágenes van
+	// entrando sin bloquear el render.
+	function pintarPortada(contenedor, slug, alt) {
+		portadaPreview(slug).then(function (url) {
+			if (!url || !contenedor) { return; }
+			contenedor.classList.remove("ph");
+			contenedor.textContent = "";
+			contenedor.style.background = "#f1f0ea";
+			contenedor.innerHTML = '<img src="' + esc(url) + '" alt="' + esc(alt || "") +
+				'" class="w-full h-full object-cover" loading="lazy">';
+		});
+	}
+
 	window.Tienda = {
 		SUPABASE_URL: SUPABASE_URL,
 		EDGE_BASE: EDGE_BASE,
@@ -300,5 +349,8 @@
 		montarNav: montarNav,
 		montarFooter: montarFooter,
 		revelar: revelar,
+		slugPreview: slugPreview,
+		portadaPreview: portadaPreview,
+		pintarPortada: pintarPortada,
 	};
 })();

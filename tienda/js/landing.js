@@ -23,6 +23,90 @@ async function cargarLanding() {
 
 	llenarPrecios(prods);
 	renderDestacados(prods);
+	renderMuestra(prods);
+}
+
+// Vista previa en la portada: enseña páginas reales antes de pedir nada. Busca
+// el primer paquete que ya tenga imágenes subidas en `previews/<slug>/` y las
+// muestra. Si todavía no hay ninguna, la sección se queda oculta.
+async function renderMuestra(prods) {
+	var seccion = document.getElementById("muestra");
+	var tira = document.getElementById("muestraTira");
+	if (!seccion || !tira || !prods.length) { return; }
+
+	// Un candidato por grado/combinación, en el orden en que se prefieren.
+	var vistos = {};
+	var candidatos = [];
+	prods.forEach(function (p) {
+		var slug = Tienda.slugPreview(p.organizacion, p.grado, p.grados_combo);
+		if (!slug || vistos[slug]) { return; }
+		vistos[slug] = true;
+		candidatos.push({
+			slug: slug,
+			esMulti: p.organizacion === "multigrado",
+			orden: p.organizacion === "multigrado" ? 100 : Number(p.grado || 99),
+			href: p.organizacion === "multigrado"
+				? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
+				: "producto.html?org=completa&g=" + encodeURIComponent(p.grado),
+			titulo: p.organizacion === "multigrado"
+				? "Multigrado " + comboDisplay(p.grados_combo)
+				: p.grado + "° Primaria",
+		});
+	});
+	candidatos.sort(function (a, b) { return a.orden - b.orden; });
+
+	// Se consultan a la vez y se toma el primero con imágenes, para no encadenar
+	// hasta once viajes de ida y vuelta cuando aún no hay nada subido.
+	var urls = await Promise.all(candidatos.map(function (c) {
+		return listarMuestra(c.slug);
+	}));
+	var i = urls.findIndex(function (u) { return u && u.length; });
+	if (i === -1) { return; }
+
+	var elegido = candidatos[i];
+	tira.innerHTML = urls[i].slice(0, 5).map(function (im) {
+		return '<a href="' + Tienda.esc(elegido.href) + '" class="shrink-0 w-[240px] sm:w-[280px] rounded-2xl overflow-hidden border border-line bg-paper block">' +
+			'<img src="' + Tienda.esc(im.url) + '" alt="Página de muestra · ' + Tienda.esc(elegido.titulo) + '" class="w-full h-[320px] sm:h-[380px] object-contain" loading="lazy">' +
+			'<span class="block px-3 py-2 text-[12px] font-semibold text-mute border-t border-line">' + Tienda.esc(im.etiqueta) + '</span>' +
+			'</a>';
+	}).join("");
+
+	var cta = document.getElementById("muestraCta");
+	if (cta) { cta.href = elegido.href; }
+
+	seccion.classList.remove("hidden");
+	Tienda.iconos();
+	Tienda.revelar();
+}
+
+// Mismas etiquetas que usa la galería de la ficha de producto.
+function etiquetaMuestra(nombre) {
+	var n = String(nombre).toLowerCase();
+	if (n.indexOf("anexo") !== -1) { return "Anexo para el alumno"; }
+	if (n.indexOf("examen") !== -1) { return "Examen del trimestre"; }
+	return "Planeación";
+}
+
+async function listarMuestra(slug) {
+	try {
+		var r = await window.sb.storage.from("assets").list("previews/" + slug, {
+			limit: 12,
+			sortBy: { column: "name", order: "asc" },
+		});
+		if (r.error || !r.data) { return []; }
+		return r.data
+			// El listado incluye un marcador de carpeta vacía; fuera.
+			.filter(function (f) { return f.name && /\.(jpe?g|png|webp)$/i.test(f.name); })
+			.map(function (f) {
+				return {
+					etiqueta: etiquetaMuestra(f.name),
+					url: window.sb.storage.from("assets")
+						.getPublicUrl("previews/" + slug + "/" + f.name).data.publicUrl,
+				};
+			});
+	} catch (_) {
+		return [];
+	}
 }
 
 function minPrecio(prods, filtro) {
@@ -127,6 +211,10 @@ function renderDestacados(prods) {
 	grupos = grupos.slice(0, 3);
 
 	grid.innerHTML = grupos.map(cardHtml).join("");
+	// Las portadas reales entran después, sin bloquear el pintado del grid.
+	grid.querySelectorAll("[data-portada]").forEach(function (el) {
+		Tienda.pintarPortada(el, el.getAttribute("data-slug"), el.getAttribute("data-alt"));
+	});
 	Tienda.iconos();
 }
 
@@ -145,12 +233,18 @@ function cardHtml(g) {
 		var gc = GRADO_COLOR[String(g.grado)] || { bg: "#e7e6df", txt: "#1c2434" };
 		badge = '<span style="background:' + gc.bg + ';color:' + gc.txt + '" class="absolute top-3 left-3 w-10 h-10 rounded-xl text-base font-black flex items-center justify-center shadow">' + esc(g.grado) + '°</span>';
 	} else {
-		badge = '<span class="absolute top-3 left-3 h-9 px-3 rounded-xl text-sm font-black flex items-center justify-center shadow" style="background:#1e3a8a;color:#fff">' + esc(g.modalidad === "bidocente" ? "Bidocente" : "Tridocente") + '</span>';
+		// bidocente = 2 docentes = 3 grados; tridocente = 3 docentes = 2 grados.
+		// Sin etiqueta si la modalidad no es una de las dos conocidas.
+		var etiqueta = g.modalidad === "bidocente" ? "Bidocente"
+			: g.modalidad === "tridocente" ? "Tridocente" : "";
+		badge = etiqueta
+			? '<span class="absolute top-3 left-3 h-9 px-3 rounded-xl text-sm font-black flex items-center justify-center shadow" style="background:#1e3a8a;color:#fff">' + esc(etiqueta) + '</span>'
+			: "";
 	}
 
 	return (
 		'<a href="' + href + '" class="prod-card bg-white border border-line rounded-3xl overflow-hidden flex flex-col">' +
-		'<div class="relative"><div class="ph h-44" style="border-radius:0">' + esc(titulo) + ' · portada</div>' + badge + '</div>' +
+		'<div class="relative"><div class="ph h-44 overflow-hidden" data-portada data-slug="' + esc(Tienda.slugPreview(g.org, g.grado, g.combo)) + '" data-alt="' + esc(titulo) + '" style="border-radius:0">' + esc(titulo) + ' · portada</div>' + badge + '</div>' +
 		'<div class="p-5 flex flex-col flex-1">' +
 		'<h3 class="font-bold text-lg text-ink leading-snug">' + esc(titulo) + '</h3>' +
 		'<p class="mt-1 text-sm text-mute">Proyectos, PDAs, anexos y examen.</p>' +

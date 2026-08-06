@@ -193,8 +193,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var titulo = esMulti
 			? "Multigrado " + comboDisplay(grupo.combo)
 			: grupo.grado + "° Primaria";
+		// bidocente = 2 docentes en la escuela = 3 grados por maestro;
+		// tridocente = 3 docentes = 2 grados. Es la convención del proyecto
+		// (supabase/marketplace_precios.sql). Si llegara otra cosa, mejor sin
+		// etiqueta que con una inventada por descarte.
 		var etiqueta = esMulti
-			? (grupo.modalidad === "bidocente" ? "Bidocente" : "Tridocente")
+			? (grupo.modalidad === "bidocente" ? "Bidocente"
+				: grupo.modalidad === "tridocente" ? "Tridocente" : "")
 			: (grupo.grado + "° grado");
 		var icono = esMulti ? "users" : "graduation-cap";
 
@@ -207,6 +212,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!esMulti) {
 			var gc = GRADO_COLOR[String(grupo.grado)] || { bg: "#e7e6df", txt: "#1c2434" };
 			badge = '<span style="background:' + gc.bg + ';color:' + gc.txt + '" class="absolute top-3 left-3 w-10 h-10 rounded-xl text-base font-black flex items-center justify-center shadow">' + esc(grupo.grado) + '°</span>';
+		} else if (!etiqueta) {
+			badge = "";
 		} else {
 			badge = '<span class="absolute top-3 left-3 h-9 px-3 rounded-xl text-sm font-black flex items-center justify-center shadow" style="background:#1e3a8a;color:#fff">' + esc(etiqueta) + '</span>';
 		}
@@ -218,7 +225,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		a.innerHTML =
 			'<div class="relative">' +
-			'<div class="ph h-40 rounded-none border-x-0 border-t-0" style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
+			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
 			badge +
 			'</div>' +
 			'<div class="p-5 flex flex-col flex-1">' +
@@ -236,6 +243,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'</div>' +
 			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#059669">Ver <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
 			'</div></div>';
+
+		// La portada real entra después, sin bloquear el pintado del grid.
+		Tienda.pintarPortada(
+			a.querySelector("[data-portada]"),
+			Tienda.slugPreview(orgActiva, grupo.grado, grupo.combo),
+			titulo
+		);
 		return a;
 	}
 
