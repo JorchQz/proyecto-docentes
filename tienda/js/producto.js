@@ -263,7 +263,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				// filas parecían un rótulo y no invitaban a tocarlas, mientras
 				// las preguntas —lo menos decisivo de la ficha— iban a 16px.
 				'<summary class="flex items-center justify-between gap-4 py-4">' +
-				'<span class="text-[15px] font-semibold text-ink">Trimestre ' + esc(t) +
+				'<span class="text-base font-semibold text-ink">Trimestre ' + esc(t) +
 				'<span class="block text-[13px] font-normal text-mute mt-0.5">' +
 				proyectos.length + " proyectos" +
 				(sesiones ? " · " + sesiones + " sesiones" : "") + "</span></span>" +
