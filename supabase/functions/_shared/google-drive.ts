@@ -18,6 +18,13 @@ export interface DriveFile {
   mimeType: string;
 }
 
+// Ítem descargable de un paquete (proyecto o examen), con las coordenadas que
+// la biblioteca necesita para agruparlo y nombrarlo.
+export interface PaqueteItem extends DriveFile {
+  trimestre: number | null; // 1-3 en paquetes de ciclo; null si no se conoce
+  codigo: string | null;    // "P01" y demás, tal como viene en Drive
+}
+
 // Archivo encontrado en un recorrido recursivo, con su ruta relativa.
 export interface WalkedFile {
   path: string; // ruta relativa desde la carpeta raíz del recorrido
@@ -153,15 +160,39 @@ export async function proyectosDeTrimestre(trimestreFolderId: string): Promise<D
   return subs.filter((f) => !esExamen(f.name));
 }
 
+// Código de orden del autor ("P01", "P 2"...) normalizado a P + dos dígitos.
+// Se conserva aparte del nombre legible: en la biblioteca sirve para que el
+// maestro localice un proyecto de un vistazo en una pantalla pequeña.
+export function codigoDeProyecto(name: string): string | null {
+  const m = String(name).match(/^\s*p\s*0*(\d+)/i);
+  return m ? "P" + m[1].padStart(2, "0") : null;
+}
+
 // Ítems DESCARGABLES de un trimestre = proyectos (P0X) + examen, en ese orden.
 // El examen es parte de la compra del paquete (las reglas por extensión deciden
 // qué archivos entra en pdf vs editable).
-async function itemsDeTrimestre(trimestreFolderId: string): Promise<DriveFile[]> {
+async function itemsDeTrimestre(
+  trimestreFolderId: string,
+  trimestre: number | null,
+): Promise<PaqueteItem[]> {
   const subs = soloCarpetas(await listDriveFolder(trimestreFolderId));
+  const marcar = (f: DriveFile): PaqueteItem => ({
+    ...f,
+    trimestre,
+    codigo: codigoDeProyecto(f.name),
+  });
   const proyectos = subs.filter((f) => esCarpetaProyecto(f.name));
   const examenes = subs.filter((f) => esExamen(f.name));
-  if (proyectos.length) return [...proyectos, ...examenes];
-  return subs; // sin convención: devolver todo
+  if (proyectos.length) return [...proyectos, ...examenes].map(marcar);
+  return subs.map(marcar); // sin convención: devolver todo
+}
+
+// Número de trimestre a partir del nombre de la carpeta ("T2", "Trimestre 2").
+// Si el nombre no lo dice, se cae a la posición dentro del paquete.
+function numeroDeTrimestre(name: string, posicion: number): number {
+  const m = String(name).match(/(\d+)/);
+  const n = m ? Number(m[1]) : NaN;
+  return n >= 1 && n <= 3 ? n : posicion + 1;
 }
 
 // Ítems descargables de un paquete, en orden (proyectos + examen por trimestre).
@@ -170,9 +201,10 @@ async function itemsDeTrimestre(trimestreFolderId: string): Promise<DriveFile[]>
 export async function listProyectoFolders(
   bundleFolderId: string,
   tipoPaquete: "trimestre" | "ciclo",
-): Promise<DriveFile[]> {
+): Promise<PaqueteItem[]> {
   if (tipoPaquete === "trimestre") {
-    return await itemsDeTrimestre(bundleFolderId);
+    // El trimestre lo conoce quien llama (viene del producto), no la carpeta.
+    return await itemsDeTrimestre(bundleFolderId, null);
   }
 
   const nivel1 = soloCarpetas(await listDriveFolder(bundleFolderId));
@@ -181,9 +213,12 @@ export async function listProyectoFolders(
     trimestres = nivel1.filter((f) => !/multigrado/i.test(f.name));
   }
 
-  const items: DriveFile[] = [];
-  for (const tri of trimestres) {
-    const its = await itemsDeTrimestre(tri.id);
+  const items: PaqueteItem[] = [];
+  for (let i = 0; i < trimestres.length; i++) {
+    const tri = trimestres[i];
+    // Sin esto, los tres exámenes del ciclo quedaban con el mismo nombre y no
+    // había forma de saber a qué trimestre pertenecía cada uno.
+    const its = await itemsDeTrimestre(tri.id, numeroDeTrimestre(tri.name, i));
     for (const it of its) items.push(it);
   }
   return items;

@@ -18,6 +18,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { zip } from "https://esm.sh/fflate@0.8.2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { mensajeError } from "../_shared/db.ts";
 import { downloadDriveFile, listProyectoFolders, walkDriveFolder } from "../_shared/google-drive.ts";
 import { aplicarPieDocx, aplicarPiePdf, textoPie } from "../_shared/watermark.ts";
 
@@ -166,6 +167,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     console.error("descargar-archivo error:", err);
-    return jsonResponse({ error: "Error interno: " + (err?.message || String(err)) }, 500);
+    return jsonResponse({ error: "Error interno: " + mensajeError(err) }, 500);
   }
 });

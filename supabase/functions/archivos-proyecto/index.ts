@@ -5,10 +5,12 @@
 // expone Drive IDs: cada archivo se identifica por su ruta relativa (path).
 //
 // GET /functions/v1/archivos-proyecto?acceso_id=<uuid>&proyecto=<n>
-//   → { proyecto, es_examen, tipo_acceso, archivos: [{ path, nombre, grupo, ext, ver, descarga }] }
+//   → { proyecto, codigo, trimestre, es_examen, tipo_acceso,
+//       archivos: [{ path, nombre, grupo, ext, ver, descarga }] }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { mensajeError } from "../_shared/db.ts";
 import { listProyectoFolders, walkDriveFolder } from "../_shared/google-drive.ts";
 
 function ext(name: string): string {
@@ -51,7 +53,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: producto, error: prodErr } = await admin
       .from("marketplace_productos")
-      .select("tipo_paquete, proyecto_folder_drive_id")
+      .select("tipo_paquete, trimestre, proyecto_folder_drive_id")
       .eq("id", acceso.producto_id)
       .maybeSingle();
     if (prodErr || !producto || !producto.proyecto_folder_drive_id) {
@@ -94,19 +96,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Nombre legible del proyecto (quita prefijo P0X / numeración).
+    // Nombre legible del proyecto (quita prefijo P0X / numeración). El código y
+    // el trimestre viajan aparte para que la biblioteca pueda ordenar y agrupar.
+    const trimestre = proyectoFolder.trimestre != null
+      ? proyectoFolder.trimestre
+      : (producto.trimestre != null ? Number(producto.trimestre) : null);
     const nombre = esExamen
-      ? "Examen del trimestre (maestro y alumno)"
+      ? (trimestre != null
+        ? "Examen del trimestre " + trimestre + " (maestro y alumno)"
+        : "Examen del trimestre (maestro y alumno)")
       : (proyectoFolder.name.replace(/^\s*p?\s*0*\d+[\s._-]+/i, "").trim() || proyectoFolder.name);
 
     return jsonResponse({
       proyecto: nombre,
+      codigo: proyectoFolder.codigo,
+      trimestre: trimestre,
       es_examen: esExamen,
       tipo_acceso: acceso.tipo,
       archivos,
     });
   } catch (err) {
     console.error("archivos-proyecto error:", err);
-    return jsonResponse({ error: "Error interno: " + (err?.message || String(err)) }, 500);
+    return jsonResponse({ error: "Error interno: " + mensajeError(err) }, 500);
   }
 });

@@ -13,6 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { mensajeError } from "../_shared/db.ts";
 import {
   carpetaTrimestreDeGrado,
   downloadDriveFile,
@@ -138,6 +139,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     console.error("anexo error:", err);
-    return jsonResponse({ error: "Error interno: " + (err?.message || String(err)) }, 500);
+    return jsonResponse({ error: "Error interno: " + mensajeError(err) }, 500);
   }
 });

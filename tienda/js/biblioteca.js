@@ -80,7 +80,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	estadoEl.classList.add("hidden");
 	bibGrid.classList.remove("hidden");
-	lista.forEach(function (p) { listaEl.appendChild(cardProyecto(p)); });
+	pintarLista(lista);
 	if (resumenPaquete) {
 		resumenPaquete.innerHTML =
 			'<div class="flex items-center justify-between"><span class="flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4"></i> Proyectos</span><span class="font-bold text-ink">' + lista.length + '</span></div>' +
@@ -88,14 +88,42 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 	Tienda.iconos();
 
+	// Un paquete de ciclo son quince carpetas seguidas. Sin separar por trimestre
+	// la lista es impracticable en un celular, y los tres exámenes se llamaban
+	// igual. Un paquete de un solo trimestre se deja tal cual: no hay nada que
+	// agrupar.
+	function pintarLista(lista) {
+		var trimestres = [];
+		var idx = {};
+		lista.forEach(function (p) {
+			var t = p.trimestre != null ? p.trimestre : 0;
+			if (!(t in idx)) { idx[t] = trimestres.length; trimestres.push({ t: t, items: [] }); }
+			trimestres[idx[t]].items.push(p);
+		});
+
+		var agrupar = trimestres.length > 1;
+		trimestres.forEach(function (g) {
+			if (agrupar) {
+				var titulo = document.createElement("p");
+				titulo.className = "text-[11px] font-bold uppercase tracking-[0.12em] text-mute mt-6 first:mt-0 mb-2";
+				titulo.textContent = g.t ? "Trimestre " + g.t : "Otros materiales";
+				listaEl.appendChild(titulo);
+			}
+			g.items.forEach(function (p) { listaEl.appendChild(cardProyecto(p)); });
+		});
+	}
+
 	function cardProyecto(p) {
 		var card = document.createElement("div");
 		card.className = "bg-white rounded-3xl border border-line overflow-hidden";
+		// El código (P01, P02...) va delante: es como el autor numera los
+		// proyectos y permite localizarlos de un vistazo en pantalla pequeña.
+		var etiqueta = p.codigo ? p.codigo + " · " + p.nombre : p.nombre;
 		card.innerHTML =
 			'<button class="cab w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-paper transition">' +
 			'<span class="flex items-center gap-3 min-w-0">' +
-			'<span class="w-9 h-9 rounded-xl bg-gisMenta/20 text-action-dark flex items-center justify-center shrink-0"><i data-lucide="folder" class="w-5 h-5"></i></span>' +
-			'<span class="font-bold text-ink truncate">' + esc(p.nombre) + "</span>" +
+			'<span class="w-9 h-9 rounded-xl bg-gisMenta/20 text-action-dark flex items-center justify-center shrink-0"><i data-lucide="' + (p.es_examen ? "clipboard-check" : "folder") + '" class="w-5 h-5"></i></span>' +
+			'<span class="font-bold text-ink truncate">' + esc(etiqueta) + "</span>" +
 			"</span>" +
 			'<i data-lucide="chevron-down" class="chevron transition-transform -rotate-90 w-5 h-5 text-mute shrink-0"></i>' +
 			"</button>" +
@@ -166,11 +194,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: (a.ext === "docx"
 				? '<span class="text-[10px] font-bold px-2 h-5 rounded-full inline-flex items-center shrink-0" style="background:#e3f2fd;color:#0d47a1;border:1px solid #bbdefb">Word</span>'
 				: "");
+		// En móvil el nombre va en su propia línea y los botones debajo: en una
+		// sola fila el `truncate` cortaba el archivo por la mitad
+		// ("Planeacion_1G-2G-3...") justo cuando más falta hace distinguirlo.
 		return (
-			'<div class="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-paper">' +
-			'<span class="text-sm min-w-0 truncate flex items-center gap-2 text-ink">' +
-			'<i data-lucide="' + iconoName + '" class="w-4 h-4 shrink-0 text-mute"></i>' + esc(a.nombre) + "</span>" +
-			'<div class="flex items-center gap-2 shrink-0">' + fmtBadge + btns + "</div></div>"
+			'<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 rounded-xl px-3 py-2.5 bg-paper">' +
+			'<span class="text-sm min-w-0 flex items-start sm:items-center gap-2 text-ink break-words sm:truncate">' +
+			'<i data-lucide="' + iconoName + '" class="w-4 h-4 shrink-0 text-mute mt-0.5 sm:mt-0"></i>' +
+			'<span class="min-w-0 sm:truncate">' + esc(a.nombre) + "</span>" +
+			"</span>" +
+			'<div class="flex items-center justify-end gap-2 shrink-0">' + fmtBadge + btns + "</div></div>"
 		);
 	}
 

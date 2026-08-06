@@ -8,6 +8,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { mensajeError } from "../_shared/db.ts";
 import { downloadDriveFile, listDriveFolder, primerProyectoFolder } from "../_shared/google-drive.ts";
 
 const PAGINAS_MUESTRA = 3;
@@ -78,6 +79,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     console.error("previsualizar error:", err);
-    return jsonResponse({ error: "Error interno: " + (err?.message || String(err)) }, 500);
+    return jsonResponse({ error: "Error interno: " + mensajeError(err) }, 500);
   }
 });
