@@ -259,10 +259,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// justifica el precio y esconderlas sería tirarlo.
 			return '<li>' +
 				'<details class="bg-white border border-line rounded-2xl px-5">' +
+				// Peso de contenido, no de etiqueta: en versalitas de 11px estas
+				// filas parecían un rótulo y no invitaban a tocarlas, mientras
+				// las preguntas —lo menos decisivo de la ficha— iban a 16px.
 				'<summary class="flex items-center justify-between gap-4 py-4">' +
-				'<span class="text-[11px] font-bold uppercase tracking-[0.1em]" style="color:#1e3a8a">' +
-				"Trimestre " + esc(t) + " · " + proyectos.length + " proyectos" +
-				(sesiones ? " · " + sesiones + " sesiones" : "") + "</span>" +
+				'<span class="text-[15px] font-semibold text-ink">Trimestre ' + esc(t) +
+				'<span class="block text-[13px] font-normal text-mute mt-0.5">' +
+				proyectos.length + " proyectos" +
+				(sesiones ? " · " + sesiones + " sesiones" : "") + "</span></span>" +
 				'<i data-lucide="plus" class="faq-plus w-5 h-5 shrink-0" style="color:#1e3a8a"></i>' +
 				"</summary>" +
 				'<ul class="flex flex-col gap-2.5 pb-5">' +

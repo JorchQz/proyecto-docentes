@@ -147,73 +147,17 @@
 		</div>
 	</div>
 
-	<!-- Info extra (se revela al cargar el paquete) -->
-	<div id="infoExtra" class="hidden flex flex-col gap-14 mt-16 lg:mt-20">
-
-		<!-- Contenido del paquete -->
-		<section>
-			<h2 class="font-black text-ink text-2xl mb-6">Contenido del paquete</h2>
-			<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-				<div class="bg-white border border-line rounded-3xl p-6">
-					<span class="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style="background:rgba(121,200,166,.2);color:#047a55"><i data-lucide="layers" class="w-5 h-5"></i></span>
-					<h3 class="font-bold text-ink text-lg mb-2">Proyectos completos</h3>
-					<p class="text-mute text-[15px] leading-relaxed">Cada proyecto incluye todos los momentos metodológicos (inicio, desarrollo y cierre) para cada sesión.</p>
-					<ul class="mt-3 space-y-1.5 text-[14px] text-ink">
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Cuatro proyectos por trimestre</li>
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Sesiones con momentos y tiempos</li>
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Campos formativos integrados</li>
-					</ul>
-				</div>
-				<div class="bg-white border border-line rounded-3xl p-6">
-					<span class="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style="background:rgba(242,207,107,.25);color:#1e3a8a"><i data-lucide="target" class="w-5 h-5"></i></span>
-					<h3 class="font-bold text-ink text-lg mb-2">PDAs por grado</h3>
-					<p class="text-mute text-[15px] leading-relaxed">Procesos de Desarrollo de Aprendizaje elaborados específicamente para el grado del paquete, siguiendo los programas NEM.</p>
-					<ul class="mt-3 space-y-1.5 text-[14px] text-ink">
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Por proyecto y sesión</li>
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Con criterios de evaluación</li>
-					</ul>
-				</div>
-				<div class="bg-white border border-line rounded-3xl p-6">
-					<span class="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style="background:rgba(239,146,119,.2);color:#ef9277"><i data-lucide="puzzle" class="w-5 h-5"></i></span>
-					<h3 class="font-bold text-ink text-lg mb-2">Actividades diferenciadas</h3>
-					<p class="text-mute text-[15px] leading-relaxed">Actividades adaptadas para cada sesión que consideran distintos ritmos y estilos de aprendizaje.</p>
-					<ul class="mt-3 space-y-1.5 text-[14px] text-ink">
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Por cada sesión del proyecto</li>
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Materiales de apoyo incluidos</li>
-					</ul>
-				</div>
-				<div class="bg-white border border-line rounded-3xl p-6">
-					<span class="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style="background:rgba(169,159,224,.25);color:#a99fe0"><i data-lucide="paperclip" class="w-5 h-5"></i></span>
-					<h3 class="font-bold text-ink text-lg mb-2">Anexos para el alumno</h3>
-					<p class="text-mute text-[15px] leading-relaxed">Material complementario listo para imprimir y entregar directamente a los alumnos.</p>
-					<ul class="mt-3 space-y-1.5 text-[14px] text-ink">
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Fichas de trabajo</li>
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Lecturas y recursos de apoyo</li>
-					</ul>
-				</div>
-				<div class="bg-white border border-line rounded-3xl p-6">
-					<span class="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style="background:rgba(133,184,230,.25);color:#1e3a8a"><i data-lucide="clipboard-check" class="w-5 h-5"></i></span>
-					<h3 class="font-bold text-ink text-lg mb-2">Examen de trimestre</h3>
-					<p class="text-mute text-[15px] leading-relaxed">Instrumento de evaluación alineado a los aprendizajes del trimestre, listo para reproducir.</p>
-					<ul class="mt-3 space-y-1.5 text-[14px] text-ink">
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Uno por trimestre</li>
-						<li class="flex gap-2"><i data-lucide="corner-down-right" class="w-4 h-4 text-mute shrink-0 mt-0.5"></i> Formato listo para imprimir</li>
-					</ul>
-				</div>
-				<div class="rounded-3xl p-6 text-white" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,4px 4px">
-					<span class="w-11 h-11 rounded-2xl bg-white/15 text-white flex items-center justify-center mb-4"><i data-lucide="download" class="w-5 h-5"></i></span>
-					<h3 class="font-bold text-lg mb-2">Acceso inmediato</h3>
-					<p class="text-white/80 text-[15px] leading-relaxed">Al confirmar el pago, todos los archivos quedan disponibles en tu biblioteca para descargar cuando quieras.</p>
-					<div class="mt-4 flex items-center gap-2 text-[14px] font-semibold" style="color:#79c8a6">
-						<i data-lucide="infinity" class="w-4 h-4"></i> Sin caducidad ni límite de descargas
-					</div>
-				</div>
-			</div>
-		</section>
+	<!-- Preguntas del paquete (se revelan al cargar). Aquí vivían también seis
+	     tarjetas de "Contenido del paquete", pero repetían una por una lo que ya
+	     dicen los datos del paquete y "Por qué te va a servir", y ocupaban más
+	     de la mitad de la ficha. -->
+	<div id="infoExtra" class="hidden flex flex-col mt-16 lg:mt-20">
 
 		<!-- FAQ del producto -->
 		<section class="max-w-2xl">
-			<h2 class="font-black text-ink text-2xl mb-5">Preguntas sobre este paquete</h2>
+			<!-- Sin `font-black text-2xl`: las preguntas son lo menos decisivo de
+			     la ficha y pesaban más que el temario, que es lo que vende. -->
+			<h2 class="font-bold text-ink text-xl mb-4">Preguntas sobre este paquete</h2>
 			<div class="space-y-2">
 				<details class="bg-white border border-line rounded-2xl px-5">
 					<summary class="flex items-center justify-between gap-4 py-4 font-semibold text-ink">¿Puedo ver más páginas de muestra antes de comprar? <i data-lucide="plus" class="faq-plus w-5 h-5 shrink-0" style="color:#1e3a8a"></i></summary>
