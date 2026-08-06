@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var metaEl = document.getElementById("meta");
 	var incluyeWrap = document.getElementById("incluyeWrap");
 	var incluyeLista = document.getElementById("incluyeLista");
+	var precioMinimo = null; // el "desde" que calcula renderPrecios(); lo reusa la barra móvil
 
 	var params = new URLSearchParams(location.search);
 	var org = params.get("org") || "completa";
@@ -173,6 +174,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.filter(function (v) { return v != null; })
 			.map(Number);
 		var minimo = precios.length ? Math.min.apply(null, precios) : null;
+		precioMinimo = minimo;
 
 		document.getElementById("precioDesde").textContent = minimo != null ? money(minimo) : "—";
 		document.getElementById("precioNota").textContent = losTrimestres().length
@@ -404,16 +406,68 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (e.key === "Escape" && !modal.classList.contains("hidden")) { cerrarModal(); }
 	});
 
+	// ── Barra de compra fija en móvil ─────────────────────────────────────────
+	// Repite el CTA cuando el botón original ya no está a la vista. Una sola
+	// función decide si se ve, para que el estado del observador y el del modal
+	// no se puedan desincronizar.
+	var barra = document.getElementById("barraCompra");
+	var botonVisible = true;  // el CTA original está a la vista
+	var botonArriba = false;  // el CTA original se fue por arriba
+	var tituloFuera = false;  // el encabezado se fue por arriba
+
+	function sincronizarBarra() {
+		if (!barra) { return; }
+		// Se muestra si el CTA no está a la vista y el maestro ya bajó lo
+		// suficiente: o el botón quedó arriba, o al menos el título ya pasó.
+		var visible = !botonVisible && (botonArriba || tituloFuera) &&
+			modal.classList.contains("hidden");
+		barra.classList.toggle("hidden", !visible);
+		document.body.classList.toggle("con-barra-compra", visible);
+	}
+
+	if (barra && "IntersectionObserver" in window) {
+		var barraPrecio = document.getElementById("barraCompraPrecio");
+		if (barraPrecio) {
+			// Reutiliza el mínimo que ya calculó renderPrecios(). Aquí va el
+			// formato corto ("$349"): el largo con " MXN" no cabe en la barra.
+			barraPrecio.textContent = precioMinimo != null ? montoCorto(precioMinimo) : "—";
+		}
+		var barraBtn = document.getElementById("barraCompraBtn");
+		if (barraBtn) { barraBtn.addEventListener("click", abrirModal); }
+
+		// El título hace de centinela. Sin él la barra nunca saldría para quien
+		// se queda a media galería: el observador del botón no vuelve a
+		// dispararse mientras el botón siga por debajo del pliegue.
+		new IntersectionObserver(function (entradas) {
+			entradas.forEach(function (e) {
+				tituloFuera = !e.isIntersecting && e.boundingClientRect.top < 0;
+			});
+			sincronizarBarra();
+		}, { threshold: 0 }).observe(tituloEl);
+
+		new IntersectionObserver(function (entradas) {
+			entradas.forEach(function (e) {
+				botonVisible = e.isIntersecting;
+				// top < 0 ⇒ quedó ARRIBA. En la carga inicial está por debajo
+				// (top > 0), así que la barra no sale de entrada.
+				botonArriba = !e.isIntersecting && e.boundingClientRect.top < 0;
+			});
+			sincronizarBarra();
+		}, { threshold: 0 }).observe(document.getElementById("comprarBtn"));
+	}
+
 	function abrirModal() {
 		renderPaso1();
 		irPaso(1);
 		modal.classList.remove("hidden");
 		document.body.style.overflow = "hidden";
 		Tienda.iconos();
+		sincronizarBarra();
 	}
 	function cerrarModal() {
 		modal.classList.add("hidden");
 		document.body.style.overflow = "";
+		sincronizarBarra();
 	}
 	function irPaso(n) {
 		pasoActual = n;

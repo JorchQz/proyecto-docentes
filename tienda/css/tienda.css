@@ -79,6 +79,16 @@ body {
 .prod-card { transition: transform .2s ease, box-shadow .2s ease; }
 .prod-card:hover { transform: translateY(-3px); box-shadow: 0 16px 36px -22px rgba(28,36,52,.38); }
 
+/* ---- Barra de compra fija en móvil (ficha de producto) ----
+   La barra es position:fixed, así que no reserva espacio por sí sola: el padding
+   del body es lo que evita que tape el final de la página. producto.js pone y
+   quita la clase. */
+.barra-compra { padding-bottom: env(safe-area-inset-bottom, 0px); }
+body.con-barra-compra { padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)); }
+/* En escritorio la barra está oculta; si se redimensiona la ventana sin recargar,
+   la clase puede quedarse puesta y dejaría un hueco fantasma. */
+@media (min-width: 1024px) { body.con-barra-compra { padding-bottom: 0; } }
+
 /* ---- FAQ / details ---- */
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
