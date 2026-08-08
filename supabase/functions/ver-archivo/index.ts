@@ -2,7 +2,7 @@
 //
 // Sirve UN archivo de un paquete comprado, identificándolo por su ruta relativa.
 // Aplica el pie de página SOLO a la planeación (raíz del proyecto); anexos y examen
-// van limpios. Respeta el tier (el .docx de planeación/examen solo para 'editable').
+// van limpios. El .docx de cualquier archivo requiere el add-on de Word.
 //
 // GET /functions/v1/ver-archivo?acceso_id=<uuid>&proyecto=<n>&path=<ruta>&modo=inline|download
 //
@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
-import { downloadDriveFile, listProyectoFolders, walkDriveFolder } from "../_shared/google-drive.ts";
+import { downloadDriveFile, listProyectoFolders, puedeEntregarArchivo, walkDriveFolder } from "../_shared/google-drive.ts";
 import { aplicarPieDocx, aplicarPiePdf, textoPie } from "../_shared/watermark.ts";
 
 const MIME: Record<string, string> = {
@@ -91,10 +91,8 @@ Deno.serve(async (req: Request) => {
     const e = ext(archivo.name);
     const esDocx = e === "docx";
     const esPdf = e === "pdf";
-    const esAnexo = !esExamen && !enRaiz;
-
-    // Tier: .docx de planeación/examen solo para editable.
-    if (esDocx && !esAnexo && !esEditable) {
+    // Tier: el DOCX es un add-on de todo o nada (ver puedeEntregarArchivo).
+    if (!puedeEntregarArchivo(archivo.name, esEditable)) {
       return jsonResponse({ error: "Esta versión requiere la compra editable" }, 403);
     }
 

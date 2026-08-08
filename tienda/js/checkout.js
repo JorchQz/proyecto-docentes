@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// Resumen
 	resumenTitulo.textContent = p.titulo;
-	resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable (Word) — incluye PDF";
+	resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word";
 	resumenPrecio.textContent = money(precio);
 
 	// Con el add-on de Word mostramos de dónde sale el total: el PDF cuesta lo

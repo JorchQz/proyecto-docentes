@@ -609,10 +609,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			opciones.push({
 				tipo: "editable",
 				nombre: "PDF + Word editable",
-				detalle: "Adáptala a tu grupo: cambia nombres, tiempos y actividades.",
+				// El examen se nombra aparte: es el archivo que más se adapta al
+				// grupo y el argumento que sostiene este add-on.
+				detalle: "Planeación, anexos y examen en Word: ajusta el examen a lo que alcanzaste a ver.",
 				precio: p.precio_editable,
 				desglose: addon > 0
-					? montoCorto(p.precio_pdf) + " del PDF + " + montoCorto(addon) + " por el Word · los " + proyectos + " proyectos editables"
+					? montoCorto(p.precio_pdf) + " del PDF + " + montoCorto(addon) + " por el Word · todo el paquete editable"
 					: null,
 				comprado: !!acc.editable,
 				recomendado: true,

@@ -35,6 +35,21 @@ export interface WalkedFile {
 
 export const FOLDER_MIME = "application/vnd.google-apps.folder";
 
+// Regla única de entrega por tier, para que las tres funciones que sirven
+// archivos (ver-archivo, descargar-archivo, archivos-proyecto) no se
+// desincronicen: el DOCX es un add-on de TODO O NADA sobre el paquete.
+//
+//   base      → todo en PDF: planeación, anexos y examen.
+//   editable  → además el DOCX de todos ellos, examen incluido.
+//
+// Antes los anexos en .docx se entregaban también en el tier base. Se unifica
+// porque el examen es el archivo que más se adapta al grupo y es lo que
+// sostiene la compra del add-on; dejar puertas abiertas lo vacía de sentido.
+export function puedeEntregarArchivo(nombre: string, esEditable: boolean): boolean {
+  const esDocx = /\.docx$/i.test(nombre);
+  return !esDocx || esEditable;
+}
+
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function getServiceAccount(): ServiceAccount {

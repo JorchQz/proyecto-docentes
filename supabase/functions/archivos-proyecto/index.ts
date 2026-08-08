@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
-import { listProyectoFolders, walkDriveFolder } from "../_shared/google-drive.ts";
+import { listProyectoFolders, puedeEntregarArchivo, walkDriveFolder } from "../_shared/google-drive.ts";
 
 function ext(name: string): string {
   const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
@@ -75,12 +75,10 @@ Deno.serve(async (req: Request) => {
     for (const f of walked) {
       const enRaiz = !f.path.includes("/");
       const e = ext(f.name);
-      const esDocx = e === "docx";
       const esPdf = e === "pdf";
-      const esAnexo = !esExamen && !enRaiz;
 
-      // Tier: el .docx de planeación/examen solo para editable. Anexos completos.
-      if (esDocx && !esAnexo && !esEditable) continue;
+      // Tier: el DOCX es un add-on de todo o nada (ver puedeEntregarArchivo).
+      if (!puedeEntregarArchivo(f.name, esEditable)) continue;
 
       const grupo = enRaiz
         ? (esExamen ? "Examen" : "Planeación")

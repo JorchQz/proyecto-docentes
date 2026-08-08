@@ -9,24 +9,20 @@
 //   - proyecto:  índice (0-based) del proyecto dentro del paquete
 //
 // Reglas por extensión dentro del proyecto:
-//   - .pdf  → marca de agua, incluido siempre
-//   - .docx → marca de agua, incluido SOLO si el acceso es 'editable'
-//   - otros (anexos) → tal cual, incluidos siempre
+//   - .pdf  → marca de agua en la planeacion, incluido siempre
+//   - .docx → SOLO si el acceso es 'editable' (add-on de todo o nada)
+//   - otros → tal cual, incluidos siempre
 //
 // Cabecera requerida: Authorization: Bearer <access_token del usuario>
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { zip } from "https://esm.sh/fflate@0.8.2";
+// zipSync y no zip: la variante asincrona arranca un Web Worker y el runtime
+// de las Edge Functions no los admite ("Classic workers are not supported").
+import { zipSync } from "https://esm.sh/fflate@0.8.2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
-import { downloadDriveFile, listProyectoFolders, walkDriveFolder } from "../_shared/google-drive.ts";
+import { downloadDriveFile, listProyectoFolders, puedeEntregarArchivo, walkDriveFolder } from "../_shared/google-drive.ts";
 import { aplicarPieDocx, aplicarPiePdf, textoPie } from "../_shared/watermark.ts";
-
-function zipAsync(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    zip(entries, { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
-  });
-}
 
 function esDocx(name: string): boolean {
   return name.toLowerCase().endsWith(".docx");
@@ -119,20 +115,16 @@ Deno.serve(async (req: Request) => {
     const texto = textoPie(String(nombre), perfil?.cct || null);
 
     // 5. Construir el ZIP.
-    //  - Planeación (archivos en la raíz del proyecto): pie de página; .docx solo si editable.
-    //  - Anexos (en subcarpetas, p. ej. "Sesion 1"): SIN pie, completos en ambos tiers.
-    //  - Examen: SIN pie (lo llevan los alumnos); .docx solo si editable.
+    //  - Planeación (archivos en la raíz del proyecto): lleva pie de página.
+    //  - Anexos (subcarpetas) y examen: SIN pie, los ven los alumnos.
+    //  - El .docx de cualquiera de ellos, solo con el add-on de Word.
     const entries: Record<string, Uint8Array> = {};
     for (const f of archivos) {
       const enRaiz = !f.path.includes("/");
       const docx = esDocx(f.name);
       const pdf = esPdf(f.name);
-      // Material del alumno = anexos (subcarpetas de un proyecto). El examen NO es anexo.
-      const esAnexo = !esItemExamen && !enRaiz;
-
-      // Filtro por tier: los .docx de planeación/examen solo para 'editable'.
-      // Los anexos van completos siempre (sean pdf o docx).
-      if (docx && !esAnexo && !incluirDocx) continue;
+      // Tier: el DOCX es un add-on de todo o nada (ver puedeEntregarArchivo).
+      if (!puedeEntregarArchivo(f.name, incluirDocx)) continue;
 
       let bytes = await downloadDriveFile(f.id);
 
@@ -151,7 +143,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "No hay archivos para entregar en este tipo de acceso" }, 404);
     }
 
-    const zipBytes = await zipAsync(entries);
+    const zipBytes = zipSync(entries, { level: 6 });
     const base = (producto.titulo || "paquete").replace(/[^\w\sáéíóúñ-]/gi, "");
     const carpeta = (proyectoFolder.name || ("proyecto-" + (proyectoIdx + 1))).replace(/[^\w\sáéíóúñ-]/gi, "");
     const nombreZip = base + " - " + carpeta + ".zip";
