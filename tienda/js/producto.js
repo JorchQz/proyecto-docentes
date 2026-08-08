@@ -611,7 +611,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				nombre: "PDF + Word editable",
 				// El examen se nombra aparte: es el archivo que más se adapta al
 				// grupo y el argumento que sostiene este add-on.
-				detalle: "Planeación, anexos y examen en Word: ajusta el examen a lo que alcanzaste a ver.",
+				detalle: "Planeación, anexos y examen en Word, para adaptarlos a tu grupo.",
 				precio: p.precio_editable,
 				desglose: addon > 0
 					? montoCorto(p.precio_pdf) + " del PDF + " + montoCorto(addon) + " por el Word · todo el paquete editable"
