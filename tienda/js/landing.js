@@ -157,7 +157,7 @@ function llenarPrecios(prods) {
 		var ahorro = trim * 3 - ciclo;
 		var el = document.getElementById("ahorroCiclo");
 		if (el && ahorro > 0) {
-			el.textContent = "Ahorras " + montoCorto(ahorro) + " frente a comprar los tres trimestres sueltos";
+			el.textContent = "Ahorras " + montoCorto(ahorro) + " frente a comprar los tres trimestres por separado";
 			el.classList.remove("hidden");
 		}
 	}

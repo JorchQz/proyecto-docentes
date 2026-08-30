@@ -562,7 +562,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				'<p class="text-[13px] text-mute mt-0.5">' + proyectos + " proyectos" +
 				(esCiclo ? " · los tres trimestres" : " · anexos y examen") + "</p>" +
 				(destacado
-					? '<p class="text-[13px] font-bold mt-1.5" style="color:#166534">Ahorras ' + montoCorto(ahorro) + " frente a comprarlos sueltos</p>"
+					? '<p class="text-[13px] font-bold mt-1.5" style="color:#166534">Ahorras ' + montoCorto(ahorro) + " frente a comprarlos por separado</p>"
 					: "") +
 				(yaLoTiene ? '<p class="text-[12px] font-semibold mt-1" style="color:#1e3a8a">Ya lo tienes</p>' : "") +
 				"</div>" +
@@ -953,7 +953,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					'<span class="font-bold text-ink">' + esc(o.nombre) + "</span>" +
 					'<p class="text-[13px] text-mute mt-0.5">' + esc(o.detalle) + "</p>" +
 					(destacado
-						? '<p class="text-[13px] font-bold mt-1.5" style="color:#166534">Ahorras ' + montoCorto(ahorroCiclo) + " frente a comprarlos sueltos</p>"
+						? '<p class="text-[13px] font-bold mt-1.5" style="color:#166534">Ahorras ' + montoCorto(ahorroCiclo) + " frente a comprarlos por separado</p>"
 						: "") +
 					(o.disp ? "" : '<p class="text-[12px] font-semibold mt-1" style="color:#9ba3af">Disponible próximamente</p>') +
 					"</div>" +
