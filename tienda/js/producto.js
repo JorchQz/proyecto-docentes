@@ -40,6 +40,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var esMulti = org === "multigrado";
 
+	// Ficha del paquete unitario (el combo para quien atiende los 6 grados).
+	// No existe como producto en la base —el precio vive en el tarifario y la
+	// orden la arma crear-preferencia-mp—, así que se pinta con su propio
+	// flujo y el normal ni se inicia.
+	if (esMulti && combo === "unitaria") {
+		await flujoUnitaria();
+		return;
+	}
+
 	var GRADO_COLOR = { "1":"#f2cf6b","2":"#ef9277","3":"#79c8a6","4":"#a99fe0","5":"#85b8e6","6":"#f0b285" };
 	var GRADO_TXT = { "1":"rgba(30,58,138,.85)","2":"#fff","3":"rgba(30,58,138,.85)","4":"#fff","5":"rgba(30,58,138,.85)","6":"rgba(30,58,138,.85)" };
 
@@ -706,5 +715,410 @@ document.addEventListener("DOMContentLoaded", async function () {
 		previewVacio.classList.remove("hidden");
 		previewVacio.classList.add("flex");
 		Tienda.iconos();
+	}
+
+	// ── Ficha del paquete unitario ────────────────────────────────────────────
+	// Misma página y mismo modal que las demás fichas, pero con tres pasos:
+	// agrupación (combos de 2 o de 3 grados) → paquete → versión. Corre ANTES
+	// de que el flujo normal inicialice su estado, así que busca sus elementos
+	// y solo comparte los helpers puros (radio, pintarSeleccion, montoCorto) y
+	// la galería, cuyas variables asigna ella misma.
+	async function flujoUnitaria() {
+		var AGRUPACIONES = [
+			{ clave: "tridocente", nombre: "Combos de 2 grados", detalle: "3 paquetes: 1°-2°, 3°-4° y 5°-6°", combos: ["1-2", "3-4", "5-6"] },
+			{ clave: "bidocente", nombre: "Combos de 3 grados", detalle: "2 paquetes: 1°-2°-3° y 4°-5°-6°", combos: ["1-2-3", "4-5-6"] },
+		];
+
+		// Tarifa del combo (RPC del tarifario; el cobro real lo recalcula la
+		// Edge Function) y paquetes multigrado publicados, para saber qué
+		// opciones están completas.
+		var rTrim = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "trimestre" });
+		var rCiclo = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "ciclo" });
+		var rProds = await window.sb
+			.from("marketplace_productos")
+			.select("id, grados_combo, modalidad, tipo_paquete, trimestre, precio_pdf, precio_editable")
+			.eq("activo", true)
+			.eq("organizacion", "multigrado");
+		if (rTrim.error || rCiclo.error || !rTrim.data || !rCiclo.data || rProds.error) {
+			estadoEl.textContent = "Este paquete no está disponible.";
+			return;
+		}
+		var tarifas = { trimestre: rTrim.data, ciclo: rCiclo.data };
+		var multigrados = rProds.data || [];
+
+		function disponible(agr, tipoPaquete, trimestre) {
+			return agr.combos.every(function (c) {
+				return multigrados.some(function (p) {
+					return p.modalidad === agr.clave && p.grados_combo === c &&
+						p.tipo_paquete === tipoPaquete &&
+						(tipoPaquete === "ciclo" || Number(p.trimestre) === trimestre);
+				});
+			});
+		}
+		function agrupacionDisponible(agr) {
+			return disponible(agr, "ciclo") ||
+				[1, 2, 3].some(function (t) { return disponible(agr, "trimestre", t); });
+		}
+
+		// ── Cabecera y datos ──
+		var tituloPagina = "Multigrado Unitaria de Primaria";
+		document.title = "Planeaciones " + tituloPagina + " — Jissez";
+		var bc = document.getElementById("breadcrumbNombre");
+		if (bc) { bc.textContent = "Unitaria"; }
+		tituloEl.textContent = tituloPagina;
+		descripcionEl.textContent = "Para el maestro que atiende los seis grados: todos los paquetes multigrado en una sola compra, con descuento. Tú decides si organizas el aula en combos de 2 o de 3 grados.";
+		badgesEl.innerHTML =
+			'<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-bold" style="background:rgba(30,58,138,.1);color:#1e3a8a">1° a 6°</span>' +
+			'<span class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-semibold" style="background:rgba(30,58,138,.08);color:#1e3a8a"><i data-lucide="badge-check" class="w-3.5 h-3.5"></i> Alineado a la NEM</span>' +
+			'<span class="inline-flex items-center h-8 px-3 rounded-full text-[13px]" style="background:#f1f0ea;color:#5b6473">Unitaria</span>';
+
+		metaEl.innerHTML = [
+			["Formato", "PDF o PDF + Word editable"],
+			["Disponible por", "Trimestre o ciclo completo"],
+			["Cobertura", "Los 6 grados, en combos de 2 o de 3"],
+			["Incluye", "Planeación + anexos + examen"],
+		].map(function (m) {
+			return '<div><dt class="text-[11px] font-bold uppercase tracking-[0.1em]" style="color:#5b6473">' + esc(m[0]) + "</dt>" +
+				'<dd class="font-semibold mt-0.5" style="color:#1c2434">' + esc(m[1]) + "</dd></div>";
+		}).join("");
+
+		// ── Precio de entrada ──
+		var desde = Number(tarifas.trimestre.precio_pdf);
+		precioMinimo = desde;
+		document.getElementById("precioDesde").textContent = money(desde);
+		document.getElementById("precioNota").textContent = "por trimestre · incluye todos los combos";
+		var ahorroCiclo = desde * 3 - Number(tarifas.ciclo.precio_pdf);
+		if (ahorroCiclo > 0) {
+			var badgeAhorro = document.getElementById("ahorroBadge");
+			badgeAhorro.textContent = "Ahorras " + montoCorto(ahorroCiclo) + " con el ciclo";
+			badgeAhorro.classList.remove("hidden");
+		}
+
+		estadoEl.classList.add("hidden");
+		contenidoEl.classList.remove("hidden");
+		var infoExtra = document.getElementById("infoExtra");
+		if (infoExtra) { infoExtra.classList.remove("hidden"); }
+		Tienda.iconos();
+
+		// ── Modal de compra: tres decisiones, una por pantalla ──
+		var modalU = document.getElementById("modalCompra");
+		var pasos = [
+			document.getElementById("paso1"),
+			document.getElementById("paso2"),
+			document.getElementById("paso3"),
+		];
+		var pieU = document.getElementById("modalPie");
+		var volverU = document.getElementById("modalVolver");
+		var tituloPasoU = document.getElementById("modalTituloPaso");
+		var subtituloU = document.getElementById("modalSubtitulo");
+		var pagarU = document.getElementById("modalPagar");
+		var pagarTextoU = document.getElementById("modalPagarTexto");
+
+		var agrupacionSel = null; // 'tridocente' | 'bidocente'
+		var paqueteSel = null;    // 'ciclo' | 't1' | 't2' | 't3'
+		var tipoSel = null;       // 'pdf' | 'editable'
+		var pasoU = 1;
+
+		function agrupacionObj() {
+			return AGRUPACIONES.find(function (a) { return a.clave === agrupacionSel; }) || null;
+		}
+		function tipoPaqueteSel() { return paqueteSel === "ciclo" ? "ciclo" : "trimestre"; }
+		function trimestreSel() { return paqueteSel === "ciclo" ? null : Number(paqueteSel.slice(1)); }
+		function etiquetaPaqueteSel() {
+			return paqueteSel === "ciclo" ? "Ciclo completo" : "Trimestre " + trimestreSel();
+		}
+		function precioSel(tipo) {
+			var t = tarifas[tipoPaqueteSel()];
+			return tipo === "pdf" ? Number(t.precio_pdf) : Number(t.precio_editable);
+		}
+
+		document.getElementById("comprarBtn").addEventListener("click", abrirModalU);
+		document.getElementById("modalCerrar").addEventListener("click", cerrarModalU);
+		document.getElementById("modalFondo").addEventListener("click", cerrarModalU);
+		volverU.addEventListener("click", function () { irPasoU(pasoU - 1); });
+		document.addEventListener("keydown", function (e) {
+			if (e.key === "Escape" && !modalU.classList.contains("hidden")) { cerrarModalU(); }
+		});
+
+		// Barra de compra fija en móvil, igual que en las fichas normales.
+		var barraU = document.getElementById("barraCompra");
+		var botonArribaU = false;
+		function sincronizarBarraU() {
+			if (!barraU) { return; }
+			var visible = botonArribaU && modalU.classList.contains("hidden");
+			barraU.classList.toggle("hidden", !visible);
+			document.body.classList.toggle("con-barra-compra", visible);
+		}
+		if (barraU && "IntersectionObserver" in window) {
+			var barraPrecioU = document.getElementById("barraCompraPrecio");
+			if (barraPrecioU) { barraPrecioU.textContent = montoCorto(desde); }
+			var barraBtnU = document.getElementById("barraCompraBtn");
+			if (barraBtnU) { barraBtnU.addEventListener("click", abrirModalU); }
+			new IntersectionObserver(function (entradas) {
+				entradas.forEach(function (e) {
+					botonArribaU = !e.isIntersecting && e.boundingClientRect.top < 0;
+				});
+				sincronizarBarraU();
+			}, { threshold: 0 }).observe(document.getElementById("comprarBtn"));
+		}
+
+		function abrirModalU() {
+			renderPasoAgrupacion();
+			irPasoU(1);
+			modalU.classList.remove("hidden");
+			document.body.style.overflow = "hidden";
+			Tienda.iconos();
+			sincronizarBarraU();
+		}
+		function cerrarModalU() {
+			modalU.classList.add("hidden");
+			document.body.style.overflow = "";
+			sincronizarBarraU();
+		}
+
+		function irPasoU(n) {
+			pasoU = n;
+			pasos.forEach(function (p, i) { p.classList.toggle("hidden", i !== n - 1); });
+			volverU.classList.toggle("hidden", n === 1);
+			pieU.classList.remove("hidden");
+			var agr = agrupacionObj();
+			if (n === 1) {
+				tituloPasoU.textContent = "¿Cómo agrupas los grados?";
+				subtituloU.textContent = "Unitaria · 1° a 6° de Primaria";
+			} else if (n === 2) {
+				tituloPasoU.textContent = "¿Qué paquete necesitas?";
+				subtituloU.textContent = agr ? agr.nombre : "";
+			} else {
+				tituloPasoU.textContent = "¿Cómo lo quieres?";
+				subtituloU.textContent = (agr ? agr.nombre + " · " : "") + etiquetaPaqueteSel();
+			}
+			actualizarPieU();
+		}
+
+		// Paso 1: agrupación. Mismo precio con cualquiera; el contenido cubre
+		// 1° a 6° en las dos, solo cambia cómo se reparte en paquetes.
+		function renderPasoAgrupacion() {
+			pasos[0].innerHTML = AGRUPACIONES.map(function (a) {
+				var disp = agrupacionDisponible(a);
+				return '<button type="button" data-agr="' + a.clave + '" ' + (disp ? "" : 'data-nodisp="1" ') +
+					'class="text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
+					'style="border-color:#e7e6df;background:#fff' + (disp ? "" : ";opacity:.55") + '">' +
+					'<span data-radio>' + radio(false) + "</span>" +
+					'<div class="min-w-0 flex-1">' +
+					'<span class="font-bold text-ink">' + esc(a.nombre) + "</span>" +
+					'<p class="text-[13px] text-mute mt-0.5">' + esc(a.detalle) + "</p>" +
+					(disp ? "" : '<p class="text-[12px] font-semibold mt-1" style="color:#9ba3af">Disponible próximamente</p>') +
+					"</div></button>";
+			}).join("") +
+				'<p class="text-[13px] text-mute px-1">El contenido cubre 1° a 6° con cualquiera de las dos agrupaciones y el precio es el mismo. Elige la que mejor se acomode a tu aula.</p>';
+
+			pasos[0].querySelectorAll("[data-agr]").forEach(function (b) {
+				b.addEventListener("click", function () {
+					if (b.getAttribute("data-nodisp")) { return; }
+					agrupacionSel = b.getAttribute("data-agr");
+					pintarSeleccion(pasos[0], "data-agr", agrupacionSel);
+					actualizarPieU();
+				});
+			});
+
+			var inicial = pasos[0].querySelector("[data-agr]:not([data-nodisp])");
+			if (inicial) {
+				agrupacionSel = inicial.getAttribute("data-agr");
+				pintarSeleccion(pasos[0], "data-agr", agrupacionSel);
+			}
+		}
+
+		// Paso 2: paquete (ciclo destacado, como en las fichas normales).
+		function renderPasoPaquete() {
+			var agr = agrupacionObj();
+			var opciones = [
+				{ clave: "ciclo", nombre: "Ciclo completo", detalle: "Los tres trimestres de todos tus combos", disp: disponible(agr, "ciclo") },
+				{ clave: "t1", nombre: "Trimestre 1", detalle: "Anexos y examen de cada combo", disp: disponible(agr, "trimestre", 1) },
+				{ clave: "t2", nombre: "Trimestre 2", detalle: "Anexos y examen de cada combo", disp: disponible(agr, "trimestre", 2) },
+				{ clave: "t3", nombre: "Trimestre 3", detalle: "Anexos y examen de cada combo", disp: disponible(agr, "trimestre", 3) },
+			];
+
+			pasos[1].innerHTML = opciones.map(function (o) {
+				var esCiclo = o.clave === "ciclo";
+				var destacado = esCiclo && ahorroCiclo > 0 && o.disp;
+				var precio = o.clave === "ciclo" ? Number(tarifas.ciclo.precio_pdf) : Number(tarifas.trimestre.precio_pdf);
+				return '<button type="button" data-paq="' + o.clave + '" ' + (o.disp ? "" : 'data-nodisp="1" ') +
+					'class="text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
+					'style="border-color:' + (destacado ? "#059669" : "#e7e6df") + ';background:' + (destacado ? "rgba(5,150,105,.04)" : "#fff") + (o.disp ? "" : ";opacity:.55") + '">' +
+					'<span data-radio>' + radio(false) + "</span>" +
+					'<div class="min-w-0 flex-1">' +
+					(destacado
+						? '<span class="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded mb-1.5" style="background:#059669;color:#fff">Más conveniente</span><br>'
+						: "") +
+					'<span class="font-bold text-ink">' + esc(o.nombre) + "</span>" +
+					'<p class="text-[13px] text-mute mt-0.5">' + esc(o.detalle) + "</p>" +
+					(destacado
+						? '<p class="text-[13px] font-bold mt-1.5" style="color:#166534">Ahorras ' + montoCorto(ahorroCiclo) + " frente a comprarlos sueltos</p>"
+						: "") +
+					(o.disp ? "" : '<p class="text-[12px] font-semibold mt-1" style="color:#9ba3af">Disponible próximamente</p>') +
+					"</div>" +
+					'<div class="shrink-0 text-right">' +
+					'<span class="font-black text-ink text-lg">' + montoCorto(precio) + "</span>" +
+					'<p class="text-[11px] text-mute">desde</p>' +
+					"</div></button>";
+			}).join("");
+
+			pasos[1].querySelectorAll("[data-paq]").forEach(function (b) {
+				b.addEventListener("click", function () {
+					if (b.getAttribute("data-nodisp")) { return; }
+					paqueteSel = b.getAttribute("data-paq");
+					tipoSel = null;
+					pintarSeleccion(pasos[1], "data-paq", paqueteSel);
+					actualizarPieU();
+				});
+			});
+
+			var inicial = pasos[1].querySelector("[data-paq]:not([data-nodisp])");
+			if (inicial) {
+				paqueteSel = inicial.getAttribute("data-paq");
+				pintarSeleccion(pasos[1], "data-paq", paqueteSel);
+			} else {
+				paqueteSel = null;
+			}
+		}
+
+		// Paso 3: versión, con el mismo desglose del add-on que las fichas normales.
+		function renderPasoVersion() {
+			var pdf = precioSel("pdf");
+			var editable = precioSel("editable");
+			var addon = editable - pdf;
+
+			var opciones = [
+				{ tipo: "pdf", nombre: "Solo PDF", detalle: "Lista para imprimir, con anexos y examen.", precio: pdf, desglose: null },
+				{
+					tipo: "editable",
+					nombre: "PDF + Word editable",
+					detalle: "Planeación, anexos y examen en Word, para adaptarlos a tu grupo.",
+					precio: editable,
+					desglose: addon > 0
+						? montoCorto(pdf) + " del PDF + " + montoCorto(addon) + " por el Word · todos tus combos editables"
+						: null,
+					recomendado: true,
+				},
+			];
+
+			pasos[2].innerHTML = opciones.map(function (o) {
+				return '<button type="button" data-tipou="' + o.tipo + '" ' +
+					'class="text-left w-full rounded-2xl p-4 border-2 transition flex items-start gap-3" ' +
+					'style="border-color:#e7e6df;background:#fff">' +
+					'<span data-radio>' + radio(false) + "</span>" +
+					'<div class="min-w-0 flex-1">' +
+					'<span class="font-bold text-ink">' + esc(o.nombre) + "</span>" +
+					(o.recomendado ? ' <span class="text-[10px] font-black uppercase px-1.5 py-0.5 rounded ml-1" style="background:rgba(30,58,138,.1);color:#1e3a8a">recomendado</span>' : "") +
+					'<p class="text-[13px] text-mute mt-0.5">' + esc(o.detalle) + "</p>" +
+					(o.desglose ? '<p class="text-[12px] mt-1.5" style="color:#1c2434">' + esc(o.desglose) + "</p>" : "") +
+					"</div>" +
+					'<span class="shrink-0 font-black text-ink text-lg">' + montoCorto(o.precio) + "</span>" +
+					"</button>";
+			}).join("");
+
+			pasos[2].querySelectorAll("[data-tipou]").forEach(function (b) {
+				b.addEventListener("click", function () {
+					tipoSel = b.getAttribute("data-tipou");
+					pintarSeleccion(pasos[2], "data-tipou", tipoSel);
+					actualizarPieU();
+				});
+			});
+
+			tipoSel = "pdf";
+			pintarSeleccion(pasos[2], "data-tipou", tipoSel);
+		}
+
+		function actualizarPieU() {
+			var icono = pagarU.querySelector("[data-lucide], svg");
+			var listo, texto;
+			if (pasoU === 1) {
+				var agr = agrupacionObj();
+				listo = !!agr;
+				texto = listo ? "Siguiente · " + agr.nombre : "Elige una agrupación";
+			} else if (pasoU === 2) {
+				listo = !!paqueteSel;
+				texto = listo ? "Siguiente · " + etiquetaPaqueteSel() : "Elige un paquete";
+			} else {
+				listo = !!tipoSel;
+				texto = listo ? "Continuar al pago · " + money(precioSel(tipoSel)) : "Elige una versión";
+			}
+			if (icono) { icono.style.display = pasoU === 3 ? "" : "none"; }
+			pagarU.disabled = !listo;
+			pagarU.style.opacity = listo ? "1" : ".5";
+			pagarTextoU.textContent = texto;
+		}
+
+		pagarU.addEventListener("click", function () {
+			if (pasoU === 1) {
+				if (!agrupacionSel) { return; }
+				renderPasoPaquete();
+				irPasoU(2);
+				Tienda.iconos();
+				return;
+			}
+			if (pasoU === 2) {
+				if (!paqueteSel) { return; }
+				renderPasoVersion();
+				irPasoU(3);
+				Tienda.iconos();
+				return;
+			}
+			if (!agrupacionSel || !paqueteSel || !tipoSel) { return; }
+			location.href = "checkout.html?combo=unitaria&agrupacion=" + agrupacionSel +
+				"&tipo_paquete=" + tipoPaqueteSel() +
+				(tipoPaqueteSel() === "trimestre" ? "&trimestre=" + trimestreSel() : "") +
+				"&tipo=" + tipoSel;
+		});
+
+		// ── Vista previa ──
+		// Se enseñan páginas de un combo de 2 grados y de uno de 3, para que el
+		// maestro vea cómo se organiza el material en cada agrupación. Se
+		// reutiliza la galería normal asignando sus variables compartidas.
+		previewFrame = document.getElementById("previewFrame");
+		previewVacio = document.getElementById("previewVacio");
+		previewCargando = document.getElementById("previewCargando");
+		previewLabel = document.getElementById("previewLabel");
+		galeriaEl = document.getElementById("galeria");
+		galeriaImg = document.getElementById("galeriaImg");
+		galeriaTiras = document.getElementById("galeriaTiras");
+		galeriaEtiqueta = document.getElementById("galeriaEtiqueta");
+		galeriaContador = document.getElementById("galeriaContador");
+
+		async function listarPreviews(slug, prefijo) {
+			try {
+				var r = await window.sb.storage.from("assets").list("previews/" + slug, {
+					limit: 30,
+					sortBy: { column: "name", order: "asc" },
+				});
+				if (r.error || !r.data) { return []; }
+				return r.data
+					.filter(function (f) { return f.name && /\.(jpe?g|png|webp)$/i.test(f.name); })
+					.map(function (f) {
+						return {
+							nombre: f.name,
+							etiqueta: prefijo + etiquetaDeArchivo(f.name),
+							url: window.sb.storage.from("assets")
+								.getPublicUrl("previews/" + slug + "/" + f.name).data.publicUrl,
+						};
+					});
+			} catch (_) { return []; }
+		}
+
+		try {
+			var dosGrados = await listarPreviews("multi-1-2", "Combo de 2 grados · ");
+			var tresGrados = await listarPreviews("multi-1-2-3", "Combo de 3 grados · ");
+			imagenes = dosGrados.concat(tresGrados);
+		} catch (_) {
+			imagenes = [];
+		}
+		if (imagenes.length) {
+			mostrarGaleria();
+		} else {
+			previewCargando.classList.add("hidden");
+			previewVacio.classList.remove("hidden");
+			previewVacio.classList.add("flex");
+			Tienda.iconos();
+		}
 	}
 });

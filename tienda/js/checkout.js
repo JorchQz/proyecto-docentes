@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	 * incluye. El cobro real lo recalcula la Edge Function contra la base.
 	 */
 	async function prepararCombo() {
-		volverLink.href = "catalogo.html?org=multigrado&mod=unitaria";
+		volverLink.href = "producto.html?org=multigrado&combo=unitaria";
 
 		var esperados = COMBOS_UNITARIA[comboAgrupacion];
 		var q = window.sb
