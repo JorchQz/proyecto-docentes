@@ -63,9 +63,10 @@ export function plantillaCorreo(contenido: string): string {
 
 /** Botón principal. Va como tabla porque Outlook no respeta el padding de <a>. */
 export function botonCorreo(url: string, texto: string): string {
+  const u = escaparHtml(url);
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0">
     <tr><td style="background:${ACTION};border-radius:12px">
-      <a href="${url}" style="display:inline-block;padding:15px 28px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none">${texto}</a>
+      <a href="${u}" style="display:inline-block;padding:15px 28px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none">${escaparHtml(texto)}</a>
     </td></tr></table>`;
 }
 
@@ -78,9 +79,10 @@ export function botonCorreo(url: string, texto: string): string {
  * desplazarse en horizontal.
  */
 export function enlaceCopiable(url: string): string {
+  const u = escaparHtml(url);
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;margin:0 0 22px">
     <tr><td style="padding:12px 14px;background:${PAPER};border:1px solid ${LINE};border-radius:10px">
-      <a href="${url}" style="display:block;color:${BOARD};font-size:12px;line-height:1.5;text-decoration:none;word-break:break-all;overflow-wrap:anywhere;-ms-word-break:break-all">${url}</a>
+      <a href="${u}" style="display:block;color:${BOARD};font-size:12px;line-height:1.5;text-decoration:none;word-break:break-all;overflow-wrap:anywhere;-ms-word-break:break-all">${u}</a>
     </td></tr></table>`;
 }
 

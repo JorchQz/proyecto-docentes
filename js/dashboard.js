@@ -459,6 +459,8 @@ async function crearCardSesion() {
 		const wrap = document.createElement("div");
 		wrap.className = "flex flex-wrap gap-2";
 		recursos.forEach((r) => {
+			// Defensa en profundidad: nunca enlazar un esquema que no sea http(s).
+			if (!/^https?:\/\//i.test(String(r.url || ""))) { return; }
 			const a = document.createElement("a");
 			a.target = "_blank";
 			a.rel = "noopener noreferrer";
@@ -1008,6 +1010,11 @@ function normalizarRecursos(raw) {
 		.map((r) => {
 			const url = r.url || r.link || r.href || null;
 			if (!url) {
+				return null;
+			}
+			// SEGURIDAD: solo http(s). Descarta esquemas como javascript: que,
+			// al ir a un <a href> con clic, ejecutarían código y robarían la sesión.
+			if (!/^https?:\/\//i.test(String(url))) {
 				return null;
 			}
 			return { titulo: r.nombre || r.titulo || "Abrir recurso", url };

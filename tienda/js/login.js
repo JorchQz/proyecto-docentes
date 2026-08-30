@@ -19,8 +19,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	// ?next= a dónde ir tras autenticar. Si viene explícito (p. ej. desde
 	// checkout) se respeta. Si no, el destino depende de activo_saas.
+	//
+	// SEGURIDAD: el valor va directo a location.href, así que solo se aceptan
+	// rutas RELATIVAS a páginas .html locales (p. ej. "anexo.html?aula=3&pr=7"
+	// o "../dashboard.html"). Se rechaza cualquier esquema (javascript:, http:),
+	// "//host" y backslashes, que permitirían XSS (robo de sesión) u open redirect.
+	function nextSeguro(raw) {
+		if (!raw) return null;
+		if (/^[a-z][a-z0-9+.\-]*:/i.test(raw)) return null; // tiene esquema
+		if (/^\s*\/\//.test(raw)) return null;              // //host protocol-relative
+		if (raw.indexOf("\\") !== -1) return null;          // backslash
+		if (/^[.\/]*[a-z0-9_\-\/]+\.html([?#].*)?$/i.test(raw)) return raw;
+		return null;
+	}
 	var params = new URLSearchParams(location.search);
-	var nextExplicito = params.get("next");
+	var nextExplicito = nextSeguro(params.get("next"));
 
 	var mode = "login"; // 'login' | 'register'
 

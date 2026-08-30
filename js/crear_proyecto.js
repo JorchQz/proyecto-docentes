@@ -932,9 +932,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         const opt = document.createElement('button');
         opt.type = 'button';
         opt.className = 'w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 flex items-center gap-2';
-        opt.innerHTML = '<span class="font-mono text-blue-600 text-xs font-bold shrink-0">' + item.ref + '</span>' +
+        opt.innerHTML = '<span class="font-mono text-blue-600 text-xs font-bold shrink-0">' + escapeHtml(item.ref) + '</span>' +
           (item.text
-            ? '<span class="text-gray-600 truncate">' + item.text + '</span>'
+            ? '<span class="text-gray-600 truncate">' + escapeHtml(item.text) + '</span>'
             : '<span class="text-gray-400 italic text-xs">sin texto aún</span>');
         opt.addEventListener('mousedown', function (e) {
           e.preventDefault();
@@ -1178,10 +1178,10 @@ document.addEventListener("DOMContentLoaded", async function () {
       recursosFilesList.innerHTML = archivosSubidos.map(function (archivo) {
         const etiqueta = truncarTexto(archivo.nombre || '', 30);
         return `
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${String(archivo.path || '')}">
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${escapeHtml(archivo.path || '')}">
             <span>📎</span>
-            <span title="${String(archivo.nombre || '')}">${String(etiqueta)}</span>
-            <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${String(archivo.path || '')}" aria-label="Eliminar archivo">
+            <span title="${escapeHtml(archivo.nombre || '')}">${escapeHtml(etiqueta)}</span>
+            <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
           </span>`;
@@ -1196,7 +1196,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         return `
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
             <span>🔗</span>
-            <span title="${String(link.url || '')}">${String(titulo)}</span>
+            <span title="${escapeHtml(link.url || '')}">${escapeHtml(titulo)}</span>
             <button type="button" class="resource-remove-link inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
@@ -1213,7 +1213,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const pendingChip = document.createElement('span');
       pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800';
       pendingChip.dataset.pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      pendingChip.innerHTML = `<span>📎</span><span title="${String(file.name)}">${String(truncarTexto(file.name, 30))} · Subiendo...</span>`;
+      pendingChip.innerHTML = `<span>📎</span><span title="${escapeHtml(file.name)}">${escapeHtml(truncarTexto(file.name, 30))} · Subiendo...</span>`;
       recursosFilesList?.appendChild(pendingChip);
 
       const { error: uploadError } = await window.sb.storage.from('recursos').upload(ruta, file, { upsert: false });
@@ -1282,6 +1282,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       const titulo = String(recursosLinkTitle?.value || '').trim();
       if (!url) {
         mostrarError(recursosLinksError, 'Agrega una URL válida para continuar.');
+        return;
+      }
+      // SEGURIDAD: solo http(s). Evita recursos con esquema javascript: que
+      // ejecutarían código (robo de sesión) al hacer clic desde el dashboard.
+      if (!/^https?:\/\//i.test(url)) {
+        mostrarError(recursosLinksError, 'La URL debe comenzar con http:// o https://.');
         return;
       }
       linksAgregados.push({ titulo: titulo, url: url });
@@ -1529,13 +1535,13 @@ document.addEventListener("DOMContentLoaded", async function () {
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
               <option value="">Selecciona PDA para ${grado}°...</option>
               ${opciones.map(function (pda) {
-                return `<option value="${String(pda.id)}"${String(pda.id) === savedVal ? ' selected' : ''}>${String(pda.pda || '')}</option>`;
+                return `<option value="${escapeHtml(pda.id)}"${String(pda.id) === savedVal ? ' selected' : ''}>${escapeHtml(pda.pda || '')}</option>`;
               }).join('')}
             </select>
             <div id="sugerencia_grado_${grado}" class="hidden text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1"></div>
             <textarea name="criterio_grado_${grado}" rows="2"
               class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
-              placeholder="Criterio de evaluación para ${grado}°...">${savedCrit}</textarea>
+              placeholder="Criterio de evaluación para ${grado}°...">${escapeHtml(savedCrit)}</textarea>
           </div>`;
       });
       innerHtml += `</div>`;
@@ -2083,10 +2089,18 @@ document.addEventListener("DOMContentLoaded", async function () {
             chip.className =
               'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ' +
               'bg-green-50 border border-green-100 text-green-800';
-            chip.innerHTML = '🔗 ' + (link.titulo || link.url) +
-              ' <button type="button" class="remove-link-btn text-gray-400 ' +
-              'hover:text-red-500 transition ml-1 text-xs font-bold">✕</button>';
-            chip.querySelector('.remove-link-btn').addEventListener('click',
+            // textContent (no innerHTML) para no ejecutar datos guardados: el
+            // título/URL del recurso podría contener HTML malicioso.
+            const txtLink = document.createElement('span');
+            txtLink.textContent = '🔗 ' + (link.titulo || link.url || '');
+            const btnLink = document.createElement('button');
+            btnLink.type = 'button';
+            btnLink.className = 'remove-link-btn text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold';
+            btnLink.textContent = '✕';
+            chip.appendChild(txtLink);
+            chip.appendChild(document.createTextNode(' '));
+            chip.appendChild(btnLink);
+            btnLink.addEventListener('click',
               function () {
                 block._links = block._links.filter(function (l) {
                   return l.url !== link.url;
@@ -2105,10 +2119,18 @@ document.addEventListener("DOMContentLoaded", async function () {
             chip.className =
               'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ' +
               'bg-blue-50 border border-blue-100 text-blue-800';
-            chip.innerHTML = '📎 ' + archivo.nombre +
-              ' <button type="button" class="remove-archivo-btn text-gray-400 ' +
-              'hover:text-red-500 transition ml-1 text-xs font-bold">✕</button>';
-            chip.querySelector('.remove-archivo-btn').addEventListener('click',
+            // textContent (no innerHTML): el nombre del archivo lo controla quien
+            // lo sube y podría contener HTML malicioso.
+            const txtArch = document.createElement('span');
+            txtArch.textContent = '📎 ' + (archivo.nombre || '');
+            const btnArch = document.createElement('button');
+            btnArch.type = 'button';
+            btnArch.className = 'remove-archivo-btn text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold';
+            btnArch.textContent = '✕';
+            chip.appendChild(txtArch);
+            chip.appendChild(document.createTextNode(' '));
+            chip.appendChild(btnArch);
+            btnArch.addEventListener('click',
               function () {
                 block._archivos = block._archivos.filter(function (a) {
                   return a.path !== archivo.path;

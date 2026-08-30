@@ -376,14 +376,19 @@
 					  student.grado +
 					  "</span>"
 					: "";
-			div.innerHTML =
-				"<span class='text-gray-800'>" +
-				gradeText +
-				student.nombre_completo +
-				"</span>" +
-				"<button type='button' class='text-red-600 hover:text-red-700 font-medium' data-index='" +
-				index +
-				"'>Eliminar</button>";
+			// El nombre va por textContent (no innerHTML) para no ejecutar HTML
+			// aunque el nombre lo escriba el usuario.
+			var nombreSpan = document.createElement("span");
+			nombreSpan.className = "text-gray-800";
+			nombreSpan.innerHTML = gradeText; // gradeText es solo marcado estático (grado numérico)
+			nombreSpan.appendChild(document.createTextNode(student.nombre_completo || ""));
+			var eliminarBtn = document.createElement("button");
+			eliminarBtn.type = "button";
+			eliminarBtn.className = "text-red-600 hover:text-red-700 font-medium";
+			eliminarBtn.setAttribute("data-index", index);
+			eliminarBtn.textContent = "Eliminar";
+			div.appendChild(nombreSpan);
+			div.appendChild(eliminarBtn);
 
 			var deleteBtn = div.querySelector("button");
 			deleteBtn.addEventListener("click", function (e) {

@@ -32,24 +32,27 @@ Deno.serve(async (req: Request) => {
     const resendKey = Deno.env.get("RESEND_API_KEY") || undefined;
 
     // MP manda el id del pago de varias formas según la versión de notificación.
+    // SEGURIDAD: el id de la QUERY es el que MP incluye en el manifiesto firmado.
+    // Debe ser también el que se consulta, para que firma y pago sean el MISMO id.
+    // El id del body solo se usa como respaldo cuando la query no lo trae.
     const url = new URL(req.url);
-    let paymentId = url.searchParams.get("data.id") || url.searchParams.get("id");
+    const idQuery = url.searchParams.get("data.id") || url.searchParams.get("id");
+    let paymentId = idQuery;
     let topic = url.searchParams.get("type") || url.searchParams.get("topic");
 
     if (req.method === "POST") {
       try {
         const body = await req.json();
-        if (body?.data?.id) paymentId = String(body.data.id);
+        if (!paymentId && body?.data?.id) paymentId = String(body.data.id);
         if (body?.type) topic = String(body.type);
       } catch (_) {
         // cuerpo vacío o no-JSON: nos quedamos con los query params
       }
     }
 
-    // La firma se valida contra el id que viene en la query (así lo arma MP).
-    const idFirmado = url.searchParams.get("data.id") || url.searchParams.get("id") ||
-      paymentId;
-    if (!(await firmaWebhookValida(req, idFirmado, webhookSecret))) {
+    // Se firma y se consulta el MISMO id (paymentId), no uno de la query y otro
+    // del body.
+    if (!(await firmaWebhookValida(req, paymentId, webhookSecret))) {
       console.error("Firma de webhook inválida", { paymentId, topic });
       return jsonResponse({ error: "Firma inválida" }, 401);
     }

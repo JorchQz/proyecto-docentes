@@ -147,6 +147,29 @@ export async function procesarPago(
     return { ok: true, estado: nuevoEstado, statusMp: status, detalleMp: detalle };
   }
 
+  // ── Defensa en profundidad: importe y moneda deben coincidir ─────────────
+  // Un pago "approved" solo entrega si su importe y moneda cuadran con la orden.
+  // Impide que un pago aprobado de otro monto/moneda (precio manipulado, pago
+  // cruzado con otro external_reference) libere el paquete.
+  const montoPago = Number(pago.transaction_amount);
+  const moneda = String(pago.currency_id || "");
+  const montoOrden = Number(orden.monto_total);
+  if (moneda !== "MXN" || !Number.isFinite(montoPago) || montoPago + 0.01 < montoOrden) {
+    console.error("Pago aprobado con importe/moneda que no coincide:", {
+      ordenId, montoPago, moneda, montoOrden,
+    });
+    await admin
+      .from("marketplace_ordenes")
+      .update({ estado: "pendiente", referencia_pago: paymentId })
+      .eq("id", ordenId);
+    return {
+      ok: false,
+      estado: "pendiente",
+      statusMp: status,
+      error: "El importe o la moneda del pago no coinciden con la orden",
+    };
+  }
+
   // ── Pago aprobado: marcar y entregar ─────────────────────────────────────
   await admin
     .from("marketplace_ordenes")

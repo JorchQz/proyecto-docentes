@@ -18,8 +18,10 @@ import {
   carpetaTrimestreDeGrado,
   downloadDriveFile,
   proyectosDeTrimestre,
+  puedeEntregarArchivo,
   walkDriveFolder,
 } from "../_shared/google-drive.ts";
+import { aplicarPieDocx, aplicarPiePdf, textoPie } from "../_shared/watermark.ts";
 
 const MIME: Record<string, string> = {
   pdf: "application/pdf",
@@ -84,10 +86,11 @@ Deno.serve(async (req: Request) => {
     // (trimestre exacto, o el ciclo). Tomamos cualquiera que tenga.
     const { data: accesos } = await admin
       .from("marketplace_accesos")
-      .select("producto_id, marketplace_productos(grado, trimestre, tipo_paquete, proyecto_folder_drive_id, organizacion, grados_combo)")
+      .select("producto_id, tipo, marketplace_productos(grado, trimestre, tipo_paquete, proyecto_folder_drive_id, organizacion, grados_combo)")
       .eq("user_id", user.id);
 
     let folderTrimestre: string | null = null;
+    let productoMatch: string | null = null;
     for (const ac of accesos || []) {
       const prod: any = ac.marketplace_productos;
       if (!prod || !prod.proyecto_folder_drive_id) continue;
@@ -99,11 +102,12 @@ Deno.serve(async (req: Request) => {
       }
       if (prod.tipo_paquete === "trimestre" && prod.trimestre === t) {
         folderTrimestre = prod.proyecto_folder_drive_id;
+        productoMatch = ac.producto_id;
         break;
       }
       if (prod.tipo_paquete === "ciclo") {
         const tri = await carpetaTrimestreDeGrado(prod.proyecto_folder_drive_id, t);
-        if (tri) { folderTrimestre = tri.id; break; }
+        if (tri) { folderTrimestre = tri.id; productoMatch = ac.producto_id; break; }
       }
     }
 
@@ -111,20 +115,51 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "No tienes acceso a este material", sin_acceso: true }, 403);
     }
 
+    // El DOCX es un add-on de todo o nada: solo si el usuario posee el tier
+    // 'editable' del mismo paquete que cubre este trimestre.
+    const esEditable = (accesos || []).some(
+      (a: any) => a.producto_id === productoMatch && a.tipo === "editable",
+    );
+
     // Carpeta del proyecto p (1-4) dentro del trimestre.
     const proyectos = await proyectosDeTrimestre(folderTrimestre);
     const proyectoFolder = proyectos[p - 1];
     if (!proyectoFolder) return jsonResponse({ error: "Proyecto no encontrado" }, 404);
 
-    // Buscar el archivo cuyo nombre corresponde al código (exacto o contenido).
+    // Buscar el archivo cuyo nombre corresponde EXACTAMENTE al código. Se eliminó
+    // el fallback por substring: permitía que ?a=Planeacion/Examen resolviera la
+    // planeación o el examen completos (fuga de material y del add-on de Word).
     const walked = await walkDriveFolder(proyectoFolder.id);
     const codLow = codigo.toLowerCase();
-    let archivo = walked.find((f) => base(f.name) === codLow);
-    if (!archivo) archivo = walked.find((f) => f.name.toLowerCase().includes(codLow));
+    const archivo = walked.find((f) => base(f.name) === codLow);
     if (!archivo) return jsonResponse({ error: "Anexo no encontrado" }, 404);
 
-    const bytes = await downloadDriveFile(archivo.id);
+    // Tier: el DOCX requiere el add-on editable (misma regla que ver-archivo).
+    if (!puedeEntregarArchivo(archivo.name, esEditable)) {
+      return jsonResponse({ error: "Esta versión requiere la compra editable" }, 403);
+    }
+
     const e = ext(archivo.name);
+    let bytes = await downloadDriveFile(archivo.id);
+
+    // Pie de trazabilidad SOLO en la planeación (archivo en la raíz del proyecto,
+    // que no sea el examen); los anexos van limpios, como en ver-archivo.
+    const enRaiz = !archivo.path.includes("/");
+    const esExamenArchivo = /examen/i.test(archivo.name);
+    if (enRaiz && !esExamenArchivo) {
+      const nombre =
+        (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.nombre_docente)) ||
+        user.email || "Comprador";
+      const { data: perfil } = await admin
+        .from("perfiles")
+        .select("cct")
+        .eq("id", user.id)
+        .maybeSingle();
+      const texto = textoPie(String(nombre), perfil?.cct || null);
+      if (e === "pdf") { try { bytes = await aplicarPiePdf(bytes, texto); } catch (_) { /* original */ } }
+      else if (e === "docx") { try { bytes = await aplicarPieDocx(bytes, texto); } catch (_) { /* original */ } }
+    }
+
     const contentType = MIME[e] || "application/octet-stream";
     const disp = modo === "download" ? "attachment" : "inline";
 

@@ -39,8 +39,14 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     const email = String(body.email || "").trim().toLowerCase();
-    const redirectTo = String(body.redirect_to || "") ||
-      (siteUrl + "/reset-password");
+    // SEGURIDAD: redirect_to NO se toma tal cual del cliente. El enlace del correo
+    // lleva el token de recuperación; si redirigiera a un dominio ajeno sería una
+    // toma de cuenta. Solo se acepta si apunta a nuestro propio sitio.
+    const destinoDefault = siteUrl + "/reset-password";
+    const pedido = String(body.redirect_to || "");
+    const redirectTo = (siteUrl && pedido.startsWith(siteUrl + "/"))
+      ? pedido
+      : destinoDefault;
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return jsonResponse({ error: "Correo inválido" }, 400);
@@ -58,7 +64,8 @@ Deno.serve(async (req: Request) => {
 
     // Cuenta inexistente: se responde igual que si existiera.
     if (error || !data?.properties?.action_link) {
-      console.log("recuperar-clave: sin enlace para", email, error?.message);
+      // No se registra el correo para no dejar direcciones de usuarios en logs.
+      console.log("recuperar-clave: sin enlace", error?.message);
       return jsonResponse({ ok: true });
     }
 
