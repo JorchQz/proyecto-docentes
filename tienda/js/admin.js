@@ -19,8 +19,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// La fuente de verdad es la tabla marketplace_precios: en cuanto se acredita
 	// una venta, marketplace_aplicar_precios() reescribe estos valores.
 	var PRECIO = {
-		completa: { trimestre: { pdf: 349, editable: 418 }, ciclo: { pdf: 699, editable: 868 } },
-		multigrado: { trimestre: { pdf: 499, editable: 568 }, ciclo: { pdf: 999, editable: 1168 } },
+		completa: { trimestre: { pdf: 249, editable: 298 }, ciclo: { pdf: 499, editable: 598 } },
+		multigrado: { trimestre: { pdf: 299, editable: 348 }, ciclo: { pdf: 599, editable: 698 } },
 	};
 
 	// Combinaciones multigrado (orden de muestra).
@@ -81,7 +81,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function cargarProductos() {
 		var res = await window.sb
 			.from("marketplace_productos")
-			.select("*")
+			// Los *_drive_id ya no son legibles desde el cliente (seguridad): la
+			// carpeta de Drive se carga al abrir el editor vía RPC admin_producto_drive.
+			.select("id, titulo, descripcion, grado, fase, campo_formativo, metodologia, escenario, trimestre, num_sesiones, precio_pdf, precio_editable, portada_url, activo, dosificacion_proyecto_id, created_at, updated_at, tipo_paquete, num_proyectos, organizacion, grados_combo, modalidad, es_prueba")
 			.order("grado", { ascending: true });
 		productos = res.data || [];
 		porClave = {};
@@ -196,7 +198,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var def = PRECIO[org][tipo];
 		if (prod) {
-			F.driveFolder.value = prod.proyecto_folder_drive_id || "";
+			F.driveFolder.value = "";
+			// La carpeta de Drive ya no viaja en el listado (no legible por el
+			// cliente); se pide aparte con la RPC admin, que exige es_admin().
+			window.sb.rpc("admin_producto_drive", { p_id: prod.id }).then(function (r) {
+				if (!r.error && r.data && r.data[0]) {
+					F.driveFolder.value = r.data[0].proyecto_folder_drive_id || "";
+				}
+			});
 			F.precioPdf.value = prod.precio_pdf != null ? prod.precio_pdf : "";
 			F.precioEditable.value = prod.precio_editable != null ? prod.precio_editable : "";
 			F.descripcion.value = prod.descripcion || "";
@@ -349,14 +358,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 
 	// ── Precios y escalón de lanzamiento ──────────────────────────────────────
-	// El precio del ciclo completo sube al cruzar 50 y 100 ventas. Aquí solo se
-	// consulta y, si hace falta, se corrige a mano; el cambio lo aplica sola la
-	// base cada vez que se acredita un pago.
+	// Desde el tarifario v3 los precios son PLANOS: los tres niveles del ciclo
+	// llevan la misma tarifa y el nivel está fijado en 1, así que el contador de
+	// ventas es solo informativo. Para subir precios se edita marketplace_precios
+	// (un marketplace_precios_v4.sql), no estos controles.
 	// Bidocente y tridocente comparten tarifa: el maestro no elige cuál le toca,
-	// se lo dicta su escuela, así que el tarifario no los distingue.
+	// se lo dicta su escuela, así que el tarifario no los distingue. "Unitaria"
+	// es el combo de todos los paquetes multigrado de una agrupación (no tiene
+	// productos propios: lo arma crear-preferencia-mp).
 	var MODALIDAD_ETIQUETA = {
 		un_grado: "1 grado",
 		multigrado: "Multigrado (bi y tridocente)",
+		unitaria: "Unitario (combo 6 grados)",
 	};
 	var NIVEL_ETIQUETA = { 1: "Lanzamiento", 2: "Intermedio", 3: "Lista" };
 

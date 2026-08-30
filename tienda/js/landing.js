@@ -22,8 +22,22 @@ async function cargarLanding() {
 	var prods = (!res.error && res.data) ? res.data : [];
 
 	llenarPrecios(prods);
+	llenarUnitaria();
 	renderDestacados(prods);
 	renderMuestra(prods);
+}
+
+// Precio del paquete unitario (combo de todos los paquetes multigrado). No hay
+// productos de los que derivarlo: viene del tarifario vía RPC pública.
+async function llenarUnitaria() {
+	var el = document.getElementById("unitariaNota");
+	if (!el || !window.sb) { return; }
+	var rTrim = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "trimestre" });
+	var rCiclo = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "ciclo" });
+	if (rTrim.error || rCiclo.error || !rTrim.data || !rCiclo.data) { return; }
+	el.textContent = "Paquete unitario: todos los combos en una sola compra. Desde " +
+		montoCorto(rTrim.data.precio_pdf) + " el trimestre o " +
+		montoCorto(rCiclo.data.precio_pdf) + " el ciclo completo.";
 }
 
 // Vista previa en la portada: enseña páginas reales antes de pedir nada. Busca

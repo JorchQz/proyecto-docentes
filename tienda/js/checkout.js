@@ -29,55 +29,153 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var productoId = params.get("producto_id");
 	var tipo = params.get("tipo");
 
+	// Compra combinada del paquete unitario (llega desde el catálogo):
+	// checkout.html?combo=unitaria&agrupacion=...&tipo_paquete=...[&trimestre=n]&tipo=...
+	var esCombo = params.get("combo") === "unitaria";
+	var comboAgrupacion = params.get("agrupacion");
+	var comboTipoPaquete = params.get("tipo_paquete");
+	var comboTrimestre = Number(params.get("trimestre"));
+	var COMBOS_UNITARIA = { tridocente: ["1-2", "3-4", "5-6"], bidocente: ["1-2-3", "4-5-6"] };
+
 	// Provisional hasta saber a qué grado pertenece el paquete; se afina abajo.
 	volverLink.href = "catalogo.html";
 
-	if (!productoId || (tipo !== "pdf" && tipo !== "editable")) {
+	var comboValido = esCombo && COMBOS_UNITARIA[comboAgrupacion] &&
+		(comboTipoPaquete === "ciclo" ||
+			(comboTipoPaquete === "trimestre" && [1, 2, 3].indexOf(comboTrimestre) !== -1));
+
+	if ((tipo !== "pdf" && tipo !== "editable") || (esCombo ? !comboValido : !productoId)) {
 		estadoEl.textContent = "Compra inválida.";
 		return;
 	}
 
-	var res = await window.sb
-		.from("marketplace_productos")
-		.select("id, titulo, precio_pdf, precio_editable, activo, organizacion, grado, grados_combo")
-		.eq("id", productoId)
-		.eq("activo", true)
-		.maybeSingle();
+	// Lo que se manda a crear-preferencia-mp; lo llena prepararCombo o
+	// prepararIndividual. El precio NUNCA viaja aquí: lo calcula el servidor.
+	var cuerpoPago = null;
 
-	if (res.error || !res.data) {
-		estadoEl.textContent = "Este paquete no está disponible.";
-		return;
-	}
-	var p = res.data;
-	var precio = tipo === "pdf" ? p.precio_pdf : p.precio_editable;
-	if (precio == null) {
-		estadoEl.textContent = "Esta versión no tiene precio configurado.";
-		return;
-	}
+	if (!(esCombo ? await prepararCombo() : await prepararIndividual())) { return; }
 
-	// "Volver" tiene que llevar a la ficha del paquete, y esa página se
-	// identifica por grado o por combinación multigrado, nunca por el id del
-	// producto: con `?id=` no encontraba nada y decía "no está disponible".
-	volverLink.href = p.organizacion === "multigrado"
-		? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
-		: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || "");
+	/** Compra normal de un solo paquete: resumen y cuerpo del pago. */
+	async function prepararIndividual() {
+		var res = await window.sb
+			.from("marketplace_productos")
+			.select("id, titulo, precio_pdf, precio_editable, activo, organizacion, grado, grados_combo")
+			.eq("id", productoId)
+			.eq("activo", true)
+			.maybeSingle();
 
-	// Resumen
-	resumenTitulo.textContent = p.titulo;
-	resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word";
-	resumenPrecio.textContent = money(precio);
-
-	// Con el add-on de Word mostramos de dónde sale el total: el PDF cuesta lo
-	// mismo que suelto y el resto es exactamente el precio del editable.
-	if (tipo === "editable" && p.precio_pdf != null) {
-		var addon = Number(p.precio_editable) - Number(p.precio_pdf);
-		if (addon > 0) {
-			document.getElementById("desglosePdf").textContent = money(p.precio_pdf);
-			document.getElementById("desgloseWord").textContent = "+ " + money(addon);
-			document.getElementById("resumenDesglose").classList.remove("hidden");
-			document.getElementById("filaTotal").style.borderTop = "1px solid #e7e6df";
-			document.getElementById("filaTotal").style.marginTop = "0.5rem";
+		if (res.error || !res.data) {
+			estadoEl.textContent = "Este paquete no está disponible.";
+			return false;
 		}
+		var p = res.data;
+		var precio = tipo === "pdf" ? p.precio_pdf : p.precio_editable;
+		if (precio == null) {
+			estadoEl.textContent = "Esta versión no tiene precio configurado.";
+			return false;
+		}
+
+		// "Volver" tiene que llevar a la ficha del paquete, y esa página se
+		// identifica por grado o por combinación multigrado, nunca por el id del
+		// producto: con `?id=` no encontraba nada y decía "no está disponible".
+		volverLink.href = p.organizacion === "multigrado"
+			? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
+			: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || "");
+
+		// Resumen
+		resumenTitulo.textContent = p.titulo;
+		resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word";
+		resumenPrecio.textContent = money(precio);
+
+		// Con el add-on de Word mostramos de dónde sale el total: el PDF cuesta lo
+		// mismo que suelto y el resto es exactamente el precio del editable.
+		if (tipo === "editable" && p.precio_pdf != null) {
+			mostrarDesglose(Number(p.precio_pdf), Number(p.precio_editable) - Number(p.precio_pdf));
+		}
+
+		cuerpoPago = { producto_id: productoId, tipo: tipo };
+		return true;
+	}
+
+	/**
+	 * Paquete unitario: resuelve los productos multigrado reales de la
+	 * agrupación elegida, pide el precio del combo a la RPC y lista lo que
+	 * incluye. El cobro real lo recalcula la Edge Function contra la base.
+	 */
+	async function prepararCombo() {
+		volverLink.href = "catalogo.html?org=multigrado&mod=unitaria";
+
+		var esperados = COMBOS_UNITARIA[comboAgrupacion];
+		var q = window.sb
+			.from("marketplace_productos")
+			.select("id, titulo, grados_combo, trimestre, tipo_paquete, precio_pdf, precio_editable")
+			.eq("activo", true)
+			.eq("organizacion", "multigrado")
+			.eq("modalidad", comboAgrupacion)
+			.eq("tipo_paquete", comboTipoPaquete);
+		if (comboTipoPaquete === "trimestre") { q = q.eq("trimestre", comboTrimestre); }
+		var res = await q;
+		var tarifaRes = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: comboTipoPaquete });
+
+		var productos = (res.data || []).filter(function (x) {
+			return esperados.indexOf(x.grados_combo) !== -1;
+		});
+		if (res.error || tarifaRes.error || !tarifaRes.data || productos.length !== esperados.length) {
+			estadoEl.textContent = "El paquete unitario no está disponible por ahora.";
+			return false;
+		}
+
+		var precioPdf = Number(tarifaRes.data.precio_pdf);
+		var total = tipo === "pdf" ? precioPdf : Number(tarifaRes.data.precio_editable);
+
+		resumenTitulo.textContent = "Paquete unitario · 1° a 6° de Primaria";
+		var etiquetaPaquete = comboTipoPaquete === "ciclo" ? "Ciclo completo" : "Trimestre " + comboTrimestre;
+		resumenTipo.textContent = etiquetaPaquete + " · " +
+			(tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word");
+		resumenPrecio.textContent = money(total);
+
+		// Qué paquetes incluye y cuánto costarían por separado. El tachado solo
+		// aparece cuando por separado sale de verdad más caro.
+		var separado = 0;
+		var itemsHtml = esperados.map(function (combo) {
+			var p = productos.find(function (x) { return x.grados_combo === combo; });
+			var precio = tipo === "pdf" ? p.precio_pdf : p.precio_editable;
+			separado += precio != null ? Number(precio) : 0;
+			return '<li class="flex items-center gap-2 text-[13px]" style="color:#1c2434">' +
+				'<i data-lucide="check" class="w-4 h-4 shrink-0" style="color:#059669"></i>' +
+				Tienda.esc(p.titulo) + '</li>';
+		}).join("");
+
+		var resumenCombo = document.getElementById("resumenCombo");
+		resumenCombo.innerHTML =
+			'<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-2">Incluye ' + productos.length + ' paquetes multigrado</p>' +
+			'<ul class="flex flex-col gap-1.5">' + itemsHtml + '</ul>' +
+			(separado > total
+				? '<p class="mt-2.5 text-[13px]" style="color:#5b6473">Por separado: <s>' + money(separado) + '</s> · ahorras <span class="font-bold" style="color:#059669">' + money(separado - total) + '</span></p>'
+				: '');
+		resumenCombo.classList.remove("hidden");
+
+		if (tipo === "editable" && total > precioPdf) {
+			mostrarDesglose(precioPdf, total - precioPdf);
+		}
+
+		cuerpoPago = {
+			combo: "unitaria",
+			agrupacion: comboAgrupacion,
+			tipo_paquete: comboTipoPaquete,
+			tipo: tipo,
+		};
+		if (comboTipoPaquete === "trimestre") { cuerpoPago.trimestre = comboTrimestre; }
+		return true;
+	}
+
+	function mostrarDesglose(precioPdf, addon) {
+		if (addon <= 0) { return; }
+		document.getElementById("desglosePdf").textContent = money(precioPdf);
+		document.getElementById("desgloseWord").textContent = "+ " + money(addon);
+		document.getElementById("resumenDesglose").classList.remove("hidden");
+		document.getElementById("filaTotal").style.borderTop = "1px solid #e7e6df";
+		document.getElementById("filaTotal").style.marginTop = "0.5rem";
 	}
 
 	estadoEl.classList.add("hidden");
@@ -190,12 +288,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 					Authorization: "Bearer " + token,
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ producto_id: productoId, tipo: tipo }),
+				body: JSON.stringify(cuerpoPago),
 			});
 			var data = await resp.json();
 			if (!resp.ok) {
 				if (data.ya_comprado) {
-					Tienda.toast("Ya tienes esta versión.", "info");
+					Tienda.toast(data.error || "Ya tienes esta versión.", "info");
 					setTimeout(function () { location.href = "mis-compras.html"; }, 1200);
 					return;
 				}

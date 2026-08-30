@@ -190,8 +190,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		ordenes.forEach(function (o) {
 			var items = o.marketplace_orden_items || [];
-			var titulo = items.length && items[0].marketplace_productos
-				? items[0].marketplace_productos.titulo : "Paquete";
+			// Una orden con varios items es el paquete unitario (combo multigrado).
+			var titulo = items.length > 1
+				? "Paquete unitario (" + items.length + " paquetes multigrado)"
+				: (items.length && items[0].marketplace_productos
+					? items[0].marketplace_productos.titulo : "Paquete");
 
 			var div = document.createElement("div");
 			div.className = "rounded-2xl p-4 flex flex-col gap-3";

@@ -316,7 +316,10 @@
 <section id="precios" class="bg-white border-t border-line">
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-20 lg:py-24">
 		<div class="reveal max-w-2xl mx-auto text-center">
-			<span class="text-sm font-bold uppercase tracking-[0.14em] text-action">Precios claros</span>
+			<div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-2">
+				<span class="text-sm font-bold uppercase tracking-[0.14em] text-action">Precios claros</span>
+				<span class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] font-bold border" style="background:rgba(5,150,105,.08);color:#047857;border-color:rgba(5,150,105,.25)"><i data-lucide="tag" class="w-3.5 h-3.5"></i> Precio de lanzamiento</span>
+			</div>
 			<h2 class="mt-3 font-black text-ink tracking-tight text-[clamp(1.9rem,3.6vw,2.9rem)] leading-tight">Compra una vez. Es tuyo para siempre.</h2>
 			<p class="mt-4 text-lg text-mute">Sin suscripciones ni cobros sorpresa. Elige por trimestre o ahorra con el ciclo completo.</p>
 		</div>
@@ -350,7 +353,7 @@
 			</div>
 			<div class="reveal lift bg-paper border border-line rounded-3xl p-7 flex flex-col" style="transition-delay:.12s">
 				<h3 class="font-bold text-ink text-lg">Multigrado</h3>
-				<p class="mt-1 text-sm text-mute">Bidocente o tridocente.</p>
+				<p class="mt-1 text-sm text-mute">Bidocente, tridocente o unitaria.</p>
 				<div class="mt-5" id="precioMulti"><span class="text-2xl font-black text-ink">Pago único</span><span class="text-mute"> · 2 o 3 grados</span></div>
 				<ul class="mt-6 space-y-2.5 text-[15px] text-ink flex-1">
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> 2 o 3 grados en un solo paquete</li>
@@ -358,10 +361,17 @@
 					<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> Examen por cada grado</li>
 					<li class="flex gap-2.5 text-mute text-[14px]"><i data-lucide="plus-circle" class="w-5 h-5 text-mute/40 shrink-0"></i> <span id="addonMulti">Versión Word (costo adicional)</span></li>
 				</ul>
-				<a href="catalogo.html?org=multigrado" class="mt-7 inline-flex items-center justify-center h-12 rounded-xl border border-board/30 text-board font-bold hover:bg-board/5 transition">Ver multigrado</a>
+				<!-- Escuela unitaria: el combo de todos los paquetes multigrado.
+				     El precio lo llena landing.js con la RPC del tarifario. -->
+				<div class="mt-4 rounded-xl border border-line bg-white px-4 py-3">
+					<p class="text-[13px] font-bold text-ink flex items-center gap-1.5"><i data-lucide="users" class="w-4 h-4 text-board"></i> ¿Atiendes los 6 grados?</p>
+					<p id="unitariaNota" class="mt-0.5 text-[13px] text-mute">Paquete unitario: todos los combos en una sola compra, con descuento.</p>
+					<a href="catalogo.html?org=multigrado&mod=unitaria" class="mt-1.5 inline-flex items-center gap-1 text-[13px] font-bold text-board hover:underline">Ver paquete unitario <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></a>
+				</div>
+				<a href="catalogo.html?org=multigrado" class="mt-5 inline-flex items-center justify-center h-12 rounded-xl border border-board/30 text-board font-bold hover:bg-board/5 transition">Ver multigrado</a>
 			</div>
 		</div>
-		<p class="reveal mt-6 text-center text-sm text-mute">El PDF está incluido en todos los paquetes. La versión Word —planeación, anexos y examen editables— se agrega con costo adicional al momento de la compra.</p>
+		<p class="reveal mt-6 text-center text-sm text-mute">El PDF está incluido en todos los paquetes. La versión Word —planeación, anexos y examen editables— se agrega con costo adicional al momento de la compra. Estos son precios de lanzamiento: lo que compras es tuyo para siempre, al precio que pagaste.</p>
 	</div>
 </section>
 
