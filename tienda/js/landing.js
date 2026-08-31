@@ -69,25 +69,35 @@ async function renderMuestra(prods) {
 	});
 	candidatos.sort(function (a, b) { return a.orden - b.orden; });
 
-	// Se consultan a la vez y se toma el primero con imágenes, para no encadenar
-	// hasta once viajes de ida y vuelta cuando aún no hay nada subido.
+	// Se consultan a la vez, para no encadenar hasta once viajes de ida y vuelta
+	// cuando aún no hay nada subido.
 	var urls = await Promise.all(candidatos.map(function (c) {
 		return listarMuestra(c.slug);
 	}));
-	var i = urls.findIndex(function (u) { return u && u.length; });
-	if (i === -1) { return; }
+
+	// La sección multigrado enseña su propia galería con estos mismos listados.
+	renderMultigrado(candidatos, urls);
+
+	// Un paquete al azar entre los que ya tienen muestras: cada visita enseña
+	// uno distinto en vez de favorecer siempre al primero.
+	var conMuestra = [];
+	urls.forEach(function (u, j) { if (u && u.length) { conMuestra.push(j); } });
+	if (!conMuestra.length) { return; }
+	var i = conMuestra[Math.floor(Math.random() * conMuestra.length)];
 
 	var elegido = candidatos[i];
 	rellenarHero(urls[i]);
-	tira.innerHTML = urls[i].slice(0, 5).map(function (im) {
-		return '<a href="' + Tienda.esc(elegido.href) + '" class="shrink-0 w-[240px] sm:w-[280px] rounded-2xl overflow-hidden border border-line bg-paper block">' +
+	tira.innerHTML = urls[i].map(function (im, j) {
+		return '<button type="button" data-muestra="' + j + '" title="Clic para ampliar" class="shrink-0 w-[240px] sm:w-[280px] rounded-2xl overflow-hidden border border-line bg-paper block text-left cursor-zoom-in">' +
 			'<img src="' + Tienda.esc(im.url) + '" alt="Página de muestra · ' + Tienda.esc(elegido.titulo) + '" class="w-full h-[320px] sm:h-[380px] object-contain" loading="lazy">' +
 			'<span class="block px-3 py-2 text-[12px] font-semibold text-mute border-t border-line">' + Tienda.esc(im.etiqueta) + '</span>' +
-			'</a>';
+			'</button>';
 	}).join("");
-
-	var cta = document.getElementById("muestraCta");
-	if (cta) { cta.href = elegido.href; }
+	tira.querySelectorAll("[data-muestra]").forEach(function (b) {
+		b.addEventListener("click", function () {
+			Tienda.visorAbrir(urls[i], Number(b.getAttribute("data-muestra")));
+		});
+	});
 
 	seccion.classList.remove("hidden");
 
@@ -101,6 +111,43 @@ async function renderMuestra(prods) {
 
 	Tienda.iconos();
 	Tienda.revelar();
+}
+
+// La columna visual de "Pensado para multigrado" nace con una maqueta de la
+// tabla de sesión; si algún paquete multigrado ya tiene muestras subidas, se
+// cambia por su galería real (al azar entre los que tengan) con el mismo visor
+// con zoom de la ficha de producto. Reutiliza los listados de renderMuestra:
+// cero consultas extra a Storage.
+function renderMultigrado(candidatos, urls) {
+	var cont = document.getElementById("multiGaleria");
+	var tira = document.getElementById("multiGaleriaTira");
+	var pie = document.getElementById("multiGaleriaPie");
+	var mock = document.getElementById("multiMock");
+	if (!cont || !tira) { return; }
+
+	var conMuestra = [];
+	candidatos.forEach(function (c, j) {
+		if (c.esMulti && urls[j] && urls[j].length) { conMuestra.push(j); }
+	});
+	if (!conMuestra.length) { return; }
+	var i = conMuestra[Math.floor(Math.random() * conMuestra.length)];
+	var imgs = urls[i];
+
+	tira.innerHTML = imgs.map(function (im, j) {
+		return '<button type="button" data-multi-muestra="' + j + '" title="Clic para ampliar" class="shrink-0 w-[200px] rounded-2xl overflow-hidden border border-line bg-white block text-left cursor-zoom-in shadow-sm">' +
+			'<img src="' + Tienda.esc(im.url) + '" alt="Página de muestra · ' + Tienda.esc(candidatos[i].titulo) + '" class="w-full h-[260px] object-contain bg-paper" loading="lazy">' +
+			'<span class="block px-3 py-2 text-[11px] font-semibold text-mute border-t border-line">' + Tienda.esc(im.etiqueta) + '</span>' +
+			'</button>';
+	}).join("");
+	tira.querySelectorAll("[data-multi-muestra]").forEach(function (b) {
+		b.addEventListener("click", function () {
+			Tienda.visorAbrir(imgs, Number(b.getAttribute("data-multi-muestra")));
+		});
+	});
+	if (pie) { pie.textContent = "Páginas reales del paquete " + candidatos[i].titulo + ". Clic para ampliar."; }
+
+	if (mock) { mock.classList.add("hidden"); }
+	cont.classList.remove("hidden");
 }
 
 // La tarjeta del hero nace como maqueta rayada; en cuanto hay muestras reales,
@@ -148,7 +195,7 @@ function etiquetaMuestra(nombre) {
 async function listarMuestra(slug) {
 	try {
 		var r = await window.sb.storage.from("assets").list("previews/" + slug, {
-			limit: 12,
+			limit: 60,
 			sortBy: { column: "name", order: "asc" },
 		});
 		if (r.error || !r.data) { return []; }

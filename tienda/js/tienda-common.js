@@ -343,6 +343,138 @@
 		});
 	}
 
+	// ── Visor ampliado compartido ─────────────────────────────────────────────
+	// Pantalla completa para las páginas de muestra: un clic acerca al punto
+	// señalado, el arrastre o el scroll recorren la página, las flechas navegan
+	// y Escape o el fondo cierran. Lo usan la ficha de producto y el landing.
+	// El markup se inyecta en el primer uso para no repetirlo en cada página.
+	var visorEl = null, visorScroll, visorImg, visorEtiqueta, visorContador, visorPrev, visorNext;
+	var visorImgs = [], visorIdx = 0, visorOnCambio = null, visorZoom = false;
+	var visorArrastre = null, visorSeMovio = false;
+
+	function visorMontar() {
+		if (visorEl) { return; }
+		visorEl = document.createElement("div");
+		visorEl.className = "hidden fixed inset-0";
+		visorEl.style.zIndex = "70";
+		visorEl.setAttribute("role", "dialog");
+		visorEl.setAttribute("aria-modal", "true");
+		visorEl.setAttribute("aria-label", "Vista previa ampliada");
+		visorEl.innerHTML =
+			'<div class="absolute inset-0" style="background:rgba(28,36,52,.92)"></div>' +
+			'<div data-visor-scroll class="absolute inset-0 overflow-auto overscroll-contain flex">' +
+			'<img data-visor-img alt="Página de muestra ampliada" class="m-auto max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">' +
+			'</div>' +
+			'<span data-visor-etiqueta class="absolute top-4 left-4 text-[11px] font-bold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(30,58,138,.9);color:#fff"></span>' +
+			'<button data-visor-cerrar type="button" aria-label="Cerrar" class="absolute top-3 right-3 w-11 h-11 rounded-full flex items-center justify-center text-white transition" style="background:rgba(255,255,255,.14)"><i data-lucide="x" class="w-5 h-5"></i></button>' +
+			'<button data-visor-prev type="button" aria-label="Anterior" class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white transition" style="background:rgba(255,255,255,.14)"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>' +
+			'<button data-visor-next type="button" aria-label="Siguiente" class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white transition" style="background:rgba(255,255,255,.14)"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>' +
+			'<span data-visor-contador class="absolute bottom-4 right-4 text-[11px] font-semibold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(28,36,52,.75);color:#fff"></span>';
+		document.body.appendChild(visorEl);
+
+		visorScroll = visorEl.querySelector("[data-visor-scroll]");
+		visorImg = visorEl.querySelector("[data-visor-img]");
+		visorEtiqueta = visorEl.querySelector("[data-visor-etiqueta]");
+		visorContador = visorEl.querySelector("[data-visor-contador]");
+		visorPrev = visorEl.querySelector("[data-visor-prev]");
+		visorNext = visorEl.querySelector("[data-visor-next]");
+
+		visorEl.querySelector("[data-visor-cerrar]").addEventListener("click", visorCerrar);
+		visorPrev.addEventListener("click", function () { visorIr(visorIdx - 1); });
+		visorNext.addEventListener("click", function () { visorIr(visorIdx + 1); });
+
+		visorImg.addEventListener("click", function (e) {
+			if (visorSeMovio) { return; }
+			if (visorZoom) { visorAjustar(); return; }
+			// Acerca centrando el punto donde se hizo clic, no la esquina.
+			var rect = visorImg.getBoundingClientRect();
+			var fx = rect.width ? (e.clientX - rect.left) / rect.width : 0.5;
+			var fy = rect.height ? (e.clientY - rect.top) / rect.height : 0.5;
+			visorZoom = true;
+			visorImg.classList.remove("max-w-full", "max-h-full", "cursor-zoom-in");
+			visorImg.classList.add("max-w-none", "max-h-none", "cursor-zoom-out");
+			visorImg.style.width = Math.round(visorScroll.clientWidth * 1.8) + "px";
+			requestAnimationFrame(function () {
+				visorScroll.scrollLeft = visorImg.clientWidth * fx - visorScroll.clientWidth / 2;
+				visorScroll.scrollTop = visorImg.clientHeight * fy - visorScroll.clientHeight / 2;
+			});
+		});
+
+		// Arrastre con mouse para recorrer la página ampliada; en táctil el
+		// scroll nativo ya lo hace. Tras arrastrar, el click no cambia el zoom.
+		visorScroll.addEventListener("pointerdown", function (e) {
+			if (e.pointerType !== "mouse") { return; }
+			visorArrastre = { x: e.clientX, y: e.clientY, sl: visorScroll.scrollLeft, st: visorScroll.scrollTop };
+			visorSeMovio = false;
+		});
+		visorScroll.addEventListener("pointermove", function (e) {
+			if (!visorArrastre) { return; }
+			var dx = e.clientX - visorArrastre.x;
+			var dy = e.clientY - visorArrastre.y;
+			if (Math.abs(dx) + Math.abs(dy) > 6) { visorSeMovio = true; }
+			visorScroll.scrollLeft = visorArrastre.sl - dx;
+			visorScroll.scrollTop = visorArrastre.st - dy;
+		});
+		window.addEventListener("pointerup", function () { visorArrastre = null; });
+
+		// Clic en el fondo oscuro (fuera de la imagen) cierra.
+		visorScroll.addEventListener("click", function (e) {
+			if (e.target === visorScroll && !visorSeMovio) { visorCerrar(); }
+		});
+
+		document.addEventListener("keydown", function (e) {
+			if (!visorAbierto()) { return; }
+			if (e.key === "Escape") { visorCerrar(); }
+			if (e.key === "ArrowLeft") { visorIr(visorIdx - 1); }
+			if (e.key === "ArrowRight") { visorIr(visorIdx + 1); }
+		});
+
+		iconos();
+	}
+
+	function visorAjustar() {
+		visorZoom = false;
+		visorImg.classList.add("max-w-full", "max-h-full", "cursor-zoom-in");
+		visorImg.classList.remove("max-w-none", "max-h-none", "cursor-zoom-out");
+		visorImg.style.width = "";
+	}
+
+	function visorIr(i) {
+		if (!visorImgs.length) { return; }
+		visorIdx = (i + visorImgs.length) % visorImgs.length;
+		var im = visorImgs[visorIdx];
+		visorImg.src = im.url;
+		visorEtiqueta.textContent = im.etiqueta || "";
+		visorContador.textContent = (visorIdx + 1) + " / " + visorImgs.length;
+		visorAjustar();
+		if (visorOnCambio) { visorOnCambio(visorIdx); }
+	}
+
+	// imagenes: [{url, etiqueta}]. onCambio (opcional) recibe el índice cada vez
+	// que el visor cambia de página, para que la galería de atrás lo siga.
+	function visorAbrir(imagenes, idx, onCambio) {
+		if (!imagenes || !imagenes.length) { return; }
+		visorMontar();
+		visorImgs = imagenes;
+		visorOnCambio = onCambio || null;
+		var soloUna = imagenes.length < 2;
+		visorPrev.classList.toggle("hidden", soloUna);
+		visorNext.classList.toggle("hidden", soloUna);
+		visorEl.classList.remove("hidden");
+		document.body.style.overflow = "hidden";
+		visorIr(idx || 0);
+	}
+
+	function visorCerrar() {
+		if (!visorEl) { return; }
+		visorEl.classList.add("hidden");
+		document.body.style.overflow = "";
+	}
+
+	function visorAbierto() {
+		return !!(visorEl && !visorEl.classList.contains("hidden"));
+	}
+
 	window.Tienda = {
 		SUPABASE_URL: SUPABASE_URL,
 		EDGE_BASE: EDGE_BASE,
@@ -364,5 +496,8 @@
 		slugPreview: slugPreview,
 		portadaPreview: portadaPreview,
 		pintarPortada: pintarPortada,
+		visorAbrir: visorAbrir,
+		visorCerrar: visorCerrar,
+		visorAbierto: visorAbierto,
 	};
 })();

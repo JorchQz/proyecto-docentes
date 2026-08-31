@@ -138,11 +138,18 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 <section id="multigrado" class="bg-paper">
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-20 lg:py-24 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 		<div class="reveal order-2 lg:order-1 relative">
-			<!-- Reproduce en pequeño la tabla real de una sesión: cabecera de
-			     sesión, banda de momento y una columna por grado. Antes eran
-			     cajas rayadas con la clase .ph, que es la que marca "imagen
-			     pendiente", y hacía parecer la sección a medio hacer. -->
-			<div class="relative bg-white border border-line rounded-3xl overflow-hidden shadow-sm">
+			<!-- Galería real de un paquete multigrado: la llena landing.js si hay
+			     muestras subidas en previews/multi-*; clic abre el visor con zoom. -->
+			<div id="multiGaleria" class="hidden">
+				<div id="multiGaleriaTira" class="flex gap-3 overflow-x-auto pb-3"></div>
+				<p id="multiGaleriaPie" class="mt-2 text-[13px] text-mute"></p>
+			</div>
+			<!-- Respaldo mientras no hay muestras multigrado: reproduce en pequeño
+			     la tabla real de una sesión: cabecera de sesión, banda de momento
+			     y una columna por grado. Antes eran cajas rayadas con la clase
+			     .ph, que es la que marca "imagen pendiente", y hacía parecer la
+			     sección a medio hacer. -->
+			<div id="multiMock" class="relative bg-white border border-line rounded-3xl overflow-hidden shadow-sm">
 				<div class="bg-ink text-white px-4 py-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em]">
 					<i data-lucide="table-2" class="w-4 h-4 shrink-0"></i>
 					<span class="truncate">Sesión 1 · Lenguajes · Presentemos</span>
@@ -199,7 +206,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 		<div id="muestraTira" class="mt-10 flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0"></div>
 
 		<a id="muestraCta" href="catalogo.html" class="mt-8 inline-flex items-center gap-2 h-14 px-6 rounded-2xl bg-board hover:bg-board-deep text-white font-bold transition">
-			Ver el paquete completo <i data-lucide="arrow-right" class="w-5 h-5"></i>
+			Explorar el catálogo <i data-lucide="arrow-right" class="w-5 h-5"></i>
 		</a>
 	</div>
 </section>
