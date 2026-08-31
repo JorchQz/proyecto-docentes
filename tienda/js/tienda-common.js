@@ -351,6 +351,7 @@
 	var visorEl = null, visorScroll, visorImg, visorEtiqueta, visorContador, visorPrev, visorNext;
 	var visorImgs = [], visorIdx = 0, visorOnCambio = null, visorZoom = false;
 	var visorArrastre = null, visorSeMovio = false;
+	var visorEnHistorial = false;
 
 	function visorMontar() {
 		if (visorEl) { return; }
@@ -365,10 +366,12 @@
 			'<div data-visor-scroll class="absolute inset-0 overflow-auto overscroll-contain flex">' +
 			'<img data-visor-img alt="Página de muestra ampliada" class="m-auto max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">' +
 			'</div>' +
+			// Botones azules (board): las páginas de muestra son de fondo blanco
+			// y un botón claro se pierde encima, también con el zoom activo.
 			'<span data-visor-etiqueta class="absolute top-4 left-4 text-[11px] font-bold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(30,58,138,.9);color:#fff"></span>' +
-			'<button data-visor-cerrar type="button" aria-label="Cerrar" class="absolute top-3 right-3 w-11 h-11 rounded-full flex items-center justify-center text-white transition" style="background:rgba(255,255,255,.14)"><i data-lucide="x" class="w-5 h-5"></i></button>' +
-			'<button data-visor-prev type="button" aria-label="Anterior" class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white transition" style="background:rgba(255,255,255,.14)"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>' +
-			'<button data-visor-next type="button" aria-label="Siguiente" class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-white transition" style="background:rgba(255,255,255,.14)"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>' +
+			'<button data-visor-cerrar type="button" aria-label="Cerrar" class="absolute top-3 right-3 w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-white transition hover:opacity-90" style="background:#1e3a8a"><i data-lucide="x" class="w-5 h-5"></i></button>' +
+			'<button data-visor-prev type="button" aria-label="Anterior" class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-white transition hover:opacity-90" style="background:#1e3a8a"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>' +
+			'<button data-visor-next type="button" aria-label="Siguiente" class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-white transition hover:opacity-90" style="background:#1e3a8a"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>' +
 			'<span data-visor-contador class="absolute bottom-4 right-4 text-[11px] font-semibold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(28,36,52,.75);color:#fff"></span>';
 		document.body.appendChild(visorEl);
 
@@ -429,6 +432,33 @@
 			if (e.key === "ArrowRight") { visorIr(visorIdx + 1); }
 		});
 
+		// Deslizar en táctil cambia de página cuando no hay zoom. Con zoom
+		// activo no se intercepta: el scroll nativo recorre la página.
+		var toque = null;
+		visorScroll.addEventListener("touchstart", function (e) {
+			toque = e.touches.length === 1
+				? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+				: null;
+		}, { passive: true });
+		visorScroll.addEventListener("touchend", function (e) {
+			if (!toque || visorZoom) { toque = null; return; }
+			var dx = e.changedTouches[0].clientX - toque.x;
+			var dy = e.changedTouches[0].clientY - toque.y;
+			toque = null;
+			if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+				visorIr(dx < 0 ? visorIdx + 1 : visorIdx - 1);
+			}
+		}, { passive: true });
+
+		// En móvil, el botón atrás debe salir del visor, no de la página:
+		// abrir agrega una entrada al historial y popstate solo cierra.
+		window.addEventListener("popstate", function () {
+			if (visorAbierto()) {
+				visorEnHistorial = false;
+				visorCerrar();
+			}
+		});
+
 		iconos();
 	}
 
@@ -462,13 +492,23 @@
 		visorNext.classList.toggle("hidden", soloUna);
 		visorEl.classList.remove("hidden");
 		document.body.style.overflow = "hidden";
+		try {
+			history.pushState({ visor: true }, "");
+			visorEnHistorial = true;
+		} catch (_) { visorEnHistorial = false; }
 		visorIr(idx || 0);
 	}
 
 	function visorCerrar() {
-		if (!visorEl) { return; }
+		if (!visorAbierto()) { return; }
 		visorEl.classList.add("hidden");
 		document.body.style.overflow = "";
+		// Si abrir agregó una entrada al historial y se cierra desde la UI,
+		// se retira aquí; cerrar con el botón atrás ya la retiró él mismo.
+		if (visorEnHistorial) {
+			visorEnHistorial = false;
+			history.back();
+		}
 	}
 
 	function visorAbierto() {

@@ -428,13 +428,35 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// El visor con zoom vive en tienda-common (Tienda.visorAbrir) y lo comparten
 	// esta ficha y el landing. Al navegar dentro, la galería de atrás lo sigue.
 	function abrirLightbox() {
-		if (!imagenes.length) { return; }
+		if (!imagenes.length || galDeslizo) { return; }
 		Tienda.visorAbrir(imagenes, imgActual, function (i) {
 			if (i !== imgActual) { irA(i); }
 		});
 	}
 	galeriaImg.addEventListener("click", abrirLightbox);
 	document.getElementById("galeriaAmpliar").addEventListener("click", abrirLightbox);
+
+	// Deslizar sobre la galería en táctil cambia de página, como en el visor.
+	// Un deslizamiento no debe abrir el visor: el click que a veces dispara el
+	// navegador tras el gesto se ignora con la bandera.
+	var galToque = null;
+	var galDeslizo = false;
+	galeriaEl.addEventListener("touchstart", function (e) {
+		galToque = e.touches.length === 1
+			? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+			: null;
+	}, { passive: true });
+	galeriaEl.addEventListener("touchend", function (e) {
+		if (!galToque) { return; }
+		var dx = e.changedTouches[0].clientX - galToque.x;
+		var dy = e.changedTouches[0].clientY - galToque.y;
+		galToque = null;
+		if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+			galDeslizo = true;
+			irA(dx < 0 ? imgActual + 1 : imgActual - 1);
+			setTimeout(function () { galDeslizo = false; }, 400);
+		}
+	}, { passive: true });
 
 	// ── Modal de compra ───────────────────────────────────────────────────────
 	// Dos decisiones, una por pantalla: primero QUÉ paquete, luego EN QUÉ

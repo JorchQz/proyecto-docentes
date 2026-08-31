@@ -81,19 +81,21 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					<div id="galeria" class="hidden absolute inset-0 flex items-center justify-center bg-paper">
 						<img id="galeriaImg" alt="Página de muestra de la planeación" title="Clic para ampliar"
 							class="max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">
+						<!-- Flechas azules (board): las páginas de muestra son de fondo
+						     blanco y una flecha clara se pierde encima. -->
 						<button id="galeriaPrev" type="button" aria-label="Anterior"
-							class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
-							<i data-lucide="chevron-left" class="w-5 h-5 text-ink"></i>
+							class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition hover:opacity-90 text-white" style="background:#1e3a8a">
+							<i data-lucide="chevron-left" class="w-5 h-5"></i>
 						</button>
 						<button id="galeriaNext" type="button" aria-label="Siguiente"
-							class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
-							<i data-lucide="chevron-right" class="w-5 h-5 text-ink"></i>
+							class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition hover:opacity-90 text-white" style="background:#1e3a8a">
+							<i data-lucide="chevron-right" class="w-5 h-5"></i>
 						</button>
 						<span id="galeriaEtiqueta" class="absolute top-3 left-3 text-[11px] font-bold px-2.5 py-1 rounded-full" style="background:rgba(30,58,138,.9);color:#fff"></span>
 						<span id="galeriaContador" class="absolute bottom-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full" style="background:rgba(28,36,52,.75);color:#fff"></span>
 						<button id="galeriaAmpliar" type="button" aria-label="Ampliar vista previa"
-							class="absolute bottom-3 left-3 w-9 h-9 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
-							<i data-lucide="maximize-2" class="w-4 h-4 text-ink"></i>
+							class="absolute bottom-3 left-3 w-9 h-9 rounded-full shadow-lg flex items-center justify-center transition hover:opacity-90 text-white" style="background:#1e3a8a">
+							<i data-lucide="maximize-2" class="w-4 h-4"></i>
 						</button>
 					</div>
 
