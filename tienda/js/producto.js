@@ -324,6 +324,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var n = nombre.toLowerCase();
 		if (n.indexOf("anexo") !== -1) { return "Anexo para el alumno"; }
 		if (n.indexOf("examen") !== -1) { return "Examen del trimestre"; }
+		if (n.indexOf("clave") !== -1) { return "Clave del maestro"; }
 		return "Planeación";
 	}
 
