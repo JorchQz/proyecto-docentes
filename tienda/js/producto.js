@@ -388,6 +388,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		document.getElementById("galeriaPrev").classList.toggle("hidden", soloUna);
 		document.getElementById("galeriaNext").classList.toggle("hidden", soloUna);
 
+		// En táctil las flechas se asoman un momento y se esconden: el gesto
+		// natural es deslizar. En escritorio no hace nada (quedan fijas).
+		if (!soloUna) {
+			Tienda.flechasFugaces(galeriaEl, [
+				document.getElementById("galeriaPrev"),
+				document.getElementById("galeriaNext"),
+			], true);
+		}
+
 		irA(0);
 		Tienda.iconos();
 	}

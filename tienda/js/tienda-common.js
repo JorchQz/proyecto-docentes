@@ -343,6 +343,28 @@
 		});
 	}
 
+	// ── Flechas fugaces ───────────────────────────────────────────────────────
+	// En pantallas táctiles las flechas se asoman un momento y se esconden: el
+	// gesto natural ahí es deslizar, y la flecha fija encima de la hoja estorba.
+	// Cualquier toque las vuelve a asomar. En escritorio (con hover) no hace
+	// nada: quedan siempre visibles, porque sin gesto de deslizar son el único
+	// control. Devuelve la función "asomar" para llamarla al abrir/mostrar.
+	var TACTIL = window.matchMedia && window.matchMedia("(hover: none)").matches;
+	function flechasFugaces(contenedor, botones, asomarYa) {
+		if (!TACTIL) { return function () {}; }
+		var timer = null;
+		function asomar() {
+			botones.forEach(function (b) { b.classList.remove("opacity-0", "pointer-events-none"); });
+			clearTimeout(timer);
+			timer = setTimeout(function () {
+				botones.forEach(function (b) { b.classList.add("opacity-0", "pointer-events-none"); });
+			}, 1600);
+		}
+		contenedor.addEventListener("touchstart", asomar, { passive: true });
+		if (asomarYa) { asomar(); }
+		return asomar;
+	}
+
 	// ── Visor ampliado compartido ─────────────────────────────────────────────
 	// Pantalla completa para las páginas de muestra: un clic acerca al punto
 	// señalado, el arrastre o el scroll recorren la página, las flechas navegan
@@ -352,6 +374,7 @@
 	var visorImgs = [], visorIdx = 0, visorOnCambio = null, visorZoom = false;
 	var visorArrastre = null, visorSeMovio = false;
 	var visorEnHistorial = false;
+	var visorAsomarFlechas = function () {};
 
 	function visorMontar() {
 		if (visorEl) { return; }
@@ -366,12 +389,12 @@
 			'<div data-visor-scroll class="absolute inset-0 overflow-auto overscroll-contain flex">' +
 			'<img data-visor-img alt="Página de muestra ampliada" class="m-auto max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">' +
 			'</div>' +
-			// Botones azules (board): las páginas de muestra son de fondo blanco
-			// y un botón claro se pierde encima, también con el zoom activo.
+			// Flechas: chevron azul (board) sin fondo, con halo blanco para que
+			// no se pierda ni sobre la hoja blanca ni sobre el fondo oscuro.
 			'<span data-visor-etiqueta class="absolute top-4 left-4 text-[11px] font-bold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(30,58,138,.9);color:#fff"></span>' +
-			'<button data-visor-cerrar type="button" aria-label="Cerrar" class="absolute top-3 right-3 w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-white transition hover:opacity-90" style="background:#1e3a8a"><i data-lucide="x" class="w-5 h-5"></i></button>' +
-			'<button data-visor-prev type="button" aria-label="Anterior" class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-white transition hover:opacity-90" style="background:#1e3a8a"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>' +
-			'<button data-visor-next type="button" aria-label="Siguiente" class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-white transition hover:opacity-90" style="background:#1e3a8a"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>' +
+			'<button data-visor-cerrar type="button" aria-label="Cerrar" class="absolute top-3 right-3 w-11 h-11 flex items-center justify-center text-white transition hover:opacity-80" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))"><i data-lucide="x" class="w-7 h-7"></i></button>' +
+			'<button data-visor-prev type="button" aria-label="Anterior" class="absolute left-1 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center transition-opacity duration-300 hover:opacity-80" style="color:#1e3a8a;filter:drop-shadow(0 0 5px rgba(255,255,255,.95)) drop-shadow(0 1px 2px rgba(255,255,255,.8))"><i data-lucide="chevron-left" class="w-10 h-10"></i></button>' +
+			'<button data-visor-next type="button" aria-label="Siguiente" class="absolute right-1 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center transition-opacity duration-300 hover:opacity-80" style="color:#1e3a8a;filter:drop-shadow(0 0 5px rgba(255,255,255,.95)) drop-shadow(0 1px 2px rgba(255,255,255,.8))"><i data-lucide="chevron-right" class="w-10 h-10"></i></button>' +
 			'<span data-visor-contador class="absolute bottom-4 right-4 text-[11px] font-semibold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(28,36,52,.75);color:#fff"></span>';
 		document.body.appendChild(visorEl);
 
@@ -450,6 +473,8 @@
 			}
 		}, { passive: true });
 
+		visorAsomarFlechas = flechasFugaces(visorEl, [visorPrev, visorNext]);
+
 		// En móvil, el botón atrás debe salir del visor, no de la página:
 		// abrir agrega una entrada al historial y popstate solo cierra.
 		window.addEventListener("popstate", function () {
@@ -497,6 +522,7 @@
 			visorEnHistorial = true;
 		} catch (_) { visorEnHistorial = false; }
 		visorIr(idx || 0);
+		visorAsomarFlechas();
 	}
 
 	function visorCerrar() {
@@ -539,5 +565,6 @@
 		visorAbrir: visorAbrir,
 		visorCerrar: visorCerrar,
 		visorAbierto: visorAbierto,
+		flechasFugaces: flechasFugaces,
 	};
 })();
