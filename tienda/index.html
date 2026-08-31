@@ -84,11 +84,13 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 						</div>
 						<span class="text-[11px] font-bold px-2.5 h-7 inline-flex items-center rounded-full bg-paper border border-line text-mute">Solo PDF</span>
 					</div>
-					<div class="ph h-40 w-full rounded-xl">vista previa · planeación.pdf</div>
+					<!-- Nacen como maqueta rayada; landing.js los cambia por páginas
+					     reales de previews/ en cuanto hay muestras subidas. -->
+					<div class="ph h-40 w-full rounded-xl overflow-hidden" data-hero-muestra="planeacion">vista previa · planeación.pdf</div>
 					<div class="mt-3 grid grid-cols-3 gap-2">
-						<div class="ph h-14 rounded-xl text-[10px]">anexo</div>
-						<div class="ph h-14 rounded-xl text-[10px]">PDA</div>
-						<div class="ph h-14 rounded-xl text-[10px]">examen</div>
+						<div class="ph h-14 rounded-xl text-[10px] overflow-hidden" data-hero-muestra="anexo">anexo</div>
+						<div class="ph h-14 rounded-xl text-[10px] overflow-hidden" data-hero-muestra="pda">PDA</div>
+						<div class="ph h-14 rounded-xl text-[10px] overflow-hidden" data-hero-muestra="examen">examen</div>
 					</div>
 				</div>
 				<div class="absolute -bottom-5 right-2 bg-white rounded-2xl shadow-xl border border-line px-4 py-3 rotate-[3deg]">

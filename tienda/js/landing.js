@@ -78,6 +78,7 @@ async function renderMuestra(prods) {
 	if (i === -1) { return; }
 
 	var elegido = candidatos[i];
+	rellenarHero(urls[i]);
 	tira.innerHTML = urls[i].slice(0, 5).map(function (im) {
 		return '<a href="' + Tienda.esc(elegido.href) + '" class="shrink-0 w-[240px] sm:w-[280px] rounded-2xl overflow-hidden border border-line bg-paper block">' +
 			'<img src="' + Tienda.esc(im.url) + '" alt="Página de muestra · ' + Tienda.esc(elegido.titulo) + '" class="w-full h-[320px] sm:h-[380px] object-contain" loading="lazy">' +
@@ -100,6 +101,39 @@ async function renderMuestra(prods) {
 
 	Tienda.iconos();
 	Tienda.revelar();
+}
+
+// La tarjeta del hero nace como maqueta rayada; en cuanto hay muestras reales,
+// sus recuadros enseñan páginas de verdad. Cada recuadro busca primero una
+// imagen de su tipo (por etiqueta) y, si no la hay, toma la siguiente sin usar.
+// Los que se queden sin imagen conservan su rayado.
+function rellenarHero(imgs) {
+	var usadas = [];
+	function porEtiqueta(et) {
+		for (var i = 0; i < imgs.length; i++) {
+			if (usadas.indexOf(i) === -1 && imgs[i].etiqueta === et) { usadas.push(i); return imgs[i]; }
+		}
+		return null;
+	}
+	function siguiente() {
+		for (var i = 0; i < imgs.length; i++) {
+			if (usadas.indexOf(i) === -1) { usadas.push(i); return imgs[i]; }
+		}
+		return null;
+	}
+	function poner(clave, im) {
+		var el = document.querySelector('[data-hero-muestra="' + clave + '"]');
+		if (!el || !im) { return; }
+		el.classList.remove("ph");
+		el.textContent = "";
+		el.style.background = "#f1f0ea";
+		el.innerHTML = '<img src="' + Tienda.esc(im.url) + '" alt="' + Tienda.esc(im.etiqueta) +
+			'" class="w-full h-full object-cover" style="object-position:center 10%" loading="lazy">';
+	}
+	poner("planeacion", porEtiqueta("Planeación") || siguiente());
+	poner("anexo", porEtiqueta("Anexo para el alumno") || siguiente());
+	poner("pda", siguiente());
+	poner("examen", porEtiqueta("Examen del trimestre") || siguiente());
 }
 
 // Mismas etiquetas que usa la galería de la ficha de producto.
