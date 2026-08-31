@@ -336,10 +336,10 @@
 			contenedor.classList.remove("ph");
 			contenedor.textContent = "";
 			contenedor.style.background = "#f1f0ea";
-			// Un 20% baja el encuadre apenas por debajo del borde: se ve el
+			// Un 10% baja el encuadre apenas por debajo del borde: se ve el
 			// encabezado de la hoja sin el margen blanco superior.
 			contenedor.innerHTML = '<img src="' + esc(url) + '" alt="' + esc(alt || "") +
-				'" class="w-full h-full object-cover" style="object-position:center 20%" loading="lazy">';
+				'" class="w-full h-full object-cover" style="object-position:center 10%" loading="lazy">';
 		});
 	}
 
