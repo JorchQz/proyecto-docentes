@@ -337,7 +337,7 @@
 			contenedor.textContent = "";
 			contenedor.style.background = "#f1f0ea";
 			contenedor.innerHTML = '<img src="' + esc(url) + '" alt="' + esc(alt || "") +
-				'" class="w-full h-full object-cover" loading="lazy">';
+				'" class="w-full h-full object-cover object-top" loading="lazy">';
 		});
 	}
 
