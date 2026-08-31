@@ -79,8 +79,8 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 					<!-- Galería de imágenes (vía preferida) -->
 					<div id="galeria" class="hidden absolute inset-0 flex items-center justify-center bg-paper">
-						<img id="galeriaImg" alt="Página de muestra de la planeación"
-							class="max-w-full max-h-full object-contain select-none" draggable="false">
+						<img id="galeriaImg" alt="Página de muestra de la planeación" title="Clic para ampliar"
+							class="max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">
 						<button id="galeriaPrev" type="button" aria-label="Anterior"
 							class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
 							<i data-lucide="chevron-left" class="w-5 h-5 text-ink"></i>
@@ -91,6 +91,10 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 						</button>
 						<span id="galeriaEtiqueta" class="absolute top-3 left-3 text-[11px] font-bold px-2.5 py-1 rounded-full" style="background:rgba(30,58,138,.9);color:#fff"></span>
 						<span id="galeriaContador" class="absolute bottom-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full" style="background:rgba(28,36,52,.75);color:#fff"></span>
+						<button id="galeriaAmpliar" type="button" aria-label="Ampliar vista previa"
+							class="absolute bottom-3 left-3 w-9 h-9 rounded-full bg-white/90 border border-line shadow flex items-center justify-center transition hover:bg-white">
+							<i data-lucide="maximize-2" class="w-4 h-4 text-ink"></i>
+						</button>
 					</div>
 
 					<!-- Respaldo: PDF recortado, si aún no hay imágenes -->
@@ -253,6 +257,31 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			</div>
 		</div>
 	</div>
+</div>
+
+<!-- ===== Visor ampliado de la vista previa ===== -->
+<!-- Clic en la imagen de la galería lo abre; dentro, otro clic acerca al punto
+     señalado y el arrastre o el scroll recorren la página. -->
+<div id="lightbox" class="hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="Vista previa ampliada">
+	<div class="absolute inset-0" style="background:rgba(28,36,52,.92)"></div>
+	<div id="lightboxScroll" class="absolute inset-0 overflow-auto overscroll-contain flex">
+		<img id="lightboxImg" alt="Página de muestra ampliada"
+			class="m-auto max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">
+	</div>
+	<span id="lightboxEtiqueta" class="absolute top-4 left-4 text-[11px] font-bold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(30,58,138,.9);color:#fff"></span>
+	<button id="lightboxCerrar" type="button" aria-label="Cerrar"
+		class="absolute top-3 right-3 w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-white">
+		<i data-lucide="x" class="w-5 h-5"></i>
+	</button>
+	<button id="lightboxPrev" type="button" aria-label="Anterior"
+		class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-white">
+		<i data-lucide="chevron-left" class="w-5 h-5"></i>
+	</button>
+	<button id="lightboxNext" type="button" aria-label="Siguiente"
+		class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition text-white">
+		<i data-lucide="chevron-right" class="w-5 h-5"></i>
+	</button>
+	<span id="lightboxContador" class="absolute bottom-4 right-4 text-[11px] font-semibold px-2.5 py-1 rounded-full pointer-events-none" style="background:rgba(28,36,52,.75);color:#fff"></span>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

@@ -379,6 +379,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (document.getElementById("modalCompra").classList.contains("hidden")) {
 				if (e.key === "ArrowLeft") { irA(imgActual - 1); }
 				if (e.key === "ArrowRight") { irA(imgActual + 1); }
+				if (e.key === "Escape" && !lightboxEl.classList.contains("hidden")) { cerrarLightbox(); }
 			}
 		});
 
@@ -401,6 +402,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		galeriaTiras.querySelectorAll("[data-tira]").forEach(function (b) {
 			b.style.borderColor = Number(b.getAttribute("data-tira")) === imgActual ? "#1e3a8a" : "#e7e6df";
 		});
+		// Con el visor ampliado abierto, la página mostrada ahí sigue el mismo índice.
+		if (!lightboxEl.classList.contains("hidden")) { lbSync(); }
 	}
 
 	async function mostrarPdf() {
@@ -421,6 +424,96 @@ document.addEventListener("DOMContentLoaded", async function () {
 			Tienda.iconos();
 		}
 	}
+
+	// ── Visor ampliado (lightbox) ─────────────────────────────────────────────
+	// La galería cabe en una tarjeta y las páginas de muestra son tamaño carta:
+	// el texto no se alcanza a leer. Clic en la imagen la abre a pantalla
+	// completa; otro clic acerca al punto señalado (el arrastre o el scroll
+	// recorren la página) y Escape o la X cierran.
+	var lightboxEl = document.getElementById("lightbox");
+	var lbScroll = document.getElementById("lightboxScroll");
+	var lbImg = document.getElementById("lightboxImg");
+	var lbEtiqueta = document.getElementById("lightboxEtiqueta");
+	var lbContador = document.getElementById("lightboxContador");
+	var lbZoom = false;
+	var lbArrastre = null;
+	var lbSeMovio = false;
+
+	function lbAjustar() {
+		lbZoom = false;
+		lbImg.classList.add("max-w-full", "max-h-full", "cursor-zoom-in");
+		lbImg.classList.remove("max-w-none", "max-h-none", "cursor-zoom-out");
+		lbImg.style.width = "";
+	}
+
+	function lbSync() {
+		var im = imagenes[imgActual];
+		if (!im) { return; }
+		lbImg.src = im.url;
+		lbEtiqueta.textContent = im.etiqueta;
+		lbContador.textContent = (imgActual + 1) + " / " + imagenes.length;
+		lbAjustar();
+	}
+
+	function abrirLightbox() {
+		if (!imagenes.length) { return; }
+		lbSync();
+		var soloUna = imagenes.length < 2;
+		document.getElementById("lightboxPrev").classList.toggle("hidden", soloUna);
+		document.getElementById("lightboxNext").classList.toggle("hidden", soloUna);
+		lightboxEl.classList.remove("hidden");
+		document.body.style.overflow = "hidden";
+	}
+
+	function cerrarLightbox() {
+		lightboxEl.classList.add("hidden");
+		document.body.style.overflow = "";
+	}
+
+	galeriaImg.addEventListener("click", abrirLightbox);
+	document.getElementById("galeriaAmpliar").addEventListener("click", abrirLightbox);
+	document.getElementById("lightboxCerrar").addEventListener("click", cerrarLightbox);
+	document.getElementById("lightboxPrev").addEventListener("click", function () { irA(imgActual - 1); });
+	document.getElementById("lightboxNext").addEventListener("click", function () { irA(imgActual + 1); });
+
+	lbImg.addEventListener("click", function (e) {
+		if (lbSeMovio) { return; }
+		if (lbZoom) { lbAjustar(); return; }
+		// Acerca centrando el punto donde se hizo clic, no la esquina.
+		var rect = lbImg.getBoundingClientRect();
+		var fx = rect.width ? (e.clientX - rect.left) / rect.width : 0.5;
+		var fy = rect.height ? (e.clientY - rect.top) / rect.height : 0.5;
+		lbZoom = true;
+		lbImg.classList.remove("max-w-full", "max-h-full", "cursor-zoom-in");
+		lbImg.classList.add("max-w-none", "max-h-none", "cursor-zoom-out");
+		lbImg.style.width = Math.round(lbScroll.clientWidth * 1.8) + "px";
+		requestAnimationFrame(function () {
+			lbScroll.scrollLeft = lbImg.clientWidth * fx - lbScroll.clientWidth / 2;
+			lbScroll.scrollTop = lbImg.clientHeight * fy - lbScroll.clientHeight / 2;
+		});
+	});
+
+	// Arrastre con mouse para recorrer la página ampliada; en táctil el scroll
+	// nativo ya lo hace. Si hubo arrastre, el click posterior no cambia el zoom.
+	lbScroll.addEventListener("pointerdown", function (e) {
+		if (e.pointerType !== "mouse") { return; }
+		lbArrastre = { x: e.clientX, y: e.clientY, sl: lbScroll.scrollLeft, st: lbScroll.scrollTop };
+		lbSeMovio = false;
+	});
+	lbScroll.addEventListener("pointermove", function (e) {
+		if (!lbArrastre) { return; }
+		var dx = e.clientX - lbArrastre.x;
+		var dy = e.clientY - lbArrastre.y;
+		if (Math.abs(dx) + Math.abs(dy) > 6) { lbSeMovio = true; }
+		lbScroll.scrollLeft = lbArrastre.sl - dx;
+		lbScroll.scrollTop = lbArrastre.st - dy;
+	});
+	window.addEventListener("pointerup", function () { lbArrastre = null; });
+
+	// Clic en el fondo oscuro (fuera de la imagen) cierra.
+	lbScroll.addEventListener("click", function (e) {
+		if (e.target === lbScroll && !lbSeMovio) { cerrarLightbox(); }
+	});
 
 	// ── Modal de compra ───────────────────────────────────────────────────────
 	// Dos decisiones, una por pantalla: primero QUÉ paquete, luego EN QUÉ
