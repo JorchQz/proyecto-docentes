@@ -116,7 +116,9 @@ Deno.serve(async (req: Request) => {
 
     // 5. Construir el ZIP.
     //  - Planeación (archivos en la raíz del proyecto): lleva pie de página.
-    //  - Anexos (subcarpetas) y examen: SIN pie, los ven los alumnos.
+    //  - Anexos (subcarpetas), examen y cuadernillos: SIN pie, los ven los alumnos.
+    //  - Excepción: la clave del maestro (nombre con "clave") SÍ lleva pie,
+    //    es material exclusivo del docente y el alumno nunca la ve.
     //  - El .docx de cualquiera de ellos, solo con el add-on de Word.
     const entries: Record<string, Uint8Array> = {};
     for (const f of archivos) {
@@ -128,8 +130,10 @@ Deno.serve(async (req: Request) => {
 
       let bytes = await downloadDriveFile(f.id);
 
-      // Pie SOLO en la planeación (raíz de un proyecto, nunca examen ni anexos).
-      const aplicaPie = !esItemExamen && enRaiz;
+      // Pie SOLO en la planeación (raíz de un proyecto, nunca examen ni anexos),
+      // y en la clave del maestro aunque viva en la carpeta del examen.
+      const esClave = /clave/i.test(f.name);
+      const aplicaPie = esClave || (!esItemExamen && enRaiz);
       if (aplicaPie && pdf) {
         try { bytes = await aplicarPiePdf(bytes, texto); } catch (_) { /* original si falla */ }
       } else if (aplicaPie && docx) {

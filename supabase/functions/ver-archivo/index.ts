@@ -98,8 +98,11 @@ Deno.serve(async (req: Request) => {
 
     let bytes = await downloadDriveFile(archivo.id);
 
-    // Pie SOLO en la planeación (raíz, no examen, no anexo).
-    const aplicaPie = !esExamen && enRaiz;
+    // Pie SOLO en la planeación (raíz, no examen, no anexo), y en la clave
+    // del maestro aunque viva en la carpeta del examen: es material exclusivo
+    // del docente, el alumno nunca la ve.
+    const esClave = /clave/i.test(archivo.name);
+    const aplicaPie = esClave || (!esExamen && enRaiz);
     if (aplicaPie) {
       const nombre =
         (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.nombre_docente)) ||
