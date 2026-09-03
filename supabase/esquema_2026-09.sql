@@ -1,0 +1,136 @@
+-- ============================================================================
+-- ESQUEMA REAL DE SUPABASE — snapshot 2026-09-03 (proyecto cluvaxxqvhtxxiwctpnl)
+-- Generado desde information_schema/pg_constraint de la BD viva tras ejecutar
+-- las migraciones de mi_salon_2026-09.sql. ES DOCUMENTACIÓN, no un script
+-- ejecutable: manda la BD; ante cualquier duda, verificar contra ella.
+-- Los demás .sql de esta carpeta son historia de migraciones (ver encabezados).
+-- ============================================================================
+
+-- ─────────────────────────── MUNDO SaaS (maestro) ───────────────────────────
+-- perfiles: id(uuid PK=auth.users), nombre_completo, escuela, sexo_docente, cct,
+--   zona, estado, municipio, grados_asignados[], activo_saas, created_at
+-- grupos: id, maestro_id, ciclo_escolar, nombre, escuela, tipo_organizacion,
+--   grados[], es_multigrado, descripcion, trimestre_actual
+-- alumnos: id, maestro_id, grupo_id, num_lista, nombre_completo, estatus,
+--   grado(smallint), created_at
+-- asistencias: id(bigint), maestro_id, grupo_id, alumno_id, fecha,
+--   asistencia_estado CHECK(presente|ausente|justificada),
+--   UNIQUE(grupo_id, alumno_id, fecha); trigger updated_at
+-- proyectos: id, maestro_id, grupo_id, trimestre, nombre(legacy),
+--   campo_formativo(legacy), titulo, fecha_inicial, fecha_final, fase[],
+--   grados[], metodologia, escenario, proposito, campos_formativos[],
+--   ejes_articuladores[], pregunta_generadora, es_multigrado, visible_mercado,
+--   contenidos_pda(jsonb), estado
+-- sesiones: id, proyecto_id, maestro_id, numero_sesion, duracion(text), fecha,
+--   campo_formativo(nombre largo), momento, inicio/desarrollo/cierre_todos(text),
+--   recursos(jsonb {links,archivos}), criterios_evaluacion(text), observaciones,
+--   inicio/desarrollo/cierre_actividades(jsonb {mode,todos,diferenciado}),
+--   cierre_tareas(jsonb {mode,todos,diferenciado}),
+--   inicio/desarrollo/cierre_diferenciado(jsonb {grado:texto}),
+--   pda_sesion(jsonb [{grado,pda_id,pda_texto,criterio_aplicado}]),
+--   estado_sesion CHECK(pendiente|activa|completada|recorrida), notas_cierre
+-- sesiones_pda: id, sesion_id->sesiones(CASCADE), pda_id->catalogo_pda(nullable),
+--   grado CHECK(1-6), criterio_aplicado, UNIQUE(sesion_id, pda_id, grado)
+--   ** Espejo estructurado de pda_sesion; lo llena js/sesiones-materializar.js
+--      y el backfill perezoso de evaluacion_formativa.js **
+-- productos_sesion (2026-09): id, sesion_id->sesiones(CASCADE), maestro_id,
+--   tipo CHECK(trabajo|tarea|producto_final|examen|otro), nombre, descripcion,
+--   grados text[] (SIEMPRE ascendente), modalidad CHECK(compartida|diferenciada),
+--   campo CHECK(LEN|SAB|ETI|DHL), orden, activo, fecha_entrega,
+--   origen CHECK(importado|backfill|maestro|bot)  -- backfill = nombre genérico pendiente
+-- producto_sesion_pda (2026-09): PK(producto_sesion_id, sesion_pda_id), ambas CASCADE
+-- tareas: id, sesion_id, proyecto_id, grupo_id, maestro_id, descripcion, grado,
+--   fecha_asignada, fecha_revision, revisada
+-- calificaciones: id, alumno_id(CASCADE), maestro_id, sesion_id(SET NULL),
+--   proyecto_id(SET NULL), grupo_id(CASCADE),
+--   tipo CHECK(tarea|actividad|participacion|conducta), descripcion,
+--   calificacion CHECK(null o 5-10), entrego, fecha, grado CHECK(null o 1-6),
+--   campo_formativo CHECK(null o nombre largo de los 4 campos)
+--   + (2026-09): producto_sesion_id->productos_sesion(SET NULL), estado_entrega
+--   CHECK(entregado|incompleto|no_entregado|justificado|no_aplica), nivel(semáforo),
+--   puntaje(0-10), retroalimentacion, nota_privada, evaluado_en;
+--   UNIQUE parcial (maestro_id, alumno_id, producto_sesion_id) WHERE producto_sesion_id IS NOT NULL
+--   ** participacion/conducta ya NO se escriben aquí (ver registro_diario) **
+-- evaluacion_formativa: id, maestro_id, sesion_id->sesiones(CASCADE),
+--   alumno_id(CASCADE), criterio(text), sesion_pda_id->sesiones_pda,
+--   semaforo CHECK(logrado|en_proceso|requiere_apoyo), observacion, fecha,
+--   UNIQUE(sesion_id, alumno_id, criterio)
+-- evaluacion_diagnostica: id, maestro_id, alumno_id, grupo_id,
+--   momento CHECK(inicio_ciclo|trimestre_1|trimestre_2|trimestre_3), fecha,
+--   cuaderno(jsonb), lectura_ppm(int), lectura_comprension(semáforo),
+--   matematicas(jsonb), observaciones, UNIQUE(maestro_id, alumno_id, momento)
+-- boleta_trimestral (2026-09): ver mi_salon_2026-09.sql (DDL completo)
+-- registro_diario (2026-09): ver mi_salon_2026-09.sql (DDL completo)
+-- maestro_ajustes: maestro_id PK, peso_tareas/trabajos/asistencia/participacion/
+--   conducta/examen (defaults del código JS: 25/25/10/5/5/30)
+-- examenes: id, grupo_id(CASCADE), maestro_id, ciclo_escolar, trimestre CHECK(1-3),
+--   fase, grado, titulo, instrucciones, preguntas_ids[], total_preguntas,
+--   valor_total, tiempo_minutos, estado CHECK(borrador|publicado|cerrado), link_documento
+-- respuestas_examen: id, examen_id(CASCADE), alumno_id(CASCADE),
+--   pregunta_id->banco_preguntas(CASCADE), respuesta_alumno, es_correcta,
+--   puntos_obtenidos, calificada_por CHECK(automatico|maestro), observacion,
+--   UNIQUE(examen_id, alumno_id, pregunta_id)
+-- evaluacion_cuaderno (CONSERVADA hasta B.6): 10 criterios fijos con CHECK
+--   'Logrado'|'En proceso'|'Requiere apoyo', momento CHECK(diagnostico|semestre_1|semestre_2),
+--   UNIQUE(alumno_id, ciclo_escolar, momento)
+-- evaluacion_habilidades_basicas (CONSERVADA hasta B.6): lectura_ppm + 10 columnas
+--   semáforo fijas, momento semestral, UNIQUE(alumno_id, ciclo_escolar, momento)
+-- actividades_proyecto: id, proyecto_id, nombre, tipo, pda, created_at
+-- proyectos_contenidos: id, proyecto_id, contenido_id, created_at
+-- registros calendario: calendario_sep(fecha, ciclo_escolar, tipo, descripcion),
+--   dias_no_habiles_extra(maestro_id, fecha, motivo)
+
+-- ─────────────────────────── CATÁLOGOS compartidos ──────────────────────────
+-- catalogo_contenidos (247): id, fase, campo_formativo, contenido, orden
+-- catalogo_pda (1329): id, contenido_id->catalogo_contenidos(CASCADE),
+--   grado CHECK(1-6), pda, criterio_valoracion(text, hoy vacío — el banco lo
+--   sustituye), orden
+-- banco_criterios_pda (2026-09, 4008 filas): id, pda_id->catalogo_pda, grado,
+--   criterio_texto, origen, uso_count, UNIQUE(pda_id, criterio_texto);
+--   RPC incrementar_uso_criterio(uuid) SECURITY DEFINER solo authenticated
+-- banco_preguntas (4910): id, proyecto_dos_id, sesion_id, dos_pda_id,
+--   ciclo_escolar, trimestre, numero_proyecto, fase, grado,
+--   campo_formativo(nombre largo — permite puntaje de examen POR CAMPO),
+--   pregunta, tipo_pregunta, opciones(jsonb), respuesta_correcta,
+--   nivel_dificultad, justificacion_respuesta, palabras_clave[]
+-- ltg_indices (3063), ltg_proyectos_referencia (428), ltg_metodologias_estructuras (27)
+-- campos_formativos_descripcion (12), escenarios_descripcion (3)
+
+-- ──────────────────────── MUNDO bot / dosificación ──────────────────────────
+-- dosificacion_proyectos (132): id, ciclo_escolar, trimestre, numero_proyecto,
+--   fase, grados[], nombre_proyecto, campos_formativos[], ejes_articuladores[],
+--   metodologia, escenario, pregunta_generadora, fechas estimadas,
+--   num_sesiones_estimadas, estado, notas_revision, version, producto_final(text),
+--   fases_cubiertas[]; trigger updated_at
+-- dosificacion_pdas (3987): id, proyecto_dos_id, contenido_id, pda_id->catalogo_pda,
+--   grado, campo_formativo, estado, sesion_numero, contenido_texto, pda_texto
+-- dosificacion_sesiones (1536): shape espejo de `sesiones` + fecha_sesion,
+--   duracion_minutos, momento_metodologico, recursos_materiales[], productos[]
+--   (HOY VACÍA en todas las filas — el bot debe empezar a llenarla, ver
+--   bot/instrucciones_planeacion.md), estado CHECK(borrador|revisado|aprobado),
+--   prompt_version, tokens_usados, UNIQUE(proyecto_dos_id, numero_sesion);
+--   trigger updated_at
+-- dosificacion_sesion_pdas (4011): PK(sesion_id, dos_pda_id), criterio_evaluacion(text)
+-- materiales_sesion (1912), sesion_links_ltg (2223)
+-- productos_finales (215): id, proyecto_dos_id(CASCADE), grupo_id, maestro_id
+--   (NULL en las 215 del bot), ciclo_escolar, trimestre, numero_proyecto, fase,
+--   grado, descripcion, criterios_evaluacion(jsonb — NORMALIZADO 2026-09 al
+--   formato [{criterio,descripcion,peso}] sumando 100; respaldo del original en
+--   criterios_evaluacion_raw), fecha_entrega,
+--   estado CHECK(pendiente|en_proceso|entregado|evaluado)
+--   RLS 2026-09: SELECT authenticated si maestro_id IS NULL o propio;
+--   INSERT/UPDATE/DELETE solo propio
+-- vistas del bot: v_cobertura_proyecto, v_materiales_pendientes,
+--   v_materiales_por_proyecto, v_proyectos_generables
+
+-- ───────────────────────────── Marketplace/tienda ───────────────────────────
+-- marketplace_productos (44), marketplace_ordenes (10), marketplace_orden_items (10),
+-- marketplace_accesos (4), marketplace_precios (12), marketplace_lanzamiento (1)
+-- (columnas completas en la BD; no se tocaron en 2026-09)
+
+-- ───────────────────────── Deprecadas 2026-09 (0 filas) ─────────────────────
+-- zz_deprecated_calificacion_tarea, zz_deprecated_calificacion_trabajo,
+-- zz_deprecated_diagnosticos, zz_deprecated_configuracion_calificacion,
+-- zz_deprecated_registros_diarios, zz_deprecated_participacion_jornada,
+-- zz_deprecated_entregas_producto_final
+-- DROP definitivo pendiente para un ciclo posterior.

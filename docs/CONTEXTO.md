@@ -152,13 +152,45 @@ común).
 | `proyectos` | `maestro_id`, `grupo_id`, `trimestre` (1/2/3), `titulo`, `grados` (array), `fase` (array), `metodologia`, `escenario`, `proposito`, `pregunta_generadora`, `campos_formativos` (array), `ejes_articuladores` (array), `es_multigrado` (bool), `contenidos_pda` (jsonb), `estado` (`borrador`/`activo`/`completado`/`pausado`), `visible_mercado` (bool), `fecha_inicial`, `fecha_final` |
 | `sesiones` | `proyecto_id`, `maestro_id`, `numero_sesion`, `duracion` (text, ej. `"90 min"`), `fecha`, `campo_formativo`, `momento`, `inicio_todos`/`desarrollo_todos`/`cierre_todos` (text), `inicio_actividades`/`desarrollo_actividades`/`cierre_actividades`/`cierre_tareas` (jsonb), `inicio_diferenciado`/`desarrollo_diferenciado`/`cierre_diferenciado` (jsonb), `pda_sesion` (jsonb), `recursos` (jsonb), `criterios_evaluacion`, `estado_sesion` (`pendiente`/`activa`/`completada`/`recorrida`), `notas_cierre`, `observaciones` |
 | `tareas` | `sesion_id`, `proyecto_id`, `grupo_id`, `maestro_id`, `descripcion`, `grado` (smallint, nullable), `fecha_asignada`, `fecha_revision`, `revisada` (bool) |
-| `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (`tarea`/`actividad`/`participacion`/`conducta`), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` |
-| `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio`, `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
+| `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (`tarea`/`actividad`/`participacion`/`conducta`), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` (nombre largo). **Nuevo grano (2026-09):** `producto_sesion_id` (FK a `productos_sesion`, SET NULL), `estado_entrega` (`entregado`/`incompleto`/`no_entregado`/`justificado`/`no_aplica`), `nivel` (semáforo), `puntaje` (0–10), `retroalimentacion` (visible a padres), `nota_privada`, `evaluado_en`; índice único parcial `(maestro_id, alumno_id, producto_sesion_id)`. Los tipos `participacion`/`conducta` ya **no se escriben** aquí (ver `registro_diario`) |
+| `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
+| `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, nullable si el criterio es libre), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
+| `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas) |
+| `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
+| `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. La captura llega con la pantalla "Hoy" (Parte B); el reparto a campos está definido en `docs/PRODUCTO-MI-SALON.md` §B.4 |
+| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb), `editado_manual` (true = el motor no sobreescribe el texto), `cerrada` (true = no se recalcula), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur) |
+| `maestro_ajustes` | PK `maestro_id`; ponderación: `peso_tareas`/`peso_trabajos`/`peso_asistencia`/`peso_participacion`/`peso_conducta`/`peso_examen` (defaults en JS: 25/25/10/5/5/30) |
+| `examenes` / `respuestas_examen` / `banco_preguntas` | Examen por grupo/trimestre/grado con `preguntas_ids`; cada pregunta de `banco_preguntas` tiene `campo_formativo` → el puntaje del examen **sí se calcula por campo** (reportes.js) |
+| `evaluacion_diagnostica` | `maestro_id`, `alumno_id`, `grupo_id`, `momento` (`inicio_ciclo`/`trimestre_1`/`trimestre_2`/`trimestre_3`), `cuaderno` (jsonb), `lectura_ppm`, `lectura_comprension`, `matematicas` (jsonb), `observaciones`, UNIQUE `(maestro_id, alumno_id, momento)` |
+
+> **Convención de campos formativos:** las tablas históricas (`calificaciones`,
+> `dosificacion_*`, `banco_preguntas`) guardan el nombre largo (`"Lenguajes"`, …); las
+> tablas nuevas (`productos_sesion`, `boleta_trimestral`) guardan el código corto
+> (`LEN`/`SAB`/`ETI`/`DHL`; el alias histórico `HUM` = `DHL`). La equivalencia vive en un
+> único lugar: `js/campos-formativos.js`, y se aplica **al escribir** (importador,
+> crear_proyecto, reportes), nunca al leer. Un quinto campo se agregaría ahí y aquí.
+
+> **Simplificación deliberada (Parte A, 2026-09):** calificar el producto final del
+> proyecto usa el mismo grano que todo lo demás (`productos_sesion` tipo
+> `producto_final` + una fila en `calificaciones` con nivel/puntaje **global**). El
+> desglose criterio por criterio contra los pesos de
+> `productos_finales.criterios_evaluacion` NO está soportado todavía: es una extensión
+> de Parte B a diseñar cuando haya un caso real, no un olvido.
 
 > Nota: `proyectos` conserva columnas legacy (`nombre`, `campo_formativo`) junto a las
 > actuales (`titulo`, `campos_formativos`); el frontend usa las actuales. Las tareas se
 > **materializan** en la tabla `tareas` (una fila por grado) al cerrar una sesión, leyendo
-> el JSONB `cierre_tareas`.
+> el JSONB `cierre_tareas`. Además, al importar o guardar un proyecto, `js/sesiones-materializar.js`
+> crea por cada sesión sus `sesiones_pda` y sus `productos_sesion` (un trabajo genérico por
+> grado con `origen='backfill'` + las tareas reales de `cierre_tareas`).
+
+> **Tablas deprecadas (renombradas `zz_deprecated_*`, 2026-09, todas con 0 filas):**
+> `calificacion_tarea`, `calificacion_trabajo`, `diagnosticos`, `configuracion_calificacion`
+> (el código usa `maestro_ajustes`), `registros_diarios` (genérica, sin uso),
+> `participacion_jornada` (reemplazada por `registro_diario`), `entregas_producto_final`
+> (el producto final se califica vía `productos_sesion`). Se conservan **intactas**
+> `evaluacion_cuaderno` y `evaluacion_habilidades_basicas` (momento semestral) hasta
+> construir el modelo B.6 de `docs/PRODUCTO-MI-SALON.md`.
 
 ### 6.2 Catálogos (compartidos por SaaS y bot)
 - `catalogo_contenidos` (247 filas) — contenidos oficiales SEP por fase y campo formativo.
@@ -210,10 +242,12 @@ traducir nombres metodología/escenario + `momento_metodologico`/`duracion_minut
 | Marketplace (catálogo + filtros + preview + importar) | ✅ Completo | `marketplace.html` |
 
 ### Pendientes / deuda técnica
-- `supabase/*.sql` desactualizados respecto al esquema real (deuda de documentación).
-- Observaciones de boleta: "Fortalezas" y "Áreas de Oportunidad" son editables solo antes de imprimir (no se persisten). Para persistirlas se necesitan 2 columnas nuevas en `evaluacion_diagnostica`.
 - El Marketplace muestra estado vacío hasta que el bot publique proyectos con `estado = 'publicado'`.
 - `dosificacion_proyectos.proposito` no existe en BD — el importador usa `producto_final` como fallback.
+- **Job de enriquecimiento de productos:** los `productos_sesion` con `origen='backfill'` tienen nombre genérico ("Producto — Sesión N · CAMPO"); antes de lanzar Mi salón al público hay que extraer el nombre real del producto de cada sesión (revisar si el texto de `dosificacion_sesiones` permite regex antes de gastar en IA) y actualizar las instrucciones del bot para que llene `dosificacion_sesiones.productos` con el shape de `cierre_tareas`.
+- Participación y conducta ya no se capturan en el cierre de sesión; la pasada de fin de día que escribe `registro_diario` llega con la pantalla "Hoy" (`docs/PRODUCTO-MI-SALON.md` §B.1.4). Mientras tanto esos rubros no alimentan la fórmula (los pesos se renormalizan solos).
+- La **Parte B** completa (pantalla "Hoy", máximos automáticos, motor `v_resumen_trimestral`, textos automáticos, reportes nuevos) está especificada en `docs/PRODUCTO-MI-SALON.md` y NO se programa sin instrucción explícita de Jorge.
+- Resuelto 2026-09: observaciones de boleta persistentes (tabla `boleta_trimestral`, por campo); esquema real documentado en `supabase/esquema_2026-09.sql` (los `.sql` anteriores quedan como historia).
 
 ---
 

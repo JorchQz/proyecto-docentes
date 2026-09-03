@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- ============================================================================
 -- Endurecimiento de seguridad — RLS y privilegios
 -- Fecha: 2026-08-08

@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- Tabla de actividades de proyecto
 create table if not exists actividades_proyecto (
   id uuid primary key default gen_random_uuid(),

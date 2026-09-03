@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- =============================================================================
 -- Tarifario v2 (agosto 2026) — reemplaza los precios de marketplace_precios.sql
 -- =============================================================================

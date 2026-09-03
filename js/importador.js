@@ -111,11 +111,30 @@
 				};
 			});
 
-			var sesInsertRes = await window.sb.from("sesiones").insert(sesionesPayload);
+			var sesInsertRes = await window.sb.from("sesiones")
+				.insert(sesionesPayload)
+				.select("id, numero_sesion, campo_formativo, pda_sesion, cierre_tareas");
 			if (sesInsertRes.error) {
 				// Revertir: eliminar el proyecto recién creado para evitar estado parcial
 				await window.sb.from("proyectos").delete().eq("id", nuevoProy.id);
 				throw sesInsertRes.error;
+			}
+
+			// 5. Materializar trazabilidad: sesiones_pda + productos_sesion (+ links).
+			//    El trabajo genérico va con origen 'backfill' (la dosificación aún no
+			//    trae el nombre real del producto); las tareas sí son contenido real.
+			if (window.materializarSesiones) {
+				try {
+					await window.materializarSesiones(sesInsertRes.data || [], maestroId, {
+						gradosProyecto: dosProy.grados || [],
+						origenTrabajo: "backfill",
+						origenTarea: "importado",
+					});
+				} catch (matErr) {
+					// Revertir todo: el delete de proyectos cascadea sesiones -> sesiones_pda/productos_sesion
+					await window.sb.from("proyectos").delete().eq("id", nuevoProy.id);
+					throw matErr;
+				}
 			}
 		}
 

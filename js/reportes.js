@@ -449,6 +449,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Datos del grupo para la cabecera (escuela, ciclo)
 	let boletaGrupoInfo = { escuela: "", ciclo: "" };
 	let boletaResumenTexto = ""; // resumen plano para WhatsApp
+	let boletaCtx = null; // { alumnoId, ciclo, trimestre } de la boleta en pantalla (para autosave)
 
 	// Cargar info extra del grupo (escuela, ciclo escolar)
 	(async function cargarInfoGrupoBoleta() {
@@ -659,6 +660,45 @@ document.addEventListener("DOMContentLoaded", async function () {
 			calPorCF[cf] = calcCF(califs, asistenciaPct, examenPorCF, cf, pesos);
 		});
 
+		// ── boleta_trimestral: observaciones persistentes por campo + resultado numérico ──
+		const cicloBoleta = boletaGrupoInfo.ciclo || "";
+		let boletaPorCampo = {};
+		try {
+			const { data: boletaRows } = await window.sb
+				.from("boleta_trimestral").select("*")
+				.eq("alumno_id", alumnoId).eq("maestro_id", userId)
+				.eq("ciclo", cicloBoleta).eq("trimestre", trimestre);
+			(boletaRows || []).forEach(function (r) { boletaPorCampo[r.campo] = r; });
+		} catch (e) {}
+		boletaCtx = { alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre };
+
+		// Persistir porcentaje/calificación/nivel por campo mientras la boleta no esté cerrada
+		try {
+			const upsertsNum = [];
+			CAMPOS.forEach(function (cf) {
+				const codigo = window.CamposFormativos ? window.CamposFormativos.corto(cf) : null;
+				if (!codigo) return;
+				const fila = boletaPorCampo[codigo];
+				if (fila && fila.cerrada) return;
+				const cal10 = calPorCF[cf];
+				if (cal10 === null || cal10 === undefined) return;
+				const pct = Math.round(cal10 * 1000) / 100; // escala 0-100
+				upsertsNum.push({
+					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
+					trimestre: trimestre, campo: codigo,
+					porcentaje: pct,
+					calificacion: Math.min(10, Math.max(5, Math.round(cal10))),
+					nivel: pct >= 80 ? "logrado" : (pct >= 60 ? "en_proceso" : "requiere_apoyo"),
+				});
+			});
+			if (upsertsNum.length) {
+				await window.sb.from("boleta_trimestral")
+					.upsert(upsertsNum, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+			}
+		} catch (e) {
+			console.error("boleta_trimestral (numérico):", e);
+		}
+
 		// Detalle de rubros por CF para la tabla (cada celda = avg de ese rubro en ese CF)
 		function rubroCF(tipo, cf) {
 			return promedioPorTipo(califs, tipo, cf);
@@ -761,17 +801,45 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		seccion3 += "</div></div>";
 
-		// Sección 4: Observaciones + firmas
+		// Sección 4: Observaciones + firmas.
+		// Fortalezas / áreas se guardan por campo formativo (+ una fila general 'GEN')
+		// en boleta_trimestral; el autosave es on-blur (ver listener en boletaContainer).
 		const obsTrabajo = (diagnostica && diagnostica.observaciones) ? diagnostica.observaciones : "";
+		const CLASE_TA = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none";
+
+		function textareaBoleta(codigo, tipoTexto, label, valor) {
+			return "<div><label class='block text-xs font-semibold text-gray-600 mb-1'>" + label + "</label>" +
+				"<textarea data-boleta-campo='" + codigo + "' data-boleta-tipo='" + tipoTexto + "' rows='2' class='" + CLASE_TA + "'>" +
+				esc(valor || "") + "</textarea></div>";
+		}
+
+		let bloquesCampos = "";
+		CAMPOS.forEach(function (cf, i) {
+			const codigo = window.CamposFormativos ? window.CamposFormativos.corto(cf) : null;
+			if (!codigo) return;
+			const fila = boletaPorCampo[codigo] || {};
+			bloquesCampos +=
+				"<div class='rounded-xl border border-gray-200 p-3'>" +
+				"<p class='text-sm font-semibold text-gray-700 mb-2'>" + esc(CAMPOS_CORTOS[i]) + "</p>" +
+				"<div class='grid grid-cols-1 sm:grid-cols-2 gap-3'>" +
+				textareaBoleta(codigo, "fortalezas", "Fortalezas", fila.fortalezas) +
+				textareaBoleta(codigo, "areas_oportunidad", "Áreas de oportunidad", fila.areas_oportunidad) +
+				"</div></div>";
+		});
+		const filaGen = boletaPorCampo.GEN || {};
+
 		let seccion4 =
 			"<h3 class='font-bold text-gray-800 mb-2'>4. Observaciones del docente</h3>" +
 			"<div class='flex flex-col gap-3 mb-6'>" +
 			"<div><label class='block text-xs font-semibold text-gray-600 mb-1'>Trabajo diario</label>" +
-			"<textarea id='boletaObsTrabajo' rows='2' class='w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none'>" + esc(obsTrabajo) + "</textarea></div>" +
-			"<div><label class='block text-xs font-semibold text-gray-600 mb-1'>Fortalezas</label>" +
-			"<textarea id='boletaObsFortalezas' rows='2' class='w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none'></textarea></div>" +
-			"<div><label class='block text-xs font-semibold text-gray-600 mb-1'>Áreas de oportunidad</label>" +
-			"<textarea id='boletaObsAreas' rows='2' class='w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none'></textarea></div>" +
+			"<textarea id='boletaObsTrabajo' rows='2' class='" + CLASE_TA + "'>" + esc(obsTrabajo) + "</textarea></div>" +
+			bloquesCampos +
+			"<div class='rounded-xl border border-gray-200 p-3'>" +
+			"<p class='text-sm font-semibold text-gray-700 mb-2'>Observaciones generales</p>" +
+			"<div class='grid grid-cols-1 sm:grid-cols-2 gap-3'>" +
+			textareaBoleta("GEN", "fortalezas", "Fortalezas", filaGen.fortalezas) +
+			textareaBoleta("GEN", "areas_oportunidad", "Áreas de oportunidad", filaGen.areas_oportunidad) +
+			"</div></div>" +
 			"</div>" +
 			"<div class='grid grid-cols-2 gap-12 mt-10 mb-2'>" +
 			"<div class='text-center'><div class='border-t border-gray-400 pt-2 text-sm text-gray-600'>Docente</div></div>" +
@@ -792,6 +860,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"Boleta de " + (alumno.nombre_completo || "") + " — Trimestre " + trimestre + "\n" +
 			lineCF + "\n" +
 			"Asistencia: " + asisTexto;
+	}
+
+	// ── Autosave de observaciones de boleta (on-blur, upsert por campo) ──
+	// Editar a mano marca editado_manual = true: el motor de textos automáticos
+	// (Parte B) nunca sobreescribirá lo que el maestro escribió.
+	const boletaContEl = document.getElementById("boletaContainer");
+	if (boletaContEl) {
+		boletaContEl.addEventListener("blur", async function (e) {
+			const ta = e.target.closest ? e.target.closest("textarea[data-boleta-campo]") : null;
+			if (!ta || !boletaCtx) return;
+			const payload = {
+				maestro_id: userId,
+				alumno_id: boletaCtx.alumnoId,
+				ciclo: boletaCtx.ciclo,
+				trimestre: boletaCtx.trimestre,
+				campo: ta.dataset.boletaCampo,
+				editado_manual: true,
+			};
+			payload[ta.dataset.boletaTipo] = ta.value.trim() || null;
+			try {
+				const { error } = await window.sb.from("boleta_trimestral")
+					.upsert(payload, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+				if (error) console.error("boleta_trimestral (texto):", error);
+			} catch (err) {
+				console.error("boleta_trimestral (texto):", err);
+			}
+		}, true); // captura: blur no burbujea
 	}
 
 	// ── Botones de distribución de la boleta ──

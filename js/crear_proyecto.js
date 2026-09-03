@@ -1311,26 +1311,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     if (mostrarBloquePda) {
       gradosSesion.forEach(function (grado) {
-        const select = div.querySelector(`[name="pda_select_grado_${grado}"]`);
-        const sugerencia = div.querySelector(`#sugerencia_grado_${grado}`);
-        const criterioTextarea = div.querySelector(`[name="criterio_grado_${grado}"]`);
-
-        if (!select || !sugerencia || !criterioTextarea) return;
-
-        select.addEventListener('change', function () {
-          const pdaSeleccionado = (catalogoPDA || []).find(function (p) {
-            return String(p.id) === String(select.value);
-          });
-
-          if (pdaSeleccionado && pdaSeleccionado.criterio_valoracion) {
-            sugerencia.textContent = '💡 Criterio sugerido: ' + pdaSeleccionado.criterio_valoracion;
-            sugerencia.classList.remove('hidden');
-            criterioTextarea.value = pdaSeleccionado.criterio_valoracion;
-          } else {
-            sugerencia.textContent = '';
-            sugerencia.classList.add('hidden');
-          }
-        });
+        conectarSelectorCriterios(div, grado);
       });
     }
 
@@ -1557,22 +1538,71 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       // Reconectar listener de sugerencia de criterio
       gradosSesion.forEach(function (grado) {
-        const select = pdaDiv.querySelector(`[name="pda_select_grado_${grado}"]`);
-        const sugerencia = pdaDiv.querySelector(`#sugerencia_grado_${grado}`);
-        const criterioTextarea = pdaDiv.querySelector(`[name="criterio_grado_${grado}"]`);
-        if (!select || !sugerencia || !criterioTextarea) return;
+        conectarSelectorCriterios(pdaDiv, grado);
+      });
+    });
+  }
 
-        select.addEventListener('change', function () {
-          const pdaSeleccionado = (catalogoPDA || []).find(function (p) {
-            return String(p.id) === String(select.value);
-          });
-          if (pdaSeleccionado && pdaSeleccionado.criterio_valoracion) {
-            sugerencia.textContent = '💡 Criterio sugerido: ' + pdaSeleccionado.criterio_valoracion;
-            sugerencia.classList.remove('hidden');
-            criterioTextarea.value = pdaSeleccionado.criterio_valoracion;
-          } else {
-            sugerencia.textContent = '';
-            sugerencia.classList.add('hidden');
+  // Sugerencias de criterio desde banco_criterios_pda (las 2-5 variantes reales
+  // que la IA ya generó para ese PDA), ordenadas por más usadas. Tocar una la
+  // copia al textarea y suma su contador vía RPC. Si el banco no tiene nada,
+  // cae al criterio_valoracion del catálogo como antes.
+  function conectarSelectorCriterios(scope, grado) {
+    const select = scope.querySelector(`[name="pda_select_grado_${grado}"]`);
+    const sugerencia = scope.querySelector(`#sugerencia_grado_${grado}`);
+    const criterioTextarea = scope.querySelector(`[name="criterio_grado_${grado}"]`);
+    if (!select || !sugerencia || !criterioTextarea) return;
+
+    select.addEventListener('change', async function () {
+      sugerencia.innerHTML = '';
+      sugerencia.classList.add('hidden');
+      const pdaId = select.value;
+      if (!pdaId) return;
+
+      let variantes = [];
+      try {
+        const { data } = await window.sb
+          .from('banco_criterios_pda')
+          .select('id, criterio_texto, uso_count')
+          .eq('pda_id', pdaId)
+          .order('uso_count', { ascending: false })
+          .order('created_at', { ascending: true })
+          .limit(6);
+        variantes = data || [];
+      } catch (_) {}
+
+      const pdaSeleccionado = (catalogoPDA || []).find(function (p) {
+        return String(p.id) === String(pdaId);
+      });
+      if (!variantes.length && pdaSeleccionado && pdaSeleccionado.criterio_valoracion) {
+        variantes = [{ id: null, criterio_texto: pdaSeleccionado.criterio_valoracion }];
+      }
+      if (!variantes.length) return;
+
+      // Autollenar con la variante más usada solo si el maestro no ha escrito nada
+      if (!criterioTextarea.value.trim()) {
+        criterioTextarea.value = variantes[0].criterio_texto;
+      }
+
+      sugerencia.innerHTML =
+        '<p class="text-xs font-semibold text-gray-500 mb-1.5">Criterios sugeridos (toca uno para usarlo):</p>' +
+        '<div class="flex flex-col gap-1.5">' +
+        variantes.map(function (v, i) {
+          return '<button type="button" data-criterio-idx="' + i + '" ' +
+            'class="text-left text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-2.5 min-h-[44px] hover:border-blue-400 hover:bg-blue-50 transition">' +
+            escapeHtml(v.criterio_texto) + '</button>';
+        }).join('') +
+        '</div>';
+      sugerencia.classList.remove('hidden');
+
+      sugerencia.querySelectorAll('button[data-criterio-idx]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const v = variantes[parseInt(btn.dataset.criterioIdx, 10)];
+          if (!v) return;
+          criterioTextarea.value = v.criterio_texto;
+          if (v.id) {
+            window.sb.rpc('incrementar_uso_criterio', { p_id: v.id })
+              .then(function () {}, function () {});
           }
         });
       });
@@ -2307,8 +2337,20 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
 
       if (sesionesPayload.length > 0) {
-        const { error: sError } = await window.sb.from('sesiones').insert(sesionesPayload);
+        const { data: sesionesInsertadas, error: sError } = await window.sb
+          .from('sesiones')
+          .insert(sesionesPayload)
+          .select('id, numero_sesion, campo_formativo, pda_sesion, cierre_tareas');
         if (sError) throw sError;
+
+        // Materializar trazabilidad: sesiones_pda + productos_sesion (+ links)
+        if (window.materializarSesiones) {
+          await window.materializarSesiones(sesionesInsertadas || [], user.id, {
+            gradosProyecto: paso1Data.grados || [],
+            origenTrabajo: 'maestro',
+            origenTarea: 'maestro',
+          });
+        }
       }
 
       msgEl.className = 'mt-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm';

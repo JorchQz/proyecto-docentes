@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- =============================================================================
 -- Paquete de prueba para validar cobros reales sin exponerlo al público
 -- =============================================================================

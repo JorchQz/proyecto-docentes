@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- =============================================================================
 -- Tarifario v3 (agosto 2026) — precios de lanzamiento + paquete unitario
 -- =============================================================================

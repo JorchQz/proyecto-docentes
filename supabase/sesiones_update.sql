@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- Migración aplicada vía MCP el 2026-04-06
 -- Añade actividades y tareas por bloque didáctico; elimina columnas planas antiguas.
 

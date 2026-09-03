@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- Corrige historicos huérfanos en asistencias y fuerza FKs con borrado en cascada.
 -- Ejecutar una sola vez en Supabase SQL Editor.
 

@@ -1,6 +1,6 @@
 # TESTING MANUAL — SaaS NEM para Docentes
 
-**Última actualización:** 2026-05-13
+**Última actualización:** 2026-09-03
 **Dispositivo objetivo:** Samsung Galaxy Tab S9 FE+ (12.4", landscape) — simular con DevTools 1280×800
 
 ---
@@ -258,6 +258,55 @@ Abrir DevTools (F12 → Consola) durante toda la sesión de pruebas:
 
 ---
 
+## 14. EVALUACIÓN FORMATIVA — evaluacion_formativa.html
+
+- [ ] Se abre desde el dashboard tras cerrar sesión (botón "Ir a Evaluación Formativa" con `?sesion_id=`)
+- [ ] Muestra un criterio por PDA del grado de cada alumno (multigrado: cada alumno ve solo los de su grado)
+- [ ] Sesión sin PDAs: muestra el criterio genérico "Participación en la sesión"
+- [ ] Tocar Logrado / En proceso / Requiere apoyo guarda al instante (autosave); recargar conserva la selección
+- [ ] Observación por criterio se guarda al salir del campo (solo si hay semáforo)
+- [ ] **Trazabilidad:** en SQL, toda fila nueva de `evaluacion_formativa` con PDA tiene `sesion_pda_id` NOT NULL
+- [ ] **Backfill perezoso:** abrir una sesión creada ANTES de 2026-09 crea sus filas en `sesiones_pda` automáticamente
+
+## 15. EVALUACIÓN DIAGNÓSTICA — evaluacion_diagnostica.html
+
+- [ ] Selector de alumno marca quiénes ya fueron evaluados en el momento elegido
+- [ ] Momentos disponibles: inicio de ciclo y trimestres 1–3
+- [ ] Cuaderno (10 criterios), lectura (PPM + comprensión) y matemáticas (8 subhabilidades) se guardan con upsert
+- [ ] Re-guardar al mismo alumno/momento actualiza (no duplica)
+
+## 16. EXÁMENES — examen.html
+
+- [ ] Crear examen desde banco de preguntas por grado/trimestre
+- [ ] Aplicar y calificar; la auto-calificación reparte puntos por campo formativo
+- [ ] La boleta refleja el puntaje del examen por campo
+
+## 17. MARKETPLACE + IMPORTAR — marketplace.html
+
+- [ ] Catálogo con filtros y preview de sesiones
+- [ ] Importar un proyecto de UN grado (`6G_T2_P07`): crea proyecto + sesiones
+- [ ] Importar el multigrado `4G-5G-6G_T2_P08`: la S01 crea 3 `productos_sesion` de trabajo (uno por grado, `diferenciada`, `origen='backfill'`) + tareas por grado + `sesiones_pda` por grado
+- [ ] En SQL: `SELECT count(*) FROM productos_sesion WHERE array_length(grados,1) IS NULL` → 0
+- [ ] Calificar una sesión importada escribe en `calificaciones` (mismo flujo que un proyecto propio)
+
+## 18. BOLETA — reportes.html (pestaña Boleta)
+
+- [ ] Generar boleta calcula calificación por campo con la ponderación de Ajustes (rubros ausentes renormalizan)
+- [ ] **Persistencia:** escribir Fortalezas/Áreas en un campo (p. ej. LEN) y en Observaciones generales, recargar la página y regenerar → los textos siguen ahí
+- [ ] En SQL: esas filas de `boleta_trimestral` tienen `editado_manual = true`
+- [ ] El porcentaje/calificación por campo se persiste en `boleta_trimestral` al generar (filas no cerradas)
+- [ ] PDF e imagen se generan; el resumen de WhatsApp abre con el texto correcto
+
+## 19. CIERRE DE SESIÓN — regresión 2026-09
+
+- [ ] El modal de cierre ya NO pide Participación/Conducta (solo notas)
+- [ ] Cerrar sesión NO crea filas `tipo IN ('participacion','conducta')` en `calificaciones`
+- [ ] Re-guardar la revisión de tareas del día NO duplica filas `tipo='tarea'` (se reemplazan)
+- [ ] Crear proyecto propio con PDAs: al guardar se crean `sesiones_pda` y `productos_sesion` (`origen='maestro'`)
+- [ ] En crear_proyecto, elegir un PDA muestra los criterios sugeridos del banco (tocar uno lo copia al textarea)
+
+---
+
 ## RESUMEN
 
 | Módulo | Estado | Problemas encontrados |
@@ -274,3 +323,8 @@ Abrir DevTools (F12 → Consola) durante toda la sesión de pruebas:
 | Reportes | | |
 | Mi Cuenta | | |
 | Ajustes | | |
+| Evaluación Formativa | | |
+| Evaluación Diagnóstica | | |
+| Exámenes | | |
+| Marketplace | | |
+| Boleta | | |

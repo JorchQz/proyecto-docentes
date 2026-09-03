@@ -169,7 +169,82 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── obtener criterios por alumno ──────────────────────────────────────────
 	var pdaSesion = Array.isArray(sesion.pda_sesion) ? sesion.pda_sesion : [];
 
+	// ── cargar sesiones_pda (trazabilidad por ID) ─────────────────────────────
+	// Cada evaluación nueva se liga a la fila exacta de sesiones_pda; si la sesión
+	// es anterior a la trazabilidad, se crean las filas ahora desde el jsonb
+	// pda_sesion (backfill perezoso) para nunca guardar una evaluación sin ID.
+	var sesionesPda = [];
+	try {
+		var spdaRes = await window.sb
+			.from("sesiones_pda")
+			.select("id, pda_id, grado, criterio_aplicado")
+			.eq("sesion_id", sesionId);
+		if (!spdaRes.error) sesionesPda = spdaRes.data || [];
+	} catch (e) {}
+
+	if (!sesionesPda.length && pdaSesion.length) {
+		var filasBackfill = pdaSesion
+			.map(function (p) {
+				var grado = parseInt(p.grado, 10);
+				if (Number.isNaN(grado)) return null;
+				return {
+					sesion_id: sesionId,
+					pda_id: p.pda_id || null,
+					grado: grado,
+					criterio_aplicado: p.criterio_aplicado || null
+				};
+			})
+			.filter(Boolean);
+		if (filasBackfill.length) {
+			try {
+				var insSpda = await window.sb
+					.from("sesiones_pda")
+					.insert(filasBackfill)
+					.select("id, pda_id, grado, criterio_aplicado");
+				if (!insSpda.error) sesionesPda = insSpda.data || [];
+			} catch (e) {
+				console.error("Backfill de sesiones_pda:", e);
+			}
+		}
+	}
+
+	// clave grado+criterio → id de sesiones_pda, para el upsert
+	var spdaIdPorClave = {};
+	sesionesPda.forEach(function (spda) {
+		var info = pdaSesion.find(function (p) {
+			return String(p.grado) === String(spda.grado) &&
+				((spda.pda_id && p.pda_id === spda.pda_id) ||
+				 (!spda.pda_id && (p.criterio_aplicado || null) === (spda.criterio_aplicado || null)));
+		});
+		var texto = spda.criterio_aplicado ||
+			(info && (info.criterio_aplicado || info.pda_texto)) || CRITERIO_GENERICO;
+		spdaIdPorClave[spda.grado + "||" + texto] = spda.id;
+	});
+
+	function resolverSesionPdaId(alumnoId, criterio) {
+		var alumno = alumnos.find(function (a) { return a.id === alumnoId; });
+		if (!alumno) return null;
+		return spdaIdPorClave[alumno.grado + "||" + criterio] || null;
+	}
+
 	function criteriosParaAlumno(alumno) {
+		// Preferir las filas de sesiones_pda (tienen ID); el jsonb queda de respaldo
+		var propiosSpda = sesionesPda.filter(function (spda) {
+			return String(spda.grado) === String(alumno.grado);
+		});
+		if (propiosSpda.length) {
+			return propiosSpda.map(function (spda) {
+				var info = pdaSesion.find(function (p) {
+					return String(p.grado) === String(spda.grado) &&
+						((spda.pda_id && p.pda_id === spda.pda_id) ||
+						 (!spda.pda_id && (p.criterio_aplicado || null) === (spda.criterio_aplicado || null)));
+				});
+				var texto = spda.criterio_aplicado ||
+					(info && (info.criterio_aplicado || info.pda_texto)) || CRITERIO_GENERICO;
+				return { texto: texto, key: texto };
+			});
+		}
+
 		// Filtrar por grado del alumno
 		var propios = pdaSesion.filter(function (pda) {
 			return String(pda.grado) === String(alumno.grado);
@@ -195,13 +270,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var res = await window.sb
 				.from("evaluacion_formativa")
 				.upsert({
-					maestro_id:  userId,
-					sesion_id:   sesionId,
-					alumno_id:   alumnoId,
-					criterio:    criterio,
-					semaforo:    semaforo,
-					observacion: obs,
-					fecha:       getLocalDateISO()
+					maestro_id:    userId,
+					sesion_id:     sesionId,
+					alumno_id:     alumnoId,
+					criterio:      criterio,
+					sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
+					semaforo:      semaforo,
+					observacion:   obs,
+					fecha:         getLocalDateISO()
 				}, { onConflict: "maestro_id,sesion_id,alumno_id,criterio" });
 
 			if (res.error) {
@@ -220,13 +296,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			await window.sb
 				.from("evaluacion_formativa")
 				.upsert({
-					maestro_id:  userId,
-					sesion_id:   sesionId,
-					alumno_id:   alumnoId,
-					criterio:    criterio,
-					semaforo:    semaforo,
-					observacion: observacion,
-					fecha:       getLocalDateISO()
+					maestro_id:    userId,
+					sesion_id:     sesionId,
+					alumno_id:     alumnoId,
+					criterio:      criterio,
+					sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
+					semaforo:      semaforo,
+					observacion:   observacion,
+					fecha:         getLocalDateISO()
 				}, { onConflict: "maestro_id,sesion_id,alumno_id,criterio" });
 		} catch (e) {
 			console.error("Error guardando observación:", e);

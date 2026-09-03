@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- Agrega soporte de grado por alumno.
 -- Ejecuta este script una sola vez en Supabase SQL Editor.
 

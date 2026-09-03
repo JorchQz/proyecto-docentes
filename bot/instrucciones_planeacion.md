@@ -583,6 +583,19 @@ INSERT INTO productos_finales (
 );
 ```
 
+> **OBLIGATORIO (2026-09):** `criterios_evaluacion` debe ser SIEMPRE un arreglo JSON de
+> objetos `{"criterio", "descripcion", "peso"}` cuyos pesos sumen exactamente 100, como
+> en el ejemplo. La clave es `peso` (nunca `porcentaje`), el valor es numérico (nunca
+> `"40%"`), y no se aceptan los formatos viejos (objeto único, `{"criterios": [...]}`,
+> mapa `{"Contenido": 40}`). Las 215 filas históricas ya fueron normalizadas a este
+> formato en la BD; cualquier INSERT que no lo respete rompe la homogeneidad recuperada.
+
+> **PENDIENTE para el bot (2026-09):** empezar a llenar `dosificacion_sesiones.productos`
+> (hoy vacía) con el **producto de la sesión** por grado, usando el mismo shape de
+> `cierre_tareas`: `{"mode": "todos"|"diferenciado", "todos": texto|null,
+> "diferenciado": {"4": "...", "5": "...", "6": "..."}|null}`. El SaaS crea mientras
+> tanto productos genéricos (`origen='backfill'`) que se enriquecerán después.
+
 **Confirmación final:**
 ```
 ✅ Proyecto [N] — [nombre] guardado:

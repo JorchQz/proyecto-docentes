@@ -389,6 +389,19 @@ async function crearCardTareas() {
 			});
 
 			if (payload.length) {
+				// Idempotente: si se re-guarda la revisión, reemplazar las filas de estas
+				// mismas tareas en lugar de duplicarlas.
+				const sesionIds = [...new Set(payload.map((p) => p.sesion_id).filter(Boolean))];
+				const alumnoIds = [...new Set(payload.map((p) => p.alumno_id))];
+				const descripciones = [...new Set(payload.map((p) => p.descripcion).filter(Boolean))];
+				if (sesionIds.length && descripciones.length) {
+					await window.sb.from("calificaciones").delete()
+						.eq("maestro_id", user.id)
+						.eq("tipo", "tarea")
+						.in("sesion_id", sesionIds)
+						.in("alumno_id", alumnoIds)
+						.in("descripcion", descripciones);
+				}
 				const { error: insertError } = await window.sb.from("calificaciones").insert(payload);
 				if (insertError) {
 					throw insertError;
@@ -511,8 +524,8 @@ async function crearCardSesion() {
 	btnCompletar.className = "bg-green-600 text-white text-lg font-semibold px-5 py-2.5 rounded-xl hover:bg-green-700";
 	btnCompletar.textContent = "✓ Sesion completada";
 	btnCompletar.addEventListener("click", function () {
-		abrirModalCierre(async function (notas, califs) {
-			await completarSesionDelDia(notas, califs);
+		abrirModalCierre(async function (notas) {
+			await completarSesionDelDia(notas);
 		});
 	});
 	acciones.appendChild(btnCompletar);
@@ -521,7 +534,7 @@ async function crearCardSesion() {
 	return card;
 }
 
-async function completarSesionDelDia(notasCierre, califData) {
+async function completarSesionDelDia(notasCierre) {
 	clearError();
 	const hoy = getLocalDateISO();
 	const sesionCompletadaId = sesionActiva.id; // guardar ANTES de que se modifique sesionActiva
@@ -549,42 +562,9 @@ async function completarSesionDelDia(notasCierre, califData) {
 			}
 		}
 
-		if (califData && califData.length) {
-			const califRows = [];
-			califData.forEach(function (al) {
-				califRows.push({
-					alumno_id:     al.id,
-					maestro_id:    user.id,
-					sesion_id:     sesionActiva.id,
-					proyecto_id:   proyectoActivo.id,
-					grupo_id:      grupoId,
-					tipo:          "participacion",
-					calificacion:  al.participacion,
-					entrego:       true,
-					fecha:         hoy,
-					grado:         al.grado || null,
-					campo_formativo: null,
-				});
-				califRows.push({
-					alumno_id:     al.id,
-					maestro_id:    user.id,
-					sesion_id:     sesionActiva.id,
-					proyecto_id:   proyectoActivo.id,
-					grupo_id:      grupoId,
-					tipo:          "conducta",
-					calificacion:  al.conducta,
-					entrego:       true,
-					fecha:         hoy,
-					grado:         al.grado || null,
-					campo_formativo: null,
-				});
-			});
-			const { error: califError } = await window.sb.from("calificaciones").insert(califRows);
-			if (califError) {
-				// No se bloquea el cierre — la sesión ya fue guardada. El maestro puede re-registrar desde Reportes.
-				console.error("calificaciones insert:", califError.message);
-			}
-		}
+		// Participación y conducta ya no se registran por sesión ni en `calificaciones`:
+		// son un registro diario global por alumno (tabla registro_diario) que captura
+		// la pasada de fin de día — ver docs/PRODUCTO-MI-SALON.md §B.1.4.
 
 		const siguiente = await buscarSiguienteSesionPendiente();
 		if (siguiente) {
@@ -1053,12 +1033,6 @@ function abrirModalCierre(onConfirm) {
 	let modal = document.getElementById("modal-cierre-sesion");
 	if (modal) modal.remove();
 
-	// Estado de calificaciones: { alumnoId: { p: 10, c: 10 } }
-	const califState = {};
-	alumnos.forEach(function (al) {
-		califState[al.id] = { p: 10, c: 10 };
-	});
-
 	modal = document.createElement("div");
 	modal.id = "modal-cierre-sesion";
 	modal.className = "fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4";
@@ -1085,108 +1059,8 @@ function abrirModalCierre(onConfirm) {
 		"<textarea id='notasCierreInput' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea>";
 	body.appendChild(notasWrap);
 
-	// — Participación y Conducta —
-	const califSection = document.createElement("div");
-	const califTitle = document.createElement("p");
-	califTitle.className = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3";
-	califTitle.textContent = "Participación y Conducta";
-	califSection.appendChild(califTitle);
-
-	// Setter global
-	const globalWrap = document.createElement("div");
-	globalWrap.className = "flex items-center gap-3 bg-gray-50 rounded-xl p-3 mb-3";
-	const globalLbl = document.createElement("span");
-	globalLbl.className = "text-sm text-gray-600 font-semibold shrink-0 w-20";
-	globalLbl.textContent = "Todos:";
-	globalWrap.appendChild(globalLbl);
-
-	["P", "C"].forEach(function (tipo) {
-		const wrap = document.createElement("div");
-		wrap.className = "flex-1";
-		const lbl = document.createElement("p");
-		lbl.className = "text-xs text-gray-500 mb-1";
-		lbl.textContent = tipo === "P" ? "Participación" : "Conducta";
-		wrap.appendChild(lbl);
-		const btns = document.createElement("div");
-		btns.className = "flex gap-1";
-		[10, 9, 8, 7, 6, 5].forEach(function (g) {
-			const btn = document.createElement("button");
-			btn.type = "button";
-			btn.textContent = g;
-			btn.className = "text-xs w-9 h-9 rounded-lg font-semibold transition " +
-				(g === 10 ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200");
-			btn.addEventListener("click", function () {
-				// Actualizar visual del setter global
-				btns.querySelectorAll("button").forEach(function (b) {
-					b.className = "text-xs w-9 h-9 rounded-lg font-semibold transition bg-gray-100 text-gray-600 hover:bg-gray-200";
-				});
-				btn.className = "text-xs w-9 h-9 rounded-lg font-semibold transition bg-indigo-600 text-white";
-				// Aplicar a todos los alumnos
-				alumnos.forEach(function (al) {
-					califState[al.id][tipo === "P" ? "p" : "c"] = g;
-					const key = tipo === "P" ? "p" : "c";
-					const row = document.getElementById("calif-row-" + al.id);
-					if (!row) return;
-					row.querySelectorAll(".grade-btn[data-tipo='" + tipo + "']").forEach(function (b) {
-						b.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition " +
-							(parseInt(b.dataset.grade) === g ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200");
-					});
-				});
-			});
-			btns.appendChild(btn);
-		});
-		wrap.appendChild(btns);
-		globalWrap.appendChild(wrap);
-	});
-	califSection.appendChild(globalWrap);
-
-	// Filas por alumno
-	alumnos.forEach(function (al) {
-		const row = document.createElement("div");
-		row.id = "calif-row-" + al.id;
-		row.className = "flex items-center gap-2 py-2 border-b border-gray-100 last:border-0";
-
-		const nameWrap = document.createElement("div");
-		nameWrap.className = "w-36 shrink-0";
-		const name = document.createElement("p");
-		name.className = "text-sm text-gray-800 truncate font-medium";
-		name.textContent = (al.nombre_completo || "Alumno").split(" ")[0];
-		const gBadge = document.createElement("span");
-		gBadge.className = "text-xs text-blue-600";
-		gBadge.textContent = al.grado ? al.grado + "°" : "";
-		nameWrap.appendChild(name);
-		nameWrap.appendChild(gBadge);
-		row.appendChild(nameWrap);
-
-		["P", "C"].forEach(function (tipo) {
-			const wrap = document.createElement("div");
-			wrap.className = "flex-1 flex gap-0.5";
-			[10, 9, 8, 7, 6, 5].forEach(function (g) {
-				const btn = document.createElement("button");
-				btn.type = "button";
-				btn.textContent = g;
-				btn.dataset.tipo = tipo;
-				btn.dataset.grade = g;
-				btn.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition " +
-					(g === 10 ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200");
-				btn.addEventListener("click", function () {
-					califState[al.id][tipo === "P" ? "p" : "c"] = g;
-					wrap.querySelectorAll("button").forEach(function (b) {
-						b.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition bg-gray-100 text-gray-600 hover:bg-gray-200";
-						b.dataset.tipo = tipo;
-						b.dataset.grade = b.textContent;
-					});
-					btn.className = "grade-btn text-xs w-9 h-9 rounded-lg font-semibold transition bg-blue-600 text-white";
-				});
-				wrap.appendChild(btn);
-			});
-			row.appendChild(wrap);
-		});
-
-		califSection.appendChild(row);
-	});
-
-	body.appendChild(califSection);
+	// Participación y conducta se capturan en el registro diario (registro_diario),
+	// no al cerrar cada sesión — ver docs/PRODUCTO-MI-SALON.md §B.1.4.
 
 	// Footer
 	const footer = document.createElement("div");
@@ -1209,16 +1083,8 @@ function abrirModalCierre(onConfirm) {
 
 	cancelBtn.addEventListener("click", cerrarModalCierre);
 	confirmBtn.addEventListener("click", async function () {
-		const notas  = document.getElementById("notasCierreInput").value.trim();
-		const califs = alumnos.map(function (al) {
-			return {
-				id:           al.id,
-				grado:        al.grado || null,
-				participacion: califState[al.id].p,
-				conducta:      califState[al.id].c,
-			};
-		});
-		await onConfirm(notas, califs);
+		const notas = document.getElementById("notasCierreInput").value.trim();
+		await onConfirm(notas);
 	});
 }
 

@@ -1,3 +1,4 @@
+-- [DESACTUALIZADO 2026-09] Historia de migraciones; el esquema vigente esta en supabase/esquema_2026-09.sql (manda la BD).
 -- Migración aplicada vía MCP el 2026-06-02
 -- Realinea dosificacion_sesiones (capa del bot/marketplace) al shape nativo de
 -- la tabla `sesiones` del SaaS, para que importar un proyecto comprado sea una
