@@ -882,21 +882,36 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var texto = verificarAnexosBtn.innerHTML;
 		verificarAnexosBtn.textContent = "Revisando en Drive...";
 		try {
-			var pendientes = 1, total = { con: 0, sin: 0, fallos: 0 }, vueltas = 0;
-			while (pendientes > 0 && vueltas < 5) {
+			// Primero los que nunca se han revisado; si no queda ninguno, se
+			// vuelve a revisar todo el catalogo (por si se agregaron anexos a
+			// una carpeta ya verificada). Todo por tandas de 60.
+			var LOTE = 60, total = { con: 0, sin: 0, fallos: 0 }, pendientes = 1, vueltas = 0, todos = false, desde = 0;
+			async function tanda(cuerpo) {
 				var resp = await fetch(Tienda.EDGE_BASE + "/admin-proyectos-drive", {
 					method: "POST",
 					headers: { Authorization: "Bearer " + Tienda.getAccessToken(session), "Content-Type": "application/json" },
-					body: JSON.stringify({ verificar_anexos: true, limite: 60 }),
+					body: JSON.stringify(cuerpo),
 				});
 				var data = await resp.json();
 				if (!resp.ok) { throw new Error(data.error || "No se pudo verificar."); }
 				total.con += data.con_anexos; total.sin += data.sin_anexos; total.fallos += data.fallos;
+				return data;
+			}
+			while (pendientes > 0 && vueltas < 5) {
+				var data = await tanda({ verificar_anexos: true, limite: LOTE });
 				pendientes = data.pendientes;
 				vueltas++;
 				if (!data.revisados) { break; }
 			}
-			Tienda.toast("Verificados: " + total.con + " con anexos, " + total.sin + " sin anexos" + (total.fallos ? ", " + total.fallos + " con error" : "") + (pendientes ? ". Quedan " + pendientes + " por revisar: vuelve a pulsar." : "."), total.fallos ? "info" : "ok");
+			if (!total.con && !total.sin && !total.fallos) {
+				todos = true;
+				for (var i = 0; i < 6; i++) {
+					var d = await tanda({ verificar_anexos: true, todos: true, limite: LOTE, desde: desde });
+					desde += d.revisados;
+					if (d.revisados < LOTE) { break; }
+				}
+			}
+			Tienda.toast((todos ? "Revisados de nuevo todos: " : "Verificados: ") + total.con + " con anexos, " + total.sin + " sin anexos" + (total.fallos ? ", " + total.fallos + " con error" : "") + (pendientes ? ". Quedan " + pendientes + " por revisar: vuelve a pulsar." : "."), total.fallos ? "info" : "ok");
 			await cargarProductos();
 			renderSueltos();
 		} catch (err) {

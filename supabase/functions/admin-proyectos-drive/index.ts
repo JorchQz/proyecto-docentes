@@ -57,17 +57,20 @@ Deno.serve(async (req: Request) => {
 
     // ── Verificación masiva: ¿qué proyectos individuales tienen anexos? ────
     // Recorre los productos tipo 'proyecto' (los que aún no se han verificado,
-    // o todos con `todos: true`), mira si su carpeta tiene subcarpetas y guarda
+    // o todos con `todos: true` y `desde` para paginar), mira si su carpeta tiene subcarpetas y guarda
     // tiene_anexos. La ficha solo ofrece "con anexos" cuando es true.
     if (body.verificar_anexos === true) {
+      const limite = Math.min(Number(body.limite) || 60, 120);
+      const desde = Math.max(Number(body.desde) || 0, 0);
       let q = admin
         .from("marketplace_productos")
         .select("id, titulo, proyecto_folder_drive_id, tiene_anexos")
         .eq("tipo_paquete", "proyecto")
         .not("proyecto_folder_drive_id", "is", null)
-        .order("created_at", { ascending: true })
-        .limit(Math.min(Number(body.limite) || 60, 120));
-      if (body.todos !== true) q = q.is("tiene_anexos", null);
+        .order("created_at", { ascending: true });
+      // Sin `todos` solo revisa los pendientes (tiene_anexos nulo); con `todos`
+      // recorre el catalogo completo por tandas (`desde` = desplazamiento).
+      q = body.todos === true ? q.range(desde, desde + limite - 1) : q.is("tiene_anexos", null).limit(limite);
       const { data: lista } = await q;
       let con = 0, sin = 0, fallos = 0;
       for (const p of lista || []) {
