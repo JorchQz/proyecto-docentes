@@ -50,13 +50,11 @@ const DIAS_CADUCIDAD_ORDEN = 8;
 // banco del comprador. El nombre anterior (MAX_MSI) hizo que la web lo
 // anunciara como "sin intereses", que era falso.
 const MAX_MENSUALIDADES = 12;
-// Rechazar la compra si el comprador no aceptó los Términos. Se despliega en
-// falso a propósito: esta función sale a producción ANTES que el checkout con
-// la casilla, y exigirla desde el primer momento dejaría sin poder pagar a
-// quien tenga cargada la página vieja. Cuando el sitio nuevo lleve un rato
-// servido se pone en true y se vuelve a desplegar. Mientras tanto la fecha se
-// sella igual cada vez que llega.
-const EXIGIR_TERMINOS = false;
+// Rechazar la compra si el comprador no aceptó los Términos. Estuvo en falso
+// mientras el checkout con la casilla no estaba servido (para no dejar sin
+// pagar a quien tuviera la página vieja); desde el 2026-09-09, con el sitio
+// nuevo en línea, es obligatorio. La fecha se sella en la orden.
+const EXIGIR_TERMINOS = true;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
