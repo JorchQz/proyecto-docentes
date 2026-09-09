@@ -24,9 +24,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var chipsCFEl = document.getElementById("chipsCF");
 	var filtroContenidoEl = document.getElementById("filtroContenido");
 	var listaContenidosEl = document.getElementById("listaContenidos");
-	var limpiarContenidoEl = document.getElementById("limpiarContenido");
-	var bloquePdaEl = document.getElementById("bloquePda");
+	var chipsContenidosEl = document.getElementById("chipsContenidos");
 	var filtroPdaEl = document.getElementById("filtroPda");
+	var listaPdasEl = document.getElementById("listaPdas");
+	var chipsPdasEl = document.getElementById("chipsPdas");
 	var subtituloEl = document.getElementById("subtituloCatalogo");
 
 	var todos = [];       // paquetes (trimestre / ciclo)
@@ -37,9 +38,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var modalidadActiva = null; // null = ambas
 	var combosActivos = new Set(); // combinaciones de grados elegidas
 	var cfActivos = new Set();     // códigos LEN/SAB/ETI/DHL
-	var contenidoActivo = null;    // id de catalogo_contenidos
-	var pdaActivo = null;          // id de catalogo_pda
-	var contenidoPorTexto = {};    // texto visible → id (para el datalist)
+	var contenidosActivos = [];    // ids de catalogo_contenidos elegidos (varios)
+	var pdasActivos = [];          // ids de catalogo_pda elegidos (varios)
+	var contenidoPorId = {};       // id → { id, texto, cf, norm } de los proyectos publicados
+	var pdaPorId = {};             // id → { id, texto, cf, contenido_id, grado, norm }
+	var buscadorContenidos = null, buscadorPdas = null;
 
 	bindFiltros();
 
@@ -70,8 +73,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (x.getAttribute("data-cf") === cf) { setChip(x, true); }
 		});
 	});
-	var contenidoInicial = params.get("contenido");
-	var pdaInicial = params.get("pda");
+	// ?contenido=<id,id>&pda=<id,id> (se validan contra los proyectos al cargar)
+	var contenidosIniciales = (params.get("contenido") || "").split(",").filter(Boolean);
+	var pdasIniciales = (params.get("pda") || "").split(",").filter(Boolean);
 
 	async function cargar() {
 		mostrarCargando();
@@ -95,7 +99,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// colarían en la tarjeta del grado y el "desde" bajaría a $80.
 		todos = (res.data || []).filter(function (p) { return p.tipo_paquete !== "proyecto"; });
 		proyectos = normalizarProyectos(resultados[2].error ? [] : (resultados[2].data || []));
-		if (contenidoInicial) { fijarContenidoPorId(contenidoInicial, pdaInicial); }
+		indexarCurricular();
+		pdasIniciales.forEach(function (id) { agregarPda(id, true); });
+		contenidosIniciales.forEach(function (id) { agregarContenido(id, true); });
+		pintarSelecciones();
 		pintarTiraPromo();
 		renderCombos();
 		aplicarFiltros();
@@ -205,30 +212,48 @@ document.addEventListener("DOMContentLoaded", async function () {
 			else { cfActivos.add(cf); setChip(c, true); }
 			aplicarFiltros();
 		});
-		// El contenido se fija cuando el texto coincide con una opción de la
-		// lista (al elegirla o al terminar de escribirla). Texto parcial no
-		// filtra: la lista ya va acotando.
-		filtroContenidoEl.addEventListener("input", function () {
-			var id = contenidoPorTexto[filtroContenidoEl.value.trim()];
-			if (id) { fijarContenidoPorId(id, null); aplicarFiltros(); }
-			else if (contenidoActivo) { contenidoActivo = null; pdaActivo = null; aplicarFiltros(); }
-			limpiarContenidoEl.classList.toggle("hidden", !filtroContenidoEl.value);
-		});
-		filtroContenidoEl.addEventListener("change", function () {
-			var id = contenidoPorTexto[filtroContenidoEl.value.trim()];
-			if (id && id !== contenidoActivo) { fijarContenidoPorId(id, null); aplicarFiltros(); }
-		});
-		limpiarContenidoEl.addEventListener("click", function () {
-			filtroContenidoEl.value = "";
-			contenidoActivo = null;
-			pdaActivo = null;
-			limpiarContenidoEl.classList.add("hidden");
-			aplicarFiltros();
-			filtroContenidoEl.focus();
-		});
-		filtroPdaEl.addEventListener("change", function () {
-			pdaActivo = filtroPdaEl.value || null;
-			aplicarFiltros();
+		// Buscadores de selección múltiple (mismos que el formulario a la medida).
+		// Solo listan lo que cubre algún proyecto publicado de la selección de
+		// aula y campo actual: así nunca se ofrece un contenido sin proyecto.
+		buscadorContenidos = Tienda.combobox(filtroContenidoEl, listaContenidosEl, function (consulta) {
+			var items = contenidosDisponibles().filter(function (c) { return !consulta || Tienda.coincideTexto(c.norm, consulta); })
+				.map(function (c) { return { id: c.id, texto: c.texto, cf: c.cf, sub: Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "", elegido: contenidosActivos.indexOf(c.id) !== -1 }; });
+			return { items: items, vacio: proyectos.length ? null : "Todavía no hay proyectos publicados." };
+		}, function (id) { agregarContenido(id, false); });
+
+		// PDAs: con contenidos elegidos y casilla vacía, solo los de esos
+		// contenidos; al escribir, cualquiera (los de tus contenidos primero) y
+		// al elegir uno de otro contenido, ese contenido se agrega solo.
+		buscadorPdas = Tienda.combobox(filtroPdaEl, listaPdasEl, function (consulta) {
+			var hay = contenidosActivos.length > 0;
+			var base = pdasDisponibles();
+			var deElegido = function (p) { return contenidosActivos.indexOf(p.contenido_id) !== -1; };
+			var lista, encabezado = "";
+			if (!consulta && hay) {
+				lista = base.filter(deElegido);
+				encabezado = "PDAs de tus contenidos · escribe para buscar cualquier otro";
+			} else {
+				lista = base.filter(function (p) { return !consulta || Tienda.coincideTexto(p.norm, consulta); });
+				if (hay) {
+					lista.sort(function (a, b) { return (deElegido(a) ? 0 : 1) - (deElegido(b) ? 0 : 1); });
+					encabezado = "Primero los de tus contenidos; al elegir otro, su contenido se agrega solo";
+				}
+			}
+			return {
+				encabezado: encabezado,
+				vacio: proyectos.length ? null : "Todavía no hay proyectos publicados.",
+				items: lista.map(function (p) {
+					var c = contenidoPorId[p.contenido_id];
+					return { id: p.id, prefijo: p.grado ? p.grado + "°" : "", texto: p.texto, cf: p.cf, sub: c ? c.texto : "", elegido: pdasActivos.indexOf(p.id) !== -1 };
+				}),
+			};
+		}, function (id) { agregarPda(id, false); });
+
+		document.addEventListener("click", function (e) {
+			var b = e.target.closest("[data-quitar]");
+			if (!b) { return; }
+			if (b.getAttribute("data-quitar") === "contenido") { quitarContenido(b.getAttribute("data-id")); }
+			else if (b.getAttribute("data-quitar") === "pda") { quitarPda(b.getAttribute("data-id")); }
 		});
 
 		chipsOrgEl.addEventListener("click", function (e) {
@@ -394,84 +419,141 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	// Un proyecto pasa el filtro curricular si cubre alguno de los PDAs
+	// elegidos, o alguno de los contenidos elegidos que no tenga PDAs elegidos
+	// (si para un contenido se eligió un PDA concreto, manda el PDA).
 	function filtrarProyectos() {
 		var base = proyectosDeAula();
-		llenarContenidos(base);
-		if (!contenidoActivo) { return base; }
+		if (!contenidosActivos.length && !pdasActivos.length) { return base; }
+		var contenidosConPda = {};
+		pdasActivos.forEach(function (id) { if (pdaPorId[id]) { contenidosConPda[pdaPorId[id].contenido_id] = true; } });
 		return base.filter(function (p) {
 			return p.pdas.some(function (x) {
-				return x.contenido_id === contenidoActivo && (!pdaActivo || x.pda_id === pdaActivo);
+				if (pdasActivos.indexOf(x.pda_id) !== -1) { return true; }
+				return contenidosActivos.indexOf(x.contenido_id) !== -1 && !contenidosConPda[x.contenido_id];
 			});
 		});
 	}
 
-	// Lista de contenidos disponibles (los que cubre algún proyecto de la
-	// selección actual), ordenados por campo y texto, sin repetidos.
-	function llenarContenidos(base) {
-		var vistos = {};
-		base.forEach(function (p) {
+	// Índice de contenidos y PDAs que cubren los proyectos publicados. Es lo
+	// único que se ofrece en los buscadores: así nunca hay un callejón sin
+	// salida (un contenido elegido que ningún proyecto cubre).
+	function indexarCurricular() {
+		contenidoPorId = {};
+		pdaPorId = {};
+		proyectos.forEach(function (p) {
 			p.pdas.forEach(function (x) {
-				if (!x.contenido_id || !x.contenido) { return; }
-				if (cfActivos.size && !cfActivos.has(x.cf)) { return; }
-				if (!vistos[x.contenido_id]) { vistos[x.contenido_id] = { id: x.contenido_id, texto: x.contenido, cf: x.cf }; }
-			});
-		});
-		var lista = Object.keys(vistos).map(function (k) { return vistos[k]; });
-		lista.sort(function (a, b) {
-			var oa = Tienda.CF_ORDEN.indexOf(a.cf), ob = Tienda.CF_ORDEN.indexOf(b.cf);
-			if (oa !== ob) { return oa - ob; }
-			return a.texto.localeCompare(b.texto, "es");
-		});
-		contenidoPorTexto = {};
-		listaContenidosEl.innerHTML = lista.map(function (c) {
-			contenidoPorTexto[c.texto] = c.id;
-			var cfNombre = Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "";
-			return '<option value="' + esc(c.texto) + '">' + esc(cfNombre) + "</option>";
-		}).join("");
-		filtroContenidoEl.placeholder = lista.length
-			? "Escribe o elige entre " + lista.length + " contenidos"
-			: "No hay contenidos para esta selección";
-
-		// PDAs del contenido fijado, dentro de la selección actual.
-		if (!contenidoActivo) { bloquePdaEl.classList.add("hidden"); return; }
-		var pdas = {};
-		base.forEach(function (p) {
-			p.pdas.forEach(function (x) {
-				if (x.contenido_id === contenidoActivo && x.pda_id && !pdas[x.pda_id]) {
-					pdas[x.pda_id] = { id: x.pda_id, texto: x.pda, grado: x.grado };
+				if (x.contenido_id && x.contenido && !contenidoPorId[x.contenido_id]) {
+					contenidoPorId[x.contenido_id] = { id: x.contenido_id, texto: x.contenido, cf: x.cf, norm: Tienda.normalizarTexto(x.contenido) };
+				}
+				if (x.pda_id && x.pda && !pdaPorId[x.pda_id]) {
+					pdaPorId[x.pda_id] = { id: x.pda_id, texto: x.pda, cf: x.cf, contenido_id: x.contenido_id, grado: x.grado, norm: Tienda.normalizarTexto(x.pda + " " + (x.contenido || "")) };
 				}
 			});
 		});
-		var lp = Object.keys(pdas).map(function (k) { return pdas[k]; });
-		lp.sort(function (a, b) { return (a.grado - b.grado) || a.texto.localeCompare(b.texto, "es"); });
-		filtroPdaEl.innerHTML = '<option value="">Cualquier PDA de este contenido (' + lp.length + ")</option>" +
-			lp.map(function (x) {
-				return '<option value="' + esc(x.id) + '"' + (x.id === pdaActivo ? " selected" : "") + ">" +
-					(x.grado ? x.grado + "° · " : "") + esc(recortar(x.texto, 140)) + "</option>";
-			}).join("");
-		bloquePdaEl.classList.remove("hidden");
 	}
-
-	// Fija un contenido por id (desde la lista o desde la URL) y sincroniza el
-	// texto del campo. El PDA se conserva solo si pertenece a ese contenido.
-	function fijarContenidoPorId(id, pdaId) {
-		var encontrado = null;
-		proyectos.some(function (p) {
-			return p.pdas.some(function (x) {
-				if (x.contenido_id === id) { encontrado = x; return true; }
-				return false;
-			});
+	function ordenCF(a, b) {
+		var oa = Tienda.CF_ORDEN.indexOf(a.cf), ob = Tienda.CF_ORDEN.indexOf(b.cf);
+		if (oa !== ob) { return oa - ob; }
+		return a.texto.localeCompare(b.texto, "es");
+	}
+	// Contenidos y PDAs que cubre algún proyecto de la selección de aula y
+	// campo actual (antes de aplicar contenido/PDA, para poder cambiarlos).
+	function contenidosDisponibles() {
+		var vistos = {};
+		proyectosDeAula().forEach(function (p) {
+			p.pdas.forEach(function (x) { if (contenidoPorId[x.contenido_id]) { vistos[x.contenido_id] = true; } });
 		});
-		if (!encontrado) { contenidoActivo = null; pdaActivo = null; return; }
-		contenidoActivo = id;
-		pdaActivo = pdaId || null;
-		filtroContenidoEl.value = encontrado.contenido;
-		limpiarContenidoEl.classList.remove("hidden");
+		return Object.keys(vistos).map(function (k) { return contenidoPorId[k]; }).sort(ordenCF);
+	}
+	function pdasDisponibles() {
+		var vistos = {};
+		proyectosDeAula().forEach(function (p) {
+			p.pdas.forEach(function (x) { if (pdaPorId[x.pda_id]) { vistos[x.pda_id] = true; } });
+		});
+		return Object.keys(vistos).map(function (k) { return pdaPorId[k]; })
+			.sort(function (a, b) { return ordenCF(a, b) || ((a.grado || 0) - (b.grado || 0)); });
 	}
 
-	function recortar(texto, n) {
-		texto = String(texto || "");
-		return texto.length > n ? texto.slice(0, n - 1) + "…" : texto;
+	function agregarContenido(id, silencioso) {
+		if (!contenidoPorId[id] || contenidosActivos.indexOf(id) !== -1) { return; }
+		contenidosActivos.push(id);
+		if (!silencioso) { pintarSelecciones(); aplicarFiltros(); }
+	}
+	function quitarContenido(id) {
+		contenidosActivos = contenidosActivos.filter(function (x) { return x !== id; });
+		pdasActivos = pdasActivos.filter(function (p) { return !pdaPorId[p] || pdaPorId[p].contenido_id !== id; });
+		pintarSelecciones(); aplicarFiltros();
+	}
+	function agregarPda(id, silencioso) {
+		var p = pdaPorId[id];
+		if (!p || pdasActivos.indexOf(id) !== -1) { return; }
+		pdasActivos.push(id);
+		agregarContenido(p.contenido_id, true);
+		if (!silencioso) { pintarSelecciones(); aplicarFiltros(); }
+	}
+	function quitarPda(id) {
+		pdasActivos = pdasActivos.filter(function (x) { return x !== id; });
+		pintarSelecciones(); aplicarFiltros();
+	}
+	function pintarSelecciones() {
+		chipsContenidosEl.innerHTML = contenidosActivos.map(function (id) {
+			var c = contenidoPorId[id];
+			return c ? Tienda.chipQuitable(c.texto, c.cf, "contenido", id) : "";
+		}).join("");
+		chipsPdasEl.innerHTML = pdasActivos.map(function (id) {
+			var p = pdaPorId[id];
+			return p ? Tienda.chipQuitable((p.grado ? p.grado + "° · " : "") + p.texto, p.cf, "pda", id) : "";
+		}).join("");
+		if (buscadorContenidos) { buscadorContenidos.repintar(); }
+		if (buscadorPdas) { buscadorPdas.repintar(); }
+		Tienda.iconos();
+	}
+
+	// Enlace al pedido a la medida con lo que ya se buscó (9.a del documento).
+	function hrefMedida() {
+		var qs = [];
+		qs.push("org=" + encodeURIComponent(orgActiva));
+		if (orgActiva === "completa" && gradosActivos.size) { qs.push("grado=" + encodeURIComponent(Array.from(gradosActivos).join(","))); }
+		if (orgActiva === "multigrado" && combosActivos.size) { qs.push("combo=" + encodeURIComponent(Array.from(combosActivos)[0])); }
+		if (cfActivos.size) { qs.push("cf=" + encodeURIComponent(Array.from(cfActivos).join(","))); }
+		if (contenidosActivos.length) { qs.push("contenido_ids=" + encodeURIComponent(contenidosActivos.join(","))); }
+		if (pdasActivos.length) { qs.push("pda_ids=" + encodeURIComponent(pdasActivos.join(","))); }
+		return "personalizado.html?" + qs.join("&");
+	}
+
+	// Tarjeta permanente "a la medida": siempre es una opción más del catálogo,
+	// no solo el consuelo de cuando no hay resultados.
+	function cardMedida() {
+		var a = document.createElement("a");
+		a.href = hrefMedida();
+		a.className = "prod-card rounded-3xl overflow-hidden flex flex-col";
+		a.style.cssText = "border:2px dashed rgba(30,58,138,.35);background:#f6f8fe";
+		a.innerHTML =
+			'<div class="p-5 flex flex-col flex-1 gap-3">' +
+			'<span class="w-12 h-12 rounded-2xl flex items-center justify-center" style="background:rgba(30,58,138,.1);color:#1e3a8a"><i data-lucide="pencil-ruler" class="w-6 h-6"></i></span>' +
+			'<div><p class="text-[12px] font-semibold" style="color:#5b6473">¿No está el que buscas?</p>' +
+			'<h3 class="mt-1 font-bold text-[17px] leading-snug" style="color:#1c2434">Pídelo a la medida</h3></div>' +
+			'<p class="text-sm leading-relaxed" style="color:#3b4256">Nos dices grado, campo, contenidos y PDAs (o solo el grado) y lo generamos para ti: PDF y Word editable en tu biblioteca en un máximo de 72 horas.</p>' +
+			'<div class="mt-auto pt-4 flex items-center justify-between" style="border-top:1px solid rgba(30,58,138,.15)">' +
+			'<span id="precioMedida" class="text-sm" style="color:#5b6473">Desde <span class="font-black text-lg text-ink">$120</span></span>' +
+			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#1e3a8a">Pedir <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
+			"</div></div>";
+		return a;
+	}
+	var precioMedidaCache = null;
+	function pintarPrecioMedida() {
+		var el = document.getElementById("precioMedida");
+		if (!el) { return; }
+		var pintar = function (lista) {
+			el.innerHTML = 'Desde ' + Tienda.precioHTML(lista, { claseFinal: "font-black text-lg text-ink", claseLista: "text-mute text-[13px] font-bold" });
+		};
+		if (precioMedidaCache != null) { pintar(precioMedidaCache); return; }
+		window.sb.rpc("marketplace_personalizados_estado").then(function (r) {
+			if (r.error || !r.data || r.data.precio_sin_anexos == null) { return; }
+			precioMedidaCache = Number(r.data.precio_sin_anexos);
+			pintar(precioMedidaCache);
+		});
 	}
 
 	function renderProyectos() {
@@ -487,7 +569,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		gridEl.classList.remove("hidden");
 		gridEl.innerHTML = "";
 		lista.forEach(function (p) { gridEl.appendChild(cardProyecto(p)); });
+		gridEl.appendChild(cardMedida());
 		Tienda.iconos();
+		pintarPrecioMedida();
 	}
 
 	function cardProyecto(p) {
@@ -540,14 +624,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
 		if (contadorTextoEl) { contadorTextoEl.textContent = ""; }
-		var qs = [];
-		qs.push("org=" + encodeURIComponent(orgActiva));
-		if (orgActiva === "completa" && gradosActivos.size) { qs.push("grado=" + encodeURIComponent(Array.from(gradosActivos).join(","))); }
-		if (orgActiva === "multigrado" && combosActivos.size) { qs.push("combo=" + encodeURIComponent(Array.from(combosActivos)[0])); }
-		if (cfActivos.size) { qs.push("cf=" + encodeURIComponent(Array.from(cfActivos).join(","))); }
-		if (contenidoActivo) { qs.push("contenido_id=" + encodeURIComponent(contenidoActivo)); }
-		if (pdaActivo) { qs.push("pda_id=" + encodeURIComponent(pdaActivo)); }
-		var href = "personalizado.html?" + qs.join("&");
+		var href = hrefMedida();
 		estadoEl.innerHTML =
 			'<div class="flex flex-col items-center gap-3 max-w-md mx-auto">' +
 			'<i data-lucide="search-x" style="width:3rem;height:3rem;color:#5b6473"></i>' +
@@ -571,8 +648,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			modalidad: modalidadActiva,
 			combos: Array.from(combosActivos),
 			campos: Array.from(cfActivos),
-			contenido_id: contenidoActivo,
-			pda_id: pdaActivo,
+			contenido_ids: contenidosActivos.slice(),
+			pda_ids: pdasActivos.slice(),
 		};
 		var clave = JSON.stringify(filtros);
 		if (clave === ultimaBusquedaVacia) { return; }

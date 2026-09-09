@@ -104,13 +104,13 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			</div>
 		</div>
 
-		<!-- Filtro curricular: solo en la vista de proyectos. Los chips de campo
-		     se marcan con el color NEM de cada campo; el contenido se escribe o se
-		     elige de la lista (solo aparecen los contenidos que de verdad cubre
-		     algún proyecto publicado); el PDA se abre al fijar un contenido. -->
+		<!-- Filtro curricular: solo en la vista de proyectos. Campos, contenidos y
+		     PDAs de selección múltiple; contenidos y PDAs con buscador de texto
+		     (Tienda.combobox), y solo aparece lo que cubre algún proyecto
+		     publicado. Elegir un PDA agrega su contenido. -->
 		<div id="subProyectos" class="hidden flex-col gap-4">
 			<div>
-				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Campo formativo</p>
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Campos formativos <span class="normal-case tracking-normal font-semibold">· varios</span></p>
 				<div id="chipsCF" class="flex flex-wrap gap-2">
 					<button data-cf="LEN" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#059669"></span>Lenguajes</button>
 					<button data-cf="SAB" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#ea580c"></span>Saberes y Pensamiento Científico</button>
@@ -118,19 +118,28 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					<button data-cf="DHL" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#0284c7"></span>De lo Humano y lo Comunitario</button>
 				</div>
 			</div>
+			<!-- Mismo buscador de selección múltiple que el formulario a la medida
+			     (Tienda.combobox). Solo lista lo que cubre algún proyecto publicado. -->
 			<div class="grid gap-3 sm:grid-cols-2">
 				<div>
-					<label for="filtroContenido" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Contenido</label>
+					<label for="filtroContenido" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Contenidos <span class="normal-case tracking-normal font-semibold">· varios</span></label>
+					<div id="chipsContenidos" class="flex flex-wrap gap-1.5 mb-2 empty:hidden"></div>
 					<div class="relative">
-						<input id="filtroContenido" type="text" list="listaContenidos" autocomplete="off" placeholder="Escribe o elige un contenido del programa"
+						<input id="filtroContenido" type="text" autocomplete="off" placeholder="Escribe para buscar un contenido"
 							class="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
-						<datalist id="listaContenidos"></datalist>
-						<button id="limpiarContenido" type="button" aria-label="Quitar contenido" class="hidden absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-paper transition"><i data-lucide="x" class="w-4 h-4 text-mute"></i></button>
+						<i data-lucide="search" class="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-mute pointer-events-none"></i>
 					</div>
+					<div id="listaContenidos" class="hidden mt-1 max-h-64 overflow-y-auto bg-white border border-line rounded-xl shadow-lg"></div>
 				</div>
-				<div id="bloquePda" class="hidden">
-					<label for="filtroPda" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Proceso de desarrollo de aprendizaje (PDA)</label>
-					<select id="filtroPda" class="w-full h-11 px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff"></select>
+				<div>
+					<label for="filtroPda" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">PDA <span class="normal-case tracking-normal font-semibold">· varios</span></label>
+					<div id="chipsPdas" class="flex flex-wrap gap-1.5 mb-2 empty:hidden"></div>
+					<div class="relative">
+						<input id="filtroPda" type="text" autocomplete="off" placeholder="Escribe para buscar un PDA"
+							class="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						<i data-lucide="search" class="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-mute pointer-events-none"></i>
+					</div>
+					<div id="listaPdas" class="hidden mt-1 max-h-64 overflow-y-auto bg-white border border-line rounded-xl shadow-lg"></div>
 				</div>
 			</div>
 		</div>

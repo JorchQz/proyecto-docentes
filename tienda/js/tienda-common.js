@@ -71,6 +71,95 @@
 			}) + "</span></button>";
 	}
 
+	// ── Buscador de selección múltiple (contenidos y PDAs) ────────────────────
+	// Lo usan el catálogo de proyectos y el formulario a la medida. La lista va
+	// en el flujo de la página (no flota, así no tapa la casilla de abajo) y
+	// tiene su propio estado abierta/cerrada, sin depender del foco: en tableta
+	// y celular tocar la lista quita el foco a la casilla antes de registrar
+	// la elección. Se cierra al tocar fuera o con Escape; al elegir se queda
+	// abierta y repintada para seguir eligiendo varios.
+	//
+	//   buscar(consulta) → { items: [{ id, texto, sub?, prefijo?, cf?, elegido }], encabezado?, vacio? }
+	//   elegir(id)       → agrega la selección (quien llama repinta sus chips)
+	function combobox(input, lista, buscar, elegir) {
+		var abierta = false;
+		var MAX = 40;
+
+		function pintar() {
+			var consulta = input.value.trim();
+			var r = buscar(consulta) || { items: [] };
+			var items = r.items || [];
+			if (!items.length) {
+				lista.innerHTML = '<p class="px-3.5 py-3 text-sm ' + (r.vacio ? "font-semibold" : "text-mute") + '" style="' + (r.vacio ? "color:#b45309" : "") + '">' +
+					esc(r.vacio || (consulta ? "Sin coincidencias. Prueba con otra palabra." : "No hay opciones con los filtros elegidos.")) + "</p>";
+				return;
+			}
+			lista.innerHTML =
+				(r.encabezado ? '<p class="px-3.5 pt-2.5 pb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-mute">' + esc(r.encabezado) + "</p>" : "") +
+				items.slice(0, MAX).map(function (it) {
+					var color = (it.cf && CF_COLOR[it.cf]) ? CF_COLOR[it.cf].hex : "#5b6473";
+					return '<button type="button" data-elegir="' + esc(it.id) + '" class="w-full text-left px-3.5 py-2.5 text-sm flex items-start gap-2 hover:bg-paper transition' + (it.elegido ? " opacity-50" : "") + '">' +
+						'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
+						'<span class="leading-snug" style="color:#1c2434">' + (it.prefijo ? '<span class="font-semibold">' + esc(it.prefijo) + "</span> " : "") + esc(it.texto) +
+						(it.sub ? '<span class="block text-[12px] text-mute">' + esc(it.sub) + "</span>" : "") +
+						(it.elegido ? '<span class="block text-[11px] font-semibold" style="color:#047857">Ya elegido</span>' : "") + "</span></button>";
+				}).join("") + (items.length > MAX ? '<p class="px-3.5 py-2 text-[12px] text-mute">Hay más: escribe una palabra para acotar.</p>' : "");
+		}
+		function abrir() { abierta = true; pintar(); lista.classList.remove("hidden"); }
+		function cerrar() { abierta = false; lista.classList.add("hidden"); }
+
+		input.addEventListener("focus", abrir);
+		input.addEventListener("click", abrir);
+		input.addEventListener("input", abrir);
+		input.addEventListener("keydown", function (e) {
+			if (e.key === "Escape") { cerrar(); input.blur(); }
+			if (e.key === "Enter") {
+				e.preventDefault();
+				var primero = lista.querySelector("[data-elegir]:not(.opacity-50)");
+				if (primero) { elegir(primero.getAttribute("data-elegir")); input.value = ""; abrir(); }
+			}
+		});
+		// pointerdown vale para ratón y para dedo, y llega antes de que la
+		// casilla pierda el foco. preventDefault evita el blur en escritorio.
+		lista.addEventListener("pointerdown", function (e) {
+			var b = e.target.closest("[data-elegir]");
+			if (!b) { return; }
+			e.preventDefault();
+			elegir(b.getAttribute("data-elegir"));
+			input.value = "";
+			abrir();
+		});
+		lista.addEventListener("click", function (e) { e.preventDefault(); });
+		// Se mira la ruta del evento (composedPath) y no `contains`: al elegir,
+		// la lista se repinta y el botón tocado ya no está dentro de ella.
+		document.addEventListener("pointerdown", function (e) {
+			if (!abierta) { return; }
+			var ruta = e.composedPath ? e.composedPath() : [];
+			if (ruta.indexOf(input) !== -1 || ruta.indexOf(lista) !== -1) { return; }
+			cerrar();
+		});
+		return { abrir: abrir, cerrar: cerrar, repintar: function () { if (abierta) { pintar(); } } };
+	}
+
+	// Chip de algo elegido, con su botón de quitar (data-quitar="tipo", data-id).
+	function chipQuitable(texto, cf, tipo, id) {
+		var color = (cf && CF_COLOR[cf]) ? CF_COLOR[cf].hex : "#5b6473";
+		return '<span class="inline-flex items-start gap-1.5 max-w-full text-[13px] font-medium rounded-lg pl-2.5 pr-1 py-1.5" style="background:' + color + '14;color:#1c2434;border:1px solid ' + color + '40">' +
+			'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
+			'<span class="leading-snug">' + esc(texto) + "</span>" +
+			'<button type="button" data-quitar="' + esc(tipo) + '" data-id="' + esc(id) + '" aria-label="Quitar" class="shrink-0 w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/70 transition"><i data-lucide="x" class="w-3.5 h-3.5 text-mute"></i></button></span>';
+	}
+
+	// Sin acentos ni mayúsculas: "Etica" encuentra "Ética".
+	function normalizarTexto(s) {
+		return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+	}
+	// Todas las palabras de la consulta aparecen en el texto normalizado.
+	function coincideTexto(norm, consulta) {
+		var palabras = normalizarTexto(consulta).split(/\s+/).filter(Boolean);
+		return palabras.every(function (w) { return norm.indexOf(w) !== -1; });
+	}
+
 	// Chip pequeño de campo formativo para tarjetas y fichas.
 	function chipCF(codigo, opts) {
 		var c = CF_COLOR[codigo];
@@ -745,6 +834,10 @@
 		chipCF: chipCF,
 		precioColumna: precioColumna,
 		opcionVersion: opcionVersion,
+		combobox: combobox,
+		chipQuitable: chipQuitable,
+		normalizarTexto: normalizarTexto,
+		coincideTexto: coincideTexto,
 		esc: esc,
 		formatMoney: formatMoney,
 		montoCorto: montoCorto,

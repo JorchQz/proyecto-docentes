@@ -79,8 +79,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	(params.get("cf") || "").split(",").forEach(function (cf) {
 		if (Tienda.CF_COLOR[cf] && pedido.campos_formativos.indexOf(cf) === -1) { pedido.campos_formativos.push(cf); }
 	});
-	if (params.get("contenido_id") && pedido.contenido_ids.indexOf(params.get("contenido_id")) === -1) { pedido.contenido_ids.push(params.get("contenido_id")); }
-	if (params.get("pda_id") && pedido.pda_ids.indexOf(params.get("pda_id")) === -1) { pedido.pda_ids.push(params.get("pda_id")); }
+	// Del catálogo llegan listas (contenido_ids=a,b&pda_ids=c); se aceptan
+	// también las claves en singular por compatibilidad.
+	((params.get("contenido_ids") || params.get("contenido_id") || "").split(",")).forEach(function (id) {
+		if (id && pedido.contenido_ids.indexOf(id) === -1) { pedido.contenido_ids.push(id); }
+	});
+	((params.get("pda_ids") || params.get("pda_id") || "").split(",")).forEach(function (id) {
+		if (id && pedido.pda_ids.indexOf(id) === -1) { pedido.pda_ids.push(id); }
+	});
 
 	// ── Disponibilidad y precios ──────────────────────────────────────────────
 	var res = await Promise.all([
@@ -201,8 +207,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var grados = gradosActuales();
 		var mia = ++cargaActual;
 		if (!grados.length) {
+			// Sin grado no hay catálogo, pero las selecciones se conservan (por
+			// ejemplo, las que llegan del catálogo en la URL): se validan y se
+			// pintan en cuanto se elige el grado.
 			contenidos = []; pdas = []; contenidoPorId = {}; pdaPorId = {};
-			pedido.contenido_ids = []; pedido.pda_ids = [];
 			pintarSelecciones(); pintarAyudas();
 			return;
 		}
@@ -236,14 +244,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pintarAyudas();
 	}
 
-	function normalizar(s) {
-		// Sin acentos ni mayúsculas: "Etica" encuentra "Ética".
-		return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-	}
-	function coincide(item, consulta) {
-		var palabras = normalizar(consulta).split(/\s+/).filter(Boolean);
-		return palabras.every(function (w) { return item.norm.indexOf(w) !== -1; });
-	}
+	function normalizar(s) { return Tienda.normalizarTexto(s); }
+	function coincide(item, consulta) { return Tienda.coincideTexto(item.norm, consulta); }
 	function pasaCF(item) {
 		return !pedido.campos_formativos.length || pedido.campos_formativos.indexOf(item.cf) !== -1;
 	}
@@ -273,13 +275,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pintarSelecciones(); pintarAyudas(); pintarResumen();
 	}
 
-	function chipSeleccion(texto, cf, tipo, id) {
-		var color = (cf && Tienda.CF_COLOR[cf]) ? Tienda.CF_COLOR[cf].hex : "#5b6473";
-		return '<span class="inline-flex items-start gap-1.5 max-w-full text-[13px] font-medium rounded-lg pl-2.5 pr-1 py-1.5" style="background:' + color + '14;color:#1c2434;border:1px solid ' + color + '40">' +
-			'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
-			'<span class="leading-snug">' + esc(texto) + "</span>" +
-			'<button type="button" data-quitar="' + tipo + '" data-id="' + esc(id) + '" aria-label="Quitar" class="shrink-0 w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/70 transition"><i data-lucide="x" class="w-3.5 h-3.5 text-mute"></i></button></span>';
-	}
+	function chipSeleccion(texto, cf, tipo, id) { return Tienda.chipQuitable(texto, cf, tipo, id); }
 	function pintarSelecciones() {
 		chipsContenidosEl.innerHTML = pedido.contenido_ids.map(function (id) {
 			var c = contenidoPorId[id];
@@ -315,82 +311,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: nP + " PDAs disponibles. Al elegir un PDA se agrega su contenido.";
 	}
 
-	// ── Buscadores (combobox) ─────────────────────────────────────────────────
-	// La lista tiene su propio estado abierta/cerrada y NO depende del foco de
-	// la casilla: en tableta y celular, tocar la lista le quita el foco a la
-	// casilla antes de registrar la elección, y con un cierre "al perder el
-	// foco" la lista desaparecía tras cada elección. Se cierra solo al tocar
-	// fuera o con Escape; al elegir se queda abierta y se repinta, para seguir
-	// eligiendo varios sin volver a tocar la casilla.
-	function combobox(input, lista, buscar, elegir) {
-		var abierta = false;
-
-		function pintar() {
-			var consulta = input.value.trim();
-			var r = buscar(consulta);
-			var items = r.items, encabezado = r.encabezado || "";
-			if (!items.length) {
-				var sinGrado = !gradosActuales().length;
-				lista.innerHTML = '<p class="px-3.5 py-3 text-sm ' + (sinGrado ? "font-semibold" : "text-mute") + '" style="' + (sinGrado ? "color:#b45309" : "") + '">' +
-					(sinGrado ? "Primero elige el grado en el paso 1: los contenidos y PDAs dependen de él." : (consulta ? "Sin coincidencias. Prueba con otra palabra." : "No hay opciones con los campos elegidos.")) + "</p>";
-			} else {
-				lista.innerHTML =
-					(encabezado ? '<p class="px-3.5 pt-2.5 pb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-mute">' + esc(encabezado) + "</p>" : "") +
-					items.slice(0, MAX_RESULTADOS).map(function (it) {
-						var color = (it.cf && Tienda.CF_COLOR[it.cf]) ? Tienda.CF_COLOR[it.cf].hex : "#5b6473";
-						return '<button type="button" data-elegir="' + esc(it.id) + '" class="w-full text-left px-3.5 py-2.5 text-sm flex items-start gap-2 hover:bg-paper transition' + (it.elegido ? " opacity-50" : "") + '">' +
-							'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
-							'<span class="leading-snug" style="color:#1c2434">' + (it.prefijo ? '<span class="font-semibold">' + esc(it.prefijo) + "</span> " : "") + esc(it.texto) +
-							(it.sub ? '<span class="block text-[12px] text-mute">' + esc(it.sub) + "</span>" : "") +
-							(it.elegido ? '<span class="block text-[11px] font-semibold" style="color:#047857">Ya elegido</span>' : "") + "</span></button>";
-					}).join("") + (items.length > MAX_RESULTADOS ? '<p class="px-3.5 py-2 text-[12px] text-mute">Hay más: escribe una palabra para acotar.</p>' : "");
-			}
-		}
-		function abrir() { abierta = true; pintar(); lista.classList.remove("hidden"); }
-		function cerrar() { abierta = false; lista.classList.add("hidden"); }
-
-		input.addEventListener("focus", abrir);
-		input.addEventListener("click", abrir);
-		input.addEventListener("input", abrir);
-		input.addEventListener("keydown", function (e) {
-			if (e.key === "Escape") { cerrar(); input.blur(); }
-			if (e.key === "Enter") {
-				e.preventDefault();
-				var primero = lista.querySelector("[data-elegir]:not(.opacity-50)");
-				if (primero) { elegir(primero.getAttribute("data-elegir")); input.value = ""; abrir(); }
-			}
-		});
-		// pointerdown vale para ratón y para dedo, y llega antes de que la
-		// casilla pierda el foco. preventDefault evita el blur en escritorio.
-		lista.addEventListener("pointerdown", function (e) {
-			var b = e.target.closest("[data-elegir]");
-			if (!b) { return; }
-			e.preventDefault();
-			elegir(b.getAttribute("data-elegir"));
-			input.value = "";
-			abrir();
-		});
-		// Un clic (no pointerdown) en la lista no debe hacer nada más: ya se
-		// eligió en pointerdown. Sin esto, en algunos navegadores el click
-		// posterior caía en el elemento que quedó debajo tras repintar.
-		lista.addEventListener("click", function (e) { e.preventDefault(); });
-		// Tocar fuera de la casilla y de su lista la cierra. La lista va en el
-		// flujo de la página, así que nunca tapa la casilla de abajo.
-		// Se mira la ruta del evento (composedPath) y no `contains`: al elegir,
-		// la lista se repinta y el botón tocado ya no está dentro de ella, con
-		// lo que `contains` diría "fuera" y cerraría la lista recién repintada.
-		document.addEventListener("pointerdown", function (e) {
-			if (!abierta) { return; }
-			var ruta = e.composedPath ? e.composedPath() : [];
-			if (ruta.indexOf(input) !== -1 || ruta.indexOf(lista) !== -1) { return; }
-			cerrar();
-		});
-	}
+	// ── Buscadores (Tienda.combobox, compartido con el catálogo) ─────────────
+	function combobox(input, lista, buscar, elegir) { return Tienda.combobox(input, lista, buscar, elegir); }
 
 	combobox(buscarContenidoEl, listaContenidosEl, function (consulta) {
 		var items = contenidos.filter(pasaCF).filter(function (c) { return !consulta || coincide(c, consulta); })
 			.map(function (c) { return { id: c.id, texto: c.texto, cf: c.cf, sub: Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "", elegido: pedido.contenido_ids.indexOf(c.id) !== -1 }; });
-		return { items: items };
+		return { items: items, vacio: gradosActuales().length ? null : "Primero elige el grado en el paso 1: los contenidos y PDAs dependen de él." };
 	}, agregarContenido);
 
 	// PDAs: sin contenidos elegidos, todos los del grado. Con contenidos
@@ -414,6 +341,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		return {
 			encabezado: encabezado,
+			vacio: gradosActuales().length ? null : "Primero elige el grado en el paso 1: los contenidos y PDAs dependen de él.",
 			items: lista.map(function (p) {
 				var c = contenidoPorId[p.contenido_id];
 				return { id: p.id, prefijo: p.grado + "°", texto: p.texto, cf: p.cf, sub: c ? c.texto : "", elegido: pedido.pda_ids.indexOf(p.id) !== -1 };
