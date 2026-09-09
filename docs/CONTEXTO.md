@@ -243,10 +243,29 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
   paquetes, promoción porcentual y cupones. Los proyectos sueltos no están en el tarifario:
   su precio vive en la fila y se edita en el admin; la promoción y los cupones se aplican
   encima igual que a los paquetes.
-- Admin: `es_admin()` (cuenta `soporte.jissez@gmail.com`) es la única fuente del rol.
+- Admin: `es_admin()` (cuenta `soporte.jissez@gmail.com`) es la única fuente del rol. Los
+  IDs de Drive (`*_drive_id`, `pedidos.drive_folder_id`) no son legibles desde el navegador:
+  el permiso de tabla se sustituyó por columnas explícitas (`marketplace_personalizados.sql` §8).
 - Links de anexo impresos por el bot: `anexo.html?aula=<grado|combo>&pr=<1-12>&a=<código>`;
   la Edge Function `anexo` los resuelve con el paquete o con el proyecto suelto (por
-  `numero_proyecto`) comprado con anexos.
+  `numero_proyecto`) comprado con anexos. Personalizados: `anexo.html?pedido=PZ-0001&a=…`.
+- Catálogo público de sueltos: RPC `marketplace_proyectos_publicos(p_id)` (única vía anónima a
+  `dosificacion_pdas`, solo sueltos publicados). Ficha `tienda/proyecto.html?id=`.
+- **Proyectos a la medida**: `marketplace_pedidos` (número `PZ-0001…`, estados
+  `pendiente_pago → pendiente → en_proceso → completado | cancelado`, `fecha_compromiso_entrega`,
+  `drive_folder_id`, `producto_id` al entregar), `marketplace_personalizados_config` (fila única:
+  `abierto`, `tope_semanal`, `ventana_horas`, precios) y `marketplace_orden_items.pedido_id`
+  (ítem sin producto). RPC pública `marketplace_personalizados_estado()`; admin
+  `admin_listar_pedidos/actualizar_pedido/estado_personalizados/guardar_personalizados`. Flujo:
+  `personalizado.html` → `checkout.html?personalizado=1` → `crear-preferencia-mp` (rama `pedido`)
+  → `procesarPago` → `activarPedidosDeOrden` (correos cliente y `MAIL_ADMIN`) → admin "A la medida"
+  → Edge `completar-pedido` (verifica Drive, crea producto `proyecto`, accesos, correo). Carpeta:
+  `{grado o combo}/Proyectos Personalizados/PZ-0001_Nombre/`.
+- `marketplace_busquedas_vacias` (filtros sin resultado, inserta cualquiera, lee admin) y
+  `avisos-pedidos` (Edge, la llama `pg_cron` `avisos-pedidos-diario` a las 14:00 UTC vía `pg_net`
+  con el secreto `cron_secret` de Vault): correo de pedidos vencidos o por vencer.
+- Legal: `terminos.html`, `privacidad.html`; `marketplace_ordenes.terminos_aceptados_en`.
+  `crear-preferencia-mp` tiene `EXIGIR_TERMINOS=false` hasta que el checkout nuevo esté servido.
 
 ---
 
@@ -272,8 +291,9 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Marketplace (catálogo + filtros + preview + importar) | ✅ Completo | `marketplace.html` |
 | Tienda: paquetes (catálogo, ficha, checkout MP, biblioteca, anexos, promoción, cupones) | ✅ Completo | `tienda/*` |
 | Tienda: proyectos sueltos (venta con/sin anexos, entrega, admin "Proyectos sueltos") | ✅ Completo (2026-09, Bloque 1) | `tienda/admin.html`, Edge `admin-proyectos-drive` |
-| Tienda: filtro por campo/contenido/PDA + ficha `proyecto.html` + legal | ⏳ Bloque 2 | — |
-| Tienda: proyectos personalizados (pedidos, admin, correos) | ⏳ Bloque 3 | — |
+| Tienda: filtro por campo/contenido/PDA + ficha `proyecto.html` + legal | ✅ Completo (2026-09, Bloque 2) | `tienda/catalogo.html`, `tienda/proyecto.html`, `tienda/terminos.html`, `tienda/privacidad.html` |
+| Tienda: proyectos a la medida (pedidos, cobro, admin, entrega, correos) | ✅ Completo (2026-09, Bloque 3) | `tienda/personalizado.html`, Edge `completar-pedido` |
+| Tienda: búsquedas sin resultado, aviso diario de vencidos, landing normalistas | ✅ Completo (2026-09, Bloque 4) | Edge `avisos-pedidos`, `tienda/practicantes.html` |
 
 ### Pendientes / deuda técnica
 - El Marketplace muestra estado vacío hasta que el bot publique proyectos con `estado = 'publicado'`.
