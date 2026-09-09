@@ -40,18 +40,21 @@ Deno.serve(async (req: Request) => {
     // Un producto oculto solo se previsualiza para el admin (JWT que pasa
     // es_admin) o con el secreto de mantenimiento: así se generan las
     // imágenes de muestra ANTES de publicar.
-    if (!producto.activo) {
-      const cronSecret = Deno.env.get("CRON_SECRET");
-      let autorizado = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
-      const authHeader = req.headers.get("Authorization") || "";
-      if (!autorizado && authHeader.startsWith("Bearer ")) {
-        const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-        const userClient = crearClienteUsuario(supabaseUrl, anonKey, authHeader);
-        const { data: esAdmin } = await userClient.rpc("es_admin");
-        autorizado = esAdmin === true;
-      }
-      if (!autorizado) return jsonResponse({ error: "Producto no disponible" }, 404);
+    // ¿Quién pide? El admin (JWT que pasa es_admin) o el mantenimiento (secreto).
+    // Solo ellos pueden previsualizar un producto oculto y pedir el PDF
+    // completo (`completo=1`) para localizar la página de la Sesión 1 al
+    // generar las imágenes de muestra.
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    let autorizado = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
+    const authHeader = req.headers.get("Authorization") || "";
+    if (!autorizado && authHeader.startsWith("Bearer ")) {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const userClient = crearClienteUsuario(supabaseUrl, anonKey, authHeader);
+      const { data: esAdmin } = await userClient.rpc("es_admin");
+      autorizado = esAdmin === true;
     }
+    if (!producto.activo && !autorizado) return jsonResponse({ error: "Producto no disponible" }, 404);
+    const completo = autorizado && url.searchParams.get("completo") === "1";
 
     // En un proyecto individual la carpeta del producto ya es la del proyecto.
     const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
@@ -69,8 +72,14 @@ Deno.serve(async (req: Request) => {
 
     const fullBytes = await downloadDriveFile(pdf.id);
 
-    // Extraer solo las primeras N páginas.
+    // Extraer solo las primeras N páginas (el admin puede pedirlo completo).
     let muestraBytes = fullBytes;
+    if (completo) {
+      return new Response(fullBytes, {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/pdf", "Content-Disposition": "inline", "Cache-Control": "no-store" },
+      });
+    }
     try {
       const src = await PDFDocument.load(fullBytes, { ignoreEncryption: true });
       const total = src.getPageCount();

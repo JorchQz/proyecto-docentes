@@ -193,6 +193,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var imagenes = [];
 	var imgActual = 0;
 
+	// Etiqueta según el nombre del archivo (convención del generador:
+	// 01-planeacion-pagina-1, 03-planeacion-sesion-1, ...-anexo-...).
+	function etiquetaDeArchivo(nombre, indice) {
+		var n = nombre.toLowerCase();
+		var m = n.match(/sesion-([0-9]+)/);
+		if (m) { return "Sesión " + m[1]; }
+		if (n.indexOf("anexo") !== -1) { return "Anexo para el alumno"; }
+		m = n.match(/pagina-([0-9]+)/);
+		return "Planeación · página " + (m ? m[1] : indice + 1);
+	}
+
 	async function cargarImagenes() {
 		try {
 			var carpeta = "previews/proyecto-" + p.id;
@@ -203,7 +214,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.map(function (f, i) {
 					return {
 						nombre: f.name,
-						etiqueta: "Planeación · página " + (i + 1),
+						etiqueta: etiquetaDeArchivo(f.name, i),
 						url: window.sb.storage.from("assets").getPublicUrl(carpeta + "/" + f.name).data.publicUrl,
 					};
 				});
