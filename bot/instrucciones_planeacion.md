@@ -229,7 +229,7 @@ ningún trimestre. Va en la carpeta hermana de T1/T2/T3 de su grado o combo:
    S01 / <anexos>          ← subcarpetas por sesión, solo si el pedido es "con anexos"
 ```
 
-- Sin examen: el personalizado es un proyecto suelto.
+- Sin examen: el personalizado es un proyecto individual.
 - El hipervínculo de cada anexo lleva el **número de pedido** en vez de `aula` y `pr`:
   `https://jissez.com/tienda/anexo.html?pedido=PZ-0001&a=<código>`.
 - El código del anexo puede ser `ANX-PZ0001-S03-01` (mismo formato, con el pedido en vez del proyecto).

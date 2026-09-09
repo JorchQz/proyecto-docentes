@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
     const aula = aulaDePedido(pedido);
     const titulo = String(body.titulo || "").trim() ||
       (aula + " — " + (nombreProyecto || "Proyecto a la medida " + pedido.numero_pedido));
-    // Precio de catálogo del proyecto suelto: del tarifario por modalidad
+    // Precio de catálogo del proyecto individual: del tarifario por modalidad
     // (renglón 'proyecto'), igual que los demás sueltos. Nunca del cliente.
     const { data: tarifa } = await admin
       .from("marketplace_precios")

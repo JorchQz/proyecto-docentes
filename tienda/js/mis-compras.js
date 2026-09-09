@@ -232,7 +232,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					: "Trimestre " + (prod.trimestre || ""));
 			var esEditable = !!info.tipos.editable;
 			var accesoId = esEditable ? info.tipos.editable : info.tipos.pdf;
-			// Proyecto suelto: el Word va siempre; lo que cambia es si lleva anexos.
+			// Proyecto individual: el Word va siempre; lo que cambia es si lleva anexos.
 			var versionTxt = esProyecto
 				? (info.tipos.anexos ? "PDF + Word + anexos" : "PDF + Word (sin anexos)")
 				: (esEditable ? "Word + PDF + anexos" : "PDF + anexos");

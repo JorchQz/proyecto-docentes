@@ -104,7 +104,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const incluirDocx = acceso.tipo === "editable";
-    // Proyecto suelto sin anexos: las subcarpetas no van en el ZIP.
+    // Proyecto individual sin anexos: las subcarpetas no van en el ZIP.
     const incluirAnexos = await compradorIncluyeAnexos(admin, user.id, acceso.producto_id, tipoPaquete);
     const esItemExamen = /examen/i.test(proyectoFolder.name);
     const nombre =

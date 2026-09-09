@@ -60,7 +60,7 @@
 
 	// Tarjeta de opción (radio grande) para elegir versión: título y detalle a
 	// la izquierda, precio en columna a la derecha. La usan la ficha del
-	// proyecto suelto y el formulario a la medida.
+	// proyecto individual y el formulario a la medida.
 	function opcionVersion(o, seleccionada) {
 		return '<button type="button" data-opcion="' + esc(o.valor) + '" class="opt-btn w-full text-left rounded-2xl border px-4 py-3 flex items-center gap-3' + (seleccionada ? " selected" : " border-line bg-white") + '">' +
 			'<span class="w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center" style="border-color:' + (seleccionada ? "#fff" : "#9ba3af") + '">' + (seleccionada ? '<span class="w-2.5 h-2.5 rounded-full" style="background:#fff"></span>' : "") + "</span>" +

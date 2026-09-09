@@ -56,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		(comboTipoPaquete === "ciclo" ||
 			(comboTipoPaquete === "trimestre" && [1, 2, 3].indexOf(comboTrimestre) !== -1));
 
-	// 'anexos' es la versión "con anexos" del proyecto suelto; el combo unitario
+	// 'anexos' es la versión "con anexos" del proyecto individual; el combo unitario
 	// es de paquetes y no la tiene.
 	var tipoValido = tipo === "pdf" || tipo === "editable" || (!esCombo && tipo === "anexos");
 	if (esPedido) {
@@ -214,7 +214,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return false;
 		}
 		var p = res.data;
-		// Proyecto suelto: 'pdf' = sin anexos, 'anexos' = con anexos; el Word va
+		// Proyecto individual: 'pdf' = sin anexos, 'anexos' = con anexos; el Word va
 		// incluido en los dos. Paquete: 'editable' es el add-on de Word.
 		var esProyecto = p.tipo_paquete === "proyecto";
 		if (esProyecto ? tipo === "editable" : tipo === "anexos") {
@@ -232,7 +232,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// "Volver" tiene que llevar a la ficha del paquete, y esa página se
 		// identifica por grado o por combinación multigrado, nunca por el id del
 		// producto: con `?id=` no encontraba nada y decía "no está disponible".
-		// La ficha del proyecto suelto sí va por id.
+		// La ficha del proyecto individual sí va por id.
 		volverLink.href = esProyecto
 			? "proyecto.html?id=" + encodeURIComponent(p.id)
 			: (p.organizacion === "multigrado"
@@ -344,7 +344,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function mostrarDesglose(precioPdf, addon, etiquetaBase, etiquetaAddon) {
 		if (addon <= 0) { return; }
 		// Las etiquetas por defecto son las del paquete (PDF + add-on de Word);
-		// el proyecto suelto manda las suyas (PDF + Word / anexos).
+		// el proyecto individual manda las suyas (PDF + Word / anexos).
 		document.getElementById("desgloseBaseLabel").textContent = etiquetaBase || "Planeación en PDF";
 		document.getElementById("desgloseAddonLabel").textContent = etiquetaAddon || "Versión Word editable";
 		document.getElementById("desglosePdf").textContent = money(precioPdf);

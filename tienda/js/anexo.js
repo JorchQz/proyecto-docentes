@@ -93,7 +93,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	});
 
-	// Tiene el proyecto suelto, pero lo compró en la versión sin anexos.
+	// Tiene el proyecto individual, pero lo compró en la versión sin anexos.
 	function mostrarSinAnexos(productoId) {
 		estadoEl.classList.remove("hidden");
 		visor.classList.add("hidden");

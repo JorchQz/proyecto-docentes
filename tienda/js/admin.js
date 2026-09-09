@@ -93,7 +93,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.order("grado", { ascending: true });
 		productos = res.data || [];
 		porClave = {};
-		// La grilla es de paquetes; los proyectos sueltos tienen su pestaña.
+		// La grilla es de paquetes; los proyectos individuales tienen su pestaña.
 		productos.forEach(function (p) { if (p.tipo_paquete !== "proyecto") { porClave[clave(p)] = p; } });
 		renderGrid();
 		poblarSelectProductos();
@@ -494,7 +494,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var hayOferta = d.vigente_ahora && Number(t.promo_pdf) < Number(t.lista_pdf);
 			return '<tr class="border-b border-line" data-tarifa="' + esc(clave) + '">' +
 				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
-				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : t.tipo_paquete === "proyecto" ? 'Proyecto suelto <span class="text-xs text-mute">(extra = anexos)</span>' : "Trimestre") + "</td>" +
+				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : t.tipo_paquete === "proyecto" ? 'Proyecto individual <span class="text-xs text-mute">(extra = anexos)</span>' : "Trimestre") + "</td>" +
 				'<td class="py-2 pr-3 text-right"><input type="number" min="10" step="1" inputmode="numeric" data-campo="base" value="' +
 					esc(Number(t.lista_pdf)) + '" class="w-24 h-10 rounded-lg border border-line px-2 text-right text-ink" style="background:#fff"></td>' +
 				'<td class="py-2 pr-3 text-right"><input type="number" min="0" step="1" inputmode="numeric" data-campo="addon" value="' +
@@ -822,8 +822,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		guardarCuponBtn.textContent = "Guardar cupón";
 	});
 
-	// ── Proyectos sueltos ──────────────────────────────────────────────────────
-	// Un proyecto suelto es una fila de marketplace_productos con
+	// ── Proyectos individuales ──────────────────────────────────────────────────────
+	// Un proyecto individual es una fila de marketplace_productos con
 	// tipo_paquete = 'proyecto' y la carpeta P0N del proyecto en Drive. Se crean
 	// en lote a partir de un paquete trimestral: la Edge Function
 	// admin-proyectos-drive lee las carpetas, las empareja con
@@ -946,7 +946,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<tbody>" + filas + "</tbody></table></div>" +
 			'<div class="flex flex-wrap items-center gap-3">' +
 			'<button id="crearSueltosBtn" class="h-11 px-5 rounded-xl font-bold text-white text-sm" style="background:#059669">Crear productos seleccionados</button>' +
-			'<span class="text-xs text-mute">Se crean OCULTOS con el precio del tarifario (pestaña Precios, renglón Proyecto suelto). Los publicas abajo.</span>' +
+			'<span class="text-xs text-mute">Se crean OCULTOS con el precio del tarifario (pestaña Precios, renglón Proyecto individual). Los publicas abajo.</span>' +
 			"</div></div>";
 
 		document.getElementById("crearSueltosBtn").addEventListener("click", crearSueltos);
@@ -1050,11 +1050,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Lista de sueltos agrupada por aula. Sin botones por fila: la casilla
 	// "Publicado" guarda al instante y cada grupo tiene "Publicar todos" /
 	// "Ocultar todos". Los precios son de solo lectura: vienen del tarifario
-	// (pestaña Precios, renglón "Proyecto suelto") por modalidad.
+	// (pestaña Precios, renglón "Proyecto individual") por modalidad.
 	function renderSueltos() {
 		var sueltos = productos.filter(function (p) { return p.tipo_paquete === "proyecto"; });
 		if (!sueltos.length) {
-			listaSueltosEl.innerHTML = '<p class="text-sm text-mute">Todavía no hay proyectos sueltos. Detecta los de un trimestre arriba.</p>';
+			listaSueltosEl.innerHTML = '<p class="text-sm text-mute">Todavía no hay proyectos individuales. Detecta los de un trimestre arriba.</p>';
 			return;
 		}
 		var grupos = {}, orden = [];

@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
     if (!puedeEntregarArchivo(archivo.name, esEditable)) {
       return jsonResponse({ error: "Esta versión requiere la compra editable" }, 403);
     }
-    // Proyecto suelto sin anexos: las subcarpetas no se entregan.
+    // Proyecto individual sin anexos: las subcarpetas no se entregan.
     if (!puedeEntregarRuta(archivo.path, conAnexos)) {
       return jsonResponse({ error: "Este proyecto se compró sin anexos", sin_anexos: true }, 403);
     }

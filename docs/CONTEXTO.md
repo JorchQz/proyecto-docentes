@@ -231,7 +231,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
   `numero_proyecto` 1-12 (solo `proyecto`), `dosificacion_proyecto_id` (solo `proyecto`:
   llave del filtro por contenido/PDA), `activo`, `es_prueba`.
 - `marketplace_ordenes` / `marketplace_orden_items` — orden y líneas. `items.tipo` ∈
-  `pdf` · `editable` (Word, paquetes) · `anexos` (con anexos, proyecto suelto).
+  `pdf` · `editable` (Word, paquetes) · `anexos` (con anexos, proyecto individual).
   `ordenes.terminos_aceptados_en` sella la aceptación legal del checkout.
 - `marketplace_accesos` — una fila por (usuario, producto, `tipo`) con `tipo` ∈
   `pdf`/`editable`/`anexos`. Regla única en `_shared/pagos.ts::tiposDeAcceso` y su espejo SQL
@@ -240,14 +240,14 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
   `editable` habilita los .docx (`puedeEntregarArchivo`); la fila `anexos` habilita las
   subcarpetas (`puedeEntregarRuta`), que en paquetes van siempre.
 - `marketplace_precios`, `marketplace_promocion`, `marketplace_cupones` — tarifario de
-  paquetes, promoción porcentual y cupones. Los proyectos sueltos no están en el tarifario:
+  paquetes, promoción porcentual y cupones. Los proyectos individuales no están en el tarifario:
   su precio vive en la fila y se edita en el admin; la promoción y los cupones se aplican
   encima igual que a los paquetes.
 - Admin: `es_admin()` (cuenta `soporte.jissez@gmail.com`) es la única fuente del rol. Los
   IDs de Drive (`*_drive_id`, `pedidos.drive_folder_id`) no son legibles desde el navegador:
   el permiso de tabla se sustituyó por columnas explícitas (`marketplace_personalizados.sql` §8).
 - Links de anexo impresos por el bot: `anexo.html?aula=<grado|combo>&pr=<1-12>&a=<código>`;
-  la Edge Function `anexo` los resuelve con el paquete o con el proyecto suelto (por
+  la Edge Function `anexo` los resuelve con el paquete o con el proyecto individual (por
   `numero_proyecto`) comprado con anexos. Personalizados: `anexo.html?pedido=PZ-0001&a=…`.
 - Catálogo público de sueltos: RPC `marketplace_proyectos_publicos(p_id)` (única vía anónima a
   `dosificacion_pdas`, solo sueltos publicados). Ficha `tienda/proyecto.html?id=`.
@@ -290,7 +290,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Exámenes (aplicar + calificar + auto-calificación por CF) | ✅ Completo | `examen.html` |
 | Marketplace (catálogo + filtros + preview + importar) | ✅ Completo | `marketplace.html` |
 | Tienda: paquetes (catálogo, ficha, checkout MP, biblioteca, anexos, promoción, cupones) | ✅ Completo | `tienda/*` |
-| Tienda: proyectos sueltos (venta con/sin anexos, entrega, admin "Proyectos sueltos") | ✅ Completo (2026-09, Bloque 1) | `tienda/admin.html`, Edge `admin-proyectos-drive` |
+| Tienda: proyectos individuales (venta con/sin anexos, entrega, admin "Proyectos individuales") | ✅ Completo (2026-09, Bloque 1) | `tienda/admin.html`, Edge `admin-proyectos-drive` |
 | Tienda: filtro por campo/contenido/PDA + ficha `proyecto.html` + legal | ✅ Completo (2026-09, Bloque 2) | `tienda/catalogo.html`, `tienda/proyecto.html`, `tienda/terminos.html`, `tienda/privacidad.html` |
 | Tienda: proyectos a la medida (pedidos, cobro, admin, entrega, correos) | ✅ Completo (2026-09, Bloque 3) | `tienda/personalizado.html`, Edge `completar-pedido` |
 | Tienda: búsquedas sin resultado, aviso diario de vencidos, landing normalistas | ✅ Completo (2026-09, Bloque 4) | Edge `avisos-pedidos`, `tienda/practicantes.html` |

@@ -9,7 +9,7 @@
 // POST /functions/v1/crear-preferencia-mp
 //   body compra individual: { producto_id: uuid, tipo: 'pdf' | 'editable' }
 //     · paquete (trimestre/ciclo): 'pdf' o 'editable' (add-on de Word)
-//     · proyecto suelto (tipo_paquete = 'proyecto'): 'pdf' = sin anexos,
+//     · proyecto individual (tipo_paquete = 'proyecto'): 'pdf' = sin anexos,
 //       'anexos' = con anexos. El Word va incluido en los dos.
 //   body paquete unitario:  { combo: 'unitaria',
 //                             agrupacion: 'tridocente' | 'bidocente',
@@ -161,7 +161,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Las versiones dependen del producto: el paquete vende el Word como
-    // add-on ('editable'); el proyecto suelto lo incluye y vende los anexos
+    // add-on ('editable'); el proyecto individual lo incluye y vende los anexos
     // aparte ('anexos'). Cruzarlas cobraría una versión que no existe.
     const esProyecto = producto.tipo_paquete === "proyecto";
     if (esProyecto ? tipo === "editable" : tipo === "anexos") {
@@ -982,7 +982,7 @@ async function sellarTerminos(
  * carpeta de proyecto puede estar vacía. Exigimos un documento descargable
  * (PDF o DOCX) dentro del primer proyecto.
  *
- * Proyecto suelto: la carpeta es la del proyecto y el Word va incluido, así
+ * Proyecto individual: la carpeta es la del proyecto y el Word va incluido, así
  * que se exigen PDF y DOCX en la raíz; la versión con anexos exige además al
  * menos una subcarpeta. Vender "con anexos" una carpeta sin anexos sería
  * cobrar algo que no existe.

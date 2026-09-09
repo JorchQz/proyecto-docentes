@@ -7,7 +7,7 @@
 // desincronicen.
 //
 //   paquetes (trimestre / ciclo) → los anexos van siempre incluidos.
-//   proyecto suelto              → solo si existe la fila tipo = 'anexos'
+//   proyecto individual              → solo si existe la fila tipo = 'anexos'
 //                                  (la versión "con anexos" de la compra).
 
 import type { Cliente } from "./db.ts";

@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
     const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
     const folders = await listProyectoFolders(producto.proyecto_folder_drive_id, tipoPaquete);
 
-    // En un paquete de trimestre (y en un proyecto suelto) el número lo lleva
+    // En un paquete de trimestre (y en un proyecto individual) el número lo lleva
     // el producto; en el ciclo lo trae cada ítem según la carpeta T1/T2/T3 de
     // la que salió.
     const trimestreProducto = producto.trimestre != null ? Number(producto.trimestre) : null;

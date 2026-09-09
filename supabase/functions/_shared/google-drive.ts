@@ -59,7 +59,7 @@ export function puedeEntregarArchivo(nombre: string, esEditable: boolean): boole
 
 // Segunda regla única, por UBICACIÓN: los anexos viven en subcarpetas del
 // proyecto (S01/, "Sesion 3/") y la planeación en la raíz. En los paquetes
-// los anexos van siempre; en el proyecto suelto se venden aparte, y quien lo
+// los anexos van siempre; en el proyecto individual se venden aparte, y quien lo
 // compró "sin anexos" no debe ver ni listar las subcarpetas.
 //
 // Quién decide `incluyeAnexos` está en _shared/entrega.ts (una consulta a
@@ -141,7 +141,7 @@ export async function downloadDriveFile(fileId: string): Promise<Uint8Array> {
 }
 
 // Metadatos de UN archivo o carpeta por su id (nombre y tipo). Lo necesita el
-// producto de proyecto suelto: su carpeta de Drive es la del proyecto mismo y
+// producto de proyecto individual: su carpeta de Drive es la del proyecto mismo y
 // el nombre ("P07 - Sonidos, fuerzas...") no está en ninguna lista de hijos.
 export async function getDriveFile(fileId: string): Promise<DriveFile> {
   const token = await getDriveAccessToken();

@@ -308,7 +308,7 @@ Abrir DevTools (F12 → Consola) durante toda la sesión de pruebas:
 - [ ] Crear proyecto propio con PDAs: al guardar se crean `sesiones_pda` y `productos_sesion` (`origen='maestro'`)
 - [ ] En crear_proyecto, elegir un PDA muestra los criterios sugeridos del banco (tocar uno lo copia al textarea)
 
-## 20. TIENDA — tienda/*.html (venta de proyectos sueltos, 2026-09)
+## 20. TIENDA — tienda/*.html (venta de proyectos individuales, 2026-09)
 
 Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail.com` y con una cuenta de comprador. Existe un usuario de pruebas: `pruebas.bloque1@jissez.com` / `PruebaBloque1-2026` (el producto de prueba "Proyecto 1 de 1°" se borró el 2026-09-09; para probar compras de sueltos, publica uno real y usa el sandbox de Mercado Pago).
 
@@ -316,8 +316,8 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 - [ ] Entrar con `soporte.jissez@gmail.com` → `admin.html` carga y las pestañas Precios y Órdenes responden
 - [ ] Entrar con `jorgequezadarm@gmail.com` → "Acceso restringido"
 
-### Bloque 1 — proyectos sueltos (admin)
-- [ ] Admin → pestaña **Proyectos sueltos** → elegir "1° Primaria — Trimestre 1" → "Detectar proyectos en Drive" lista P01–P04 con PDF, Word y número de anexos, y el nombre del proyecto del bot
+### Bloque 1 — proyectos individuales (admin)
+- [ ] Admin → pestaña **Proyectos individuales** → elegir "1° Primaria — Trimestre 1" → "Detectar proyectos en Drive" lista P01–P04 con PDF, Word y número de anexos, y el nombre del proyecto del bot
 - [ ] "Crear productos seleccionados" crea las filas ocultas; la tabla de abajo las muestra con $80 / $120
 - [ ] Cambiar precios y marcar "Publicado" → Guardar → se refleja al recargar
 - [ ] Catálogo de paquetes: la tarjeta de 1° sigue diciendo "desde $249" (los sueltos NO se cuelan)
@@ -343,7 +343,7 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 - [x] `proyecto.html?id=` pinta título, dos versiones (con/sin anexos, promo aplicada), temario por campo, vista previa PDF, puente al paquete del trimestre; sin desborde en móvil
 - [x] Checkout: resumen del proyecto, desglose "Proyecto en PDF + Word / Anexos imprimibles", casilla de Términos obligatoria, `tipo=editable` rechazado
 - [x] `terminos.html` (12 cláusulas, huecos marcados) y `privacidad.html` (menciona Meta Pixel) con footer y enlaces en ambos footers
-- [ ] Publicar sueltos reales: admin → Proyectos sueltos → detectar 1° T1 → crear → marcar Publicado (los 4 de 1° T1 ya están creados, ocultos)
+- [ ] Publicar sueltos reales: admin → Proyectos individuales → detectar 1° T1 → crear → marcar Publicado (los 4 de 1° T1 ya están creados, ocultos)
 
 ### Bloque 3 — proyectos a la medida (probado el 2026-09-09)
 - [x] `personalizado.html` con prefill desde la URL, contenidos de la fase filtrados por campo, PDAs del contenido, resumen y total con promo; cupo visible
@@ -353,7 +353,7 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 - [x] Mis compras: sección "Proyectos a la medida" con estado, número y fecha comprometida; el pedido pagado no sale como pago en proceso
 - [x] `anexo.html?pedido=PZ-0001&a=…` de un pedido sin entregar: mensaje claro
 - [x] RPC admin (listar con vencido, cambiar estado, estado/guardar config, búsquedas vacías) bajo la identidad del admin; rechazadas para no admin. `completar-pedido` y `admin-proyectos-drive` rechazan a no admin
-- [ ] **Pendiente de probar con la cuenta admin en navegador:** admin → A la medida → Entregar PZ-0001 con una carpeta de prueba (PDF + Word + S01) → el cliente de pruebas ve el proyecto en su biblioteca y recibe el correo; y Proyectos sueltos → Detectar
+- [ ] **Pendiente de probar con la cuenta admin en navegador:** admin → A la medida → Entregar PZ-0001 con una carpeta de prueba (PDF + Word + S01) → el cliente de pruebas ve el proyecto en su biblioteca y recibe el correo; y Proyectos individuales → Detectar
 - [ ] Correos de "pedido recibido" (cliente y negocio) se disparan al acreditarse un pago real; el helper de envío quedó probado con el aviso de vencidos
 
 ### Ajustes del 2026-09-09 (segunda tanda, probados en navegador)
@@ -374,7 +374,7 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 
 | Módulo | Estado | Problemas encontrados |
 |--------|--------|-----------------------|
-| Tienda (proyectos sueltos) | | |
+| Tienda (proyectos individuales) | | |
 | Auth | | |
 | Onboarding | | |
 | Dashboard | | |

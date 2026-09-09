@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Producto no disponible" }, 404);
     }
 
-    // En un proyecto suelto la carpeta del producto ya es la del proyecto.
+    // En un proyecto individual la carpeta del producto ya es la del proyecto.
     const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
 
     // Primer proyecto del paquete.

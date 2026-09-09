@@ -8,7 +8,7 @@
 //   → { proyecto, codigo, trimestre, es_examen, tipo_acceso, incluye_anexos,
 //       archivos: [{ path, nombre, grupo, ext, ver, descarga }] }
 //
-// En un proyecto suelto (tipo_paquete = 'proyecto') el índice es siempre 0 y
+// En un proyecto individual (tipo_paquete = 'proyecto') el índice es siempre 0 y
 // las subcarpetas (anexos) solo se listan si se compró la versión con anexos.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
     const proyectoFolder = proyectos[proyectoIdx];
     const esExamen = /examen/i.test(proyectoFolder.name);
     const esEditable = acceso.tipo === "editable";
-    // Proyecto suelto sin anexos: las subcarpetas ni se listan.
+    // Proyecto individual sin anexos: las subcarpetas ni se listan.
     const conAnexos = await compradorIncluyeAnexos(admin, user.id, acceso.producto_id, tipoPaquete);
 
     const walked = await walkDriveFolder(proyectoFolder.id);

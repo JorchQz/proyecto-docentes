@@ -1,6 +1,6 @@
 // Edge Function: admin-proyectos-drive (solo administración)
 //
-// Detecta los proyectos sueltos que se pueden publicar a partir de un paquete
+// Detecta los proyectos individuales que se pueden publicar a partir de un paquete
 // TRIMESTRAL ya configurado: lista las carpetas P0N de su carpeta de Drive,
 // las empareja con dosificacion_proyectos (misma aula, mismo trimestre, mismo
 // número continuo) y dice qué contiene cada una (PDF, Word, anexos) y si ya

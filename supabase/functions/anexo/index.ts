@@ -3,17 +3,17 @@
 // Resuelve un anexo por COORDENADAS (grado, trimestre, proyecto, código) — un link
 // genérico, igual para todos los compradores, que el bot incrusta en la planeación.
 // Valida que el usuario en sesión tenga acceso a un producto que cubra ese
-// grado/proyecto — paquete trimestral, ciclo, o el proyecto suelto comprado
+// grado/proyecto — paquete trimestral, ciclo, o el proyecto individual comprado
 // CON anexos — y sirve el archivo (PDF o imagen) inline o descarga.
 //
 // GET /functions/v1/anexo?aula=<grado|combo>&pr=<proyecto 1-12>&a=<código>&modo=inline|download
 //   pr = número de proyecto CONTINUO del grado (1-12). El trimestre y la posición
 //   dentro del trimestre se derivan: t = ceil(pr/4), pos = pr - (t-1)*4.
-//   En un proyecto suelto, pr coincide con marketplace_productos.numero_proyecto
+//   En un proyecto individual, pr coincide con marketplace_productos.numero_proyecto
 //   y la carpeta del producto ya es la del proyecto: no hay nada que derivar.
 //
 // Respuestas 403: { sin_acceso: true } sin ningún producto que cubra el anexo;
-// { sin_anexos: true, producto_id } cuando tiene el proyecto suelto pero lo
+// { sin_anexos: true, producto_id } cuando tiene el proyecto individual pero lo
 // compró en la versión sin anexos.
 //
 // Cabecera requerida: Authorization: Bearer <access_token del usuario>
@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ¿El usuario posee un producto que cubra esta aula+proyecto? Un paquete
-    // (trimestre exacto, o el ciclo) o el proyecto suelto con ese número.
+    // (trimestre exacto, o el ciclo) o el proyecto individual con ese número.
     // Tomamos cualquiera que tenga; los paquetes van primero porque siempre
     // incluyen los anexos.
     const { data: accesos } = await admin
@@ -120,10 +120,10 @@ Deno.serve(async (req: Request) => {
       (accesos || []).some((a: any) => a.producto_id === productoId && a.tipo === tipo);
 
     let folderTrimestre: string | null = null;
-    // Proyecto suelto: la carpeta del producto YA es la del proyecto.
+    // Proyecto individual: la carpeta del producto YA es la del proyecto.
     let folderProyectoDirecto: string | null = null;
     let productoMatch: string | null = null;
-    // Tiene el proyecto suelto pero en la versión sin anexos: se recuerda para
+    // Tiene el proyecto individual pero en la versión sin anexos: se recuerda para
     // responder algo mejor que "no tienes acceso".
     let sueltoSinAnexos: string | null = null;
 

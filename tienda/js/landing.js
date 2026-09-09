@@ -257,7 +257,7 @@ function llenarPrecios(prods) {
 
 	setPrecio("precioTrim", trim, "por grado y trimestre", false);
 	setPrecio("precioCiclo", ciclo, "el ciclo completo", true);
-	// Solo paquetes de trimestre: un proyecto suelto multigrado ($80) haría
+	// Solo paquetes de trimestre: un proyecto individual multigrado ($80) haría
 	// que el "desde" del landing mintiera sobre el precio del paquete.
 	setPrecio("precioMulti", minPrecio(prods, function (p) { return p.organizacion === "multigrado" && p.tipo_paquete === "trimestre"; }), "2 o 3 grados", false);
 

@@ -3,7 +3,7 @@
 **Fecha de cierre:** 2026-09-09 · **Commits en `main` (sin push):** `9284ce8` (Bloques 0 y 1), `f0baf5e` (Bloque 2), `2e88d0d` (Bloque 3), `c22d70a` (Bloque 4) y el de documentación.
 **Fuente:** `docs/referencia/instrucciones_venta-normalistas-completo.md` · **Plan:** `~/.claude/plans/revisa-el-archivo-instrucciones-venta-no-streamed-sunset.md`
 
-Formato de la Sección 10 del documento: qué se construyó (hecho / parcial / pendiente), desviaciones, bloqueos y pruebas. Todo lo de base de datos y Edge Functions **ya está en producción**; el sitio (`tienda/`) está en `main` local y **no se ha empujado**: mientras tanto la tienda pública se comporta igual que antes porque ningún proyecto suelto está publicado.
+Formato de la Sección 10 del documento: qué se construyó (hecho / parcial / pendiente), desviaciones, bloqueos y pruebas. Todo lo de base de datos y Edge Functions **ya está en producción**; el sitio (`tienda/`) está en `main` local y **no se ha empujado**: mientras tanto la tienda pública se comporta igual que antes porque ningún proyecto individual está publicado.
 
 ---
 
@@ -13,7 +13,7 @@ Formato de la Sección 10 del documento: qué se construyó (hecho / parcial / p
 |---|---|---|---|
 | — | Admin en la cuenta de Jissez (`soporte.jissez@gmail.com`); la personal queda como cuenta normal | Hecho | `supabase/admin_cuenta_jissez.sql`, `tienda/js/tienda-common.js` |
 | 4.2 | `tipo_paquete='proyecto'`, `precio_pdf_con_anexos`, `numero_proyecto`; Word siempre incluido; examen nunca | Hecho | `supabase/marketplace_proyectos_individuales.sql` |
-| 4.2 | Admin publica sueltos | Hecho (mejor que lo pedido: detección automática de las carpetas P01-P12 y emparejamiento con el proyecto del bot) | `tienda/admin.html` pestaña "Proyectos sueltos", Edge `admin-proyectos-drive` |
+| 4.2 | Admin publica sueltos | Hecho (mejor que lo pedido: detección automática de las carpetas P01-P12 y emparejamiento con el proyecto del bot) | `tienda/admin.html` pestaña "Proyectos individuales", Edge `admin-proyectos-drive` |
 | 5 | `anexo` reconoce el suelto y exige la versión con anexos | Hecho | `supabase/functions/anexo` |
 | 5 | Funciones de archivos entregan Word siempre y subcarpetas solo con anexos | Hecho | `_shared/entrega.ts`, `puedeEntregarRuta` en `_shared/google-drive.ts`; `archivos-proyecto`, `ver-archivo`, `descargar-archivo`, `contenido-paquete`, `previsualizar` |
 | 5 | `crear-preferencia-mp` acepta el suelto (sin/con anexos) | Hecho | `supabase/functions/crear-preferencia-mp` |
@@ -41,11 +41,11 @@ Formato de la Sección 10 del documento: qué se construyó (hecho / parcial / p
 ### Bloque 0 — administración
 `es_admin()` compara contra `soporte.jissez@gmail.com`; es la única fuente del rol para todas las políticas y RPC. `ADMIN_EMAIL` en el navegador solo decide qué enlaces mostrar. Los avisos al negocio van al secreto nuevo `MAIL_ADMIN` (= ese buzón) y todo sale desde `soporte@jissez.com` (`MAIL_FROM`, ya verificado en Resend).
 
-### Bloque 1 — vender y entregar un proyecto suelto
+### Bloque 1 — vender y entregar un proyecto individual
 - Un suelto es una fila de `marketplace_productos` con `tipo_paquete='proyecto'`, la carpeta P0N del proyecto en Drive, `numero_proyecto` (1-12, el mismo `pr` de los links de anexo), `dosificacion_proyecto_id`, `precio_pdf` (sin anexos) y `precio_pdf_con_anexos`.
 - Compra: `tipo='pdf'` = sin anexos, `tipo='anexos'` = con anexos. Accesos: `pdf`+`editable` (Word siempre) o `pdf`+`editable`+`anexos`. La fila `anexos` es el interruptor real de las subcarpetas; la fila `editable`, de los .docx. Regla única en `pagos.ts::tiposDeAcceso` y su espejo SQL `_accesos_por_tipo` (la vía manual del admin quedó alineada).
 - `crear-preferencia-mp` exige PDF y Word en Drive antes de vender un suelto (y una subcarpeta si es con anexos), sella `terminos_aceptados_en`, y rechaza versiones que no existen.
-- Admin "Proyectos sueltos": eliges un trimestre, la función lee las carpetas P01-P12, las empareja con el proyecto del bot, muestra si tienen PDF/Word/anexos y crea los productos ocultos a $80/$120; abajo editas precios y publicas. Los 4 sueltos de 1° T1 ya están creados (ocultos).
+- Admin "Proyectos individuales": eliges un trimestre, la función lee las carpetas P01-P12, las empareja con el proyecto del bot, muestra si tienen PDF/Word/anexos y crea los productos ocultos a $80/$120; abajo editas precios y publicas. Los 4 sueltos de 1° T1 ya están creados (ocultos).
 
 ### Bloque 2 — catálogo, ficha y legal
 - RPC pública `marketplace_proyectos_publicos(p_id)`: única vía por la que un anónimo lee `dosificacion_pdas`, limitada a sueltos publicados (decisión tuya).
@@ -108,7 +108,7 @@ Todo lo de servidor se probó en producción con un usuario de pruebas (`pruebas
 
 1. **Push a `main`** (despliega jissez.com). Al hacerlo, avisa: pongo `EXIGIR_TERMINOS=true` y redespliego `crear-preferencia-mp`, y aviso a la sesión de cupones para que aplique `marketplace_escalon_retiro.sql`.
 2. **Datos legales**: llenar los huecos amarillos de `terminos.html` y `privacidad.html` (nombre o razón social, RFC, domicilio, ciudad, fecha) y, si quieres, revisión de abogado. No conviene empujar sin llenarlos.
-3. **Publicar sueltos**: los 4 de 1° T1 están creados ocultos; en admin → Proyectos sueltos los publicas y detectas los demás trimestres.
+3. **Publicar sueltos**: los 4 de 1° T1 están creados ocultos; en admin → Proyectos individuales los publicas y detectas los demás trimestres.
 4. **Probar como admin**: entrar con `soporte.jissez@gmail.com`, Detectar y Entregar PZ-0001 con una carpeta de prueba.
 5. Fila huérfana en `dosificacion_proyectos` (combo 1-2, número 1, sin trimestre): no afecta, pero convendría borrarla.
 6. Usuario y producto de prueba: se quedan para pruebas; dime si prefieres que los borre.

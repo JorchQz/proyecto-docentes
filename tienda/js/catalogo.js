@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var chipsComboEl = document.getElementById("chipsCombo");
 	var bloqueCombosEl = document.getElementById("bloqueCombos");
 
-	// Vista de proyectos sueltos y su filtro curricular.
+	// Vista de proyectos individuales y su filtro curricular.
 	var chipsVistaEl = document.getElementById("chipsVista");
 	var subProyectos = document.getElementById("subProyectos");
 	var chipsCFEl = document.getElementById("chipsCF");
@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var subtituloEl = document.getElementById("subtituloCatalogo");
 
 	var todos = [];       // paquetes (trimestre / ciclo)
-	var proyectos = [];   // proyectos sueltos publicados, con sus PDAs
+	var proyectos = [];   // proyectos individuales publicados, con sus PDAs
 	var vista = "paquetes";
 	var orgActiva = "completa";
 	var gradosActivos = new Set();
@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		mostrarCargando();
 		// La promoción se pide junto al catálogo: ninguna tarjeta se pinta
 		// antes de saber si hay descuento, así el precio no parpadea. Los
-		// proyectos sueltos llegan por RPC porque sus PDAs viven en una tabla
+		// proyectos individuales llegan por RPC porque sus PDAs viven en una tabla
 		// que un visitante sin sesión no puede leer directo.
 		var resultados = await Promise.all([
 			window.sb
@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var res = resultados[0];
 
 		if (res.error) { mostrarError(); return; }
-		// Solo paquetes (trimestre / ciclo). Los proyectos sueltos (tipo
+		// Solo paquetes (trimestre / ciclo). Los proyectos individuales (tipo
 		// 'proyecto', desde $80) tienen su propia vista: si entraran aquí se
 		// colarían en la tarjeta del grado y el "desde" bajaría a $80.
 		todos = (res.data || []).filter(function (p) { return p.tipo_paquete !== "proyecto"; });
@@ -171,7 +171,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		subMultigrado.classList.toggle("flex", org === "multigrado");
 	}
 
-	// Cambia entre paquetes y proyectos sueltos. El filtro curricular solo
+	// Cambia entre paquetes y proyectos individuales. El filtro curricular solo
 	// tiene sentido en proyectos; la modalidad "unitaria" solo en paquetes.
 	function activarVista(v) {
 		vista = v;
@@ -192,7 +192,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		if (subtituloEl) {
 			subtituloEl.textContent = esProy
-				? "Un proyecto suelto con su planeación en PDF y Word. Con o sin anexos imprimibles, sin el examen del trimestre."
+				? "Un proyecto individual con su planeación en PDF y Word. Con o sin anexos imprimibles, sin el examen del trimestre."
 				: "Elige tu grado o modalidad. Seleccionas T1, T2, T3 o ciclo completo en la página del paquete.";
 		}
 	}
@@ -396,7 +396,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var GRADO_COLOR = Tienda.GRADO_COLOR;
 
-	// ── Proyectos sueltos ───────────────────────────────────────────────────
+	// ── Proyectos individuales ───────────────────────────────────────────────────
 	// Una tarjeta por proyecto (no por grado): aquí el maestro busca un tema
 	// concreto, así que el nombre del proyecto y sus campos son lo primero.
 
@@ -630,7 +630,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.innerHTML =
 			'<div class="flex flex-col items-center gap-3 max-w-md mx-auto">' +
 			'<i data-lucide="search-x" style="width:3rem;height:3rem;color:#5b6473"></i>' +
-			'<p class="font-semibold text-lg" style="color:#1c2434">' + (catalogoVacio ? "Todavía no hay proyectos sueltos publicados" : "No hay un proyecto con esa combinación") + "</p>" +
+			'<p class="font-semibold text-lg" style="color:#1c2434">' + (catalogoVacio ? "Todavía no hay proyectos individuales publicados" : "No hay un proyecto con esa combinación") + "</p>" +
 			'<p class="text-sm" style="color:#5b6473">' + (catalogoVacio
 				? "Estamos publicándolos. Mientras tanto puedes pedir uno a la medida."
 				: "Prueba con otro campo o contenido, o pídelo a la medida con lo que ya elegiste: lo generamos y te lo entregamos en unos días.") + "</p>" +

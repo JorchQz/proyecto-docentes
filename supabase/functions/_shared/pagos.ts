@@ -364,7 +364,7 @@ async function recalcularPrecios(admin: Cliente): Promise<void> {
  *   compró 'pdf'      → pdf + anexos
  *   compró 'editable' → editable + pdf + anexos
  *
- * Proyecto suelto (tipo_paquete = 'proyecto'): el Word va SIEMPRE incluido
+ * Proyecto individual (tipo_paquete = 'proyecto'): el Word va SIEMPRE incluido
  * (fila 'editable' de regalo) y lo que se vende aparte son los anexos. La
  * fila 'anexos' es la que leen las funciones de entrega para decidir si se
  * muestran las subcarpetas del proyecto.

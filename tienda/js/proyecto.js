@@ -1,4 +1,4 @@
-// Ficha de un proyecto suelto: proyecto.html?id=<uuid de marketplace_productos>
+// Ficha de un proyecto individual: proyecto.html?id=<uuid de marketplace_productos>
 //
 // Los datos vienen de la RPC pública marketplace_proyectos_publicos(p_id):
 // producto + proyecto del bot + sus PDAs. Un proyecto no publicado devuelve
