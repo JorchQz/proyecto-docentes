@@ -89,7 +89,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.from("marketplace_productos")
 			// Los *_drive_id ya no son legibles desde el cliente (seguridad): la
 			// carpeta de Drive se carga al abrir el editor vía RPC admin_producto_drive.
-			.select("id, titulo, descripcion, grado, fase, campo_formativo, metodologia, escenario, trimestre, num_sesiones, precio_pdf, precio_editable, precio_pdf_con_anexos, numero_proyecto, portada_url, activo, dosificacion_proyecto_id, created_at, updated_at, tipo_paquete, num_proyectos, organizacion, grados_combo, modalidad, es_prueba")
+			.select("id, titulo, descripcion, grado, fase, campo_formativo, metodologia, escenario, trimestre, num_sesiones, precio_pdf, precio_editable, precio_pdf_con_anexos, numero_proyecto, tiene_anexos, portada_url, activo, dosificacion_proyecto_id, created_at, updated_at, tipo_paquete, num_proyectos, organizacion, grados_combo, modalidad, es_prueba")
 			.order("grado", { ascending: true });
 		productos = res.data || [];
 		porClave = {};
