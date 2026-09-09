@@ -86,11 +86,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: "");
 
 	// ── Versiones y compra ─────────────────────────────────────────────────────
-	var tipoElegido = p.precio_pdf_con_anexos != null ? "anexos" : "pdf";
+	// La versión con anexos solo se ofrece si el proyecto los tiene
+	// (tiene_anexos false = verificado en Drive sin subcarpetas).
+	var ofreceAnexos = p.precio_pdf_con_anexos != null && p.tiene_anexos !== false;
+	var tipoElegido = ofreceAnexos ? "anexos" : "pdf";
 	function renderOpciones() {
 		var opciones = [
-			{ tipo: "pdf", titulo: "Sin anexos", sub: "Planeación completa en PDF y Word", precio: p.precio_pdf },
-			{ tipo: "anexos", titulo: "Con anexos", sub: "Planeación en PDF y Word + anexos imprimibles por sesión", precio: p.precio_pdf_con_anexos },
+			{ tipo: "pdf", titulo: ofreceAnexos ? "Sin anexos" : "Planeación completa", sub: "Planeación completa en PDF y Word" + (ofreceAnexos ? "" : " · este proyecto no incluye anexos imprimibles"), precio: p.precio_pdf },
+			{ tipo: "anexos", titulo: "Con anexos", sub: "Planeación en PDF y Word + anexos imprimibles por sesión", precio: ofreceAnexos ? p.precio_pdf_con_anexos : null },
 		].filter(function (o) { return o.precio != null; });
 		opcionesEl.innerHTML = opciones.map(function (o) {
 			return Tienda.opcionVersion({ valor: o.tipo, titulo: o.titulo, sub: o.sub, precio: o.precio }, o.tipo === tipoElegido);

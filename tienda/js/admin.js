@@ -873,6 +873,41 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: '<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full" style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5">' + textoNo + "</span>";
 	}
 
+	// Verificación masiva de anexos contra Drive (por tandas; repite hasta que
+	// no queden pendientes). Los proyectos sin anexos dejan de ofrecer esa
+	// versión en la ficha, y el cobro también la rechaza.
+	var verificarAnexosBtn = document.getElementById("verificarAnexosBtn");
+	verificarAnexosBtn.addEventListener("click", async function () {
+		verificarAnexosBtn.disabled = true;
+		var texto = verificarAnexosBtn.innerHTML;
+		verificarAnexosBtn.textContent = "Revisando en Drive...";
+		try {
+			var pendientes = 1, total = { con: 0, sin: 0, fallos: 0 }, vueltas = 0;
+			while (pendientes > 0 && vueltas < 5) {
+				var resp = await fetch(Tienda.EDGE_BASE + "/admin-proyectos-drive", {
+					method: "POST",
+					headers: { Authorization: "Bearer " + Tienda.getAccessToken(session), "Content-Type": "application/json" },
+					body: JSON.stringify({ verificar_anexos: true, limite: 60 }),
+				});
+				var data = await resp.json();
+				if (!resp.ok) { throw new Error(data.error || "No se pudo verificar."); }
+				total.con += data.con_anexos; total.sin += data.sin_anexos; total.fallos += data.fallos;
+				pendientes = data.pendientes;
+				vueltas++;
+				if (!data.revisados) { break; }
+			}
+			Tienda.toast("Verificados: " + total.con + " con anexos, " + total.sin + " sin anexos" + (total.fallos ? ", " + total.fallos + " con error" : "") + (pendientes ? ". Quedan " + pendientes + " por revisar: vuelve a pulsar." : "."), total.fallos ? "info" : "ok");
+			await cargarProductos();
+			renderSueltos();
+		} catch (err) {
+			Tienda.toast(err.message || "Error al verificar.", "error");
+		} finally {
+			verificarAnexosBtn.disabled = false;
+			verificarAnexosBtn.innerHTML = texto;
+			Tienda.iconos();
+		}
+	});
+
 	detectarSueltosBtn.addEventListener("click", async function () {
 		var paqueteId = sueltosPaqueteSel.value;
 		if (!paqueteId) { Tienda.toast("Elige un paquete de trimestre.", "error"); return; }
@@ -1009,6 +1044,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				precio_pdf_con_anexos: precioSuelto(d.organizacion).con_anexos,
 				precio_editable: null,
 				activo: false,
+				tiene_anexos: p.num_anexos > 0,
 			};
 		});
 
@@ -1085,7 +1121,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return '<tr data-suelto="' + esc(p.id) + '" style="border-bottom:1px solid ' + (p.es_prueba ? "#fcd34d" : "#e7e6df") + '">' +
 					'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(nombre) +
 					(p.es_prueba ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef3c7;color:#b45309">PRUEBA</span>' : "") +
-					(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") + "</td>" +
+					(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") +
+					(p.tiene_anexos === false ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#f3f4f6;color:#5b6473">sin anexos</span>' : (p.tiene_anexos == null ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fffbeb;color:#b45309">anexos sin verificar</span>' : "")) + "</td>" +
 					'<td class="py-2 pr-3 text-xs whitespace-nowrap" style="color:#5b6473">' + (p.trimestre ? "T" + p.trimestre : "—") + "</td>" +
 					'<td class="py-2 pr-3 text-sm whitespace-nowrap" style="color:#1c2434">' + money(p.precio_pdf) + ' <span class="text-mute">/</span> ' + money(p.precio_pdf_con_anexos) + "</td>" +
 					'<td class="py-2"><div class="flex items-center gap-3">' +

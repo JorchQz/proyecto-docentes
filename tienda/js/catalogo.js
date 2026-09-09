@@ -138,6 +138,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				numero: p.numero_proyecto,
 				precio_pdf: p.precio_pdf,
 				precio_pdf_con_anexos: p.precio_pdf_con_anexos,
+				tiene_anexos: p.tiene_anexos,
 				metodologia: p.metodologia,
 				sesiones: p.num_sesiones_estimadas,
 				pdas: pdas,
@@ -604,7 +605,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<div class="mt-3 flex flex-wrap gap-1.5">' + p.cfs.map(function (cf) { return Tienda.chipCF(cf); }).join("") + "</div>" +
 			'<div class="mt-3 flex flex-wrap gap-1.5">' +
 			'<span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md bg-paper border border-line text-mute">PDF + Word incluidos</span>' +
-			'<span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md text-board/70" style="background:rgba(133,184,230,.18);border:1px solid rgba(133,184,230,.4)">Anexos opcionales</span>' +
+			(p.tiene_anexos === false
+				? '<span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md bg-paper border border-line text-mute">Sin anexos</span>'
+				: '<span class="text-[11px] font-semibold px-2 h-6 inline-flex items-center rounded-md text-board/70" style="background:rgba(133,184,230,.18);border:1px solid rgba(133,184,230,.4)">Anexos opcionales</span>') +
 			"</div>" +
 			'<div class="mt-4 pt-4 flex items-center justify-between" style="border-top:1px solid #e7e6df">' +
 			"<div>" +

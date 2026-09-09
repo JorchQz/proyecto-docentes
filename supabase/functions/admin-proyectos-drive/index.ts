@@ -36,23 +36,61 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return jsonResponse({ error: "Método no permitido" }, 405);
 
   try {
-    const authHeader = req.headers.get("Authorization") || "";
-    if (!authHeader.startsWith("Bearer ")) return jsonResponse({ error: "No autenticado" }, 401);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    // La RPC corre con el JWT del usuario: si no es el admin, false.
-    const userClient = crearClienteUsuario(supabaseUrl, anonKey, authHeader);
-    const { data: esAdmin, error: adminErr } = await userClient.rpc("es_admin");
-    if (adminErr || esAdmin !== true) return jsonResponse({ error: "No autorizado" }, 403);
-
     const body = await req.json().catch(() => ({}));
-    const productoId = String(body.producto_id || "");
-    if (!productoId) return jsonResponse({ error: "Falta producto_id" }, 400);
+
+    // Autorización: el JWT del admin (RPC es_admin) o, para la verificación
+    // masiva de anexos, el secreto de mantenimiento (mismo que el cron).
+    const authHeader = req.headers.get("Authorization") || "";
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    const conSecreto = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
+    if (!conSecreto) {
+      if (!authHeader.startsWith("Bearer ")) return jsonResponse({ error: "No autenticado" }, 401);
+      const userClient = crearClienteUsuario(supabaseUrl, anonKey, authHeader);
+      const { data: esAdmin, error: adminErr } = await userClient.rpc("es_admin");
+      if (adminErr || esAdmin !== true) return jsonResponse({ error: "No autorizado" }, 403);
+    }
 
     const admin = crearAdmin(supabaseUrl, serviceKey);
+
+    // ── Verificación masiva: ¿qué proyectos individuales tienen anexos? ────
+    // Recorre los productos tipo 'proyecto' (los que aún no se han verificado,
+    // o todos con `todos: true`), mira si su carpeta tiene subcarpetas y guarda
+    // tiene_anexos. La ficha solo ofrece "con anexos" cuando es true.
+    if (body.verificar_anexos === true) {
+      let q = admin
+        .from("marketplace_productos")
+        .select("id, titulo, proyecto_folder_drive_id, tiene_anexos")
+        .eq("tipo_paquete", "proyecto")
+        .not("proyecto_folder_drive_id", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(Math.min(Number(body.limite) || 60, 120));
+      if (body.todos !== true) q = q.is("tiene_anexos", null);
+      const { data: lista } = await q;
+      let con = 0, sin = 0, fallos = 0;
+      for (const p of lista || []) {
+        try {
+          const hijos = await listDriveFolder(p.proyecto_folder_drive_id);
+          const tiene = hijos.some((f) => f.mimeType === FOLDER_MIME);
+          await admin.from("marketplace_productos").update({ tiene_anexos: tiene }).eq("id", p.id);
+          if (tiene) con++; else sin++;
+        } catch (err) {
+          console.error("verificar anexos falló:", p.titulo, err);
+          fallos++;
+        }
+      }
+      const { count } = await admin
+        .from("marketplace_productos")
+        .select("id", { count: "exact", head: true })
+        .eq("tipo_paquete", "proyecto")
+        .is("tiene_anexos", null);
+      return jsonResponse({ ok: true, revisados: (lista || []).length, con_anexos: con, sin_anexos: sin, fallos, pendientes: count || 0 });
+    }
+
+    const productoId = String(body.producto_id || "");
+    if (!productoId) return jsonResponse({ error: "Falta producto_id" }, 400);
     const { data: paquete, error: prodErr } = await admin
       .from("marketplace_productos")
       .select("id, tipo_paquete, trimestre, grado, fase, organizacion, grados_combo, modalidad, proyecto_folder_drive_id")
@@ -91,7 +129,7 @@ Deno.serve(async (req: Request) => {
     // 3. Productos sueltos que ya existen para esa aula.
     let q = admin
       .from("marketplace_productos")
-      .select("id, numero_proyecto, activo, precio_pdf, precio_pdf_con_anexos, dosificacion_proyecto_id")
+      .select("id, numero_proyecto, activo, precio_pdf, precio_pdf_con_anexos, dosificacion_proyecto_id, tiene_anexos")
       .eq("tipo_paquete", "proyecto")
       .eq("organizacion", paquete.organizacion);
     q = esMulti ? q.eq("grados_combo", paquete.grados_combo) : q.eq("grado", paquete.grado);
@@ -110,6 +148,12 @@ Deno.serve(async (req: Request) => {
       const sub = hijos.filter((f) => f.mimeType === FOLDER_MIME);
       const dos = dosifAula.find((d: any) => Number(d.numero_proyecto) === numero) || null;
       const prod = porNumero.get(numero) || null;
+      // Al detectar se aprovecha para dejar al día si el producto existente
+      // tiene anexos (Jorge puede haber subido las subcarpetas después).
+      if (prod && prod.tiene_anexos !== (sub.length > 0)) {
+        admin.from("marketplace_productos").update({ tiene_anexos: sub.length > 0 }).eq("id", prod.id)
+          .then(({ error }: any) => { if (error) console.error("tiene_anexos:", error); });
+      }
       return {
         codigo: codigoDeProyecto(carpeta.name),
         nombre_carpeta: carpeta.name,

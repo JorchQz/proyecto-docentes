@@ -29,3 +29,14 @@ create unique index if not exists marketplace_productos_suelto_dosif_unico
 create unique index if not exists marketplace_productos_suelto_numero_unico
   on marketplace_productos (organizacion, coalesce(grados_combo, ''), grado, numero_proyecto)
   where tipo_paquete = 'proyecto' and numero_proyecto is not null and es_prueba = false;
+
+-- ── tiene_anexos: solo se ofrece "con anexos" si la carpeta trae subcarpetas ─
+-- Lo llenan admin-proyectos-drive (al detectar, al crear y con la
+-- verificacion masiva "Verificar anexos") y completar-pedido. null = sin
+-- verificar (se sigue ofreciendo); false = verificado sin anexos (la ficha
+-- no ofrece esa version y crear-preferencia-mp la rechaza).
+alter table marketplace_productos add column if not exists tiene_anexos boolean;
+comment on column marketplace_productos.tiene_anexos is
+  'Solo tipo_paquete = proyecto: la carpeta tiene subcarpetas de anexos (null = sin verificar). Si es false no se ofrece ni se cobra la version con anexos.';
+grant select (tiene_anexos) on marketplace_productos to anon, authenticated;
+-- marketplace_proyectos_publicos() devuelve tiene_anexos (redefinida en la BD).

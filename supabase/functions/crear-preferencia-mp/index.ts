@@ -148,7 +148,7 @@ Deno.serve(async (req: Request) => {
     const { data: producto, error: prodErr } = await admin
       .from("marketplace_productos")
       .select(
-        "id, titulo, precio_pdf, precio_editable, precio_pdf_con_anexos, activo, es_prueba, tipo_paquete, proyecto_folder_drive_id, archivo_pdf_drive_id, archivo_docx_drive_id",
+        "id, titulo, precio_pdf, precio_editable, precio_pdf_con_anexos, tiene_anexos, activo, es_prueba, tipo_paquete, proyecto_folder_drive_id, archivo_pdf_drive_id, archivo_docx_drive_id",
       )
       .eq("id", productoId)
       .maybeSingle();
@@ -166,6 +166,11 @@ Deno.serve(async (req: Request) => {
     const esProyecto = producto.tipo_paquete === "proyecto";
     if (esProyecto ? tipo === "editable" : tipo === "anexos") {
       return jsonResponse({ error: "Esta versión no existe para este producto" }, 400);
+    }
+    // Un proyecto individual verificado SIN anexos no vende la versión con
+    // anexos (la ficha no la ofrece; esto cubre enlaces armados a mano).
+    if (esProyecto && tipo === "anexos" && producto.tiene_anexos === false) {
+      return jsonResponse({ error: "Este proyecto no incluye anexos imprimibles; elige la versión sin anexos.", sin_anexos: true }, 400);
     }
 
     // Nunca cobrar por un paquete que no tiene nada que entregar.

@@ -165,6 +165,7 @@ Deno.serve(async (req: Request) => {
         // pero pedido sin anexos, el catálogo lo vende igual con anexos.
         activo: publicar,
         es_prueba: false,
+        tiene_anexos: subcarpetas > 0,
       })
       .select("id")
       .single();

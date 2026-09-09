@@ -204,7 +204,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function prepararIndividual() {
 		var res = await window.sb
 			.from("marketplace_productos")
-			.select("id, titulo, precio_pdf, precio_editable, precio_pdf_con_anexos, tipo_paquete, activo, organizacion, grado, grados_combo")
+			.select("id, titulo, precio_pdf, precio_editable, precio_pdf_con_anexos, tiene_anexos, tipo_paquete, activo, organizacion, grado, grados_combo")
 			.eq("id", productoId)
 			.eq("activo", true)
 			.maybeSingle();
@@ -219,6 +219,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var esProyecto = p.tipo_paquete === "proyecto";
 		if (esProyecto ? tipo === "editable" : tipo === "anexos") {
 			estadoEl.textContent = "Esta versión no existe para este producto.";
+			return false;
+		}
+		if (esProyecto && tipo === "anexos" && p.tiene_anexos === false) {
+			estadoEl.innerHTML = 'Este proyecto no incluye anexos imprimibles. <a href="checkout.html?producto_id=' + encodeURIComponent(p.id) + '&tipo=pdf" class="font-semibold" style="color:#1e3a8a">Comprar la planeación en PDF y Word</a>.';
 			return false;
 		}
 		var precio = esProyecto
