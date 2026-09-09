@@ -25,7 +25,7 @@ import {
 //   pending / in_process / authorized → aún no acreditado (OXXO, SPEI, revisión)
 //   rejected / cancelled → no se cobró
 //   refunded / charged_back → se devolvió el dinero: hay que retirar el acceso
-export type EstadoOrden = "pendiente" | "pagado" | "fallido";
+export type EstadoOrden = "pendiente" | "pagado" | "fallido" | "reembolsado";
 
 export interface ResultadoPago {
   ok: boolean;
@@ -116,9 +116,11 @@ export async function procesarPago(
 
   // ── Devoluciones y contracargos: retirar el acceso ───────────────────────
   if (status === "refunded" || status === "charged_back") {
+    // 'reembolsado' (no 'fallido'): así el estado de cuenta del cupón la
+    // muestra como devolución y el trigger sella reembolsado_en.
     await admin
       .from("marketplace_ordenes")
-      .update({ estado: "fallido", referencia_pago: paymentId })
+      .update({ estado: "reembolsado", referencia_pago: paymentId })
       .eq("id", ordenId);
     await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
     // Un pedido a la medida devuelto se cancela (si ya estaba entregado, el
@@ -130,7 +132,7 @@ export async function procesarPago(
       .neq("estado", "cancelado");
     // La venta deja de contar para el escalón de lanzamiento.
     await recalcularPrecios(admin);
-    return { ok: true, estado: "fallido", statusMp: status, detalleMp: detalle };
+    return { ok: true, estado: "reembolsado", statusMp: status, detalleMp: detalle };
   }
 
   // ── Ya estaba pagada: no repetir nada ────────────────────────────────────

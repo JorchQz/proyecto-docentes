@@ -437,6 +437,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var cupActivoEl = document.getElementById("cupActivo");
 	var cupDescripcionEl = document.getElementById("cupDescripcion");
 	var guardarCuponBtn = document.getElementById("guardarCuponBtn");
+	var cupCreadorNombreEl = document.getElementById("cupCreadorNombre");
+	var cupCreadorContactoEl = document.getElementById("cupCreadorContacto");
+	var cupComisionEl = document.getElementById("cupComision");
 	var cancelarCuponBtn = document.getElementById("cancelarCuponBtn");
 
 	// Última respuesta de admin_estado_promocion(): la comparten la tabla de
@@ -669,7 +672,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function renderCupones() {
 		if (!cupones.length) {
 			tablaCuponesEl.innerHTML =
-				'<tr><td colspan="6" class="py-4 text-sm text-mute">Todavía no hay cupones. Crea el primero abajo.</td></tr>';
+				'<tr><td colspan="7" class="py-4 text-sm text-mute">Todavía no hay cupones. Crea el primero abajo.</td></tr>';
 			return;
 		}
 		tablaCuponesEl.innerHTML = cupones.map(function (c) {
@@ -693,7 +696,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 					(c.uno_por_cliente ? '<br><span class="text-xs text-mute">Uno por cliente</span>' : "") + "</td>" +
 				'<td class="py-2 pr-3 font-bold" style="color:' + Tienda.COLOR_DESCUENTO.texto + '">' +
 					esc(etiquetaDescuento(c)) + "</td>" +
-				'<td class="py-2 pr-3' + (excedido ? ' font-bold" style="color:#b91c1c"' : '"') + ">" + esc(usos) + "</td>" +
+				'<td class="py-2 pr-3">' + (c.creador_nombre || c.comision_porcentaje != null
+					? '<span class="font-semibold text-ink">' + esc(c.creador_nombre || "Sin nombre") + "</span>" +
+						(c.comision_porcentaje != null ? '<br><span class="text-xs text-mute">Comisión ' + esc(Number(c.comision_porcentaje)) + "%" +
+							(Number(c.pendiente) > 0 ? ' · <span class="font-semibold" style="color:#b45309">pendiente ' + esc(money(c.pendiente)) + "</span>" : " · al corriente") + "</span>" : "") +
+						'<br><button type="button" data-cupon-cuentas="' + esc(c.codigo) + '" class="text-sm font-semibold underline" style="color:#1e3a8a">Cuentas</button>'
+					: '<span class="text-xs text-mute">Propio</span><br><button type="button" data-cupon-cuentas="' + esc(c.codigo) + '" class="text-xs font-semibold underline text-mute">Ver usos</button>') + "</td>" +
+				'<td class="py-2 pr-3' + (excedido ? ' font-bold" style="color:#b91c1c"' : '"') + ">" + esc(usos) +
+					(c.referidos ? '<br><span class="text-xs text-mute">+' + esc(c.referidos) + " referida" + (c.referidos === 1 ? "" : "s") + "</span>" : "") +
+					(c.reembolsos ? '<br><span class="text-xs" style="color:#b91c1c">' + esc(c.reembolsos) + " reembolso" + (c.reembolsos === 1 ? "" : "s") + "</span>" : "") + "</td>" +
 				'<td class="py-2 pr-3 text-mute">' + esc(hasta) + "</td>" +
 				'<td class="py-2 pr-3 font-semibold" style="color:' + color + '">' + esc(estado) + "</td>" +
 				'<td class="py-2 text-right whitespace-nowrap">' +
@@ -706,6 +717,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"</td></tr>";
 		}).join("");
 
+		tablaCuponesEl.querySelectorAll("[data-cupon-cuentas]").forEach(function (b) {
+			b.addEventListener("click", function () { abrirCuentas(b.getAttribute("data-cupon-cuentas")); });
+		});
 		tablaCuponesEl.querySelectorAll("[data-cupon-editar]").forEach(function (b) {
 			b.addEventListener("click", function () {
 				llenarFormCupon(b.getAttribute("data-cupon-editar"));
@@ -755,6 +769,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cupUnoPorClienteEl.checked = true;
 		cupActivoEl.checked = true;
 		cupDescripcionEl.value = "";
+		cupCreadorNombreEl.value = "";
+		cupCreadorContactoEl.value = "";
+		cupComisionEl.value = "";
 		cancelarCuponBtn.classList.add("hidden");
 		sincronizarEtiquetaValor();
 	}
@@ -773,6 +790,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cupUnoPorClienteEl.checked = !!c.uno_por_cliente;
 		cupActivoEl.checked = !!c.activo;
 		cupDescripcionEl.value = c.descripcion || "";
+		cupCreadorNombreEl.value = c.creador_nombre || "";
+		cupCreadorContactoEl.value = c.creador_contacto || "";
+		cupComisionEl.value = c.comision_porcentaje != null ? String(Number(c.comision_porcentaje)) : "";
 		cancelarCuponBtn.classList.remove("hidden");
 		sincronizarEtiquetaValor();
 		tituloFormCuponEl.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -794,6 +814,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			p_max_usos: c.max_usos != null ? c.max_usos : null,
 			p_uno_por_cliente: c.uno_por_cliente,
 			p_descripcion: c.descripcion || null,
+			p_creador_nombre: c.creador_nombre || null,
+			p_creador_contacto: c.creador_contacto || null,
+			p_comision_porcentaje: c.comision_porcentaje != null ? c.comision_porcentaje : null,
 		});
 		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return false; }
 		cupones = res.data || [];
@@ -827,6 +850,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
+		var comTxt = (cupComisionEl.value || "").trim();
+		var comision = comTxt === "" ? null : Number(comTxt);
+		if (comision != null && (!isFinite(comision) || comision < 0 || comision > 100)) {
+			Tienda.toast("La comisión debe estar entre 0 y 100, o dejarse vacía.", "error");
+			return;
+		}
+
 		guardarCuponBtn.disabled = true;
 		guardarCuponBtn.textContent = "Guardando...";
 		await guardarCupon({
@@ -838,9 +868,197 @@ document.addEventListener("DOMContentLoaded", async function () {
 			max_usos: maxUsos,
 			uno_por_cliente: cupUnoPorClienteEl.checked,
 			descripcion: (cupDescripcionEl.value || "").trim() || null,
+			creador_nombre: (cupCreadorNombreEl.value || "").trim() || null,
+			creador_contacto: (cupCreadorContactoEl.value || "").trim() || null,
+			comision_porcentaje: comision,
 		});
 		guardarCuponBtn.disabled = false;
 		guardarCuponBtn.textContent = "Guardar cupón";
+	});
+
+	// ── Estado de cuenta de un cupón (creadores de contenido) ────────────────
+	// Todo lo numérico lo calcula admin_estado_cuenta_cupon(); aquí solo se
+	// pinta y se exporta. El periodo se manda como [desde 00:00, hasta+1 00:00)
+	// en hora local del admin (Ciudad de México).
+	var cuentasEl = document.getElementById("cuentasCupon");
+	var cuentasDesdeEl = document.getElementById("cuentasDesde");
+	var cuentasHastaEl = document.getElementById("cuentasHasta");
+	var cuentasCodigo = null;
+	var cuentasDatos = null;
+
+	function fechaLocalISO(d) {
+		return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+	}
+	function fechaCorta(iso) {
+		if (!iso) { return ""; }
+		return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Mexico_City" });
+	}
+	function ponerMes(desplazamiento) {
+		var hoy = new Date();
+		var ini = new Date(hoy.getFullYear(), hoy.getMonth() + desplazamiento, 1);
+		var fin = new Date(hoy.getFullYear(), hoy.getMonth() + desplazamiento + 1, 0);
+		cuentasDesdeEl.value = fechaLocalISO(ini);
+		cuentasHastaEl.value = fechaLocalISO(fin);
+	}
+
+	function abrirCuentas(codigo) {
+		cuentasCodigo = codigo;
+		ponerMes(0);
+		cuentasEl.classList.remove("hidden");
+		cargarCuentas();
+		cuentasEl.scrollIntoView({ behavior: "smooth", block: "start" });
+	}
+	document.getElementById("cuentasCerrar").addEventListener("click", function () { cuentasEl.classList.add("hidden"); cuentasCodigo = null; });
+	document.getElementById("cuentasActualizar").addEventListener("click", cargarCuentas);
+	document.getElementById("cuentasMesActual").addEventListener("click", function () { ponerMes(0); cargarCuentas(); });
+	document.getElementById("cuentasMesAnterior").addEventListener("click", function () { ponerMes(-1); cargarCuentas(); });
+	document.getElementById("cuentasTodo").addEventListener("click", function () { cuentasDesdeEl.value = ""; cuentasHastaEl.value = ""; cargarCuentas(); });
+
+	async function cargarCuentas() {
+		if (!cuentasCodigo) { return; }
+		var desde = cuentasDesdeEl.value ? new Date(cuentasDesdeEl.value + "T00:00:00") : null;
+		var hasta = cuentasHastaEl.value ? new Date(cuentasHastaEl.value + "T00:00:00") : null;
+		if (hasta) { hasta.setDate(hasta.getDate() + 1); }
+		if (desde && hasta && hasta <= desde) { Tienda.toast("La fecha final debe ser igual o posterior a la inicial.", "error"); return; }
+		var res = await window.sb.rpc("admin_estado_cuenta_cupon", {
+			p_codigo: cuentasCodigo,
+			p_desde: desde ? desde.toISOString() : null,
+			p_hasta: hasta ? hasta.toISOString() : null,
+		});
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		cuentasDatos = res.data;
+		renderCuentas(res.data);
+	}
+
+	function renderCuentas(d) {
+		var c = d.cupon, t = d.totales_periodo, h = d.historico;
+		var conComision = c.comision_porcentaje != null;
+		document.getElementById("cuentasTitulo").textContent = "Cuentas del cupón " + c.codigo +
+			(c.creador_nombre ? " · " + c.creador_nombre : "");
+		document.getElementById("cuentasSub").textContent =
+			(conComision ? "Comisión del " + Number(c.comision_porcentaje) + "% sobre lo cobrado" : "Sin comisión configurada") +
+			(c.creador_contacto ? " · " + c.creador_contacto : "") +
+			" · periodo: " + (cuentasDesdeEl.value ? fechaCorta(cuentasDesdeEl.value + "T12:00:00") : "inicio") + " a " +
+			(cuentasHastaEl.value ? fechaCorta(cuentasHastaEl.value + "T12:00:00") : "hoy");
+
+		function tarjeta(titulo, valor, sub, color) {
+			return '<div class="rounded-xl p-3" style="background:#fff;border:1px solid #e7e6df"><p class="text-[11px] font-bold uppercase tracking-[0.08em] text-mute">' + esc(titulo) + '</p>' +
+				'<p class="mt-1 text-xl font-black" style="color:' + (color || "#1c2434") + '">' + esc(valor) + "</p>" +
+				(sub ? '<p class="text-xs text-mute">' + esc(sub) + "</p>" : "") + "</div>";
+		}
+		document.getElementById("cuentasResumen").innerHTML =
+			tarjeta("Ventas del periodo", String(t.ventas), money(t.monto_vendido) + " cobrados") +
+			tarjeta("Descuento otorgado", money(t.descuento_otorgado), "lo que ahorraron los compradores") +
+			tarjeta("Reembolsos", String(t.reembolsos), t.reembolsos ? "-" + money(t.monto_reembolsado) : "ninguno", t.reembolsos ? "#b91c1c" : null) +
+			tarjeta("Comisión neta del periodo", money(t.comision_neta), t.referidos ? "+ " + t.referidos + " referida" + (t.referidos === 1 ? "" : "s") + " sin comisión (" + money(t.monto_referidos) + ")" : "", "#047857");
+
+		var movs = d.movimientos || [];
+		var etiquetas = { venta: ["Venta", "#047857"], reembolso: ["Reembolso", "#b91c1c"], referido: ["Referida (sin descuento del cupón)", "#5b6473"] };
+		document.getElementById("cuentasMovs").innerHTML = movs.length ? movs.map(function (m) {
+			var e = etiquetas[m.tipo] || [m.tipo, "#5b6473"];
+			return '<tr class="border-b border-line">' +
+				'<td class="py-2 px-3 whitespace-nowrap">' + esc(fechaCorta(m.fecha)) + "</td>" +
+				'<td class="py-2 px-3 font-semibold whitespace-nowrap" style="color:' + e[1] + '">' + esc(e[0]) + "</td>" +
+				'<td class="py-2 px-3 whitespace-nowrap">' + esc(m.comprador || "") + "</td>" +
+				'<td class="py-2 px-3">' + esc(m.detalle || "") + '<br><span class="text-[11px] text-mute">Orden ' + esc(String(m.orden_id).slice(0, 8)) + "</span></td>" +
+				'<td class="py-2 px-3 text-right text-mute">' + esc(money(m.precio_lista)) + "</td>" +
+				'<td class="py-2 px-3 text-right text-mute">' + esc(money(m.descuento)) + "</td>" +
+				'<td class="py-2 px-3 text-right font-semibold">' + esc(money(m.monto)) + "</td>" +
+				'<td class="py-2 px-3 text-right font-bold" style="color:' + (Number(m.comision) < 0 ? "#b91c1c" : "#047857") + '">' + esc(money(m.comision)) + "</td>" +
+				"</tr>";
+		}).join("") : '<tr><td colspan="8" class="py-4 px-3 text-sm text-mute">Sin movimientos en este periodo.</td></tr>';
+
+		document.getElementById("cuentasSaldo").innerHTML =
+			"<div>Ventas pagadas con el cupón: <strong>" + esc(h.ventas_pagadas) + "</strong> · " + esc(money(h.monto_vendido)) + " cobrados</div>" +
+			"<div>Comisión generada: <strong>" + esc(money(h.comision_generada)) + "</strong></div>" +
+			"<div>Ya pagado al creador: <strong>" + esc(money(h.liquidado)) + "</strong></div>" +
+			'<div class="text-base">Pendiente por pagar: <strong style="color:' + (Number(h.pendiente) > 0 ? "#b45309" : "#047857") + '">' + esc(money(h.pendiente)) + "</strong></div>";
+
+		var liqMonto = document.getElementById("liqMonto");
+		if (!liqMonto.value || Number(liqMonto.value) <= 0) { liqMonto.value = Number(h.pendiente) > 0 ? String(Number(h.pendiente).toFixed(2)) : ""; }
+		if (!document.getElementById("liqFecha").value) { document.getElementById("liqFecha").value = fechaLocalISO(new Date()); }
+
+		var liqs = d.liquidaciones || [];
+		document.getElementById("cuentasLiquidaciones").innerHTML = liqs.length
+			? '<p class="text-[11px] font-bold uppercase tracking-[0.08em] text-mute mt-2">Pagos registrados</p>' + liqs.map(function (l) {
+				return '<div class="flex items-center justify-between gap-3 border-b border-line py-1.5"><span>' + esc(fechaCorta(l.fecha_pago + "T12:00:00")) + " · <strong>" + esc(money(l.monto)) + "</strong>" +
+					(l.notas ? ' <span class="text-mute">· ' + esc(l.notas) + "</span>" : "") + "</span>" +
+					'<button type="button" data-liq-borrar="' + esc(l.id) + '" class="text-xs font-semibold underline" style="color:#b91c1c">Quitar</button></div>';
+			}).join("")
+			: '<p class="text-xs text-mute">Todavía no has registrado pagos a este creador.</p>';
+		document.querySelectorAll("[data-liq-borrar]").forEach(function (b) {
+			b.addEventListener("click", async function () {
+				if (!confirm("¿Quitar este pago registrado? El saldo pendiente volverá a subir.")) { return; }
+				var res = await window.sb.rpc("admin_borrar_liquidacion", { p_id: b.getAttribute("data-liq-borrar") });
+				if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+				cuentasDatos = res.data;
+				renderCuentas(res.data);
+				await recargarCupones();
+			});
+		});
+		Tienda.iconos();
+	}
+
+	async function recargarCupones() {
+		var r = await window.sb.rpc("admin_listar_cupones");
+		if (!r.error) { cupones = r.data || []; renderCupones(); renderEstadoPrecios(); }
+	}
+
+	document.getElementById("liqRegistrar").addEventListener("click", async function () {
+		if (!cuentasCodigo) { return; }
+		var monto = Number(document.getElementById("liqMonto").value);
+		if (!isFinite(monto) || monto <= 0) { Tienda.toast("Escribe el monto que pagaste.", "error"); return; }
+		var btn = this;
+		btn.disabled = true;
+		var res = await window.sb.rpc("admin_registrar_liquidacion", {
+			p_codigo: cuentasCodigo,
+			p_monto: monto,
+			p_fecha_pago: document.getElementById("liqFecha").value || null,
+			p_periodo_desde: cuentasDesdeEl.value || null,
+			p_periodo_hasta: cuentasHastaEl.value || null,
+			p_notas: (document.getElementById("liqNotas").value || "").trim() || null,
+		});
+		btn.disabled = false;
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		document.getElementById("liqMonto").value = "";
+		document.getElementById("liqNotas").value = "";
+		cuentasDatos = res.data;
+		renderCuentas(res.data);
+		await recargarCupones();
+		Tienda.toast("Pago registrado.", "ok");
+	});
+
+	// CSV para el creador: los mismos movimientos y totales que se ven, con
+	// el correo enmascarado. BOM al inicio para que Excel lo abra con acentos.
+	document.getElementById("cuentasCsv").addEventListener("click", function () {
+		if (!cuentasDatos) { return; }
+		var d = cuentasDatos, c = d.cupon, t = d.totales_periodo, h = d.historico;
+		function celda(v) { var s = String(v == null ? "" : v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+		var filas = [];
+		filas.push(["Cupón", c.codigo, "Creador", c.creador_nombre || "", "Comisión %", c.comision_porcentaje != null ? Number(c.comision_porcentaje) : ""]);
+		filas.push(["Periodo", cuentasDesdeEl.value || "inicio", "a", cuentasHastaEl.value || "hoy"]);
+		filas.push([]);
+		filas.push(["Fecha", "Movimiento", "Comprador", "Compra", "Orden", "Precio de lista", "Descuento", "Cobrado", "Comisión"]);
+		var nombres = { venta: "Venta", reembolso: "Reembolso", referido: "Referida (sin descuento del cupón)" };
+		(d.movimientos || []).forEach(function (m) {
+			filas.push([fechaCorta(m.fecha), nombres[m.tipo] || m.tipo, m.comprador || "", m.detalle || "", String(m.orden_id).slice(0, 8),
+				Number(m.precio_lista).toFixed(2), Number(m.descuento).toFixed(2), Number(m.monto).toFixed(2), Number(m.comision).toFixed(2)]);
+		});
+		filas.push([]);
+		filas.push(["Ventas del periodo", t.ventas, "Cobrado", Number(t.monto_vendido).toFixed(2), "Descuento otorgado", Number(t.descuento_otorgado).toFixed(2)]);
+		filas.push(["Reembolsos", t.reembolsos, "Monto reembolsado", Number(t.monto_reembolsado).toFixed(2)]);
+		filas.push(["Comisión neta del periodo", Number(t.comision_neta).toFixed(2)]);
+		filas.push(["Referidas sin comisión", t.referidos, "Monto", Number(t.monto_referidos).toFixed(2)]);
+		filas.push([]);
+		filas.push(["Histórico: comisión generada", Number(h.comision_generada).toFixed(2), "Pagado al creador", Number(h.liquidado).toFixed(2), "Pendiente", Number(h.pendiente).toFixed(2)]);
+		var csv = "\ufeff" + filas.map(function (f) { return f.map(celda).join(","); }).join("\r\n");
+		var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+		var a = document.createElement("a");
+		a.href = URL.createObjectURL(blob);
+		a.download = "cuentas-" + c.codigo + "-" + (cuentasDesdeEl.value || "inicio") + "-a-" + (cuentasHastaEl.value || "hoy") + ".csv";
+		document.body.appendChild(a);
+		a.click();
+		setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 	});
 
 	// ── Proyectos individuales ──────────────────────────────────────────────────────

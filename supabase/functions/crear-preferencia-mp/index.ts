@@ -406,6 +406,12 @@ interface PrecioResuelto {
   descuento: number;
   /** Por qué un cupón enviado no se aplicó, para decírselo al comprador. */
   cuponMotivo: string | null;
+  /**
+   * Cupón VÁLIDO que escribió el comprador aunque no ganara (la promoción
+   * general era mejor). Se sella en la orden como cupon_referido: el creador
+   * trajo la venta y aparece en su estado de cuenta, sin contar como uso.
+   */
+  cuponReferido: string | null;
 }
 
 /**
@@ -456,6 +462,7 @@ async function precioConPromo(
     cuponCodigo: aplicado ? String(data.codigo) : null,
     descuento: lista - precio,
     cuponMotivo: data?.motivo ?? null,
+    cuponReferido: data?.valido === true && data?.codigo ? String(data.codigo) : null,
   };
 }
 
@@ -716,6 +723,10 @@ async function reutilizarOCrearOrdenCombo(
       // Y el cupón también: dos cupones distintos pueden dar el mismo importe
       // por casualidad, y la orden quedaría sellada con el que no es.
       if (cupones.get(ordenId) !== resuelto.cuponCodigo) continue;
+      // La atribución sí puede cambiar entre intentos (escribió el cupón
+      // después): se actualiza sin tocar el importe ni el cupón aplicado.
+      await admin.from("marketplace_ordenes")
+        .update({ cupon_referido: resuelto.cuponReferido }).eq("id", ordenId);
       return ordenId;
     }
   }
@@ -729,6 +740,7 @@ async function reutilizarOCrearOrdenCombo(
       metodo_pago: "mercadopago",
       cupon_codigo: resuelto.cuponCodigo,
       descuento_aplicado: resuelto.descuento,
+      cupon_referido: resuelto.cuponReferido,
     })
     .select("id")
     .single();
@@ -893,6 +905,8 @@ async function prepararPedidoPersonalizado(
 
   if (pedidoId && ordenId) {
     await admin.from("marketplace_pedidos").update(campos).eq("id", pedidoId);
+    await admin.from("marketplace_ordenes")
+      .update({ cupon_referido: resuelto.cuponReferido }).eq("id", ordenId);
   } else {
     const { data: pedido, error: pedErr } = await admin
       .from("marketplace_pedidos")
@@ -912,6 +926,7 @@ async function prepararPedidoPersonalizado(
         metodo_pago: "mercadopago",
         cupon_codigo: resuelto.cuponCodigo,
         descuento_aplicado: resuelto.descuento,
+        cupon_referido: resuelto.cuponReferido,
       })
       .select("id")
       .single();
@@ -1128,6 +1143,10 @@ async function reutilizarOCrearOrden(
       // dar el mismo importe por casualidad, y la orden quedaría sellada con
       // el que no es (y contaría el uso equivocado).
       if (cupones.get(ordenId) !== resuelto.cuponCodigo) continue;
+      // La atribución sí puede cambiar entre intentos (escribió el cupón
+      // después): se actualiza sin tocar el importe ni el cupón aplicado.
+      await admin.from("marketplace_ordenes")
+        .update({ cupon_referido: resuelto.cuponReferido }).eq("id", ordenId);
       return ordenId;
     }
   }
@@ -1141,6 +1160,7 @@ async function reutilizarOCrearOrden(
       metodo_pago: "mercadopago",
       cupon_codigo: resuelto.cuponCodigo,
       descuento_aplicado: resuelto.descuento,
+      cupon_referido: resuelto.cuponReferido,
     })
     .select("id")
     .single();

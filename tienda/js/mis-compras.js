@@ -326,6 +326,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			Tienda.toast("Pago confirmado. Ya puedes descargar tu paquete.", "ok");
 			await cargar();
 			return;
+		} else if (r && r.estado === "reembolsado") {
+			Tienda.toast("Esa compra fue reembolsada.", "info");
 		} else if (r && r.estado === "fallido") {
 			// `abandonada` = nunca hubo pago y ya pasó el margen: era un intento
 			// que quedó a medias, no un pago rechazado.
