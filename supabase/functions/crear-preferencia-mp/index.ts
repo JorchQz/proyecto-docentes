@@ -16,7 +16,11 @@
 //                             tipo_paquete: 'trimestre' | 'ciclo',
 //                             trimestre: 1 | 2 | 3,   // solo si tipo_paquete = 'trimestre'
 //                             tipo: 'pdf' | 'editable' }
-//   en ambos, opcionales: cupon (código) y acepta_terminos (true cuando el
+//   body proyecto a la medida: { pedido: { organizacion, grado | grados_combo,
+//                                campo_formativo?, contenido_id?, pda_id?,
+//                                metodologia?, fecha_necesaria?, notas? },
+//                                tipo: 'pdf' (sin anexos) | 'anexos' }
+//   en todos, opcionales: cupon (código) y acepta_terminos (true cuando el
 //   comprador marcó la casilla de Términos y Aviso de Privacidad; se sella en
 //   marketplace_ordenes.terminos_aceptados_en).
 //   header: Authorization: Bearer <access_token del usuario>
@@ -111,6 +115,19 @@ Deno.serve(async (req: Request) => {
     }
 
     const admin = crearAdmin(supabaseUrl, serviceKey);
+
+    // Proyecto a la medida: no hay producto todavía, se crea un pedido y la
+    // orden apunta a él. Se entrega cuando Jorge lo completa desde el admin.
+    if (body.pedido && typeof body.pedido === "object") {
+      if (tipo === "editable") return jsonResponse({ error: "Parámetros inválidos" }, 400);
+      return await prepararPedidoPersonalizado(admin, user, body, {
+        mpToken,
+        siteUrl,
+        supabaseUrl,
+        terminosEn,
+        cupon,
+      });
+    }
 
     // Paquete unitario (maestro con los 6 grados): una sola orden con todos
     // los combos multigrado de la agrupación elegida, a precio de combo.
@@ -739,6 +756,200 @@ function repartirPrecio(total: number, n: number): number[] {
   const partes = new Array(n).fill(baseCent / 100);
   partes[0] = (totalCent - baseCent * (n - 1)) / 100;
   return partes;
+}
+
+// Combos multigrado válidos y su modalidad: 2 grados = tridocente, 3 = bidocente.
+const COMBOS_PEDIDO: Record<string, string> = {
+  "1-2": "tridocente", "3-4": "tridocente", "5-6": "tridocente",
+  "1-2-3": "bidocente", "4-5-6": "bidocente",
+};
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Prepara el cobro de un proyecto a la medida.
+ *
+ * body.pedido: { organizacion: 'completa'|'multigrado', grado?: 1-6,
+ *                grados_combo?: '1-2'…, campo_formativo?: LEN|SAB|ETI|DHL,
+ *                contenido_id?, pda_id?, metodologia?, fecha_necesaria?, notas? }
+ * body.tipo:   'pdf' = sin anexos · 'anexos' = con anexos
+ *
+ * El precio sale de marketplace_personalizados_config (nunca del cliente) y
+ * pasa por la misma promoción/cupón que todo. Si el cupo semanal está
+ * agotado o los pedidos están cerrados, se responde 409 antes de crear nada.
+ *
+ * El pedido nace en 'pendiente_pago'; procesarPago() lo pasa a 'pendiente'
+ * (en cola) cuando Mercado Pago acredita.
+ */
+async function prepararPedidoPersonalizado(
+  admin: Cliente,
+  user: { id: string; email?: string; user_metadata?: Record<string, unknown> },
+  body: Record<string, any>,
+  cfg: { mpToken: string; siteUrl: string; supabaseUrl: string; terminosEn: string | null; cupon: string | null },
+): Promise<Response> {
+  const tipo = String(body.tipo);
+  const nivel = tipo === "anexos" ? "con_anexos" : "sin_anexos";
+  const pd = body.pedido as Record<string, any>;
+
+  // ── Validación del formulario ─────────────────────────────────────────────
+  const organizacion = pd.organizacion === "multigrado" ? "multigrado" : "completa";
+  let grados: number[];
+  let gradosCombo: string | null = null;
+  let modalidad: string | null = null;
+  if (organizacion === "multigrado") {
+    gradosCombo = String(pd.grados_combo || "");
+    modalidad = COMBOS_PEDIDO[gradosCombo] || null;
+    if (!modalidad) return jsonResponse({ error: "Elige una combinación de grados válida" }, 400);
+    grados = gradosCombo.split("-").map(Number);
+  } else {
+    const g = Number(pd.grado);
+    if (!(g >= 1 && g <= 6)) return jsonResponse({ error: "Elige el grado" }, 400);
+    grados = [g];
+  }
+  const cf = pd.campo_formativo ? String(pd.campo_formativo).toUpperCase() : null;
+  if (cf && !["LEN", "SAB", "ETI", "DHL"].includes(cf)) {
+    return jsonResponse({ error: "Campo formativo inválido" }, 400);
+  }
+  const contenidoId = pd.contenido_id && UUID_RE.test(String(pd.contenido_id)) ? String(pd.contenido_id) : null;
+  const pdaId = pd.pda_id && UUID_RE.test(String(pd.pda_id)) ? String(pd.pda_id) : null;
+  const metodologia = pd.metodologia ? String(pd.metodologia).slice(0, 120) : null;
+  const notas = pd.notas ? String(pd.notas).slice(0, 2000) : null;
+  const fechaNecesaria = pd.fecha_necesaria && /^\d{4}-\d{2}-\d{2}$/.test(String(pd.fecha_necesaria))
+    ? String(pd.fecha_necesaria) : null;
+  const nombreCliente = String(
+    (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.nombre_docente)) ||
+    user.email || "",
+  ).slice(0, 120);
+
+  // ── Cupo, apertura y precio (todo de la base) ─────────────────────────────
+  const { data: estado, error: estErr } = await admin.rpc("marketplace_personalizados_estado");
+  if (estErr || !estado) {
+    return jsonResponse({ error: "No pudimos consultar la disponibilidad. Vuelve a intentarlo." }, 503);
+  }
+  if (!estado.abierto) {
+    return jsonResponse({
+      error: estado.mensaje || "Por ahora no estamos recibiendo pedidos a la medida.",
+      cerrado: true,
+    }, 409);
+  }
+  if (Number(estado.cupos_disponibles) <= 0) {
+    return jsonResponse({
+      error: "Esta semana ya no hay cupo para pedidos a la medida.",
+      agotado: true,
+      fecha_reapertura: estado.fecha_reapertura || null,
+    }, 409);
+  }
+  const precioLista = Number(nivel === "con_anexos" ? estado.precio_con_anexos : estado.precio_sin_anexos);
+  if (!Number.isFinite(precioLista) || precioLista <= 0) {
+    return jsonResponse({ error: "El pedido a la medida no tiene precio configurado" }, 400);
+  }
+  const resuelto = await precioConPromo(admin, precioLista, cfg.cupon, user.id);
+  if (resuelto == null) {
+    return jsonResponse({ error: "No pudimos calcular el precio. Vuelve a intentarlo." }, 503);
+  }
+  const precio = resuelto.precio;
+
+  // ── Reutilizar el intento pendiente o crear pedido + orden ────────────────
+  // Mismo criterio que las compras normales: solo se reutiliza si el importe y
+  // el cupón coinciden (la preferencia de MP está atada al id de la orden). El
+  // formulario se actualiza con lo último que escribió el comprador.
+  const campos = {
+    nivel, organizacion, grados, grados_combo: gradosCombo, modalidad,
+    campo_formativo: cf, contenido_id: contenidoId, pda_id: pdaId, metodologia,
+    fecha_necesaria: fechaNecesaria, notas, nombre_cliente: nombreCliente,
+    precio, updated_at: new Date().toISOString(),
+  };
+
+  let pedidoId: string | null = null;
+  let ordenId: string | null = null;
+  const { data: previos } = await admin
+    .from("marketplace_pedidos")
+    .select("id, orden_id, marketplace_ordenes!marketplace_pedidos_orden_id_fkey(estado, monto_total, cupon_codigo)")
+    .eq("user_id", user.id)
+    .eq("estado", "pendiente_pago")
+    .order("created_at", { ascending: false })
+    .limit(5);
+  for (const pv of previos || []) {
+    const o: any = pv.marketplace_ordenes;
+    if (!o || o.estado !== "pendiente") continue;
+    if (Number(o.monto_total) !== precio) continue;
+    if ((o.cupon_codigo ?? null) !== resuelto.cuponCodigo) continue;
+    pedidoId = pv.id;
+    ordenId = pv.orden_id;
+    break;
+  }
+
+  if (pedidoId && ordenId) {
+    await admin.from("marketplace_pedidos").update(campos).eq("id", pedidoId);
+  } else {
+    const { data: pedido, error: pedErr } = await admin
+      .from("marketplace_pedidos")
+      .insert({ user_id: user.id, ...campos })
+      .select("id, numero_pedido")
+      .single();
+    if (pedErr || !pedido) {
+      console.error("insert pedido falló:", pedErr);
+      return jsonResponse({ error: "No se pudo registrar el pedido" }, 500);
+    }
+    const { data: orden, error: ordErr } = await admin
+      .from("marketplace_ordenes")
+      .insert({
+        user_id: user.id,
+        monto_total: precio,
+        estado: "pendiente",
+        metodo_pago: "mercadopago",
+        cupon_codigo: resuelto.cuponCodigo,
+        descuento_aplicado: resuelto.descuento,
+      })
+      .select("id")
+      .single();
+    if (ordErr || !orden) {
+      console.error("insert orden de pedido falló:", ordErr);
+      return jsonResponse({ error: "No se pudo crear la orden" }, 500);
+    }
+    const { error: itemErr } = await admin
+      .from("marketplace_orden_items")
+      .insert({ orden_id: orden.id, pedido_id: pedido.id, producto_id: null, tipo, precio_unitario: precio });
+    if (itemErr) {
+      console.error("insert item de pedido falló:", itemErr);
+      return jsonResponse({ error: "No se pudo crear la orden" }, 500);
+    }
+    await admin.from("marketplace_pedidos").update({ orden_id: orden.id }).eq("id", pedido.id);
+    pedidoId = pedido.id;
+    ordenId = orden.id;
+  }
+
+  await archivarOrdenesCaducadas(admin, user.id, ordenId);
+  await sellarTerminos(admin, ordenId, cfg.terminosEn);
+
+  const { data: pedidoFinal } = await admin
+    .from("marketplace_pedidos").select("numero_pedido").eq("id", pedidoId).single();
+  const numero = pedidoFinal?.numero_pedido || "";
+  const aula = organizacion === "multigrado"
+    ? "Multigrado " + gradosCombo!.split("-").map((n) => n + "°").join("-")
+    : grados[0] + "° de Primaria";
+
+  return await crearPreferenciaYResponder(admin, {
+    mpToken: cfg.mpToken,
+    supabaseUrl: cfg.supabaseUrl,
+    siteUrl: cfg.siteUrl,
+    ordenId,
+    itemId: "pedido-" + pedidoId,
+    titulo: "Proyecto a la medida " + numero + " — " + aula + " — " +
+      (nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word"),
+    precio,
+    failureUrl: cfg.siteUrl + "/tienda/checkout?personalizado=1",
+    payerEmail: user.email,
+    cupon: resuelto.cuponCodigo,
+    cuponMotivo: resuelto.cuponMotivo,
+    metadata: {
+      orden_id: ordenId,
+      pedido_id: pedidoId,
+      numero_pedido: numero,
+      tipo,
+      user_id: user.id,
+      cupon: resuelto.cuponCodigo,
+    },
+  });
 }
 
 /**

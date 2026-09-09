@@ -121,6 +121,13 @@ export async function procesarPago(
       .update({ estado: "fallido", referencia_pago: paymentId })
       .eq("id", ordenId);
     await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
+    // Un pedido a la medida devuelto se cancela (si ya estaba entregado, el
+    // acceso se acaba de retirar arriba).
+    await admin
+      .from("marketplace_pedidos")
+      .update({ estado: "cancelado", updated_at: new Date().toISOString() })
+      .eq("orden_id", ordenId)
+      .neq("estado", "cancelado");
     // La venta deja de contar para el escalón de lanzamiento.
     await recalcularPrecios(admin);
     return { ok: true, estado: "fallido", statusMp: status, detalleMp: detalle };
@@ -178,6 +185,15 @@ export async function procesarPago(
 
   const accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
 
+  // Pedidos a la medida de esta orden: pasan a la cola y se avisa por correo
+  // al cliente y al negocio. Nunca bloquea la entrega del resto.
+  let pedidosActivados = 0;
+  try {
+    pedidosActivados = await activarPedidosDeOrden(admin, ordenId, orden.user_id, opts);
+  } catch (err) {
+    console.error("activar pedidos falló (no bloquea la entrega):", err);
+  }
+
   // Escalón de lanzamiento: si esta venta cruzó los 50 o los 100 paquetes de
   // ciclo, el precio de los ciclos sube a partir de la siguiente compra.
   await recalcularPrecios(admin);
@@ -189,7 +205,140 @@ export async function procesarPago(
     console.error("aviso por correo falló (no bloquea la entrega):", err);
   }
 
-  return { ok: true, estado: "pagado", accesos, statusMp: status };
+  return { ok: true, estado: "pagado", accesos: accesos + pedidosActivados, statusMp: status };
+}
+
+/** Texto corto del aula de un pedido: "3° de Primaria" o "Multigrado 1°-2°". */
+export function aulaDePedido(p: { organizacion?: string; grados?: number[]; grados_combo?: string | null }): string {
+  if (p.organizacion === "multigrado" && p.grados_combo) {
+    return "Multigrado " + p.grados_combo.split("-").map((n) => n + "°").join("-");
+  }
+  const g = (p.grados || [])[0];
+  return g ? g + "° de Primaria" : "Primaria";
+}
+
+const NOMBRE_CF: Record<string, string> = {
+  LEN: "Lenguajes",
+  SAB: "Saberes y Pensamiento Científico",
+  ETI: "Ética, Naturaleza y Sociedades",
+  DHL: "De lo Humano y lo Comunitario",
+};
+
+/** Líneas de resumen de un pedido para los correos (sin HTML). */
+export function resumenDePedido(p: Record<string, any>, extra?: { contenido?: string | null; pda?: string | null }): string[] {
+  const lineas: string[] = [];
+  lineas.push("Aula: " + aulaDePedido(p));
+  lineas.push("Versión: " + (p.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)"));
+  if (p.campo_formativo) lineas.push("Campo formativo: " + (NOMBRE_CF[p.campo_formativo] || p.campo_formativo));
+  if (extra?.contenido) lineas.push("Contenido: " + extra.contenido);
+  if (extra?.pda) lineas.push("PDA: " + extra.pda);
+  if (p.metodologia) lineas.push("Metodología: " + p.metodologia);
+  if (p.fecha_necesaria) lineas.push("Lo necesita para: " + p.fecha_necesaria);
+  if (p.notas) lineas.push("Notas: " + p.notas);
+  return lineas;
+}
+
+function fechaLegible(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("es-MX", {
+      timeZone: "America/Mexico_City", day: "numeric", month: "long", hour: "numeric", minute: "2-digit",
+    });
+  } catch (_) {
+    return String(iso);
+  }
+}
+
+/**
+ * Pasa a la cola los pedidos a la medida de una orden recién pagada: estado
+ * 'pendiente', fecha de pago y fecha compromiso (= ahora + ventana configurada).
+ * Avisa al cliente (con la ventana y la garantía) y al negocio (con el detalle
+ * para generarlo). Idempotente: solo toca pedidos en 'pendiente_pago'.
+ */
+export async function activarPedidosDeOrden(
+  admin: Cliente,
+  ordenId: string,
+  userId: string,
+  opts: { siteUrl?: string; resendKey?: string },
+): Promise<number> {
+  const { data: pedidos } = await admin
+    .from("marketplace_pedidos")
+    .select("id, numero_pedido, nivel, organizacion, grados, grados_combo, campo_formativo, contenido_id, pda_id, metodologia, fecha_necesaria, notas, nombre_cliente, precio")
+    .eq("orden_id", ordenId)
+    .eq("estado", "pendiente_pago");
+  if (!pedidos || !pedidos.length) return 0;
+
+  const { data: cfgRow } = await admin
+    .from("marketplace_personalizados_config").select("ventana_horas").eq("id", true).maybeSingle();
+  const ventana = Number(cfgRow?.ventana_horas) > 0 ? Number(cfgRow!.ventana_horas) : 72;
+  const ahora = new Date();
+  const compromiso = new Date(ahora.getTime() + ventana * 60 * 60 * 1000).toISOString();
+
+  const { data: userRes } = await admin.auth.admin.getUserById(userId);
+  const email = userRes?.user?.email || null;
+
+  let n = 0;
+  for (const p of pedidos) {
+    const { error } = await admin
+      .from("marketplace_pedidos")
+      .update({ estado: "pendiente", pagado_en: ahora.toISOString(), fecha_compromiso_entrega: compromiso, updated_at: ahora.toISOString() })
+      .eq("id", p.id)
+      .eq("estado", "pendiente_pago");
+    if (error) { console.error("activar pedido falló:", p.id, error); continue; }
+    n++;
+
+    // Textos de contenido y PDA para el correo (ids → texto).
+    let contenido: string | null = null, pda: string | null = null;
+    if (p.contenido_id) {
+      const { data: c } = await admin.from("catalogo_contenidos").select("contenido").eq("id", p.contenido_id).maybeSingle();
+      contenido = c?.contenido || null;
+    }
+    if (p.pda_id) {
+      const { data: d } = await admin.from("catalogo_pda").select("pda").eq("id", p.pda_id).maybeSingle();
+      pda = d?.pda || null;
+    }
+    const lineas = resumenDePedido(p, { contenido, pda });
+    const listaHtml = "<ul style=\"padding-left:18px;margin:16px 0 0;color:#1c2434;font-size:15px;line-height:1.6\">" +
+      lineas.map((l) => "<li>" + escaparHtml(l) + "</li>").join("") + "</ul>";
+    const siteUrl = (opts.siteUrl || "").replace(/\/+$/, "");
+
+    if (opts.resendKey && email) {
+      const html = plantillaCorreo(`
+        <h1 style="${estiloTitulo}">Recibimos tu pedido ${escaparHtml(p.numero_pedido)}</h1>
+        <p style="${estiloTexto}">
+          Tu pago quedó confirmado. Ya estamos preparando tu proyecto a la medida y te lo
+          entregaremos en tu biblioteca <strong>a más tardar el ${escaparHtml(fechaLegible(compromiso))}</strong>
+          (hora del centro). Te avisamos por este correo en cuanto esté listo.
+        </p>
+        ${listaHtml}
+        ${botonCorreo(siteUrl + "/tienda/mis-compras", "Ver mi pedido")}
+        <p style="${estiloNota}">
+          Si el proyecto no corresponde a lo que pediste, lo revisamos y corregimos sin costo.
+          Si no lo entregamos dentro de la ventana comprometida, puedes pedir el reembolso total.
+          Este proyecto puede integrarse después al catálogo general.
+        </p>
+      `);
+      await enviarCorreo(opts.resendKey, email, "Recibimos tu pedido " + p.numero_pedido + " — Jissez", html);
+    }
+
+    const destinoAdmin = Deno.env.get("MAIL_ADMIN");
+    if (opts.resendKey && destinoAdmin) {
+      const html = plantillaCorreo(`
+        <h1 style="${estiloTitulo}">Nuevo pedido a la medida ${escaparHtml(p.numero_pedido)}</h1>
+        <p style="${estiloTexto}">
+          Cliente: <strong>${escaparHtml(p.nombre_cliente || "")}</strong> (${escaparHtml(email || "sin correo")}) ·
+          pagó $${escaparHtml(String(p.precio ?? ""))} MXN. Entrega comprometida: <strong>${escaparHtml(fechaLegible(compromiso))}</strong>.
+        </p>
+        ${listaHtml}
+        <p style="${estiloNota};margin-top:16px">
+          Carpeta sugerida en Drive: <strong>${escaparHtml(aulaDePedido(p))} / Proyectos Personalizados / ${escaparHtml(p.numero_pedido)}_${escaparHtml((p.nombre_cliente || "cliente").split(" ")[0])}</strong>
+        </p>
+        ${botonCorreo(siteUrl + "/tienda/admin", "Abrir el panel de pedidos")}
+      `);
+      await enviarCorreo(opts.resendKey, destinoAdmin, "Nuevo pedido a la medida " + p.numero_pedido, html);
+    }
+  }
+  return n;
 }
 
 /**
@@ -313,10 +462,15 @@ async function avisarCompraPorCorreo(
 
   const { data: items } = await admin
     .from("marketplace_orden_items")
-    .select("tipo, marketplace_productos(titulo, tipo_paquete)")
+    .select("tipo, producto_id, marketplace_productos(titulo, tipo_paquete)")
     .eq("orden_id", ordenId);
 
-  const lista = (items || [])
+  // Los pedidos a la medida tienen su propio correo (activarPedidosDeOrden);
+  // aquí solo se listan los productos entregados de inmediato.
+  const conProducto = (items || []).filter((i: any) => i.producto_id);
+  if (!conProducto.length) return;
+
+  const lista = conProducto
     .map((i: any) => {
       const titulo = i.marketplace_productos?.titulo || "Paquete";
       const version = descripcionVersion(i.tipo, i.marketplace_productos?.tipo_paquete ?? null);

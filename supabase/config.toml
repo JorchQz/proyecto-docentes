@@ -25,3 +25,6 @@ verify_jwt = false   # pública: la usa quien no puede entrar a su cuenta
 
 [functions.admin-proyectos-drive]
 verify_jwt = false   # valida el JWT manualmente y exige es_admin()
+
+[functions.completar-pedido]
+verify_jwt = false   # valida el JWT manualmente y exige es_admin()

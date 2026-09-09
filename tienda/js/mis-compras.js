@@ -14,14 +14,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var bannerEl = document.getElementById("banner");
 	var seccionPendientes = document.getElementById("seccionPendientes");
 	var listaPendientes = document.getElementById("listaPendientes");
+	var seccionPedidos = document.getElementById("seccionPedidos");
+	var listaPedidos = document.getElementById("listaPedidos");
 
-	var GRADO_COLOR = {
-		"1": { bg: "#f2cf6b", txt: "rgba(30,58,138,.85)" },
-		"2": { bg: "#ef9277", txt: "#fff" },
-		"3": { bg: "#79c8a6", txt: "rgba(30,58,138,.85)" },
-		"4": { bg: "#a99fe0", txt: "#fff" },
-		"5": { bg: "#85b8e6", txt: "rgba(30,58,138,.85)" },
-		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
+	var GRADO_COLOR = Tienda.GRADO_COLOR;
+	// Definido ANTES de cargar(): los `var` de más abajo aún no tienen valor
+	// cuando se pinta la primera vez.
+	var ESTADO_PEDIDO = {
+		pendiente:  { texto: "Pagado · en cola", css: "background:#eff6ff;color:#1e40af;border:1px solid #93c5fd" },
+		en_proceso: { texto: "En elaboración", css: "background:#fffbeb;color:#b45309;border:1px solid #fcd34d" },
+		completado: { texto: "Entregado", css: "background:#ecfdf5;color:#047a55;border:1px solid #a7f3d0" },
+		cancelado:  { texto: "Cancelado", css: "background:#f3f4f6;color:#5b6473;border:1px solid #e7e6df" },
 	};
 
 	// ── Regreso desde Mercado Pago ──────────────────────────────────────────
@@ -60,24 +63,91 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var ordRes = await window.sb
 			.from("marketplace_ordenes")
-			.select("id, estado, monto_total, metodo_pago, created_at, marketplace_orden_items(tipo, marketplace_productos(titulo))")
+			.select("id, estado, monto_total, metodo_pago, created_at, marketplace_orden_items(tipo, marketplace_productos(titulo), marketplace_pedidos(numero_pedido, nivel))")
 			.eq("user_id", session.user.id)
 			.eq("estado", "pendiente")
+			.order("created_at", { ascending: false });
+
+		// Pedidos a la medida ya pagados (los que aún no se pagan salen como
+		// órdenes pendientes arriba). Columnas explícitas: el ID de la carpeta
+		// de Drive no es legible desde aquí.
+		var pedRes = await window.sb
+			.from("marketplace_pedidos")
+			.select("id, numero_pedido, estado, nivel, organizacion, grados, grados_combo, campo_formativo, metodologia, fecha_necesaria, precio, pagado_en, fecha_compromiso_entrega, producto_id, completado_en, created_at")
+			.eq("user_id", session.user.id)
+			.neq("estado", "pendiente_pago")
 			.order("created_at", { ascending: false });
 
 		estadoEl.classList.add("hidden");
 		listaEl.classList.add("hidden");
 		seccionPendientes.classList.add("hidden");
+		seccionPedidos.classList.add("hidden");
 
 		var accesos = accRes.data || [];
 		var pendientes = ordRes.data || [];
+		var pedidos = pedRes.data || [];
 
 		renderCompras(accesos);
+		renderPedidos(pedidos, accesos);
 		renderPendientes(pendientes);
 
-		if (!accesos.length && !pendientes.length) {
+		if (!accesos.length && !pendientes.length && !pedidos.length) {
 			vacio();
 		}
+	}
+
+	// ── Pedidos a la medida ─────────────────────────────────────────────────
+	function renderPedidos(pedidos, accesos) {
+		if (!pedidos.length) { return; }
+		seccionPedidos.classList.remove("hidden");
+		listaPedidos.innerHTML = "";
+		pedidos.forEach(function (p) {
+			var est = ESTADO_PEDIDO[p.estado] || ESTADO_PEDIDO.cancelado;
+			var aula = p.organizacion === "multigrado"
+				? "Multigrado " + String(p.grados_combo || "").split("-").map(function (n) { return n + "°"; }).join("-")
+				: (p.grados && p.grados[0] ? p.grados[0] + "° de Primaria" : "Primaria");
+			var version = p.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)";
+			var detalle = [];
+			if (p.campo_formativo && Tienda.CF_COLOR[p.campo_formativo]) { detalle.push(Tienda.CF_COLOR[p.campo_formativo].nombre); }
+			if (p.metodologia) { detalle.push(p.metodologia); }
+
+			var fechaTxt = "";
+			if (p.estado === "completado" && p.completado_en) {
+				fechaTxt = "Entregado el " + new Date(p.completado_en).toLocaleDateString("es-MX", { day: "numeric", month: "long" }) + ".";
+			} else if ((p.estado === "pendiente" || p.estado === "en_proceso") && p.fecha_compromiso_entrega) {
+				var venc = new Date(p.fecha_compromiso_entrega);
+				fechaTxt = (venc.getTime() < Date.now() ? "La entrega se retrasó: escríbenos a soporte@jissez.com y, si lo prefieres, te devolvemos el total. Fecha comprometida: " : "Entrega comprometida: ") +
+					venc.toLocaleString("es-MX", { day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) + ".";
+			}
+
+			// Al entregarse, el proyecto es un producto más con su acceso: el
+			// botón abre la biblioteca igual que cualquier compra.
+			var acceso = p.producto_id ? accesos.find(function (a) { return a.producto_id === p.producto_id && a.tipo === "editable"; }) ||
+				accesos.find(function (a) { return a.producto_id === p.producto_id; }) : null;
+			var accion = acceso
+				? '<a href="biblioteca.html?acceso_id=' + encodeURIComponent(acceso.id) + '" class="shrink-0 h-11 px-5 rounded-xl text-sm font-bold text-white inline-flex items-center justify-center gap-1.5 transition" style="background:#1e3a8a">Abrir biblioteca <i data-lucide="arrow-right" class="w-4 h-4"></i></a>'
+				: "";
+
+			var card = document.createElement("div");
+			card.className = "lift bg-white rounded-3xl border border-line p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm";
+			card.innerHTML =
+				'<div class="flex items-start gap-4 flex-1 min-w-0">' +
+				'<div class="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center" style="background:rgba(5,150,105,.1)"><i data-lucide="pencil-ruler" style="width:1.6rem;height:1.6rem;color:#047857"></i></div>' +
+				'<div class="min-w-0 flex-1">' +
+				'<div class="flex flex-wrap items-center gap-2">' +
+				'<h3 class="font-bold text-ink leading-snug">Proyecto a la medida · ' + esc(aula) + "</h3>" +
+				'<span class="text-[11px] font-bold h-6 px-2.5 rounded-full inline-flex items-center" style="' + est.css + '">' + esc(est.texto) + "</span>" +
+				"</div>" +
+				'<div class="flex flex-wrap gap-1.5 mt-2">' +
+				'<span class="text-[12px] font-semibold h-6 px-2.5 rounded-full inline-flex items-center bg-paper border border-line text-mute">' + esc(p.numero_pedido) + "</span>" +
+				'<span class="text-[12px] font-semibold h-6 px-2.5 rounded-full inline-flex items-center bg-paper border border-line text-mute">' + esc(version) + "</span>" +
+				detalle.map(function (d) { return '<span class="text-[12px] font-semibold h-6 px-2.5 rounded-full inline-flex items-center bg-paper border border-line text-mute">' + esc(d) + "</span>"; }).join("") +
+				"</div>" +
+				(fechaTxt ? '<p class="text-xs mt-2 leading-relaxed" style="color:#5b6473">' + esc(fechaTxt) + "</p>" : "") +
+				"</div></div>" + accion;
+			listaPedidos.appendChild(card);
+		});
+		Tienda.iconos();
 	}
 
 	// ── Confirmación de pago contra Mercado Pago ────────────────────────────
@@ -156,7 +226,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var etiquetaTipo = esCiclo
 				? "Ciclo completo"
 				: (esProyecto
-					? "Proyecto" + (prod.numero_proyecto ? " " + prod.numero_proyecto : "") + (prod.trimestre ? " · Trimestre " + prod.trimestre : "")
+					? (prod.numero_proyecto
+						? "Proyecto " + prod.numero_proyecto + (prod.trimestre ? " · Trimestre " + prod.trimestre : "")
+						: "Proyecto a la medida")
 					: "Trimestre " + (prod.trimestre || ""));
 			var esEditable = !!info.tipos.editable;
 			var accesoId = esEditable ? info.tipos.editable : info.tipos.pdf;
@@ -199,10 +271,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		ordenes.forEach(function (o) {
 			var items = o.marketplace_orden_items || [];
 			// Una orden con varios items es el paquete unitario (combo multigrado).
-			var titulo = items.length > 1
-				? "Paquete unitario (" + items.length + " paquetes multigrado)"
-				: (items.length && items[0].marketplace_productos
-					? items[0].marketplace_productos.titulo : "Paquete");
+			// Un item con pedido es un proyecto a la medida sin pagar todavía.
+			var titulo;
+			if (items.length > 1) {
+				titulo = "Paquete unitario (" + items.length + " paquetes multigrado)";
+			} else if (items.length && items[0].marketplace_pedidos) {
+				titulo = "Proyecto a la medida " + (items[0].marketplace_pedidos.numero_pedido || "") +
+					(items[0].marketplace_pedidos.nivel === "con_anexos" ? " · con anexos" : " · sin anexos");
+			} else {
+				titulo = items.length && items[0].marketplace_productos ? items[0].marketplace_productos.titulo : "Paquete";
+			}
 
 			var div = document.createElement("div");
 			div.className = "rounded-2xl p-4 flex flex-col gap-3";

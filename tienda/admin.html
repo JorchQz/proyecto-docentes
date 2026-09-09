@@ -70,6 +70,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			<div class="flex border-b border-line">
 				<button data-tab="productos" class="tab-btn active flex-1 py-4 text-sm font-semibold border-b-2 transition">Paquetes</button>
 				<button data-tab="sueltos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Proyectos sueltos</button>
+				<button data-tab="pedidos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">A la medida</button>
 				<button data-tab="precios" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Precios</button>
 				<button data-tab="ordenes" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Órdenes</button>
 				<button data-tab="acceso" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Acceso manual</button>
@@ -263,6 +264,66 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 			</div>
 
+			<!-- Tab Proyectos a la medida -->
+			<div id="panelPedidos" class="hidden p-5 flex flex-col gap-6">
+
+				<!-- Cupo, ventana y precios -->
+				<div class="rounded-2xl border border-line p-5 flex flex-col gap-4">
+					<div class="flex flex-wrap items-start justify-between gap-3">
+						<div>
+							<h3 class="font-bold text-ink">Cupo, entrega y precios</h3>
+							<p class="text-sm text-mute mt-1">El formulario público se cierra solo cuando se agota el cupo semanal (pedidos pagados y sin entregar en los últimos 7 días) o si desmarcas "Recibir pedidos".</p>
+						</div>
+						<p id="estadoPedidos" class="text-sm font-semibold rounded-xl px-3 py-2" style="background:#faf9f4;border:1px solid #e7e6df;color:#1c2434">Cargando...</p>
+					</div>
+					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						<label class="flex items-center gap-3 h-12 sm:col-span-2 lg:col-span-4">
+							<input type="checkbox" id="pedAbierto" class="w-5 h-5 rounded border-line" style="accent-color:#059669">
+							<span class="font-semibold text-ink text-sm">Recibir pedidos a la medida</span>
+						</label>
+						<div>
+							<label for="pedTope" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Cupo semanal</label>
+							<input id="pedTope" type="number" min="0" step="1" class="w-full h-12 rounded-xl border border-line px-3 text-ink" style="background:#fff">
+						</div>
+						<div>
+							<label for="pedVentana" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Ventana de entrega (horas)</label>
+							<input id="pedVentana" type="number" min="1" max="720" step="1" class="w-full h-12 rounded-xl border border-line px-3 text-ink" style="background:#fff">
+						</div>
+						<div>
+							<label for="pedPrecioSin" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Precio sin anexos (MXN)</label>
+							<input id="pedPrecioSin" type="number" min="0" step="1" class="w-full h-12 rounded-xl border border-line px-3 text-ink" style="background:#fff">
+						</div>
+						<div>
+							<label for="pedPrecioCon" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Precio con anexos (MXN)</label>
+							<input id="pedPrecioCon" type="number" min="0" step="1" class="w-full h-12 rounded-xl border border-line px-3 text-ink" style="background:#fff">
+						</div>
+						<div class="sm:col-span-2 lg:col-span-4">
+							<label for="pedMensaje" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Mensaje cuando estén cerrados (opcional)</label>
+							<input id="pedMensaje" type="text" maxlength="200" placeholder="Reabrimos el 1 de octubre." class="w-full h-12 rounded-xl border border-line px-3 text-ink" style="background:#fff">
+						</div>
+					</div>
+					<div>
+						<button id="guardarPedidosCfgBtn" type="button" class="h-12 px-5 rounded-xl text-white font-bold" style="background:#059669">Guardar</button>
+					</div>
+				</div>
+
+				<!-- Pedidos -->
+				<div>
+					<div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+						<h3 class="font-bold text-ink">Pedidos</h3>
+						<p class="text-xs text-mute">Carpeta en Drive: <span class="font-mono">{grado o combo}/Proyectos Personalizados/PZ-0001_Nombre/</span> con PDF y Word en la raíz y anexos en S##.</p>
+					</div>
+					<div id="listaPedidos" class="overflow-x-auto"><p class="text-sm text-mute">Cargando pedidos...</p></div>
+				</div>
+
+				<!-- Búsquedas sin resultado -->
+				<div>
+					<h3 class="font-bold text-ink mb-1">Búsquedas sin resultado (últimos 30 días)</h3>
+					<p class="text-xs text-mute mb-3">Combinaciones que alguien filtró en "Proyectos individuales" y no encontró nada: la señal de qué generar primero.</p>
+					<div id="listaBusquedas" class="overflow-x-auto"><p class="text-sm text-mute">Cargando...</p></div>
+				</div>
+			</div>
+
 			<!-- Tab Órdenes -->
 			<div id="panelOrdenes" class="hidden p-5 flex flex-col gap-4">
 				<p class="text-sm text-mute">Confirma transferencias y revisa el estado de los pagos.</p>
@@ -295,6 +356,58 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			</div>
 		</div>
 
+	</div>
+</div>
+
+<!-- Modal: completar un pedido a la medida -->
+<div id="modalPedido" class="hidden fixed inset-0 z-40 bg-black/50 flex items-start justify-center p-4 overflow-y-auto">
+	<div class="bg-white rounded-2xl shadow-xl w-full max-w-lg my-8">
+		<div class="px-5 py-4 rounded-t-2xl flex items-center justify-between" style="background:#1e3a8a">
+			<h3 class="font-bold text-white" id="modalPedidoTitulo">Entregar pedido</h3>
+			<button id="modalPedidoCerrar" class="text-white/60 hover:text-white text-xl leading-none font-bold">&times;</button>
+		</div>
+		<div class="p-5 flex flex-col gap-4">
+			<div class="rounded-xl p-3 text-sm text-mute border border-line" style="background:#faf9f4" id="modalPedidoResumen"></div>
+
+			<div>
+				<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">ID de la carpeta de Drive del proyecto</label>
+				<input id="pedDriveFolder" type="text" placeholder="Ej. 1A2b3C4d..." class="w-full px-3 py-2.5 border border-line rounded-xl text-sm font-mono" style="color:#1c2434;background:#fff">
+				<p class="text-xs text-mute mt-1">La carpeta del pedido (PZ-XXXX_Nombre), con la planeación en PDF y Word en la raíz. Se verifica en Drive antes de entregar.</p>
+			</div>
+
+			<div>
+				<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Proyecto del bot (opcional)</label>
+				<input id="pedDosif" type="text" list="listaDosif" autocomplete="off" placeholder="Escribe el nombre del proyecto generado" class="w-full px-3 py-2.5 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+				<datalist id="listaDosif"></datalist>
+				<p class="text-xs text-mute mt-1">Si lo enlazas, el catálogo hereda su temario (campos, contenidos y PDAs) para el filtro.</p>
+			</div>
+
+			<div>
+				<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Título en el catálogo (opcional)</label>
+				<input id="pedTitulo" type="text" maxlength="160" class="w-full px-3 py-2.5 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+			</div>
+
+			<div class="grid grid-cols-2 gap-3">
+				<div>
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Precio sin anexos</label>
+					<input id="pedCatPrecioSin" type="number" min="0" step="1" value="80" class="w-full px-3 py-2.5 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+				</div>
+				<div>
+					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Precio con anexos</label>
+					<input id="pedCatPrecioCon" type="number" min="0" step="1" value="120" class="w-full px-3 py-2.5 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+				</div>
+			</div>
+
+			<label class="flex items-center gap-2.5 text-sm font-medium text-ink cursor-pointer">
+				<input id="pedPublicar" type="checkbox" checked class="w-4 h-4 rounded" style="accent-color:#059669">
+				Publicar en el catálogo de proyectos individuales
+			</label>
+			<p id="modalPedidoMensaje" class="hidden text-sm rounded-xl px-3 py-2"></p>
+		</div>
+		<div class="border-t border-line p-4 flex justify-end gap-2">
+			<button id="modalPedidoCancelar" class="h-11 px-4 border border-line text-ink text-sm font-semibold rounded-xl hover:bg-paper transition">Cancelar</button>
+			<button id="modalPedidoEntregar" class="h-11 px-5 text-white text-sm font-bold rounded-xl transition" style="background:#059669">Entregar y avisar al cliente</button>
+		</div>
 	</div>
 </div>
 

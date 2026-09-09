@@ -31,6 +31,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var productoId = params.get("producto_id");
 	var tipo = params.get("tipo");
 
+	// Proyecto a la medida: llega de personalizado.html con el pedido guardado
+	// como borrador en localStorage (checkout.html?personalizado=1). No hay
+	// producto: la Edge Function crea el pedido y la orden juntos.
+	var esPedido = params.get("personalizado") === "1";
+	var borradorPedido = null;
+	if (esPedido) {
+		try { borradorPedido = JSON.parse(localStorage.getItem("jissez_pedido") || "null"); } catch (_) { borradorPedido = null; }
+		if (borradorPedido) { tipo = borradorPedido.nivel === "con_anexos" ? "anexos" : "pdf"; }
+	}
+
 	// Compra combinada del paquete unitario (llega desde el catálogo):
 	// checkout.html?combo=unitaria&agrupacion=...&tipo_paquete=...[&trimestre=n]&tipo=...
 	var esCombo = params.get("combo") === "unitaria";
@@ -49,7 +59,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// 'anexos' es la versión "con anexos" del proyecto suelto; el combo unitario
 	// es de paquetes y no la tiene.
 	var tipoValido = tipo === "pdf" || tipo === "editable" || (!esCombo && tipo === "anexos");
-	if (!tipoValido || (esCombo ? !comboValido : !productoId)) {
+	if (esPedido) {
+		if (!borradorPedido) {
+			estadoEl.innerHTML = 'No encontramos tu pedido. <a href="personalizado.html" class="font-semibold" style="color:#1e3a8a">Vuelve a armarlo</a>.';
+			return;
+		}
+	} else if (!tipoValido || (esCombo ? !comboValido : !productoId)) {
 		estadoEl.textContent = "Compra inválida.";
 		return;
 	}
@@ -79,7 +94,74 @@ document.addEventListener("DOMContentLoaded", async function () {
 	await Tienda.cargarPromo();
 	pintarNotaPromo();
 
-	if (!(esCombo ? await prepararCombo() : await prepararIndividual())) { return; }
+	var preparado = esPedido ? await prepararPedido() : (esCombo ? await prepararCombo() : await prepararIndividual());
+	if (!preparado) { return; }
+
+	/**
+	 * Proyecto a la medida: precio, cupo y ventana salen de la RPC pública; el
+	 * resumen se pinta con lo que el maestro eligió en el formulario. El cobro
+	 * real lo vuelve a resolver la Edge Function contra la base.
+	 */
+	async function prepararPedido() {
+		volverLink.href = "personalizado.html";
+		var r = await window.sb.rpc("marketplace_personalizados_estado");
+		if (r.error || !r.data) {
+			estadoEl.textContent = "No pudimos consultar la disponibilidad. Vuelve a intentarlo.";
+			return false;
+		}
+		var est = r.data;
+		if (!est.abierto || Number(est.cupos_disponibles) <= 0) {
+			estadoEl.innerHTML = (est.abierto ? "Esta semana ya no hay cupo para pedidos a la medida." : Tienda.esc(est.mensaje || "Por ahora no recibimos pedidos a la medida.")) +
+				' <a href="catalogo.html?vista=proyectos" class="font-semibold" style="color:#1e3a8a">Ver proyectos del catálogo</a>';
+			return false;
+		}
+		var b = borradorPedido;
+		var conAnexos = b.nivel === "con_anexos";
+		var lista = Number(conAnexos ? est.precio_con_anexos : est.precio_sin_anexos);
+		var aula = b.organizacion === "multigrado"
+			? "Multigrado " + String(b.grados_combo || "").split("-").map(function (n) { return n + "°"; }).join("-")
+			: b.grado + "° de Primaria";
+
+		resumenTitulo.textContent = "Proyecto a la medida · " + aula;
+		resumenTipo.textContent = conAnexos
+			? "Planeación en PDF y Word editable, con anexos imprimibles"
+			: "Planeación en PDF y Word editable, sin anexos";
+		pintarTotal(lista);
+
+		var filas = [];
+		if (b.campo_formativo && Tienda.CF_COLOR[b.campo_formativo]) { filas.push(["Campo", Tienda.CF_COLOR[b.campo_formativo].nombre]); }
+		if (b.contenido_texto) { filas.push(["Contenido", b.contenido_texto]); }
+		if (b.pda_texto) { filas.push(["PDA", b.pda_texto]); }
+		if (b.metodologia) { filas.push(["Metodología", b.metodologia]); }
+		if (b.fecha_necesaria) { filas.push(["Lo necesitas para", b.fecha_necesaria]); }
+		var resumenCombo = document.getElementById("resumenCombo");
+		resumenCombo.innerHTML =
+			'<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-2">Lo que pediste</p>' +
+			(filas.length
+				? '<dl class="flex flex-col gap-1.5 text-[13px]">' + filas.map(function (f) {
+					return '<div class="flex gap-2"><dt class="w-20 shrink-0 font-semibold text-mute">' + Tienda.esc(f[0]) + '</dt><dd class="text-ink leading-snug">' + Tienda.esc(f[1]) + "</dd></div>";
+				}).join("") + "</dl>"
+				: '<p class="text-[13px] text-mute">Sin preferencias: elegimos campo, contenido y PDA para ese grado.</p>') +
+			'<p class="mt-3 text-[13px]" style="color:#047857">Entrega en tu biblioteca en un máximo de ' + Math.round(est.ventana_horas) + " horas después del pago. Te avisamos por correo.</p>" +
+			'<a href="personalizado.html" class="inline-block mt-2 text-[13px] font-semibold" style="color:#1e3a8a">Cambiar el pedido</a>';
+		resumenCombo.classList.remove("hidden");
+
+		cuerpoPago = {
+			pedido: {
+				organizacion: b.organizacion,
+				grado: b.grado,
+				grados_combo: b.grados_combo,
+				campo_formativo: b.campo_formativo,
+				contenido_id: b.contenido_id,
+				pda_id: b.pda_id,
+				metodologia: b.metodologia || null,
+				fecha_necesaria: b.fecha_necesaria || null,
+				notas: b.notas || null,
+			},
+			tipo: tipo,
+		};
+		return true;
+	}
 
 	// Con la promoción apagada se queda la nota de "Precio de lanzamiento"
 	// que ya trae el HTML.
@@ -487,8 +569,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 					setTimeout(function () { location.href = "mis-compras.html"; }, 1200);
 					return;
 				}
+				// Pedido a la medida: se acabó el cupo o se cerraron los pedidos
+				// entre que se armó y este clic.
+				if (data.cerrado || data.agotado) {
+					aviso(data.error || "Por ahora no hay cupo para pedidos a la medida.", "error");
+					bloqueDatos.classList.remove("hidden");
+				}
 				throw new Error(data.error || "No se pudo iniciar el pago.");
 			}
+			// El pedido ya quedó registrado en el servidor: el borrador local sobra.
+			if (esPedido) { try { localStorage.removeItem("jissez_pedido"); } catch (_) {} }
 			// El servidor devuelve el importe que realmente va a cobrar. Si no
 			// coincide con el que está en pantalla —la promoción o el cupón
 			// caducaron entre que se pintó el resumen y este clic— no se manda a

@@ -74,13 +74,17 @@ Deno.serve(async (req: Request) => {
     const pr = parseInt(url.searchParams.get("pr") || "", 10);
     const codigo = (url.searchParams.get("a") || "").trim();
     const modo = url.searchParams.get("modo") === "download" ? "download" : "inline";
+    // Proyecto a la medida: no tiene coordenadas de grado/trimestre. El bot
+    // imprime el número de pedido (anexo.html?pedido=PZ-0001&a=...), que aquí
+    // se resuelve al producto que se creó al entregarlo.
+    const numeroPedido = (url.searchParams.get("pedido") || "").trim().toUpperCase();
 
-    if (!aula || !(pr >= 1 && pr <= 12) || !codigo) {
+    if (!codigo || (!numeroPedido && (!aula || !(pr >= 1 && pr <= 12)))) {
       return jsonResponse({ error: "Parámetros inválidos" }, 400);
     }
     const esMulti = aula.indexOf("-") !== -1;
     const grado = esMulti ? null : parseInt(aula, 10);
-    if (!esMulti && !(grado! >= 1 && grado! <= 6)) {
+    if (!numeroPedido && !esMulti && !(grado! >= 1 && grado! <= 6)) {
       return jsonResponse({ error: "Aula inválida" }, 400);
     }
     // Derivar trimestre (1-3) y posición del proyecto dentro del trimestre (1-4).
@@ -88,6 +92,20 @@ Deno.serve(async (req: Request) => {
     const p = pr - (t - 1) * 4;
 
     const admin = createClient(supabaseUrl, serviceKey);
+
+    // El pedido resuelve a su producto; si aún no se entregó, no hay producto.
+    let productoDePedido: string | null = null;
+    if (numeroPedido) {
+      const { data: ped } = await admin
+        .from("marketplace_pedidos")
+        .select("producto_id")
+        .eq("numero_pedido", numeroPedido)
+        .maybeSingle();
+      productoDePedido = ped?.producto_id || null;
+      if (!productoDePedido) {
+        return jsonResponse({ error: "Este proyecto todavía no se ha entregado", sin_acceso: true }, 403);
+      }
+    }
 
     // ¿El usuario posee un producto que cubra esta aula+proyecto? Un paquete
     // (trimestre exacto, o el ciclo) o el proyecto suelto con ese número.
@@ -112,6 +130,14 @@ Deno.serve(async (req: Request) => {
     for (const ac of accesos || []) {
       const prod: any = ac.marketplace_productos;
       if (!prod || !prod.proyecto_folder_drive_id) continue;
+      // Pedido a la medida: solo cuenta el producto de ESE pedido.
+      if (productoDePedido) {
+        if (ac.producto_id !== productoDePedido) continue;
+        if (!tieneFila(ac.producto_id, "anexos")) { sueltoSinAnexos = ac.producto_id; continue; }
+        folderProyectoDirecto = prod.proyecto_folder_drive_id;
+        productoMatch = ac.producto_id;
+        break;
+      }
       // Coincidencia de aula según organización.
       if (esMulti) {
         if (prod.organizacion !== "multigrado" || prod.grados_combo !== aula) continue;

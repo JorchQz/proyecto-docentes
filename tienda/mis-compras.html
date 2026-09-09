@@ -47,9 +47,15 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 	<!-- Compras activas -->
 	<div id="listaCompras" class="hidden flex flex-col gap-4"></div>
 
-	<!-- Pedidos pendientes -->
+	<!-- Proyectos a la medida (pagados): en cola, en elaboración o entregados -->
+	<div id="seccionPedidos" class="hidden flex flex-col gap-3">
+		<h2 class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute">Proyectos a la medida</h2>
+		<div id="listaPedidos" class="flex flex-col gap-3"></div>
+	</div>
+
+	<!-- Pagos pendientes de acreditar -->
 	<div id="seccionPendientes" class="hidden flex flex-col gap-3">
-		<h2 class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute">En proceso</h2>
+		<h2 class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute">Pagos en proceso</h2>
 		<div id="listaPendientes" class="flex flex-col gap-3"></div>
 	</div>
 

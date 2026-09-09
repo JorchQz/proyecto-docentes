@@ -63,6 +63,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var paneles = {
 		productos: document.getElementById("panelProductos"),
 		sueltos: document.getElementById("panelSueltos"),
+		pedidos: document.getElementById("panelPedidos"),
 		precios: document.getElementById("panelPrecios"),
 		ordenes: document.getElementById("panelOrdenes"),
 		acceso: document.getElementById("panelAcceso"),
@@ -79,6 +80,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (tab === "ordenes") { cargarOrdenes(); }
 			if (tab === "precios") { cargarPrecios(); }
 			if (tab === "sueltos") { renderSueltos(); }
+			if (tab === "pedidos") { cargarPedidos(); }
 		});
 	});
 
@@ -1042,6 +1044,275 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Tienda.toast("Proyecto guardado.", "ok");
 		await cargarProductos();
 		renderSueltos();
+	}
+
+	// ── Proyectos a la medida ──────────────────────────────────────────────────
+	// Configuración (cupo, ventana, precios) por RPC; listado por RPC con el
+	// flag de vencido calculado en la base; "Entregar" pasa por la Edge Function
+	// completar-pedido, que verifica la carpeta en Drive, crea el producto,
+	// otorga el acceso y avisa al cliente.
+	var pedAbiertoEl = document.getElementById("pedAbierto");
+	var pedTopeEl = document.getElementById("pedTope");
+	var pedVentanaEl = document.getElementById("pedVentana");
+	var pedPrecioSinEl = document.getElementById("pedPrecioSin");
+	var pedPrecioConEl = document.getElementById("pedPrecioCon");
+	var pedMensajeEl = document.getElementById("pedMensaje");
+	var estadoPedidosEl = document.getElementById("estadoPedidos");
+	var guardarPedidosCfgBtn = document.getElementById("guardarPedidosCfgBtn");
+	var listaPedidosEl = document.getElementById("listaPedidos");
+	var listaBusquedasEl = document.getElementById("listaBusquedas");
+	var pedidos = [];
+	var pedidoAbierto = null;
+	var dosifCache = null; // dosificacion_proyectos para el datalist del modal
+
+	var ESTADO_PEDIDO = {
+		pendiente:  { texto: "En cola", css: "background:#eff6ff;color:#1e40af;border:1px solid #93c5fd" },
+		en_proceso: { texto: "En elaboración", css: "background:#fffbeb;color:#b45309;border:1px solid #fcd34d" },
+		completado: { texto: "Entregado", css: "background:#ecfdf5;color:#047a55;border:1px solid #a7f3d0" },
+		cancelado:  { texto: "Cancelado", css: "background:#f3f4f6;color:#5b6473;border:1px solid #e7e6df" },
+	};
+	var NOMBRE_CF = { LEN: "Lenguajes", SAB: "Saberes y Pensamiento Científico", ETI: "Ética, Naturaleza y Sociedades", DHL: "De lo Humano y lo Comunitario" };
+
+	function aulaPedido(p) {
+		return p.organizacion === "multigrado"
+			? "Multigrado " + comboDisplay(p.grados_combo || "")
+			: (p.grados && p.grados[0] ? p.grados[0] + "° Primaria" : "Primaria");
+	}
+	function fechaCorta(iso) {
+		return iso ? new Date(iso).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—";
+	}
+
+	async function cargarPedidos() {
+		var res = await Promise.all([
+			window.sb.rpc("admin_estado_personalizados"),
+			window.sb.rpc("admin_listar_pedidos"),
+			window.sb.rpc("admin_busquedas_vacias", { p_dias: 30 }),
+		]);
+		if (res[0].error) { Tienda.toast("No se pudo cargar la configuración: " + res[0].error.message, "error"); }
+		else { renderPedidosCfg(res[0].data); }
+		if (res[1].error) { listaPedidosEl.innerHTML = '<p class="text-sm" style="color:#b91c1c">Error: ' + esc(res[1].error.message) + "</p>"; }
+		else { pedidos = res[1].data || []; renderPedidos(); }
+		if (res[2].error) { listaBusquedasEl.innerHTML = '<p class="text-sm" style="color:#b91c1c">Error: ' + esc(res[2].error.message) + "</p>"; }
+		else { renderBusquedas(res[2].data || []); }
+	}
+
+	function renderPedidosCfg(d) {
+		pedAbiertoEl.checked = !!d.abierto;
+		pedTopeEl.value = d.tope_semanal;
+		pedVentanaEl.value = d.ventana_horas;
+		pedPrecioSinEl.value = d.precio_sin_anexos;
+		pedPrecioConEl.value = d.precio_con_anexos;
+		pedMensajeEl.value = d.mensaje_cerrado || "";
+		var pub = d.publico || {};
+		estadoPedidosEl.textContent = (pub.abierto ? "Abierto" : "Cerrado") +
+			" · " + (pub.cupos_disponibles != null ? pub.cupos_disponibles + " lugares esta semana" : "") +
+			" · en cola " + (d.pendientes || 0) + " · en elaboración " + (d.en_proceso || 0) +
+			(d.vencidos ? " · VENCIDOS " + d.vencidos : "");
+		estadoPedidosEl.style.color = d.vencidos ? "#b91c1c" : "#1c2434";
+	}
+
+	guardarPedidosCfgBtn.addEventListener("click", async function () {
+		var tope = Number(pedTopeEl.value), ventana = Number(pedVentanaEl.value);
+		var sin = Number(pedPrecioSinEl.value), con = Number(pedPrecioConEl.value);
+		if (!(tope >= 0) || !(ventana >= 1) || !(sin >= 0) || !(con >= sin)) {
+			Tienda.toast("Revisa los números: el cupo y los precios no pueden ser negativos, y el precio con anexos no puede ser menor que sin anexos.", "error");
+			return;
+		}
+		guardarPedidosCfgBtn.disabled = true; guardarPedidosCfgBtn.textContent = "Guardando...";
+		var res = await window.sb.rpc("admin_guardar_personalizados", {
+			p_abierto: pedAbiertoEl.checked, p_tope: tope, p_ventana: ventana,
+			p_precio_sin: sin, p_precio_con: con, p_mensaje: (pedMensajeEl.value || "").trim() || null,
+		});
+		guardarPedidosCfgBtn.disabled = false; guardarPedidosCfgBtn.textContent = "Guardar";
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		renderPedidosCfg(res.data);
+		Tienda.toast("Configuración guardada.", "ok");
+	});
+
+	function renderPedidos() {
+		if (!pedidos.length) {
+			listaPedidosEl.innerHTML = '<p class="text-sm text-mute">Todavía no hay pedidos pagados.</p>';
+			return;
+		}
+		var rows = pedidos.map(function (p) {
+			var est = ESTADO_PEDIDO[p.estado] || ESTADO_PEDIDO.cancelado;
+			var detalle = [];
+			if (p.campo_formativo) { detalle.push(NOMBRE_CF[p.campo_formativo] || p.campo_formativo); }
+			if (p.contenido) { detalle.push(p.contenido); }
+			if (p.pda) { detalle.push("PDA: " + p.pda); }
+			if (p.metodologia) { detalle.push(p.metodologia); }
+			if (p.fecha_necesaria) { detalle.push("Lo necesita: " + p.fecha_necesaria); }
+			if (p.notas) { detalle.push("Notas: " + p.notas); }
+			var abierto = p.estado === "pendiente" || p.estado === "en_proceso";
+			var acciones = "";
+			if (abierto) {
+				if (p.estado === "pendiente") {
+					acciones += '<button data-ped-estado="en_proceso" data-ped="' + esc(p.id) + '" class="text-xs font-semibold px-3 h-10 rounded-lg" style="background:#fff;border:1px solid #fcd34d;color:#b45309">En elaboración</button>';
+				}
+				acciones += '<button data-ped-entregar="' + esc(p.id) + '" class="text-xs font-bold px-3 h-10 rounded-lg text-white" style="background:#059669">Entregar</button>';
+				acciones += '<button data-ped-estado="cancelado" data-ped="' + esc(p.id) + '" class="text-xs font-semibold px-3 h-10 rounded-lg" style="color:#b91c1c">Cancelar</button>';
+			} else if (p.estado === "completado" && p.producto_id) {
+				acciones += '<a href="proyecto.html?id=' + esc(p.producto_id) + '" target="_blank" rel="noopener" class="text-xs font-semibold px-3 h-10 inline-flex items-center rounded-lg" style="border:1px solid #e7e6df;color:#1e3a8a">Ver ficha</a>';
+			}
+			var carpeta = p.numero_pedido + "_" + ((p.nombre_cliente || "cliente").split(" ")[0]);
+			return (
+				'<tr style="border-bottom:1px solid #e7e6df;vertical-align:top' + (p.vencido ? ";background:#fef2f2" : "") + '">' +
+				'<td class="py-3 pr-3"><p class="font-bold text-sm" style="color:#1c2434">' + esc(p.numero_pedido) + "</p>" +
+				'<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-block mt-1" style="' + est.css + '">' + esc(est.texto) + "</span>" +
+				(p.vencido ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 ml-1" style="background:#fee2e2;color:#b91c1c">Vencido</span>' : "") + "</td>" +
+				'<td class="py-3 pr-3 text-sm" style="color:#1c2434"><p class="font-semibold">' + esc(p.nombre_cliente || "") + '</p><p class="text-xs" style="color:#5b6473">' + esc(p.email || "") + "</p></td>" +
+				'<td class="py-3 pr-3 text-sm" style="color:#1c2434"><p class="font-semibold">' + esc(aulaPedido(p)) + " · " + (p.nivel === "con_anexos" ? "con anexos" : "sin anexos") + "</p>" +
+				'<p class="text-xs leading-relaxed" style="color:#5b6473">' + esc(detalle.join(" · ") || "Sin preferencias") + "</p>" +
+				'<p class="text-xs mt-1 font-mono" style="color:#5b6473">Carpeta: ' + esc(carpeta) + "</p></td>" +
+				'<td class="py-3 pr-3 text-xs" style="color:#5b6473">Pagó ' + esc(fechaCorta(p.pagado_en)) + "<br>Entregar antes de<br><strong style=\"color:" + (p.vencido ? "#b91c1c" : "#1c2434") + '">' + esc(fechaCorta(p.fecha_compromiso_entrega)) + "</strong>" +
+				(p.completado_en ? "<br>Entregado " + esc(fechaCorta(p.completado_en)) : "") + "</td>" +
+				'<td class="py-3"><div class="flex flex-wrap gap-1.5">' + acciones + "</div></td></tr>"
+			);
+		}).join("");
+		listaPedidosEl.innerHTML =
+			'<table class="w-full text-left min-w-[900px]">' +
+			'<thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
+			"<th class='py-2 pr-3 font-semibold'>Pedido</th><th class='py-2 pr-3 font-semibold'>Cliente</th>" +
+			"<th class='py-2 pr-3 font-semibold'>Qué pidió</th><th class='py-2 pr-3 font-semibold'>Fechas</th><th class='py-2 font-semibold'>Acciones</th></tr></thead>" +
+			"<tbody>" + rows + "</tbody></table>";
+		listaPedidosEl.querySelectorAll("[data-ped-estado]").forEach(function (b) {
+			b.addEventListener("click", function () { cambiarEstadoPedido(b.getAttribute("data-ped"), b.getAttribute("data-ped-estado")); });
+		});
+		listaPedidosEl.querySelectorAll("[data-ped-entregar]").forEach(function (b) {
+			b.addEventListener("click", function () { abrirModalPedido(b.getAttribute("data-ped-entregar")); });
+		});
+	}
+
+	async function cambiarEstadoPedido(id, estado) {
+		var p = pedidos.find(function (x) { return x.id === id; });
+		if (!p) { return; }
+		if (estado === "cancelado" && !confirm("¿Cancelar el pedido " + p.numero_pedido + "? El reembolso, si aplica, se hace aparte en Mercado Pago.")) { return; }
+		var res = await window.sb.rpc("admin_actualizar_pedido", { p_id: id, p_estado: estado });
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		Tienda.toast("Pedido actualizado.", "ok");
+		cargarPedidos();
+	}
+
+	// ── Modal de entrega ────────────────────────────────────────────────────
+	var modalPedido = document.getElementById("modalPedido");
+	var pedDriveFolderEl = document.getElementById("pedDriveFolder");
+	var pedDosifEl = document.getElementById("pedDosif");
+	var listaDosifEl = document.getElementById("listaDosif");
+	var pedTituloEl = document.getElementById("pedTitulo");
+	var pedCatPrecioSinEl = document.getElementById("pedCatPrecioSin");
+	var pedCatPrecioConEl = document.getElementById("pedCatPrecioCon");
+	var pedPublicarEl = document.getElementById("pedPublicar");
+	var modalPedidoMensaje = document.getElementById("modalPedidoMensaje");
+	var modalPedidoEntregar = document.getElementById("modalPedidoEntregar");
+	document.getElementById("modalPedidoCerrar").addEventListener("click", cerrarModalPedido);
+	document.getElementById("modalPedidoCancelar").addEventListener("click", cerrarModalPedido);
+	modalPedido.addEventListener("click", function (e) { if (e.target === modalPedido) { cerrarModalPedido(); } });
+
+	async function abrirModalPedido(id) {
+		pedidoAbierto = pedidos.find(function (x) { return x.id === id; });
+		if (!pedidoAbierto) { return; }
+		var p = pedidoAbierto;
+		document.getElementById("modalPedidoTitulo").textContent = "Entregar " + p.numero_pedido;
+		document.getElementById("modalPedidoResumen").innerHTML =
+			"<strong>" + esc(p.nombre_cliente || "") + "</strong> · " + esc(p.email || "") + "<br>" +
+			esc(aulaPedido(p)) + " · " + (p.nivel === "con_anexos" ? "CON anexos (la carpeta debe tener subcarpetas S##)" : "sin anexos") +
+			(p.contenido ? "<br>" + esc(p.contenido) : "");
+		pedDriveFolderEl.value = p.drive_folder_id || "";
+		pedDosifEl.value = "";
+		pedTituloEl.value = "";
+		pedTituloEl.placeholder = aulaPedido(p) + " — (nombre del proyecto)";
+		pedCatPrecioSinEl.value = PRECIO_SUELTO.sin_anexos;
+		pedCatPrecioConEl.value = PRECIO_SUELTO.con_anexos;
+		pedPublicarEl.checked = true;
+		modalPedidoMensaje.classList.add("hidden");
+		modalPedido.classList.remove("hidden");
+		await poblarDosif();
+	}
+	function cerrarModalPedido() { modalPedido.classList.add("hidden"); pedidoAbierto = null; }
+
+	// Proyectos del bot para enlazar el personalizado. Se cargan una vez.
+	async function poblarDosif() {
+		if (!dosifCache) {
+			var r = await window.sb.from("dosificacion_proyectos")
+				.select("id, nombre_proyecto, grados, trimestre, numero_proyecto")
+				.order("created_at", { ascending: false }).limit(500);
+			dosifCache = r.data || [];
+		}
+		listaDosifEl.innerHTML = dosifCache.map(function (d) {
+			var etiqueta = (d.grados || []).join("-") + "° · " + (d.trimestre ? "T" + d.trimestre + " P" + d.numero_proyecto + " · " : "") + d.nombre_proyecto;
+			return '<option value="' + esc(etiqueta) + '"></option>';
+		}).join("");
+	}
+	function dosifElegido() {
+		var v = (pedDosifEl.value || "").trim();
+		if (!v) { return null; }
+		var d = (dosifCache || []).find(function (x) {
+			var etiqueta = (x.grados || []).join("-") + "° · " + (x.trimestre ? "T" + x.trimestre + " P" + x.numero_proyecto + " · " : "") + x.nombre_proyecto;
+			return etiqueta === v || x.nombre_proyecto === v;
+		});
+		return d ? d.id : null;
+	}
+
+	modalPedidoEntregar.addEventListener("click", async function () {
+		var p = pedidoAbierto;
+		if (!p) { return; }
+		var folder = pedDriveFolderEl.value.trim();
+		if (!folder) { mensajeModal("Pega el ID de la carpeta de Drive.", true); return; }
+		if ((pedDosifEl.value || "").trim() && !dosifElegido()) {
+			mensajeModal("No encontré ese proyecto del bot: elige uno de la lista o deja el campo vacío.", true);
+			return;
+		}
+		if (!confirm("Vas a marcar el pedido " + p.numero_pedido + " de " + (p.nombre_cliente || p.email) + " como completado con la carpeta " + folder + ". Se creará el producto, se dará el acceso y se avisará al cliente por correo. ¿Confirmar?")) { return; }
+
+		modalPedidoEntregar.disabled = true; modalPedidoEntregar.textContent = "Verificando en Drive y entregando...";
+		try {
+			var resp = await fetch(Tienda.EDGE_BASE + "/completar-pedido", {
+				method: "POST",
+				headers: { Authorization: "Bearer " + Tienda.getAccessToken(session), "Content-Type": "application/json" },
+				body: JSON.stringify({
+					pedido_id: p.id,
+					drive_folder_id: folder,
+					dosificacion_proyecto_id: dosifElegido(),
+					titulo: (pedTituloEl.value || "").trim() || null,
+					precio_pdf: Number(pedCatPrecioSinEl.value),
+					precio_pdf_con_anexos: Number(pedCatPrecioConEl.value),
+					publicar: pedPublicarEl.checked,
+				}),
+			});
+			var data = await resp.json();
+			if (!resp.ok) { throw new Error(data.error || "No se pudo entregar."); }
+			Tienda.toast("Pedido " + data.numero_pedido + " entregado" + (data.correo_enviado ? " y cliente avisado." : ". No se pudo enviar el correo: avísale tú."), "ok");
+			cerrarModalPedido();
+			await cargarPedidos();
+			await cargarProductos();
+		} catch (err) {
+			mensajeModal(err.message || "Error al entregar.", true);
+		} finally {
+			modalPedidoEntregar.disabled = false; modalPedidoEntregar.textContent = "Entregar y avisar al cliente";
+		}
+	});
+	function mensajeModal(texto, error) {
+		modalPedidoMensaje.textContent = texto;
+		modalPedidoMensaje.style.cssText = error ? "background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5" : "background:#eff6ff;color:#1e40af;border:1px solid #93c5fd";
+		modalPedidoMensaje.classList.remove("hidden");
+	}
+
+	function renderBusquedas(filas) {
+		if (!filas.length) { listaBusquedasEl.innerHTML = '<p class="text-sm text-mute">Ninguna en los últimos 30 días.</p>'; return; }
+		listaBusquedasEl.innerHTML =
+			'<table class="w-full text-left min-w-[560px]"><thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
+			"<th class='py-2 pr-3 font-semibold'>Filtros</th><th class='py-2 pr-3 font-semibold'>Veces</th><th class='py-2 font-semibold'>Última</th></tr></thead><tbody>" +
+			filas.map(function (f) {
+				var x = f.filtros || {};
+				var partes = [];
+				partes.push(x.organizacion === "multigrado" ? "Multigrado " + ((x.combos || []).map(comboDisplay).join(", ") || "") : ((x.grados || []).map(function (g) { return g + "°"; }).join(", ") || "cualquier grado"));
+				if (x.campos && x.campos.length) { partes.push(x.campos.map(function (c) { return NOMBRE_CF[c] || c; }).join(", ")); }
+				if (x.contenido_id) { partes.push("contenido " + String(x.contenido_id).slice(0, 8) + "…"); }
+				if (x.pda_id) { partes.push("PDA " + String(x.pda_id).slice(0, 8) + "…"); }
+				return '<tr style="border-bottom:1px solid #e7e6df"><td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(partes.join(" · ")) + "</td>" +
+					'<td class="py-2 pr-3 text-sm font-semibold" style="color:#1c2434">' + esc(f.veces) + "</td>" +
+					'<td class="py-2 text-xs" style="color:#5b6473">' + esc(fechaCorta(f.ultima)) + "</td></tr>";
+			}).join("") + "</tbody></table>";
 	}
 
 	// Carga inicial: al final, cuando gridEl y accesoProductoSel ya están referenciados.
