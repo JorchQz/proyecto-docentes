@@ -44,22 +44,20 @@ body {
 }
 .chalk-u.thin { background-size: 100% 0.11em; }
 
-/* ---- Placeholder rayado para imágenes/PDF pendientes ---- */
+/* ---- Hueco de una imagen pendiente ----
+   Caja lisa del color del papel, sin rayas ni texto: no se ve "nada" hasta
+   que la imagen real entra con un fundido (Tienda.pintarPortadaUrl y el
+   landing la insertan ya cargada). Antes era una maqueta rayada con un
+   rótulo que luego cambiaba delante del lector. */
 .ph {
 	background-color: #f1f0ea;
-	background-image: repeating-linear-gradient(135deg, rgba(30,58,138,.06) 0 8px, transparent 8px 16px);
-	border: 1px dashed rgba(30,58,138,.22);
-	color: #9ba3af;
+	color: transparent;
+	font-size: 0;
 	display: flex; align-items: center; justify-content: center;
-	font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-	font-size: 11px; text-align: center;
 }
-.ph.on-board {
-	background-color: rgba(255,255,255,.06);
-	border-color: rgba(255,255,255,.3);
-	color: #c9d4f1;
-	background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 8px, transparent 8px 16px);
-}
+.ph.on-board { background-color: rgba(255,255,255,.06); }
+.ph img { opacity: 0; transition: opacity .35s ease; }
+.ph img.lista { opacity: 1; }
 
 /* ---- Aparición al hacer scroll ---- */
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }

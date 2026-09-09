@@ -86,13 +86,13 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 						</div>
 						<span class="text-[11px] font-bold px-2.5 h-7 inline-flex items-center rounded-full bg-paper border border-line text-mute">Solo PDF</span>
 					</div>
-					<!-- Nacen como maqueta rayada; landing.js los cambia por páginas
-					     reales de previews/ en cuanto hay muestras subidas. -->
-					<div class="ph h-40 w-full rounded-xl overflow-hidden" data-hero-muestra="planeacion">vista previa · planeación.pdf</div>
+					<!-- Huecos lisos, sin rótulo: landing.js mete las páginas reales de
+					     previews/ ya descargadas, las cuatro juntas y con fundido. -->
+					<div class="ph h-40 w-full rounded-xl overflow-hidden" data-hero-muestra="planeacion"></div>
 					<div class="mt-3 grid grid-cols-3 gap-2">
-						<div class="ph h-14 rounded-xl text-[10px] overflow-hidden" data-hero-muestra="anexo">anexo</div>
-						<div class="ph h-14 rounded-xl text-[10px] overflow-hidden" data-hero-muestra="pda">PDA</div>
-						<div class="ph h-14 rounded-xl text-[10px] overflow-hidden" data-hero-muestra="examen">examen</div>
+						<div class="ph h-14 rounded-xl overflow-hidden" data-hero-muestra="anexo"></div>
+						<div class="ph h-14 rounded-xl overflow-hidden" data-hero-muestra="pda"></div>
+						<div class="ph h-14 rounded-xl overflow-hidden" data-hero-muestra="examen"></div>
 					</div>
 				</div>
 				<div class="absolute -bottom-5 right-2 bg-white rounded-2xl shadow-xl border border-line px-4 py-3 rotate-[3deg]">
@@ -139,9 +139,11 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 <!-- MULTIGRADO -->
 <section id="multigrado" class="bg-paper">
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-20 lg:py-24 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-		<div class="reveal order-2 lg:order-1 relative">
+		<div class="reveal order-2 lg:order-1 relative min-h-[320px]">
 			<!-- Galería real de un paquete multigrado: la llena landing.js si hay
-			     muestras subidas en previews/multi-*; clic abre el visor con zoom. -->
+			     muestras subidas en previews/multi-*; clic abre el visor con zoom.
+			     Tanto la galería como la maqueta de respaldo nacen ocultas: se
+			     enseña una u otra cuando se sabe cuál, nunca las dos seguidas. -->
 			<div id="multiGaleria" class="hidden">
 				<div id="multiGaleriaTira" class="flex gap-3 overflow-x-auto pb-3"></div>
 				<p id="multiGaleriaPie" class="mt-2 text-[13px] text-mute"></p>
@@ -151,7 +153,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			     y una columna por grado. Antes eran cajas rayadas con la clase
 			     .ph, que es la que marca "imagen pendiente", y hacía parecer la
 			     sección a medio hacer. -->
-			<div id="multiMock" class="relative bg-white border border-line rounded-3xl overflow-hidden shadow-sm">
+			<div id="multiMock" class="hidden relative bg-white border border-line rounded-3xl overflow-hidden shadow-sm">
 				<div class="bg-ink text-white px-4 py-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em]">
 					<i data-lucide="table-2" class="w-4 h-4 shrink-0"></i>
 					<span class="truncate">Sesión 1 · Lenguajes · Presentemos</span>
@@ -288,10 +290,12 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				<h2 class="mt-3 font-black text-ink tracking-tight text-[clamp(1.9rem,3.6vw,2.9rem)] leading-tight">Encuentra el paquete para tu grado.</h2>
 			</div>
 		</div>
-		<div id="destacadosGrid" class="reveal grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+		<!-- Nace invisible (reserva el alto); landing.js lo pinta con las
+		     tarjetas reales o lo enseña tal cual si no hay productos. -->
+		<div id="destacadosGrid" class="reveal invisible grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
 			<article class="lift bg-white border border-line rounded-3xl overflow-hidden flex flex-col">
 				<div class="relative">
-					<div class="ph h-44" style="border-radius:0">portada · 1° grado</div>
+					<div class="ph h-44" style="border-radius:0"></div>
 					<span class="absolute top-3 left-3 w-10 h-10 rounded-xl bg-gisAmarillo text-board/85 text-base font-black flex items-center justify-center shadow">1°</span>
 				</div>
 				<div class="p-5 flex flex-col flex-1">
@@ -305,7 +309,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			</article>
 			<article class="lift bg-white border border-line rounded-3xl overflow-hidden flex flex-col">
 				<div class="relative">
-					<div class="ph h-44" style="border-radius:0">portada · 3° grado</div>
+					<div class="ph h-44" style="border-radius:0"></div>
 					<span class="absolute top-3 left-3 w-10 h-10 rounded-xl bg-gisMenta text-board/85 text-base font-black flex items-center justify-center shadow">3°</span>
 				</div>
 				<div class="p-5 flex flex-col flex-1">
@@ -319,7 +323,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			</article>
 			<article class="lift bg-white border border-line rounded-3xl overflow-hidden flex flex-col">
 				<div class="relative">
-					<div class="ph h-44" style="border-radius:0">portada · multigrado</div>
+					<div class="ph h-44" style="border-radius:0"></div>
 					<span class="absolute top-3 left-3 h-10 px-3 rounded-xl bg-board text-white text-sm font-black flex items-center justify-center shadow">Multi</span>
 				</div>
 				<div class="p-5 flex flex-col flex-1">

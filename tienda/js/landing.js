@@ -91,7 +91,11 @@ function pintarPromo() {
 async function renderMuestra(prods) {
 	var seccion = document.getElementById("muestra");
 	var tira = document.getElementById("muestraTira");
-	if (!seccion || !tira || !prods.length) { return; }
+	if (!seccion || !tira || !prods.length) {
+		var mock = document.getElementById("multiMock");
+		if (mock) { mock.classList.remove("hidden"); }
+		return;
+	}
 
 	// Un candidato por grado/combinación, en el orden en que se prefieren.
 	var vistos = {};
@@ -181,13 +185,17 @@ function renderMultigrado(candidatos, urls) {
 	candidatos.forEach(function (c, j) {
 		if (c.esMulti && urls[j] && urls[j].length) { conMuestra.push(j); }
 	});
-	if (!conMuestra.length) { return; }
+	// Sin muestras multigrado: la maqueta de la tabla es el respaldo (nace
+	// oculta para no enseñarla y luego cambiarla por la galería).
+	if (!conMuestra.length) { if (mock) { mock.classList.remove("hidden"); } return; }
 	var i = conMuestra[Math.floor(Math.random() * conMuestra.length)];
 	var imgs = urls[i];
 
 	tira.innerHTML = imgs.map(function (im, j) {
 		return '<button type="button" data-multi-muestra="' + j + '" title="Clic para ampliar" class="shrink-0 w-[200px] rounded-2xl overflow-hidden border border-line bg-white block text-left cursor-zoom-in shadow-sm">' +
-			'<img src="' + Tienda.esc(im.url) + '" alt="Página de muestra · ' + Tienda.esc(candidatos[i].titulo) + '" class="w-full h-[260px] object-contain bg-paper" loading="lazy">' +
+			// Las tres primeras (las que caben en pantalla) se bajan ya, para
+			// enseñar la galería completa de golpe; el resto, al deslizar.
+			'<img src="' + Tienda.esc(im.url) + '" alt="Página de muestra · ' + Tienda.esc(candidatos[i].titulo) + '" class="w-full h-[260px] object-contain bg-paper" loading="' + (j < 3 ? "eager" : "lazy") + '">' +
 			'<span class="block px-3 py-2 text-[11px] font-semibold text-mute border-t border-line">' + Tienda.esc(im.etiqueta) + '</span>' +
 			'</button>';
 	}).join("");
@@ -198,8 +206,24 @@ function renderMultigrado(candidatos, urls) {
 	});
 	if (pie) { pie.textContent = "Páginas reales del paquete " + candidatos[i].titulo + ". Clic para ampliar."; }
 
-	if (mock) { mock.classList.add("hidden"); }
-	cont.classList.remove("hidden");
+	// La galería se enseña cuando sus imágenes ya bajaron (o a los 4 s como
+	// tope, para no dejar el hueco vacío si una tarda).
+	var pendientes = Array.prototype.slice.call(tira.querySelectorAll("img")).slice(0, 3);
+	var mostrada = false;
+	function mostrar() {
+		if (mostrada) { return; }
+		mostrada = true;
+		if (mock) { mock.classList.add("hidden"); }
+		cont.classList.remove("hidden");
+	}
+	Promise.all(pendientes.map(function (img) {
+		return new Promise(function (resolve) {
+			if (img.complete) { resolve(); return; }
+			img.addEventListener("load", resolve);
+			img.addEventListener("error", resolve);
+		});
+	})).then(mostrar);
+	setTimeout(mostrar, 4000);
 }
 
 // La tarjeta del hero nace como maqueta rayada; en cuanto hay muestras reales,
@@ -220,19 +244,34 @@ function rellenarHero(imgs) {
 		}
 		return null;
 	}
-	function poner(clave, im) {
-		var el = document.querySelector('[data-hero-muestra="' + clave + '"]');
-		if (!el || !im) { return; }
-		el.classList.remove("ph");
-		el.textContent = "";
-		el.style.background = "#f1f0ea";
-		el.innerHTML = '<img src="' + Tienda.esc(im.url) + '" alt="' + Tienda.esc(im.etiqueta) +
-			'" class="w-full h-full object-cover" style="object-position:center 10%" loading="lazy">';
-	}
-	poner("planeacion", porEtiqueta("Planeación") || siguiente());
-	poner("anexo", porEtiqueta("Anexo para el alumno") || siguiente());
-	poner("pda", siguiente());
-	poner("examen", porEtiqueta("Examen del trimestre") || siguiente());
+	// Se bajan las cuatro antes de tocar la tarjeta: entran juntas con un
+	// fundido, nunca una por una ni sobre un rótulo.
+	var plan = [
+		["planeacion", porEtiqueta("Planeación") || siguiente()],
+		["anexo", porEtiqueta("Anexo para el alumno") || siguiente()],
+		["pda", siguiente()],
+		["examen", porEtiqueta("Examen del trimestre") || siguiente()],
+	].filter(function (par) { return !!par[1]; });
+	Promise.all(plan.map(function (par) {
+		return new Promise(function (resolve) {
+			var img = new Image();
+			img.onload = function () { resolve(img); };
+			img.onerror = function () { resolve(null); };
+			img.src = par[1].url;
+		});
+	})).then(function (cargadas) {
+		plan.forEach(function (par, i) {
+			var el = document.querySelector('[data-hero-muestra="' + par[0] + '"]');
+			if (!el || !cargadas[i]) { return; }
+			el.textContent = "";
+			var img = cargadas[i];
+			img.alt = par[1].etiqueta;
+			img.className = "w-full h-full object-cover";
+			img.style.objectPosition = "center 10%";
+			el.appendChild(img);
+			requestAnimationFrame(function () { img.classList.add("lista"); });
+		});
+	});
 }
 
 // Mismas etiquetas que usa la galería de la ficha de producto.
@@ -365,9 +404,11 @@ function comboDisplay(combo) {
 
 function renderDestacados(prods) {
 	var grid = document.getElementById("destacadosGrid");
-	// Si no hay productos activos, se dejan las tarjetas estáticas de muestra
-	// (que ya remiten al catálogo). Solo reemplazamos con datos reales si existen.
-	if (!grid || !prods.length) { return; }
+	if (!grid) { return; }
+	// El grid nace invisible (reserva su espacio): con productos se pinta de
+	// golpe con datos reales; sin ellos se enseñan las tarjetas estáticas de
+	// respaldo. Nunca se ve una versión y luego otra.
+	if (!prods.length) { grid.classList.remove("invisible"); return; }
 
 	// Agrupar por categoría: grado (completa) o combinación (multigrado).
 	var mapa = {}, orden = [];
@@ -388,6 +429,7 @@ function renderDestacados(prods) {
 	grupos = grupos.slice(0, 3);
 
 	grid.innerHTML = grupos.map(cardHtml).join("");
+	grid.classList.remove("invisible");
 	// Las portadas reales entran después, sin bloquear el pintado del grid.
 	grid.querySelectorAll("[data-portada]").forEach(function (el) {
 		Tienda.pintarPortada(el, el.getAttribute("data-slug"), el.getAttribute("data-alt"));
@@ -424,7 +466,7 @@ function cardHtml(g) {
 
 	return (
 		'<a href="' + href + '" class="prod-card bg-white border border-line rounded-3xl overflow-hidden flex flex-col">' +
-		'<div class="relative"><div class="ph h-44 overflow-hidden" data-portada data-slug="' + esc(Tienda.slugPreview(g.org, g.grado, g.combo)) + '" data-alt="' + esc(titulo) + '" style="border-radius:0">' + esc(titulo) + ' · portada</div>' + badge +
+		'<div class="relative"><div class="ph h-44 overflow-hidden" data-portada data-slug="' + esc(Tienda.slugPreview(g.org, g.grado, g.combo)) + '" data-alt="' + esc(titulo) + '" style="border-radius:0"></div>' + badge +
 		// El chip de descuento va enfrente del badge de grado, que ocupa la
 		// esquina izquierda.
 		(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + '</span>' : "") +

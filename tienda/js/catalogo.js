@@ -627,7 +627,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		a.style.borderColor = "#e7e6df";
 		a.innerHTML =
 			'<div class="relative">' +
-			'<div class="ph h-32 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(aula) + " · portada</div>" +
+			'<div class="ph h-32 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0"></div>' +
 			badge +
 			(Tienda.promoActiva("proyecto") ? '<span class="absolute top-3 right-3">' + Tienda.promoChip(null, "proyecto") + "</span>" : "") +
 			"</div>" +
@@ -747,7 +747,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		a.innerHTML =
 			'<div class="relative">' +
-			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
+			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0"></div>' +
 			badge +
 			// El badge de grado ocupa la esquina izquierda: el descuento va enfrente.
 			(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + '</span>' : "") +
@@ -824,7 +824,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		a.style.borderColor = "#e7e6df";
 		a.innerHTML =
 			'<div class="relative">' +
-			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
+			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0"></div>' +
 			'<span class="absolute top-3 left-3 h-9 px-3 rounded-xl text-sm font-black flex items-center justify-center shadow" style="background:#1e3a8a;color:#fff">Unitaria</span>' +
 			(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + '</span>' : "") +
 			'</div>' +

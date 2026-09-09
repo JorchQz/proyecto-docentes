@@ -660,15 +660,25 @@
 	// Cambia el marcador rayado por la portada real, si la hay. Se llama después
 	// de pintar la tarjeta: así el grid aparece de inmediato y las imágenes van
 	// entrando sin bloquear el render.
+	// La caja se queda lisa hasta que la imagen terminó de bajar; entonces
+	// aparece con un fundido. Nunca se ve un rótulo o una maqueta que luego
+	// cambie.
 	function pintarPortadaUrl(contenedor, url, alt) {
 		if (!url || !contenedor) { return; }
-		contenedor.classList.remove("ph");
 		contenedor.textContent = "";
 		contenedor.style.background = "#f1f0ea";
+		var img = document.createElement("img");
+		img.alt = alt || "";
+		img.className = "w-full h-full object-cover";
 		// Un 10% baja el encuadre apenas por debajo del borde: se ve el
 		// encabezado de la hoja sin el margen blanco superior.
-		contenedor.innerHTML = '<img src="' + esc(url) + '" alt="' + esc(alt || "") +
-			'" class="w-full h-full object-cover" style="object-position:center 10%" loading="lazy">';
+		img.style.objectPosition = "center 10%";
+		img.loading = "lazy";
+		img.decoding = "async";
+		img.addEventListener("load", function () { img.classList.add("lista"); });
+		img.src = url;
+		if (img.complete && img.naturalWidth) { img.classList.add("lista"); }
+		contenedor.appendChild(img);
 	}
 	function pintarPortada(contenedor, slug, alt) {
 		portadaPreview(slug).then(function (url) { pintarPortadaUrl(contenedor, url, alt); });
