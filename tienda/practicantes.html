@@ -84,7 +84,9 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					</div>
 				</div>
 				<div class="mt-4 flex items-center justify-between">
-					<div><span class="text-sm text-mute">Desde </span><span class="font-black text-ink text-lg">$80</span></div>
+					<!-- El importe sale de la base (con la promoción aplicada); mientras
+					     llega se ve un esqueleto, no un precio provisional. -->
+					<div id="precioProyecto"><span class="inline-block align-middle h-6 w-24 rounded-md animate-pulse" style="background:rgba(28,36,52,.08)"></span></div>
 					<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#059669">Ver proyecto <i data-lucide="arrow-right" class="w-4 h-4"></i></span>
 				</div>
 			</div>
@@ -150,6 +152,19 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 		await Tienda.montarNav("");
 		Tienda.montarFooter();
 		Tienda.iconos();
+		// Precio real del proyecto individual más barato publicado, con promoción.
+		var el = document.getElementById("precioProyecto");
+		if (!el) { return; }
+		var res = await Promise.all([
+			window.sb.from("marketplace_productos").select("precio_pdf").eq("activo", true).eq("tipo_paquete", "proyecto").order("precio_pdf", { ascending: true }).limit(1),
+			Tienda.cargarPromo(),
+		]);
+		var fila = (!res[0].error && res[0].data && res[0].data[0]) || null;
+		if (fila && fila.precio_pdf != null) {
+			el.innerHTML = '<span class="text-sm text-mute">Desde </span>' + Tienda.precioHTML(fila.precio_pdf, { corto: true, claseFinal: "font-black text-ink text-lg", claseLista: "text-mute text-[13px] font-bold" });
+		} else {
+			el.innerHTML = '<span class="text-sm text-mute">Ver precio</span>';
+		}
 	});
 </script>
 </body>

@@ -25,6 +25,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var usuarioEmail = document.getElementById("usuarioEmail");
 	var pagarMpBtn = document.getElementById("pagarMpBtn");
 	var volverLink = document.getElementById("volverLink");
+	// "Volver" nace oculto y aparece con su destino definitivo: nada de un
+	// enlace al catálogo que un instante después apunte a la ficha.
+	function mostrarVolver(href) {
+		volverLink.href = href;
+		volverLink.classList.remove("hidden");
+	}
 	var mensajeDatos = document.getElementById("mensajeDatos");
 
 	var params = new URLSearchParams(location.search);
@@ -49,8 +55,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var comboTrimestre = Number(params.get("trimestre"));
 	var COMBOS_UNITARIA = { tridocente: ["1-2", "3-4", "5-6"], bidocente: ["1-2-3", "4-5-6"] };
 
-	// Provisional hasta saber a qué grado pertenece el paquete; se afina abajo.
-	volverLink.href = "catalogo.html";
 
 	var comboValido = esCombo && COMBOS_UNITARIA[comboAgrupacion] &&
 		(comboTipoPaquete === "ciclo" ||
@@ -95,7 +99,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	pintarNotaPromo();
 
 	var preparado = esPedido ? await prepararPedido() : (esCombo ? await prepararCombo() : await prepararIndividual());
-	if (!preparado) { return; }
+	if (!preparado) {
+		if (volverLink.classList.contains("hidden")) { mostrarVolver("catalogo.html"); }
+		return;
+	}
 
 	/**
 	 * Proyecto a la medida: precio, cupo y ventana salen de la RPC pública; el
@@ -103,7 +110,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	 * real lo vuelve a resolver la Edge Function contra la base.
 	 */
 	async function prepararPedido() {
-		volverLink.href = "personalizado.html";
+		mostrarVolver("personalizado.html");
 		var r = await window.sb.rpc("marketplace_personalizados_estado");
 		if (r.error || !r.data) {
 			estadoEl.textContent = "No pudimos consultar la disponibilidad. Vuelve a intentarlo.";
@@ -237,11 +244,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// identifica por grado o por combinación multigrado, nunca por el id del
 		// producto: con `?id=` no encontraba nada y decía "no está disponible".
 		// La ficha del proyecto individual sí va por id.
-		volverLink.href = esProyecto
+		mostrarVolver(esProyecto
 			? "proyecto.html?id=" + encodeURIComponent(p.id)
 			: (p.organizacion === "multigrado"
 				? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
-				: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || ""));
+				: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || "")));
 
 		// Resumen
 		resumenTitulo.textContent = p.titulo;
@@ -274,7 +281,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	 * incluye. El cobro real lo recalcula la Edge Function contra la base.
 	 */
 	async function prepararCombo() {
-		volverLink.href = "producto.html?org=multigrado&combo=unitaria";
+		mostrarVolver("producto.html?org=multigrado&combo=unitaria");
 
 		var esperados = COMBOS_UNITARIA[comboAgrupacion];
 		var q = window.sb

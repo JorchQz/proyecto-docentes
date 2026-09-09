@@ -545,7 +545,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<span class="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">' +
 			'<span class="text-[12px] font-semibold" style="color:#5b6473">¿No está el que buscas?</span>' +
 			'<span class="font-bold text-[15px] leading-snug whitespace-nowrap" style="color:#1c2434">Pídelo a la medida</span>' +
-			'<span id="precioMedida" class="text-[13px] whitespace-nowrap" style="color:#5b6473">desde <span class="font-black text-base text-ink">$120</span></span>' +
+			// Sin importe provisional: se llena con el del tarifario (en caché
+			// tras la primera vez) para no enseñar un precio y luego otro.
+			'<span id="precioMedida" class="text-[13px] whitespace-nowrap" style="color:#5b6473"></span>' +
 			"</span>" +
 			'<i data-lucide="chevron-down" class="w-5 h-5 shrink-0 transition-transform' + (medidaAbierta ? " rotate-180" : "") + '" style="color:#1e3a8a" data-medida-flecha></i>' +
 			"</button>" +

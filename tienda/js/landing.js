@@ -1,6 +1,19 @@
+var muestraPendiente = false; // clic en "Ver muestra gratis" antes de que cargue la sección
 // Landing dinámico: trae precios reales y paquetes destacados desde la BD
 // (marketplace_productos, editable por el admin). Sin datos inventados.
 document.addEventListener("DOMContentLoaded", function () {
+	// El botón del hero ya ofrece la muestra desde el HTML; si tocan antes de
+	// que la sección exista, se anota el clic y renderMuestra baja a ella.
+	var heroSec = document.getElementById("heroSecundario");
+	var seccion = document.getElementById("muestra");
+	if (heroSec && seccion) {
+		heroSec.addEventListener("click", function (e) {
+			if (seccion.classList.contains("hidden") && heroSec.getAttribute("href") === "#muestra") {
+				e.preventDefault();
+				muestraPendiente = true;
+			}
+		});
+	}
 	if (!window.sb) { return; }
 	cargarLanding();
 });
@@ -51,8 +64,13 @@ async function llenarUnitaria() {
 // Badge y nota de la sección de precios. Con la promoción apagada no toca
 // nada: se queda el copy de "Precio de lanzamiento" que ya trae el HTML.
 function pintarPromo() {
-	if (!Tienda.promoActiva()) { return; }
+	// El badge nace invisible: se enseña el de lanzamiento o el de la
+	// promoción, pero nunca uno y luego el otro.
 	var badge = document.getElementById("badgePrecios");
+	if (!Tienda.promoActiva()) {
+		if (badge) { badge.classList.remove("invisible"); }
+		return;
+	}
 	if (badge) {
 		badge.outerHTML = Tienda.promoBadge();
 		Tienda.iconos();
@@ -109,7 +127,16 @@ async function renderMuestra(prods) {
 	// uno distinto en vez de favorecer siempre al primero.
 	var conMuestra = [];
 	urls.forEach(function (u, j) { if (u && u.length) { conMuestra.push(j); } });
-	if (!conMuestra.length) { return; }
+	var heroSec = document.getElementById("heroSecundario");
+	if (!conMuestra.length) {
+		// Sin muestras no hay a dónde ir: el botón pasa a "Qué incluye".
+		if (heroSec) {
+			heroSec.href = "#incluye";
+			heroSec.innerHTML = '<i data-lucide="package-open" class="w-5 h-5"></i> Qué incluye';
+			Tienda.iconos();
+		}
+		return;
+	}
 	var i = conMuestra[Math.floor(Math.random() * conMuestra.length)];
 
 	var elegido = candidatos[i];
@@ -127,13 +154,11 @@ async function renderMuestra(prods) {
 	});
 
 	seccion.classList.remove("hidden");
-
-	// Ya hay muestra que enseñar: el botón secundario del hero pasa a ofrecerla.
-	// Es mejor gancho que "Qué incluye", y solo aparece cuando de verdad existe.
-	var heroSec = document.getElementById("heroSecundario");
-	if (heroSec) {
-		heroSec.href = "#muestra";
-		heroSec.innerHTML = '<i data-lucide="eye" class="w-5 h-5"></i> Ver muestra gratis';
+	// Si tocaron "Ver muestra gratis" antes de que existiera la sección, se
+	// baja a ella ahora.
+	if (muestraPendiente) {
+		muestraPendiente = false;
+		seccion.scrollIntoView({ behavior: "smooth", block: "start" });
 	}
 
 	Tienda.iconos();
@@ -308,10 +333,17 @@ function setAddon(id, prods, filtro, etiqueta) {
 	el.textContent = etiqueta + ": + " + montoCorto(addon);
 }
 
-// Si hay precio real lo muestra ("Desde $X"); si no, deja el texto genérico ya presente.
+// Si hay precio real lo muestra ("Desde $X"); si no, sustituye el esqueleto
+// por el texto genérico "Pago único" (el HTML no trae un importe provisional
+// que luego cambie).
 function setPrecio(id, monto, sufijo, dark) {
 	var el = document.getElementById(id);
-	if (!el || monto == null) { return; }
+	if (!el) { return; }
+	if (monto == null) {
+		el.innerHTML = '<span class="text-2xl font-black' + (dark ? "" : " text-ink") + '">Pago único</span>' +
+			'<span class="' + (dark ? "text-white/70" : "text-mute") + '"> · ' + Tienda.esc(sufijo) + "</span>";
+		return;
+	}
 	var numCls = "text-3xl font-black" + (dark ? "" : " text-ink");
 	var sufCls = dark ? "text-white/70" : "text-mute";
 	// La tarjeta del ciclo es oscura: el tachado necesita otro color para
