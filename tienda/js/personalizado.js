@@ -355,6 +355,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			input.focus();
 		});
 		input.addEventListener("blur", function () { setTimeout(cerrar, 150); });
+		// Clic fuera de la casilla y de su lista: se cierra al instante. La lista
+		// va en el flujo de la página (no flota), así nunca tapa la casilla de
+		// abajo; esto solo evita que quede abierta al tocar otra cosa.
+		document.addEventListener("mousedown", function (e) {
+			if (e.target === input || input.contains(e.target) || lista.contains(e.target)) { return; }
+			cerrar();
+		});
 	}
 
 	combobox(buscarContenidoEl, listaContenidosEl, function (consulta) {
