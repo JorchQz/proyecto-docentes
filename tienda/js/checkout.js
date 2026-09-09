@@ -96,13 +96,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Antes de pintar cualquier importe: así el precio no aparece a lista y
 	// cambia un instante después.
 	await Tienda.cargarPromo();
-	pintarNotaPromo();
+	// Ámbito del descuento: pedido a la medida desde ya; producto o combo se
+	// fijan en cuanto se sabe qué es (antes de pintar cualquier importe).
+	if (esPedido) { Tienda.setAmbito("personalizado"); }
 
 	var preparado = esPedido ? await prepararPedido() : (esCombo ? await prepararCombo() : await prepararIndividual());
 	if (!preparado) {
 		if (volverLink.classList.contains("hidden")) { mostrarVolver("catalogo.html"); }
 		return;
 	}
+	pintarNotaPromo();
 
 	/**
 	 * Proyecto a la medida: precio, cupo y ventana salen de la RPC pública; el
@@ -244,6 +247,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// identifica por grado o por combinación multigrado, nunca por el id del
 		// producto: con `?id=` no encontraba nada y decía "no está disponible".
 		// La ficha del proyecto individual sí va por id.
+		Tienda.setAmbito(esProyecto ? "proyecto" : "paquete");
 		mostrarVolver(esProyecto
 			? "proyecto.html?id=" + encodeURIComponent(p.id)
 			: (p.organizacion === "multigrado"

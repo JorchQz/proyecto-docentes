@@ -4,6 +4,9 @@
 // producto + proyecto del bot + sus PDAs. Un proyecto no publicado devuelve
 // vacío aunque se conozca el id.
 document.addEventListener("DOMContentLoaded", async function () {
+	// Todo lo que se pinta aquí es un proyecto individual, salvo el puente al
+	// paquete del trimestre (que pasa su ámbito explícito).
+	Tienda.setAmbito("proyecto");
 	if (!window.sb) { return; }
 
 	await Tienda.montarNav("");
@@ -162,7 +165,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo)
 				: "producto.html?org=completa&g=" + encodeURIComponent(p.grado);
 			document.getElementById("linkPaqueteSub").textContent =
-				"Trimestre " + p.trimestre + " completo, con examen, desde " + money(Tienda.precioFinal(r.data.precio_pdf)) + ".";
+				"Trimestre " + p.trimestre + " completo, con examen, desde " + money(Tienda.precioFinal(r.data.precio_pdf, "paquete")) + ".";
 			linkPaquete.classList.remove("hidden");
 			linkPaquete.classList.add("flex");
 			Tienda.iconos();

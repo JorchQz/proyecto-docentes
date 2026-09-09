@@ -155,6 +155,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 		// Precio real del proyecto individual más barato publicado, con promoción.
 		var el = document.getElementById("precioProyecto");
 		if (!el) { return; }
+		Tienda.setAmbito("proyecto");
 		var res = await Promise.all([
 			window.sb.from("marketplace_productos").select("precio_pdf").eq("activo", true).eq("tipo_paquete", "proyecto").order("precio_pdf", { ascending: true }).limit(1),
 			Tienda.cargarPromo(),

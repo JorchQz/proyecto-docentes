@@ -234,8 +234,23 @@
 	// esta carga de página, lo que devolvió la RPC. Sin localStorage a
 	// propósito: una promo vencida en caché mostraría un precio que ya no se
 	// va a cobrar.
-	var promo = null;        // {porcentaje, etiqueta, vigente_hasta} o null
+	var promo = null;        // {porcentaje, etiqueta, vigente_hasta, ambitos} o null
 	var promoPromesa = null; // una sola petición aunque la pidan varias funciones
+	// Ámbito por defecto de la página: 'paquete' | 'proyecto' | 'personalizado'.
+	// Cada página lo fija con Tienda.setAmbito(); las llamadas que mezclan
+	// tipos (el catálogo) pasan el ámbito explícito en cada precio.
+	var ambitoPagina = "paquete";
+	function setAmbito(a) { ambitoPagina = a || "paquete"; }
+	// ¿La promoción vigente aplica a ese ámbito? Espejo de
+	// marketplace_promocion_aplica() en supabase/marketplace_promocion_ambitos.sql.
+	function aplicaA(ambito) {
+		if (!promo) { return false; }
+		var a = ambito || ambitoPagina;
+		var m = promo.ambitos || {};
+		if (a === "proyecto") { return m.proyectos !== false; }
+		if (a === "personalizado") { return m.personalizados === true; }
+		return m.paquetes !== false;
+	}
 
 	function cargarPromo() {
 		if (promoPromesa) { return promoPromesa; }
@@ -252,6 +267,7 @@
 					porcentaje: Number(d.porcentaje),
 					etiqueta: d.etiqueta || "por tiempo limitado",
 					vigente_hasta: d.vigente_hasta || null,
+					ambitos: d.ambitos || { paquetes: true, proyectos: true, personalizados: false },
 				};
 			} catch (_) { promo = null; }
 			return promo;
@@ -259,15 +275,16 @@
 		return promoPromesa;
 	}
 
-	function promoActiva() { return !!promo; }
+	// Con ámbito (o el de la página): true solo si el descuento aplica ahí.
+	function promoActiva(ambito) { return aplicaA(ambito); }
 	function promoInfo() { return promo; }
 
 	// Espejo EXACTO de marketplace_redondeo_promo() en
 	// supabase/marketplace_promocion.sql. Si cambia una, cambian las dos.
-	function precioFinal(lista) {
+	function precioFinal(lista, ambito) {
 		var n = Number(lista);
 		if (!isFinite(n)) { return null; }
-		if (!promo) { return n; }
+		if (!aplicaA(ambito)) { return n; }
 		return Math.floor(n * (100 - promo.porcentaje) / 100);
 	}
 
@@ -277,12 +294,13 @@
 	//   opts.corto      → "$399" en vez de "$399.00 MXN"
 	//   opts.claseLista → clases del tachado (las tarjetas oscuras necesitan otro color)
 	//   opts.claseFinal → clases del precio final
+	//   opts.ambito     → 'paquete' | 'proyecto' | 'personalizado' (si no, el de la página)
 	function precioHTML(lista, opts) {
 		var o = opts || {};
 		var fmt = o.corto ? montoCorto : formatMoney;
-		var final = precioFinal(lista);
+		var final = precioFinal(lista, o.ambito);
 		var spanFinal = '<span class="' + (o.claseFinal || "") + '">' + fmt(final) + "</span>";
-		if (!promo || final == null || Number(final) >= Number(lista)) {
+		if (!aplicaA(o.ambito) || final == null || Number(final) >= Number(lista)) {
 			return spanFinal;
 		}
 		return '<s class="' + (o.claseLista || "text-mute") +
@@ -293,8 +311,8 @@
 	// el panel admin cambia el badge sin tocar código. Icono Lucide, nunca
 	// emojis; hay que llamar a Tienda.iconos() tras insertarlo.
 	function promoBadge(opts) {
-		if (!promo) { return ""; }
 		var o = opts || {};
+		if (!aplicaA(o.ambito)) { return ""; }
 		return '<span class="inline-flex items-center gap-1.5 ' +
 			(o.clase || "h-7 px-2.5 text-[12px]") +
 			' font-bold rounded-full border" style="background:' + COLOR_DESCUENTO.fondo +
@@ -305,8 +323,8 @@
 
 	// Chip corto ("-20%") para donde no cabe la frase completa: tarjetas del
 	// catálogo y barra de compra del móvil.
-	function promoChip(clase) {
-		if (!promo) { return ""; }
+	function promoChip(clase, ambito) {
+		if (!aplicaA(ambito)) { return ""; }
 		return '<span class="inline-flex items-center h-6 px-2 text-[11px] font-bold rounded-full ' +
 			(clase || "") + '" style="background:' + COLOR_DESCUENTO.solido +
 			';color:#fff">-' + promo.porcentaje + "%</span>";
@@ -316,12 +334,13 @@
 	// (precio final, si gana o no, y el mensaje para el comprador) o null si la
 	// consulta falla. Es el MISMO núcleo que usa la Edge Function al cobrar, así
 	// que lo que se pinta aquí y lo que se cobra no pueden discrepar.
-	async function validarCupon(codigo, precioLista) {
+	async function validarCupon(codigo, precioLista, ambito) {
 		if (!window.sb) { return null; }
 		try {
 			var res = await window.sb.rpc("marketplace_validar_cupon", {
 				p_codigo: codigo || null,
 				p_precio_lista: precioLista,
+				p_ambito: ambito || ambitoPagina,
 			});
 			if (res.error || !res.data) { return null; }
 			return res.data;
@@ -873,6 +892,8 @@
 		COLOR_DESCUENTO: COLOR_DESCUENTO,
 		cargarPromo: cargarPromo,
 		promoActiva: promoActiva,
+		promoAplicaA: aplicaA,
+		setAmbito: setAmbito,
 		promoInfo: promoInfo,
 		precioFinal: precioFinal,
 		precioHTML: precioHTML,

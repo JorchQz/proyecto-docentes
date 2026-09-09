@@ -149,12 +149,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// Tira superior con el descuento vigente. Oculta si no hay promoción.
+	// Se repinta al cambiar de vista: el descuento puede aplicar a los paquetes
+	// y no a los proyectos individuales (o al revés).
 	function pintarTiraPromo() {
 		var el = document.getElementById("tiraPromo");
-		if (!el || !Tienda.promoActiva()) { return; }
+		if (!el) { return; }
+		var ambito = vista === "proyectos" ? "proyecto" : "paquete";
+		if (!Tienda.promoActiva(ambito)) { el.classList.add("hidden"); return; }
 		var hasta = Tienda.promoFechaLimite();
+		var donde = Tienda.promoAplicaA("paquete") && Tienda.promoAplicaA("proyecto")
+			? "en todo el catálogo"
+			: (ambito === "proyecto" ? "en los proyectos individuales" : "en los paquetes");
 		el.innerHTML = '<i data-lucide="tag" class="w-4 h-4 shrink-0"></i>' +
-			'<span><strong>-' + Tienda.promoInfo().porcentaje + "% en todo el catálogo</strong>" +
+			'<span><strong>-' + Tienda.promoInfo().porcentaje + "% " + donde + "</strong>" +
 			(hasta ? " · termina el " + hasta : " · por tiempo limitado") + "</span>";
 		el.classList.remove("hidden");
 		Tienda.iconos();
@@ -177,6 +184,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// tiene sentido en proyectos; la modalidad "unitaria" solo en paquetes.
 	function activarVista(v) {
 		vista = v;
+		pintarTiraPromo();
 		chipsVistaEl.querySelectorAll(".chip-vista").forEach(function (x) {
 			setChip(x, x.getAttribute("data-vista") === v);
 		});
@@ -571,7 +579,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var el = document.getElementById("precioMedida");
 		if (!el) { return; }
 		var pintar = function (lista) {
-			el.innerHTML = 'desde ' + Tienda.precioHTML(lista, { corto: true, claseFinal: "font-black text-base text-ink", claseLista: "text-mute text-[12px] font-bold" });
+			el.innerHTML = 'desde ' + Tienda.precioHTML(lista, { corto: true, ambito: "personalizado", claseFinal: "font-black text-base text-ink", claseLista: "text-mute text-[12px] font-bold" });
 		};
 		if (precioMedidaCache != null) { pintar(precioMedidaCache); return; }
 		window.sb.rpc("marketplace_personalizados_estado").then(function (r) {
@@ -621,7 +629,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<div class="relative">' +
 			'<div class="ph h-32 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(aula) + " · portada</div>" +
 			badge +
-			(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + "</span>" : "") +
+			(Tienda.promoActiva("proyecto") ? '<span class="absolute top-3 right-3">' + Tienda.promoChip(null, "proyecto") + "</span>" : "") +
 			"</div>" +
 			'<div class="p-5 flex flex-col flex-1">' +
 			'<p class="text-[12px] font-semibold" style="color:#5b6473">' + esc(aula + (sub.length ? " · " + sub.join(" · ") : "")) + "</p>" +
@@ -637,7 +645,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<div>" +
 			(p.precio_pdf != null
 				? '<span class="text-sm" style="color:#5b6473">Desde </span>' +
-					Tienda.precioHTML(p.precio_pdf, { claseFinal: "font-black text-lg text-ink", claseLista: "text-mute text-[13px] font-bold" })
+					Tienda.precioHTML(p.precio_pdf, { ambito: "proyecto", claseFinal: "font-black text-lg text-ink", claseLista: "text-mute text-[13px] font-bold" })
 				: '<span class="text-sm" style="color:#5b6473">Ver opciones</span>') +
 			"</div>" +
 			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#059669">Ver <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +

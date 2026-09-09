@@ -418,6 +418,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var promoDesdeEl = document.getElementById("promoDesde");
 	var promoHastaEl = document.getElementById("promoHasta");
 	var promoEtiquetaEl = document.getElementById("promoEtiqueta");
+	var promoAplicaPaquetesEl = document.getElementById("promoAplicaPaquetes");
+	var promoAplicaProyectosEl = document.getElementById("promoAplicaProyectos");
+	var promoAplicaPersonalizadosEl = document.getElementById("promoAplicaPersonalizados");
+	var promoPersonalizadosPreviewEl = document.getElementById("promoPersonalizadosPreview");
 	var estadoPromoEl = document.getElementById("estadoPromo");
 	var guardarPromoBtn = document.getElementById("guardarPromoBtn");
 
@@ -491,7 +495,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var filas = (d && d.previsualizacion) || [];
 		tablaTarifarioEl.innerHTML = filas.map(function (t) {
 			var clave = t.modalidad_precio + "|" + t.tipo_paquete;
-			var hayOferta = d.vigente_ahora && Number(t.promo_pdf) < Number(t.lista_pdf);
+			// promo_pdf ya respeta el ámbito (lista si el renglón está excluido).
+			var hayOferta = d.vigente_ahora && t.aplica !== false && Number(t.promo_pdf) < Number(t.lista_pdf);
 			return '<tr class="border-b border-line" data-tarifa="' + esc(clave) + '">' +
 				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
 				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : t.tipo_paquete === "proyecto" ? 'Proyecto individual <span class="text-xs text-mute">(extra = anexos)</span>' : "Trimestre") + "</td>" +
@@ -575,6 +580,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		promoDesdeEl.value = aInputLocal(d.vigente_desde);
 		promoHastaEl.value = aInputLocal(d.vigente_hasta);
 		promoEtiquetaEl.value = d.etiqueta || "";
+		promoAplicaPaquetesEl.checked = d.aplica_paquetes !== false;
+		promoAplicaProyectosEl.checked = d.aplica_proyectos !== false;
+		promoAplicaPersonalizadosEl.checked = d.aplica_personalizados === true;
+		var pp = d.previsualizacion_personalizados;
+		if (pp) {
+			promoPersonalizadosPreviewEl.textContent = "A la medida se cobra hoy: " + money(pp.promo_sin_anexos) + " sin anexos / " + money(pp.promo_con_anexos) + " con anexos" +
+				(pp.aplica ? "" : " (precio de lista: el descuento no aplica a los pedidos)") + ".";
+		}
 
 		// "Activa" marcada no basta: puede estar programada para más adelante o
 		// ya vencida. Lo que manda es lo que ve el comprador.
@@ -584,8 +597,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var hasta = d.vigente_hasta
 				? new Date(d.vigente_hasta).toLocaleString("es-MX", { timeZone: "America/Mexico_City" })
 				: null;
+			var donde = [];
+			if (d.aplica_paquetes !== false) { donde.push("paquetes"); }
+			if (d.aplica_proyectos !== false) { donde.push("proyectos individuales"); }
+			if (d.aplica_personalizados === true) { donde.push("a la medida"); }
 			texto = "Vigente ahora · -" + d.porcentaje + "%" +
-				(hasta ? " · termina el " + hasta + " (hora del centro)" : " · sin fecha límite");
+				(hasta ? " · termina el " + hasta + " (hora del centro)" : " · sin fecha límite") +
+				" · aplica a: " + (donde.length ? donde.join(", ") : "nada (revisa los interruptores)");
 		} else if (!d.activa) {
 			texto = "Apagada. Los precios que se muestran y se cobran son los de lista.";
 		} else if (d.vigente_desde && new Date(d.vigente_desde).getTime() > ahora) {
@@ -623,6 +641,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			p_vigente_hasta: hasta,
 			p_vigente_desde: desde,
 			p_etiqueta: (promoEtiquetaEl.value || "").trim() || null,
+			p_aplica_paquetes: promoAplicaPaquetesEl.checked,
+			p_aplica_proyectos: promoAplicaProyectosEl.checked,
+			p_aplica_personalizados: promoAplicaPersonalizadosEl.checked,
 		});
 		guardarPromoBtn.disabled = false;
 		guardarPromoBtn.textContent = "Guardar promoción";

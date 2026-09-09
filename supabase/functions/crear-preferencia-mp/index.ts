@@ -203,7 +203,7 @@ Deno.serve(async (req: Request) => {
     // evalúa la vigencia contra now() aplica el redondeo y elige entre la
     // promoción y el cupón. Si todo venció devuelve el precio de lista.
     const resuelto = await precioConPromo(
-      admin, Number(precioLista), cupon, user.id,
+      admin, Number(precioLista), cupon, user.id, esProyecto ? "proyecto" : "paquete",
     );
     if (resuelto == null) {
       return jsonResponse(
@@ -426,13 +426,17 @@ interface PrecioResuelto {
 async function precioConPromo(
   admin: Cliente,
   lista: number,
-  codigoCupon?: string | null,
-  userId?: string | null,
+  codigoCupon: string | null | undefined,
+  userId: string | null | undefined,
+  // A qué se aplica la promoción general: el admin decide por ámbito
+  // (paquetes / proyectos individuales / a la medida).
+  ambito: "paquete" | "proyecto" | "personalizado",
 ): Promise<PrecioResuelto | null> {
   const { data, error } = await admin.rpc("marketplace_precio_con_cupon", {
     p_precio: lista,
     p_codigo: codigoCupon ?? null,
     p_user_id: userId ?? null,
+    p_ambito: ambito,
   });
   if (error) {
     console.error("marketplace_precio_con_cupon falló:", error);
@@ -551,7 +555,7 @@ async function prepararCompraUnitaria(
   // base, nunca este archivo. El cupón se descuenta del TOTAL del combo, antes
   // de repartirlo entre los paquetes.
   const resuelto = await precioConPromo(
-    admin, precioLista, normalizarCupon(body.cupon), user.id,
+    admin, precioLista, normalizarCupon(body.cupon), user.id, "paquete",
   );
   if (resuelto == null) {
     return jsonResponse(
@@ -851,7 +855,7 @@ async function prepararPedidoPersonalizado(
   if (!Number.isFinite(precioLista) || precioLista <= 0) {
     return jsonResponse({ error: "El pedido a la medida no tiene precio configurado" }, 400);
   }
-  const resuelto = await precioConPromo(admin, precioLista, cfg.cupon, user.id);
+  const resuelto = await precioConPromo(admin, precioLista, cfg.cupon, user.id, "personalizado");
   if (resuelto == null) {
     return jsonResponse({ error: "No pudimos calcular el precio. Vuelve a intentarlo." }, 503);
   }

@@ -136,6 +136,22 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 							<label for="promoHasta" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Termina el (vacío = sin fecha límite)</label>
 							<input type="datetime-local" id="promoHasta" class="w-full h-12 rounded-xl border border-line px-3 text-ink">
 						</div>
+						<div class="sm:col-span-2 rounded-xl p-4 flex flex-col gap-3" style="background:#fff;border:1px solid #e7e6df">
+							<p class="text-[11px] font-bold uppercase tracking-[0.08em] text-mute">Dónde aplica el descuento</p>
+							<label class="flex items-center gap-3 min-h-[44px] cursor-pointer">
+								<input type="checkbox" id="promoAplicaPaquetes" class="w-5 h-5 rounded border-line">
+								<span class="text-ink"><span class="font-semibold">Paquetes</span> <span class="text-mute text-sm">· trimestre, ciclo y unitaria</span></span>
+							</label>
+							<label class="flex items-center gap-3 min-h-[44px] cursor-pointer">
+								<input type="checkbox" id="promoAplicaProyectos" class="w-5 h-5 rounded border-line">
+								<span class="text-ink"><span class="font-semibold">Proyectos individuales</span></span>
+							</label>
+							<label class="flex items-center gap-3 min-h-[44px] cursor-pointer">
+								<input type="checkbox" id="promoAplicaPersonalizados" class="w-5 h-5 rounded border-line">
+								<span class="text-ink"><span class="font-semibold">Proyectos a la medida</span> <span class="text-mute text-sm">· pedidos personalizados</span></span>
+							</label>
+							<p id="promoPersonalizadosPreview" class="text-xs text-mute"></p>
+						</div>
 						<div class="sm:col-span-2">
 							<label for="promoEtiqueta" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Etiqueta del badge</label>
 							<input type="text" id="promoEtiqueta" placeholder="por tiempo limitado" class="w-full h-12 rounded-xl border border-line px-3 text-ink">

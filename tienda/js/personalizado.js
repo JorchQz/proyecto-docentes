@@ -9,6 +9,9 @@
 // Un PDA pertenece a un solo contenido: al elegir un PDA se agrega su
 // contenido solo; al quitar un contenido se quitan sus PDAs.
 document.addEventListener("DOMContentLoaded", async function () {
+	// El descuento general solo aplica aquí si el admin lo activó para los
+	// pedidos a la medida (interruptor propio en el panel).
+	Tienda.setAmbito("personalizado");
 	if (!window.sb) { return; }
 
 	await Tienda.montarNav("");
