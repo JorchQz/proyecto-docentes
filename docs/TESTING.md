@@ -310,7 +310,7 @@ Abrir DevTools (F12 → Consola) durante toda la sesión de pruebas:
 
 ## 20. TIENDA — tienda/*.html (venta de proyectos sueltos, 2026-09)
 
-Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail.com` y con una cuenta de comprador. Existe un usuario de pruebas con un proyecto suelto ya comprado (con anexos): `pruebas.bloque1@jissez.com` / `PruebaBloque1-2026`.
+Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail.com` y con una cuenta de comprador. Existe un usuario de pruebas: `pruebas.bloque1@jissez.com` / `PruebaBloque1-2026` (el producto de prueba "Proyecto 1 de 1°" se borró el 2026-09-09; para probar compras de sueltos, publica uno real y usa el sandbox de Mercado Pago).
 
 ### Bloque 0 — cuenta admin
 - [ ] Entrar con `soporte.jissez@gmail.com` → `admin.html` carga y las pestañas Precios y Órdenes responden
