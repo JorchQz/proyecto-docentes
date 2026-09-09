@@ -148,11 +148,23 @@
 		lista.addEventListener("click", function (e) { e.preventDefault(); });
 		// Se mira la ruta del evento (composedPath) y no `contains`: al elegir,
 		// la lista se repinta y el botón tocado ya no está dentro de ella.
+		// Cerrar = tocar y soltar FUERA sin mover: deslizar la página con la
+		// lista abierta no la cierra (en el celular se desliza para llegar a
+		// ella o para leer más opciones).
+		var fuera = null;
 		document.addEventListener("pointerdown", function (e) {
+			fuera = null;
 			if (!abierta) { return; }
 			var ruta = e.composedPath ? e.composedPath() : [];
 			if (ruta.indexOf(input) !== -1 || ruta.indexOf(lista) !== -1) { return; }
-			cerrar();
+			fuera = { x: e.clientX, y: e.clientY };
+		});
+		document.addEventListener("pointercancel", function () { fuera = null; });
+		document.addEventListener("pointerup", function (e) {
+			if (!fuera || !abierta) { fuera = null; return; }
+			var movio = Math.abs(e.clientX - fuera.x) > 8 || Math.abs(e.clientY - fuera.y) > 8;
+			fuera = null;
+			if (!movio) { cerrar(); }
 		});
 		return { abrir: abrir, cerrar: cerrar, repintar: function () { if (abierta) { pintar(); } } };
 	}
