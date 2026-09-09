@@ -8,7 +8,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
-import { mensajeError } from "../_shared/db.ts";
+import { crearClienteUsuario, mensajeError } from "../_shared/db.ts";
 import { downloadDriveFile, listDriveFolder, primerProyectoFolder } from "../_shared/google-drive.ts";
 import { normalizarTipoPaquete } from "../_shared/entrega.ts";
 
@@ -34,8 +34,23 @@ Deno.serve(async (req: Request) => {
       .eq("id", productoId)
       .maybeSingle();
 
-    if (error || !producto || !producto.activo || !producto.proyecto_folder_drive_id) {
+    if (error || !producto || !producto.proyecto_folder_drive_id) {
       return jsonResponse({ error: "Producto no disponible" }, 404);
+    }
+    // Un producto oculto solo se previsualiza para el admin (JWT que pasa
+    // es_admin) o con el secreto de mantenimiento: así se generan las
+    // imágenes de muestra ANTES de publicar.
+    if (!producto.activo) {
+      const cronSecret = Deno.env.get("CRON_SECRET");
+      let autorizado = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
+      const authHeader = req.headers.get("Authorization") || "";
+      if (!autorizado && authHeader.startsWith("Bearer ")) {
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+        const userClient = crearClienteUsuario(supabaseUrl, anonKey, authHeader);
+        const { data: esAdmin } = await userClient.rpc("es_admin");
+        autorizado = esAdmin === true;
+      }
+      if (!autorizado) return jsonResponse({ error: "Producto no disponible" }, 404);
     }
 
     // En un proyecto individual la carpeta del producto ya es la del proyecto.

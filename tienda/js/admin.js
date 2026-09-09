@@ -892,7 +892,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			for (var i = 0; i < pendientes.length; i++) {
 				generarPreviewsBtn.textContent = "Generando " + (i + 1) + " de " + pendientes.length + "...";
 				try {
-					await window.VistaPrevia.generarProyecto(window.sb, Tienda.EDGE_BASE, pendientes[i].id);
+					await window.VistaPrevia.generarProyecto(window.sb, Tienda.EDGE_BASE, pendientes[i].id, {
+						headers: { Authorization: "Bearer " + Tienda.getAccessToken(session) },
+					});
 					hechos++;
 				} catch (err) {
 					fallos.push(pendientes[i].titulo + ": " + (err.message || "error"));

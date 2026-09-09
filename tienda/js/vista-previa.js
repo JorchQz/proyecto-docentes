@@ -61,9 +61,12 @@
 
 	// Genera y sube las imágenes de un proyecto individual con el cliente `sb`
 	// dado (la sesión del admin o, en carga masiva, la clave de servicio).
+	// `opts.headers` va a previsualizar: con el JWT del admin (o el secreto de
+	// mantenimiento) también sirve la muestra de un producto aún oculto.
 	// Devuelve { paginas, portada_url }.
 	async function generarProyecto(sb, edgeBase, productoId, opts) {
-		var resp = await fetch(edgeBase + "/previsualizar?producto_id=" + encodeURIComponent(productoId));
+		opts = opts || {};
+		var resp = await fetch(edgeBase + "/previsualizar?producto_id=" + encodeURIComponent(productoId), { headers: opts.headers || {} });
 		var tipo = resp.headers.get("content-type") || "";
 		if (!resp.ok || tipo.indexOf("application/pdf") === -1) { throw new Error("Sin muestra en Drive"); }
 		var blobs = await paginasAJpg(await resp.arrayBuffer(), opts);
