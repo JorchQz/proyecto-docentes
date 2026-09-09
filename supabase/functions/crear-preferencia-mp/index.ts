@@ -775,7 +775,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * body.tipo:   'pdf' = sin anexos · 'anexos' = con anexos
  *
  * El precio sale de marketplace_personalizados_config (nunca del cliente) y
- * pasa por la misma promoción/cupón que todo. Si el cupo semanal está
+ * pasa por la misma promoción/cupón que todo. Si el cupo simultáneo está
  * agotado o los pedidos están cerrados, se responde 409 antes de crear nada.
  *
  * El pedido nace en 'pendiente_pago'; procesarPago() lo pasa a 'pendiente'
@@ -840,9 +840,8 @@ async function prepararPedidoPersonalizado(
   }
   if (Number(estado.cupos_disponibles) <= 0) {
     return jsonResponse({
-      error: "Esta semana ya no hay cupo para pedidos a la medida.",
+      error: "Por ahora no hay cupo para pedidos a la medida: en cuanto entreguemos uno se libera un lugar.",
       agotado: true,
-      fecha_reapertura: estado.fecha_reapertura || null,
     }, 409);
   }
   const precioLista = Number(nivel === "con_anexos" ? estado.precio_con_anexos : estado.precio_sin_anexos);

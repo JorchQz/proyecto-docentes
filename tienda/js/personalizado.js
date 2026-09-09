@@ -355,21 +355,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var agotado = Number(estado.cupos_disponibles) <= 0;
 		estadoCupoEl.classList.remove("hidden");
 		if (cerrado || agotado) {
-			var cuando = estado.fecha_reapertura
-				? new Date(estado.fecha_reapertura).toLocaleDateString("es-MX", { day: "numeric", month: "long" })
-				: null;
+			// El cupo es simultáneo: se libera un lugar en cuanto se entrega un
+			// pedido, no en una fecha fija.
 			estadoCupoEl.style.cssText = "background:#fffbeb;border:1px solid #fcd34d;color:#92400e";
 			estadoCupoEl.innerHTML = '<i data-lucide="clock" class="w-5 h-5 shrink-0 mt-0.5"></i><div>' +
-				"<p class=\"font-semibold\">" + (cerrado ? "Por ahora no recibimos pedidos a la medida" : "Esta semana ya no hay cupo") + "</p>" +
-				"<p>" + esc(cerrado ? (estado.mensaje || "Vuelve a intentarlo en unos días.") : ("Se libera el " + (cuando || "próximo lunes") + ". Mientras tanto, revisa los proyectos del catálogo.")) + "</p></div>";
+				"<p class=\"font-semibold\">" + (cerrado ? "Por ahora no recibimos pedidos a la medida" : "Por ahora no hay cupo: todos los lugares están ocupados") + "</p>" +
+				"<p>" + esc(cerrado ? (estado.mensaje || "Vuelve a intentarlo en unos días.") : "En cuanto entreguemos un pedido se libera un lugar, normalmente en horas. Vuelve a intentarlo más tarde o revisa los proyectos del catálogo.") + "</p></div>";
 			continuarBtn.disabled = true;
 			continuarBtn.style.opacity = ".5";
-			continuarBtn.innerHTML = cerrado ? "Pedidos cerrados por ahora" : "Sin cupo esta semana";
+			continuarBtn.innerHTML = cerrado ? "Pedidos cerrados por ahora" : "Sin cupo por ahora";
 			return;
 		}
 		estadoCupoEl.style.cssText = "background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.25);color:#047857";
 		estadoCupoEl.innerHTML = '<i data-lucide="check-circle-2" class="w-5 h-5 shrink-0 mt-0.5"></i><div>' +
-			'<p class="font-semibold">Recibimos pedidos esta semana · ' + estado.cupos_disponibles + (estado.cupos_disponibles === 1 ? " lugar" : " lugares") + " disponibles</p>" +
+			'<p class="font-semibold">Recibimos pedidos ahora · ' + estado.cupos_disponibles + (estado.cupos_disponibles === 1 ? " lugar disponible" : " lugares disponibles") + "</p>" +
 			"<p>Entrega en tu biblioteca en un máximo de " + Math.round(estado.ventana_horas) + " horas a partir de tu pago.</p></div>";
 	}
 

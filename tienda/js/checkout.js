@@ -111,7 +111,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		var est = r.data;
 		if (!est.abierto || Number(est.cupos_disponibles) <= 0) {
-			estadoEl.innerHTML = (est.abierto ? "Esta semana ya no hay cupo para pedidos a la medida." : Tienda.esc(est.mensaje || "Por ahora no recibimos pedidos a la medida.")) +
+			estadoEl.innerHTML = (est.abierto ? "Por ahora no hay cupo para pedidos a la medida: en cuanto entreguemos uno se libera un lugar." : Tienda.esc(est.mensaje || "Por ahora no recibimos pedidos a la medida.")) +
 				' <a href="catalogo.html?vista=proyectos" class="font-semibold" style="color:#1e3a8a">Ver proyectos del catálogo</a>';
 			return false;
 		}

@@ -14,7 +14,8 @@
 //
 // POST /functions/v1/completar-pedido
 //   body: { pedido_id, drive_folder_id, publicar: bool,
-//           dosificacion_proyecto_id?, titulo?, precio_pdf?, precio_pdf_con_anexos? }
+//           dosificacion_proyecto_id?, titulo? }
+//   (el precio de catálogo sale del tarifario, renglón 'proyecto')
 //   → { ok: true, producto_id, numero_pedido }
 //
 // Autorización: el JWT del usuario debe pasar la RPC es_admin().
@@ -123,10 +124,19 @@ Deno.serve(async (req: Request) => {
     const aula = aulaDePedido(pedido);
     const titulo = String(body.titulo || "").trim() ||
       (aula + " — " + (nombreProyecto || "Proyecto a la medida " + pedido.numero_pedido));
-    const precioPdf = Number.isFinite(Number(body.precio_pdf)) && Number(body.precio_pdf) >= 0
-      ? Number(body.precio_pdf) : PRECIO_CATALOGO.sin_anexos;
-    const precioConAnexos = Number.isFinite(Number(body.precio_pdf_con_anexos)) && Number(body.precio_pdf_con_anexos) >= precioPdf
-      ? Number(body.precio_pdf_con_anexos) : Math.max(PRECIO_CATALOGO.con_anexos, precioPdf);
+    // Precio de catálogo del proyecto suelto: del tarifario por modalidad
+    // (renglón 'proyecto'), igual que los demás sueltos. Nunca del cliente.
+    const { data: tarifa } = await admin
+      .from("marketplace_precios")
+      .select("precio_base, precio_addon_editable")
+      .eq("modalidad_precio", esMulti ? "multigrado" : "un_grado")
+      .eq("tipo_paquete", "proyecto")
+      .eq("nivel", 1)
+      .maybeSingle();
+    const precioPdf = tarifa ? Number(tarifa.precio_base) : PRECIO_CATALOGO.sin_anexos;
+    const precioConAnexos = tarifa
+      ? Number(tarifa.precio_base) + Number(tarifa.precio_addon_editable)
+      : PRECIO_CATALOGO.con_anexos;
 
     const { data: producto, error: prodErr } = await admin
       .from("marketplace_productos")

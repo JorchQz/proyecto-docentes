@@ -494,7 +494,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var hayOferta = d.vigente_ahora && Number(t.promo_pdf) < Number(t.lista_pdf);
 			return '<tr class="border-b border-line" data-tarifa="' + esc(clave) + '">' +
 				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
-				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre") + "</td>" +
+				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : t.tipo_paquete === "proyecto" ? 'Proyecto suelto <span class="text-xs text-mute">(extra = anexos)</span>' : "Trimestre") + "</td>" +
 				'<td class="py-2 pr-3 text-right"><input type="number" min="10" step="1" inputmode="numeric" data-campo="base" value="' +
 					esc(Number(t.lista_pdf)) + '" class="w-24 h-10 rounded-lg border border-line px-2 text-right text-ink" style="background:#fff"></td>' +
 				'<td class="py-2 pr-3 text-right"><input type="number" min="0" step="1" inputmode="numeric" data-campo="addon" value="' +
@@ -531,7 +531,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		});
 		if (error) { Tienda.toast(error, "error"); return; }
-		if (tarifas.length !== 6) {
+		if (tarifas.length !== 8) {
 			Tienda.toast("Falta algún renglón del tarifario. Recarga la página.", "error");
 			return;
 		}
@@ -548,7 +548,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		renderPromocion(estadoPrecios);
 		renderEstadoPrecios();
 		Tienda.toast("Precios guardados y aplicados a " +
-			(res.data.productos_actualizados || 0) + " paquetes.", "ok");
+			(res.data.productos_actualizados || 0) + " productos.", "ok");
 		// El grid de la pestaña Paquetes muestra precios: sin esto se queda viejo.
 		await cargarProductos();
 	});
@@ -829,7 +829,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// admin-proyectos-drive lee las carpetas, las empareja con
 	// dosificacion_proyectos y dice qué contiene cada una. Aquí solo se elige
 	// y se inserta.
+	// Precio de arranque de un suelto nuevo. Lo definitivo lo pone el tarifario
+	// (marketplace_aplicar_precios lo reescribe al guardar precios); aquí solo se
+	// siembra con el renglón 'proyecto' si ya está cargado, o con el valor base.
 	var PRECIO_SUELTO = { sin_anexos: 80, con_anexos: 120 };
+	function precioSuelto(org) {
+		var filas = (estadoPrecios && estadoPrecios.previsualizacion) || [];
+		var t = filas.find(function (x) { return x.tipo_paquete === "proyecto" && x.modalidad_precio === (org === "multigrado" ? "multigrado" : "un_grado"); });
+		return t ? { sin_anexos: Number(t.lista_pdf), con_anexos: Number(t.lista_editable) } : PRECIO_SUELTO;
+	}
 	var sueltosPaqueteSel = document.getElementById("sueltosPaquete");
 	var detectarSueltosBtn = document.getElementById("detectarSueltosBtn");
 	var sueltosDeteccionEl = document.getElementById("sueltosDeteccion");
@@ -938,7 +946,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<tbody>" + filas + "</tbody></table></div>" +
 			'<div class="flex flex-wrap items-center gap-3">' +
 			'<button id="crearSueltosBtn" class="h-11 px-5 rounded-xl font-bold text-white text-sm" style="background:#059669">Crear productos seleccionados</button>' +
-			'<span class="text-xs text-mute">Se crean OCULTOS a $' + PRECIO_SUELTO.sin_anexos + " / $" + PRECIO_SUELTO.con_anexos + " (sin / con anexos). Los publicas abajo.</span>" +
+			'<span class="text-xs text-mute">Se crean OCULTOS con el precio del tarifario (pestaña Precios, renglón Proyecto suelto). Los publicas abajo.</span>' +
 			"</div></div>";
 
 		document.getElementById("crearSueltosBtn").addEventListener("click", crearSueltos);
@@ -947,6 +955,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	async function crearSueltos() {
 		var d = deteccion;
+		// El precio de arranque sale del tarifario; si la pestaña Precios no se
+		// ha abierto aún, se carga aquí.
+		if (!estadoPrecios) {
+			var rp = await window.sb.rpc("admin_estado_promocion");
+			if (!rp.error) { estadoPrecios = rp.data; }
+		}
 		var marcados = Array.prototype.slice.call(sueltosDeteccionEl.querySelectorAll("input[data-idx]:checked"));
 		if (!marcados.length) { Tienda.toast("No hay proyectos seleccionados.", "error"); return; }
 		var btn = document.getElementById("crearSueltosBtn");
@@ -971,8 +985,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				num_sesiones: p.dosificacion ? p.dosificacion.num_sesiones_estimadas || null : null,
 				dosificacion_proyecto_id: p.dosificacion ? p.dosificacion.id : null,
 				proyecto_folder_drive_id: p.folder_id,
-				precio_pdf: PRECIO_SUELTO.sin_anexos,
-				precio_pdf_con_anexos: PRECIO_SUELTO.con_anexos,
+				precio_pdf: precioSuelto(d.organizacion).sin_anexos,
+				precio_pdf_con_anexos: precioSuelto(d.organizacion).con_anexos,
 				precio_editable: null,
 				activo: false,
 			};
@@ -988,62 +1002,83 @@ document.addEventListener("DOMContentLoaded", async function () {
 		renderSueltos();
 	}
 
+	// Lista de sueltos agrupada por aula. Sin botones por fila: la casilla
+	// "Publicado" guarda al instante y cada grupo tiene "Publicar todos" /
+	// "Ocultar todos". Los precios son de solo lectura: vienen del tarifario
+	// (pestaña Precios, renglón "Proyecto suelto") por modalidad.
 	function renderSueltos() {
 		var sueltos = productos.filter(function (p) { return p.tipo_paquete === "proyecto"; });
 		if (!sueltos.length) {
 			listaSueltosEl.innerHTML = '<p class="text-sm text-mute">Todavía no hay proyectos sueltos. Detecta los de un trimestre arriba.</p>';
 			return;
 		}
-		sueltos.sort(function (a, b) {
-			if (a.organizacion !== b.organizacion) { return a.organizacion === "completa" ? -1 : 1; }
-			if (a.grado !== b.grado) { return a.grado - b.grado; }
-			var la = (a.grados_combo || "").length, lb = (b.grados_combo || "").length;
-			if (la !== lb) { return la - lb; }
-			return (a.numero_proyecto || 0) - (b.numero_proyecto || 0);
+		var grupos = {}, orden = [];
+		sueltos.forEach(function (p) {
+			var clave = p.organizacion === "multigrado" ? "m-" + p.grados_combo : "c-" + p.grado;
+			if (!grupos[clave]) {
+				grupos[clave] = {
+					titulo: p.organizacion === "multigrado" ? "Multigrado " + comboDisplay(p.grados_combo || "") : p.grado + "° grado",
+					grado: p.grado, combo: p.grados_combo || "", items: [],
+				};
+				orden.push(clave);
+			}
+			grupos[clave].items.push(p);
 		});
-		var rows = sueltos.map(function (p) {
-			var borde = p.es_prueba ? "#fcd34d" : "#e7e6df";
-			return (
-				'<tr data-suelto="' + esc(p.id) + '" style="border-bottom:1px solid ' + borde + '">' +
-				'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(p.titulo) +
-				(p.es_prueba ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef3c7;color:#b45309">PRUEBA</span>' : "") +
-				(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") +
-				"</td>" +
-				'<td class="py-2 pr-3"><input data-campo="precio_pdf" type="number" min="0" step="1" value="' + esc(p.precio_pdf != null ? p.precio_pdf : "") + '" class="w-24 h-10 px-2 border border-line rounded-lg text-sm" style="color:#1c2434;background:#fff"></td>' +
-				'<td class="py-2 pr-3"><input data-campo="precio_pdf_con_anexos" type="number" min="0" step="1" value="' + esc(p.precio_pdf_con_anexos != null ? p.precio_pdf_con_anexos : "") + '" class="w-24 h-10 px-2 border border-line rounded-lg text-sm" style="color:#1c2434;background:#fff"></td>' +
-				'<td class="py-2 pr-3"><label class="inline-flex items-center gap-2 text-sm text-ink cursor-pointer"><input data-campo="activo" type="checkbox" class="w-4 h-4 rounded" style="accent-color:#059669"' + (p.activo ? " checked" : "") + "> Publicado</label></td>" +
-				'<td class="py-2"><button data-guardar-suelto="' + esc(p.id) + '" class="text-xs font-semibold px-3 h-10 rounded-lg text-white" style="background:#1e3a8a">Guardar</button></td></tr>'
-			);
+		orden.sort(function (x, y) {
+			var a = grupos[x], b = grupos[y];
+			if (!!a.combo !== !!b.combo) { return a.combo ? 1 : -1; }
+			if (a.grado !== b.grado) { return a.grado - b.grado; }
+			return a.combo.length - b.combo.length;
+		});
+
+		listaSueltosEl.innerHTML = orden.map(function (clave) {
+			var g = grupos[clave];
+			g.items.sort(function (a, b) { return (a.trimestre || 0) - (b.trimestre || 0) || (a.numero_proyecto || 0) - (b.numero_proyecto || 0); });
+			var publicados = g.items.filter(function (p) { return p.activo; }).length;
+			var filas = g.items.map(function (p) {
+				var nombre = p.titulo.replace(/^.*? — /, "");
+				return '<tr data-suelto="' + esc(p.id) + '" style="border-bottom:1px solid ' + (p.es_prueba ? "#fcd34d" : "#e7e6df") + '">' +
+					'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(nombre) +
+					(p.es_prueba ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef3c7;color:#b45309">PRUEBA</span>' : "") +
+					(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") + "</td>" +
+					'<td class="py-2 pr-3 text-xs whitespace-nowrap" style="color:#5b6473">' + (p.trimestre ? "T" + p.trimestre : "—") + "</td>" +
+					'<td class="py-2 pr-3 text-sm whitespace-nowrap" style="color:#1c2434">' + money(p.precio_pdf) + ' <span class="text-mute">/</span> ' + money(p.precio_pdf_con_anexos) + "</td>" +
+					'<td class="py-2"><label class="inline-flex items-center gap-2 text-sm text-ink cursor-pointer"><input data-publicar="' + esc(p.id) + '" type="checkbox" class="w-4 h-4 rounded" style="accent-color:#059669"' + (p.activo ? " checked" : "") + "> Publicado</label></td></tr>";
+			}).join("");
+			return '<div class="mb-5">' +
+				'<div class="flex flex-wrap items-center justify-between gap-2 mb-2">' +
+				'<h4 class="font-bold text-sm" style="color:#1e3a8a">' + esc(g.titulo) + ' <span class="font-normal text-mute">· ' + publicados + " de " + g.items.length + " publicados</span></h4>" +
+				'<div class="flex gap-2">' +
+				'<button data-grupo-publicar="' + esc(clave) + '" data-valor="1" class="text-xs font-semibold px-3 h-9 rounded-lg" style="background:#ecfdf5;color:#047a55;border:1px solid #a7f3d0">Publicar todos</button>' +
+				'<button data-grupo-publicar="' + esc(clave) + '" data-valor="0" class="text-xs font-semibold px-3 h-9 rounded-lg" style="background:#fff;border:1px solid #e7e6df;color:#5b6473">Ocultar todos</button>' +
+				"</div></div>" +
+				'<table class="w-full text-left min-w-[640px]"><thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
+				"<th class='py-2 pr-3 font-semibold'>Proyecto</th><th class='py-2 pr-3 font-semibold'>Trim.</th><th class='py-2 pr-3 font-semibold'>Sin / con anexos</th><th class='py-2 font-semibold'>Catálogo</th></tr></thead>" +
+				"<tbody>" + filas + "</tbody></table></div>";
 		}).join("");
-		listaSueltosEl.innerHTML =
-			'<table class="w-full text-left min-w-[760px]">' +
-			'<thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
-			"<th class='py-2 pr-3 font-semibold'>Proyecto</th><th class='py-2 pr-3 font-semibold'>Sin anexos</th>" +
-			"<th class='py-2 pr-3 font-semibold'>Con anexos</th><th class='py-2 pr-3 font-semibold'>Catálogo</th><th class='py-2'></th></tr></thead>" +
-			"<tbody>" + rows + "</tbody></table>";
-		listaSueltosEl.querySelectorAll("[data-guardar-suelto]").forEach(function (b) {
-			b.addEventListener("click", function () { guardarSuelto(b); });
+
+		listaSueltosEl.querySelectorAll("[data-publicar]").forEach(function (cb) {
+			cb.addEventListener("change", function () { publicarSueltos([cb.getAttribute("data-publicar")], cb.checked); });
+		});
+		listaSueltosEl.querySelectorAll("[data-grupo-publicar]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				var ids = grupos[b.getAttribute("data-grupo-publicar")].items
+					.filter(function (p) { return !p.es_prueba; })
+					.map(function (p) { return p.id; });
+				publicarSueltos(ids, b.getAttribute("data-valor") === "1");
+			});
 		});
 	}
 
-	async function guardarSuelto(btn) {
-		var id = btn.getAttribute("data-guardar-suelto");
-		var tr = listaSueltosEl.querySelector('tr[data-suelto="' + id + '"]');
-		var pdf = tr.querySelector('[data-campo="precio_pdf"]').value;
-		var conAnexos = tr.querySelector('[data-campo="precio_pdf_con_anexos"]').value;
-		var activo = tr.querySelector('[data-campo="activo"]').checked;
-		if (pdf === "" || conAnexos === "") { Tienda.toast("Los dos precios son obligatorios.", "error"); return; }
-		if (Number(conAnexos) < Number(pdf)) { Tienda.toast("El precio con anexos no puede ser menor que el precio sin anexos.", "error"); return; }
-		btn.disabled = true; btn.textContent = "Guardando...";
-		var res = await window.sb.from("marketplace_productos").update({
-			precio_pdf: Number(pdf),
-			precio_pdf_con_anexos: Number(conAnexos),
-			activo: activo,
-			updated_at: new Date().toISOString(),
-		}).eq("id", id);
-		btn.disabled = false; btn.textContent = "Guardar";
-		if (res.error) { Tienda.toast("No se pudo guardar: " + res.error.message, "error"); return; }
-		Tienda.toast("Proyecto guardado.", "ok");
+	// Publicar u ocultar uno o varios sueltos. Se guarda al instante y se
+	// repinta la lista con lo que la base devolvió.
+	async function publicarSueltos(ids, activo) {
+		if (!ids.length) { return; }
+		var res = await window.sb.from("marketplace_productos")
+			.update({ activo: activo, updated_at: new Date().toISOString() })
+			.in("id", ids);
+		if (res.error) { Tienda.toast("No se pudo guardar: " + res.error.message, "error"); await cargarProductos(); renderSueltos(); return; }
+		Tienda.toast(ids.length === 1 ? (activo ? "Publicado." : "Oculto.") : (activo ? ids.length + " proyectos publicados." : ids.length + " proyectos ocultos."), "ok");
 		await cargarProductos();
 		renderSueltos();
 	}
@@ -1100,14 +1135,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function renderPedidosCfg(d) {
 		pedAbiertoEl.checked = !!d.abierto;
-		pedTopeEl.value = d.tope_semanal;
+		pedTopeEl.value = d.tope_simultaneo;
 		pedVentanaEl.value = d.ventana_horas;
 		pedPrecioSinEl.value = d.precio_sin_anexos;
 		pedPrecioConEl.value = d.precio_con_anexos;
 		pedMensajeEl.value = d.mensaje_cerrado || "";
 		var pub = d.publico || {};
 		estadoPedidosEl.textContent = (pub.abierto ? "Abierto" : "Cerrado") +
-			" · " + (pub.cupos_disponibles != null ? pub.cupos_disponibles + " lugares esta semana" : "") +
+			" · " + (pub.cupos_disponibles != null ? pub.cupos_disponibles + " lugares libres ahora (" + (pub.en_curso || 0) + " en curso)" : "") +
 			" · en cola " + (d.pendientes || 0) + " · en elaboración " + (d.en_proceso || 0) +
 			(d.vencidos ? " · VENCIDOS " + d.vencidos : "");
 		estadoPedidosEl.style.color = d.vencidos ? "#b91c1c" : "#1c2434";
@@ -1201,8 +1236,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var pedDosifEl = document.getElementById("pedDosif");
 	var listaDosifEl = document.getElementById("listaDosif");
 	var pedTituloEl = document.getElementById("pedTitulo");
-	var pedCatPrecioSinEl = document.getElementById("pedCatPrecioSin");
-	var pedCatPrecioConEl = document.getElementById("pedCatPrecioCon");
 	var pedPublicarEl = document.getElementById("pedPublicar");
 	var modalPedidoMensaje = document.getElementById("modalPedidoMensaje");
 	var modalPedidoEntregar = document.getElementById("modalPedidoEntregar");
@@ -1223,8 +1256,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pedDosifEl.value = "";
 		pedTituloEl.value = "";
 		pedTituloEl.placeholder = aulaPedido(p) + " — (nombre del proyecto)";
-		pedCatPrecioSinEl.value = PRECIO_SUELTO.sin_anexos;
-		pedCatPrecioConEl.value = PRECIO_SUELTO.con_anexos;
 		pedPublicarEl.checked = true;
 		modalPedidoMensaje.classList.add("hidden");
 		modalPedido.classList.remove("hidden");
@@ -1276,8 +1307,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 					drive_folder_id: folder,
 					dosificacion_proyecto_id: dosifElegido(),
 					titulo: (pedTituloEl.value || "").trim() || null,
-					precio_pdf: Number(pedCatPrecioSinEl.value),
-					precio_pdf_con_anexos: Number(pedCatPrecioConEl.value),
 					publicar: pedPublicarEl.checked,
 				}),
 			});
