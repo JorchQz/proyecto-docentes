@@ -523,7 +523,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// Tarjeta permanente "a la medida": siempre es una opción más del catálogo,
-	// no solo el consuelo de cuando no hay resultados.
+	// la primera de la lista, no solo el consuelo de cuando no hay resultados.
 	function cardMedida() {
 		var a = document.createElement("a");
 		a.href = hrefMedida();
@@ -568,8 +568,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.classList.add("hidden");
 		gridEl.classList.remove("hidden");
 		gridEl.innerHTML = "";
-		lista.forEach(function (p) { gridEl.appendChild(cardProyecto(p)); });
+		// La tarjeta "a la medida" va PRIMERO: con cien proyectos publicados, al
+		// final nadie la vería sin filtrar.
 		gridEl.appendChild(cardMedida());
+		lista.forEach(function (p) { gridEl.appendChild(cardProyecto(p)); });
 		Tienda.iconos();
 		pintarPrecioMedida();
 	}
