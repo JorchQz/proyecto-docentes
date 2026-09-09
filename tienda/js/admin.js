@@ -500,8 +500,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				'<td class="py-2 pr-3 text-right"><input type="number" min="0" step="1" inputmode="numeric" data-campo="addon" value="' +
 					esc(Number(t.addon)) + '" class="w-24 h-10 rounded-lg border border-line px-2 text-right text-ink" style="background:#fff"></td>' +
 				'<td class="py-2 pr-3 text-right font-semibold text-ink">' + money(t.lista_editable) + "</td>" +
+				// En rojo cuando hay descuento: mismo color que ve el comprador.
 				'<td class="py-2 pr-3 text-right ' + (hayOferta ? "font-bold" : "text-mute") + '" style="' +
-					(hayOferta ? "color:#047857" : "") + '">' +
+					(hayOferta ? "color:" + Tienda.COLOR_DESCUENTO.texto : "") + '">' +
 					money(t.promo_pdf) + '<span class="text-mute font-normal"> / ' + money(t.promo_editable) + "</span></td>" +
 				"</tr>";
 		}).join("");
@@ -669,7 +670,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				'<td class="py-2 pr-3"><span class="font-bold text-ink">' + esc(c.codigo) + "</span>" +
 					(c.descripcion ? '<br><span class="text-xs text-mute">' + esc(c.descripcion) + "</span>" : "") +
 					(c.uno_por_cliente ? '<br><span class="text-xs text-mute">Uno por cliente</span>' : "") + "</td>" +
-				'<td class="py-2 pr-3 font-semibold text-ink">' + esc(etiquetaDescuento(c)) + "</td>" +
+				'<td class="py-2 pr-3 font-bold" style="color:' + Tienda.COLOR_DESCUENTO.texto + '">' +
+					esc(etiquetaDescuento(c)) + "</td>" +
 				'<td class="py-2 pr-3' + (excedido ? ' font-bold" style="color:#b91c1c"' : '"') + ">" + esc(usos) + "</td>" +
 				'<td class="py-2 pr-3 text-mute">' + esc(hasta) + "</td>" +
 				'<td class="py-2 pr-3 font-semibold" style="color:' + color + '">' + esc(estado) + "</td>" +

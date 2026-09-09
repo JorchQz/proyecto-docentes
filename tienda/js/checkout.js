@@ -169,8 +169,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var el = document.getElementById("notaPrecioCheckout");
 		if (!el || !Tienda.promoActiva()) { return; }
 		var hasta = Tienda.promoFechaLimite();
-		el.innerHTML = '<i data-lucide="tag" class="w-3.5 h-3.5 text-board"></i> Descuento de -' +
-			Tienda.promoInfo().porcentaje + "% aplicado" +
+		// Rojo: la línea anuncia un descuento, y el descuento siempre va en rojo.
+		el.style.color = Tienda.COLOR_DESCUENTO.texto;
+		el.innerHTML = '<i data-lucide="tag" class="w-3.5 h-3.5"></i> <span class="font-semibold">Descuento de -' +
+			Tienda.promoInfo().porcentaje + "% aplicado</span>" +
 			(hasta ? " · termina el " + Tienda.esc(hasta) : "");
 		Tienda.iconos();
 	}
@@ -320,7 +322,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-2">Incluye ' + productos.length + ' paquetes multigrado</p>' +
 			'<ul class="flex flex-col gap-1.5">' + itemsHtml + '</ul>' +
 			(separado > total
-				? '<p class="mt-2.5 text-[13px]" style="color:#5b6473">Por separado: <s>' + money(separado) + '</s> · ahorras <span class="font-bold" style="color:#059669">' + money(separado - total) + '</span></p>'
+				? '<p class="mt-2.5 text-[13px]" style="color:#5b6473">Por separado: <s>' + money(separado) + '</s> · ahorras <span class="font-bold" style="color:' + Tienda.COLOR_DESCUENTO.texto + '">' + money(separado - total) + '</span></p>'
 				: '');
 		resumenCombo.classList.remove("hidden");
 

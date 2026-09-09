@@ -8,6 +8,20 @@
 	// solo decide qué enlaces se muestran; la seguridad real es la RPC.
 	var ADMIN_EMAIL = "soporte.jissez@gmail.com";
 
+	// Color del descuento. ROJO en toda la tienda: es con el que el comprador
+	// reconoce una rebaja de un vistazo. El verde de la marca (#059669) se
+	// queda para acciones y estados ("pagado", "activo", "entrega en X horas"),
+	// nunca para anunciar un precio rebajado.
+	//
+	// Cualquier etiqueta nueva que anuncie descuento debe usar estos valores en
+	// vez de escribir el hex a mano, para que no vuelvan a convivir dos colores.
+	var COLOR_DESCUENTO = {
+		texto: "#b91c1c",              // sobre fondo claro
+		fondo: "rgba(220,38,38,.08)",  // relleno suave del badge
+		borde: "rgba(220,38,38,.25)",
+		solido: "#dc2626",             // chip con texto blanco
+	};
+
 	// Colores por campo formativo (design tokens). `hex` es el color NEM que se
 	// usa en render dinámico (estilo en línea), porque Tailwind CDN no genera
 	// las clases con opacidad arbitraria que aparecen en cadenas construidas.
@@ -139,7 +153,8 @@
 		var o = opts || {};
 		return '<span class="inline-flex items-center gap-1.5 ' +
 			(o.clase || "h-7 px-2.5 text-[12px]") +
-			' font-bold rounded-full border" style="background:rgba(5,150,105,.08);color:#047857;border-color:rgba(5,150,105,.25)">' +
+			' font-bold rounded-full border" style="background:' + COLOR_DESCUENTO.fondo +
+			';color:' + COLOR_DESCUENTO.texto + ';border-color:' + COLOR_DESCUENTO.borde + '">' +
 			'<i data-lucide="tag" class="w-3.5 h-3.5"></i> -' + promo.porcentaje + "% " +
 			esc(promo.etiqueta) + "</span>";
 	}
@@ -149,7 +164,8 @@
 	function promoChip(clase) {
 		if (!promo) { return ""; }
 		return '<span class="inline-flex items-center h-6 px-2 text-[11px] font-bold rounded-full ' +
-			(clase || "") + '" style="background:#047857;color:#fff">-' + promo.porcentaje + "%</span>";
+			(clase || "") + '" style="background:' + COLOR_DESCUENTO.solido +
+			';color:#fff">-' + promo.porcentaje + "%</span>";
 	}
 
 	// Comprueba un cupón contra la base. Devuelve la evaluación completa
@@ -703,6 +719,7 @@
 		esc: esc,
 		formatMoney: formatMoney,
 		montoCorto: montoCorto,
+		COLOR_DESCUENTO: COLOR_DESCUENTO,
 		cargarPromo: cargarPromo,
 		promoActiva: promoActiva,
 		promoInfo: promoInfo,
