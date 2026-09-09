@@ -52,8 +52,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Lo que se manda a crear-preferencia-mp; lo llena prepararCombo o
 	// prepararIndividual. El precio NUNCA viaja aquí: lo calcula el servidor.
 	var cuerpoPago = null;
+	// Importe que el comprador tiene delante. Se compara con el que devuelve la
+	// Edge Function antes de mandarlo a Mercado Pago: si la promoción terminó
+	// entre que se pintó el resumen y este clic, no se cobra a ciegas.
+	var precioMostrado = null;
+
+	// Antes de pintar cualquier importe: así el precio no aparece a lista y
+	// cambia un instante después.
+	await Tienda.cargarPromo();
+	pintarNotaPromo();
 
 	if (!(esCombo ? await prepararCombo() : await prepararIndividual())) { return; }
+
+	// Con la promoción apagada se queda la nota de "Precio de lanzamiento"
+	// que ya trae el HTML.
+	function pintarNotaPromo() {
+		var el = document.getElementById("notaPrecioCheckout");
+		if (!el || !Tienda.promoActiva()) { return; }
+		var hasta = Tienda.promoFechaLimite();
+		el.innerHTML = '<i data-lucide="tag" class="w-3.5 h-3.5 text-board"></i> Descuento de -' +
+			Tienda.promoInfo().porcentaje + "% aplicado" +
+			(hasta ? " · termina el " + Tienda.esc(hasta) : "");
+		Tienda.iconos();
+	}
+
+	/** Pinta el total del resumen: con promoción, lista tachado + final. */
+	function pintarTotal(lista) {
+		precioMostrado = Tienda.precioFinal(lista);
+		resumenPrecio.innerHTML = Tienda.precioHTML(lista, {
+			claseLista: "text-mute text-base font-bold mr-1",
+			claseFinal: "font-black text-ink text-2xl",
+		});
+	}
 
 	/** Compra normal de un solo paquete: resumen y cuerpo del pago. */
 	async function prepararIndividual() {
@@ -85,12 +115,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Resumen
 		resumenTitulo.textContent = p.titulo;
 		resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word";
-		resumenPrecio.textContent = money(precio);
+		pintarTotal(precio);
 
 		// Con el add-on de Word mostramos de dónde sale el total: el PDF cuesta lo
 		// mismo que suelto y el resto es exactamente el precio del editable.
+		// Ambas partes salen de precios YA descontados, para que sumen el total.
 		if (tipo === "editable" && p.precio_pdf != null) {
-			mostrarDesglose(Number(p.precio_pdf), Number(p.precio_editable) - Number(p.precio_pdf));
+			var pdfFinal = Tienda.precioFinal(p.precio_pdf);
+			mostrarDesglose(pdfFinal, Tienda.precioFinal(p.precio_editable) - pdfFinal);
 		}
 
 		cuerpoPago = { producto_id: productoId, tipo: tipo };
@@ -125,22 +157,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return false;
 		}
 
-		var precioPdf = Number(tarifaRes.data.precio_pdf);
-		var total = tipo === "pdf" ? precioPdf : Number(tarifaRes.data.precio_editable);
+		var listaTotal = tipo === "pdf"
+			? Number(tarifaRes.data.precio_pdf)
+			: Number(tarifaRes.data.precio_editable);
+		var precioPdf = Tienda.precioFinal(tarifaRes.data.precio_pdf);
+		var total = Tienda.precioFinal(listaTotal);
 
 		resumenTitulo.textContent = "Paquete unitario · 1° a 6° de Primaria";
 		var etiquetaPaquete = comboTipoPaquete === "ciclo" ? "Ciclo completo" : "Trimestre " + comboTrimestre;
 		resumenTipo.textContent = etiquetaPaquete + " · " +
 			(tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word");
-		resumenPrecio.textContent = money(total);
+		pintarTotal(listaTotal);
 
 		// Qué paquetes incluye y cuánto costarían por separado. El tachado solo
-		// aparece cuando por separado sale de verdad más caro.
+		// aparece cuando por separado sale de verdad más caro. Se comparan
+		// precios finales contra precio final: sumar los de lista contra un
+		// total con descuento inflaría el ahorro.
 		var separado = 0;
 		var itemsHtml = esperados.map(function (combo) {
 			var p = productos.find(function (x) { return x.grados_combo === combo; });
 			var precio = tipo === "pdf" ? p.precio_pdf : p.precio_editable;
-			separado += precio != null ? Number(precio) : 0;
+			separado += precio != null ? Tienda.precioFinal(precio) : 0;
 			return '<li class="flex items-center gap-2 text-[13px]" style="color:#1c2434">' +
 				'<i data-lucide="check" class="w-4 h-4 shrink-0" style="color:#059669"></i>' +
 				Tienda.esc(p.titulo) + '</li>';
@@ -298,6 +335,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 					return;
 				}
 				throw new Error(data.error || "No se pudo iniciar el pago.");
+			}
+			// El servidor devuelve el importe que realmente va a cobrar. Si no
+			// coincide con el que está en pantalla —la promoción terminó, o
+			// cambió el tarifario, entre que se pintó el resumen y este clic—
+			// no se manda a Mercado Pago con una cifra que el comprador no ha
+			// visto: se repinta el total y decide él. La orden ya quedó creada
+			// al precio nuevo, así que el segundo clic es coherente.
+			if (data.precio != null && precioMostrado != null &&
+				Number(data.precio) !== Number(precioMostrado)) {
+				precioMostrado = Number(data.precio);
+				resumenPrecio.innerHTML =
+					'<span class="font-black text-ink text-2xl">' + money(data.precio) + "</span>";
+				document.getElementById("resumenDesglose").classList.add("hidden");
+				Tienda.toast("El precio cambió: revisa el total antes de continuar.", "info");
+				pagarMpBtn.disabled = false;
+				pagarMpBtn.innerHTML = etiquetaBoton;
+				Tienda.iconos();
+				return;
 			}
 			if (data.init_point) {
 				location.href = data.init_point;

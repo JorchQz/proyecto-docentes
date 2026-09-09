@@ -177,11 +177,13 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 				<div class="flex justify-between items-center pt-4" id="filaTotal">
 					<span class="font-black text-ink text-lg">Total</span>
-					<span id="resumenPrecio" class="font-black text-ink text-2xl"></span>
+					<!-- Sin clases de tipografía: el JS las pone en el precio final,
+					     para que el tachado del precio de lista no herede su tamaño. -->
+					<span id="resumenPrecio" class="text-right"></span>
 				</div>
 
 				<div class="mt-5 pt-4 border-t border-line space-y-2">
-					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="tag" class="w-3.5 h-3.5 text-board"></i> Precio de lanzamiento aplicado</div>
+					<div id="notaPrecioCheckout" class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="tag" class="w-3.5 h-3.5 text-board"></i> Precio de lanzamiento aplicado</div>
 					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="zap" class="w-3.5 h-3.5 text-action"></i> Acceso inmediato al confirmar</div>
 					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="infinity" class="w-3.5 h-3.5 text-board"></i> Sin caducidad · sin límite de descargas</div>
 					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="lock" class="w-3.5 h-3.5 text-mute"></i> Pago procesado por Mercado Pago</div>

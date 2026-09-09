@@ -134,11 +134,23 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const precio = tipo === "pdf" ? producto.precio_pdf : producto.precio_editable;
-    if (precio == null) {
+    const precioLista = tipo === "pdf"
+      ? producto.precio_pdf
+      : producto.precio_editable;
+    if (precioLista == null) {
       return jsonResponse(
         { error: "Este producto no tiene precio para esa versión" },
         400,
+      );
+    }
+    // El importe lo decide la BASE, no este archivo: la misma función que
+    // evalúa la vigencia contra now() aplica el redondeo. Si la promoción ya
+    // venció devuelve el precio de lista y aquí no hay nada que apagar.
+    const precio = await precioConPromo(admin, Number(precioLista));
+    if (precio == null) {
+      return jsonResponse(
+        { error: "No pudimos calcular el precio. Vuelve a intentarlo." },
+        503,
       );
     }
 
@@ -162,7 +174,7 @@ Deno.serve(async (req: Request) => {
       user.id,
       productoId,
       tipo,
-      Number(precio),
+      precio,
     );
     if (!ordenId) {
       return jsonResponse({ error: "No se pudo crear la orden" }, 500);
@@ -180,7 +192,7 @@ Deno.serve(async (req: Request) => {
       ordenId,
       itemId: productoId,
       titulo: producto.titulo + " — " + tipoLabel,
-      precio: Number(precio),
+      precio,
       failureUrl: siteUrl + "/tienda/checkout?producto_id=" +
         encodeURIComponent(productoId) + "&tipo=" + tipo,
       payerEmail: user.email,
@@ -305,7 +317,42 @@ async function crearPreferenciaYResponder(
     preference_id: pref.id,
     init_point: destino,
     sandbox: esCredencialSandbox,
+    // Eco del importe realmente cobrado. El checkout lo compara con lo que
+    // tiene pintado y no redirige si difiere: cierra la ventana en la que la
+    // promoción termina entre que el comprador ve el precio y pulsa pagar.
+    precio: opts.precio,
   });
+}
+
+/**
+ * Precio que se cobra = precio de lista con la promoción vigente aplicada.
+ *
+ * La regla vive SOLO en SQL (marketplace_precio_final, en
+ * supabase/marketplace_promocion.sql). No se replica aquí a propósito: si el
+ * redondeo existiera en dos sitios, el importe cobrado podría separarse del
+ * que evalúa la base.
+ *
+ * Falla CERRADO (devuelve null): si la RPC no responde no se cobra el precio
+ * de lista, porque durante una promoción eso sería cobrar MÁS de lo que el
+ * comprador vio en pantalla.
+ */
+async function precioConPromo(
+  admin: Cliente,
+  lista: number,
+): Promise<number | null> {
+  const { data, error } = await admin.rpc("marketplace_precio_final", {
+    p_precio: lista,
+  });
+  if (error) {
+    console.error("marketplace_precio_final falló:", error);
+    return null;
+  }
+  const precio = Number(data);
+  if (!Number.isFinite(precio) || precio < 0 || precio > lista) {
+    console.error("precio con promoción fuera de rango:", { lista, data });
+    return null;
+  }
+  return precio;
 }
 
 // Combos que forman el paquete unitario, por agrupación.
@@ -390,9 +437,18 @@ async function prepararCompraUnitaria(
       400,
     );
   }
-  const precioTotal = tipo === "pdf"
+  const precioLista = tipo === "pdf"
     ? Number(tarifa.precio_base)
     : Number(tarifa.precio_base) + Number(tarifa.precio_addon_editable);
+  // Mismo camino que la compra individual: el descuento vigente lo aplica la
+  // base, nunca este archivo.
+  const precioTotal = await precioConPromo(admin, precioLista);
+  if (precioTotal == null) {
+    return jsonResponse(
+      { error: "No pudimos calcular el precio. Vuelve a intentarlo." },
+      503,
+    );
+  }
 
   // Ya tiene alguno de los paquetes en esa versión: que no pague doble.
   const productoIds = elegidos.map((p) => p.id as string);
@@ -496,13 +552,18 @@ async function reutilizarOCrearOrdenCombo(
 
   const { data: pendientes } = await admin
     .from("marketplace_ordenes")
-    .select("id")
+    .select("id, monto_total")
     .eq("user_id", userId)
     .eq("estado", "pendiente")
     .eq("metodo_pago", "mercadopago")
     .order("created_at", { ascending: false })
     .limit(20);
 
+  const montos = new Map<string, number>(
+    (pendientes || []).map((o: { id: string; monto_total: number }) =>
+      [o.id, Number(o.monto_total)]
+    ),
+  );
   const ids = (pendientes || []).map((o: { id: string }) => o.id);
   if (ids.length) {
     const { data: items } = await admin
@@ -523,21 +584,10 @@ async function reutilizarOCrearOrdenCombo(
         its.every((it) => it.tipo === tipo && productoIds.includes(it.producto_id)) &&
         new Set(its.map((it) => it.producto_id)).size === its.length;
       if (!coincide) continue;
-
-      // El precio pudo cambiar entre un intento y otro.
-      await admin
-        .from("marketplace_ordenes")
-        .update({ monto_total: precioTotal })
-        .eq("id", ordenId);
-      for (let i = 0; i < productoIds.length; i++) {
-        const item = its.find((it) => it.producto_id === productoIds[i]);
-        if (item) {
-          await admin
-            .from("marketplace_orden_items")
-            .update({ precio_unitario: precios[i] })
-            .eq("id", item.id);
-        }
-      }
+      // Mismo motivo que en reutilizarOCrearOrden(): si el importe cambió, la
+      // preferencia de MP asociada a esta orden sigue siendo la vieja por la
+      // clave de idempotencia. Se crea una orden nueva.
+      if (montos.get(ordenId) !== precioTotal) continue;
       return ordenId;
     }
   }
@@ -659,13 +709,18 @@ async function reutilizarOCrearOrden(
 ): Promise<string | null> {
   const { data: pendientes } = await admin
     .from("marketplace_ordenes")
-    .select("id")
+    .select("id, monto_total")
     .eq("user_id", userId)
     .eq("estado", "pendiente")
     .eq("metodo_pago", "mercadopago")
     .order("created_at", { ascending: false })
     .limit(20);
 
+  const montos = new Map<string, number>(
+    (pendientes || []).map((o: { id: string; monto_total: number }) =>
+      [o.id, Number(o.monto_total)]
+    ),
+  );
   const ids = (pendientes || []).map((o: { id: string }) => o.id);
   if (ids.length) {
     // Solo se puede reutilizar una orden de EXACTAMENTE un item. Una orden
@@ -688,16 +743,14 @@ async function reutilizarOCrearOrden(
       const its = porOrden.get(ordenId) || [];
       if (its.length !== 1) continue;
       if (its[0].producto_id !== productoId || its[0].tipo !== tipo) continue;
-
-      // El precio pudo cambiar entre un intento y otro.
-      await admin
-        .from("marketplace_ordenes")
-        .update({ monto_total: precio })
-        .eq("id", ordenId);
-      await admin
-        .from("marketplace_orden_items")
-        .update({ precio_unitario: precio })
-        .eq("id", its[0].id);
+      // El precio cambió entre un intento y otro (terminó la promoción, subió
+      // el tarifario): NO se reutiliza. Reescribir el monto aquí no serviría,
+      // porque la preferencia de MP se pide con X-Idempotency-Key = orden_id y
+      // Mercado Pago devolvería la preferencia vieja con el importe viejo. Al
+      // pagarse, procesarPago() la rechazaría por importe: dinero cobrado y
+      // sin acceso. Con una orden nueva hay id nuevo, clave nueva y
+      // preferencia nueva al precio correcto.
+      if (montos.get(ordenId) !== precio) continue;
       return ordenId;
     }
   }

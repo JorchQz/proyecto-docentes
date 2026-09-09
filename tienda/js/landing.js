@@ -15,12 +15,20 @@ var GRADO_COLOR = {
 };
 
 async function cargarLanding() {
-	var res = await window.sb
-		.from("marketplace_productos")
-		.select("id, grado, tipo_paquete, precio_pdf, precio_editable, organizacion, grados_combo, modalidad")
-		.eq("activo", true);
+	// La promoción viaja en paralelo con los productos: no añade espera y así
+	// ningún importe se pinta antes de saber si hay descuento (nada de que el
+	// precio de lista aparezca un instante y luego cambie).
+	var resultados = await Promise.all([
+		window.sb
+			.from("marketplace_productos")
+			.select("id, grado, tipo_paquete, precio_pdf, precio_editable, organizacion, grados_combo, modalidad")
+			.eq("activo", true),
+		Tienda.cargarPromo(),
+	]);
+	var res = resultados[0];
 	var prods = (!res.error && res.data) ? res.data : [];
 
+	pintarPromo();
 	llenarPrecios(prods);
 	llenarUnitaria();
 	renderDestacados(prods);
@@ -36,8 +44,27 @@ async function llenarUnitaria() {
 	var rCiclo = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "ciclo" });
 	if (rTrim.error || rCiclo.error || !rTrim.data || !rCiclo.data) { return; }
 	el.textContent = "Paquete unitario: todos los combos en una sola compra. Desde " +
-		montoCorto(rTrim.data.precio_pdf) + " el trimestre o " +
-		montoCorto(rCiclo.data.precio_pdf) + " el ciclo completo.";
+		montoCorto(Tienda.precioFinal(rTrim.data.precio_pdf)) + " el trimestre o " +
+		montoCorto(Tienda.precioFinal(rCiclo.data.precio_pdf)) + " el ciclo completo.";
+}
+
+// Badge y nota de la sección de precios. Con la promoción apagada no toca
+// nada: se queda el copy de "Precio de lanzamiento" que ya trae el HTML.
+function pintarPromo() {
+	if (!Tienda.promoActiva()) { return; }
+	var badge = document.getElementById("badgePrecios");
+	if (badge) {
+		badge.outerHTML = Tienda.promoBadge();
+		Tienda.iconos();
+	}
+	var nota = document.getElementById("notaPrecios");
+	if (nota) {
+		var hasta = Tienda.promoFechaLimite();
+		nota.textContent = "Promoción por tiempo limitado: -" +
+			Tienda.promoInfo().porcentaje + "% sobre el precio de lista" +
+			(hasta ? " hasta el " + hasta : "") +
+			". Lo que compras es tuyo para siempre, al precio que pagaste.";
+	}
 }
 
 // Vista previa en la portada: enseña páginas reales antes de pedir nada. Busca
@@ -235,8 +262,10 @@ function llenarPrecios(prods) {
 	// El ahorro en pesos, no la idea vaga de "ahorra": tres trimestres sueltos
 	// contra el ciclo. Sale de los precios reales, así que sigue siendo cierto
 	// cuando el ciclo cambie de tramo de lanzamiento.
+	// Sobre precios finales: durante la promoción el ahorro real es menor que
+	// el de lista, y prometer el de lista sería mentir en la portada.
 	if (trim != null && ciclo != null) {
-		var ahorro = trim * 3 - ciclo;
+		var ahorro = Tienda.precioFinal(trim) * 3 - Tienda.precioFinal(ciclo);
 		var el = document.getElementById("ahorroCiclo");
 		if (el && ahorro > 0) {
 			el.textContent = "Ahorras " + montoCorto(ahorro) + " frente a comprar los tres trimestres por separado";
@@ -253,14 +282,11 @@ function llenarPrecios(prods) {
 	}, "Versión Word editable");
 }
 
-// Importe compacto: "$349" en vez de "$349.00 MXN", que repetido en una línea
-// se vuelve ilegible.
+// Importe compacto: "$349" en vez de "$349.00 MXN". Se mantiene como
+// declaración (no `var`) porque hay llamadas antes de esta línea en el orden
+// de ejecución; el cuerpo vive en tienda-common.js.
 function montoCorto(n) {
-	var num = Number(n || 0);
-	return "$" + num.toLocaleString("es-MX", {
-		minimumFractionDigits: num % 1 === 0 ? 0 : 2,
-		maximumFractionDigits: 2,
-	});
+	return Tienda.montoCorto(n);
 }
 
 // El add-on es la diferencia entre las dos versiones del mismo paquete.
@@ -271,7 +297,11 @@ function setAddon(id, prods, filtro, etiqueta) {
 		return p.precio_pdf != null && p.precio_editable != null;
 	});
 	if (!candidatos.length) { return; }
-	var addon = Number(candidatos[0].precio_editable) - Number(candidatos[0].precio_pdf);
+	// Diferencia entre los precios YA descontados, nunca el descuento del
+	// add-on por su cuenta: con el redondeo hacia abajo la resta no es
+	// aditiva y el desglose no cuadraría con el total.
+	var addon = Tienda.precioFinal(candidatos[0].precio_editable) -
+		Tienda.precioFinal(candidatos[0].precio_pdf);
 	if (!(addon > 0)) { return; }
 	el.textContent = etiqueta + ": + " + montoCorto(addon);
 }
@@ -282,8 +312,16 @@ function setPrecio(id, monto, sufijo, dark) {
 	if (!el || monto == null) { return; }
 	var numCls = "text-3xl font-black" + (dark ? "" : " text-ink");
 	var sufCls = dark ? "text-white/70" : "text-mute";
+	// La tarjeta del ciclo es oscura: el tachado necesita otro color para
+	// seguir siendo legible sobre ella.
+	var precio = Tienda.precioHTML(monto, {
+		claseFinal: numCls,
+		claseLista: (dark ? "text-white/50" : "text-mute") + " text-lg font-bold",
+	});
 	el.innerHTML =
-		'<span class="' + numCls + '">Desde ' + Tienda.formatMoney(monto) + '</span>' +
+		(Tienda.promoActiva()
+			? '<span class="' + (dark ? "text-white/70" : "text-mute") + '">Desde </span>' + precio
+			: '<span class="' + numCls + '">Desde ' + Tienda.formatMoney(monto) + '</span>') +
 		'<span class="' + sufCls + '"> · ' + sufijo + '</span>';
 }
 
@@ -325,7 +363,7 @@ function renderDestacados(prods) {
 
 function cardHtml(g) {
 	var esMulti = g.org === "multigrado";
-	var esc = Tienda.esc, money = Tienda.formatMoney;
+	var esc = Tienda.esc;
 	// Mismo nombre que el h1 de la ficha y que la tarjeta del catálogo.
 	var titulo = esMulti
 		? "Multigrado " + comboDisplay(g.combo) + " de Primaria"
@@ -352,7 +390,11 @@ function cardHtml(g) {
 
 	return (
 		'<a href="' + href + '" class="prod-card bg-white border border-line rounded-3xl overflow-hidden flex flex-col">' +
-		'<div class="relative"><div class="ph h-44 overflow-hidden" data-portada data-slug="' + esc(Tienda.slugPreview(g.org, g.grado, g.combo)) + '" data-alt="' + esc(titulo) + '" style="border-radius:0">' + esc(titulo) + ' · portada</div>' + badge + '</div>' +
+		'<div class="relative"><div class="ph h-44 overflow-hidden" data-portada data-slug="' + esc(Tienda.slugPreview(g.org, g.grado, g.combo)) + '" data-alt="' + esc(titulo) + '" style="border-radius:0">' + esc(titulo) + ' · portada</div>' + badge +
+		// El chip de descuento va enfrente del badge de grado, que ocupa la
+		// esquina izquierda.
+		(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + '</span>' : "") +
+		'</div>' +
 		'<div class="p-5 flex flex-col flex-1">' +
 		'<h3 class="font-bold text-lg text-ink leading-snug">' + esc(titulo) + '</h3>' +
 		'<p class="mt-1 text-sm text-mute">Proyectos, PDAs, anexos y examen.</p>' +
@@ -362,7 +404,11 @@ function cardHtml(g) {
 		'</div>' +
 		'<div class="mt-4 pt-4 border-t border-line flex items-center justify-between gap-2">' +
 		(precioDesde != null
-			? '<div><span class="text-lg font-black text-ink">Desde ' + money(precioDesde) + '</span></div>'
+			? '<div><span class="text-[12px] font-semibold text-mute">Desde </span>' +
+				Tienda.precioHTML(precioDesde, {
+					claseFinal: "text-lg font-black text-ink",
+					claseLista: "text-mute text-[13px] font-bold",
+				}) + '</div>'
 			: '<span class="text-[12px] font-semibold text-mute">Ver opciones</span>') +
 		'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-action hover:bg-action-dark text-white text-sm font-bold transition">Ver <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
 		'</div></div></a>'

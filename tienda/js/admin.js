@@ -18,6 +18,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Precios de arranque al crear un paquete nuevo (tarifario nivel 1).
 	// La fuente de verdad es la tabla marketplace_precios: en cuanto se acredita
 	// una venta, marketplace_aplicar_precios() reescribe estos valores.
+	// Son precios de LISTA y deben seguir siéndolo: la promoción por tiempo
+	// limitado nunca se siembra en la base, se aplica al mostrar y al cobrar.
 	var PRECIO = {
 		completa: { trimestre: { pdf: 249, editable: 298 }, ciclo: { pdf: 499, editable: 598 } },
 		multigrado: { trimestre: { pdf: 299, editable: 348 }, ciclo: { pdf: 599, editable: 698 } },
@@ -285,6 +287,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var accion = o.estado === "pendiente"
 				? '<button data-confirmar="' + esc(o.id) + '" class="text-xs font-semibold px-3 py-2 rounded-lg min-h-[40px] text-white" style="background:#059669">Confirmar pago</button>'
 				: "—";
+			// monto_total es lo REALMENTE cobrado: si la orden se creó con la
+			// promoción activa, aquí sale el importe con descuento. Correcto tal
+			// cual; no aplicarle nada encima.
 			return (
 				'<tr style="border-bottom:1px solid #e7e6df">' +
 				'<td class="py-2 pr-3 text-xs" style="color:#5b6473">' + esc(fecha) + "</td>" +
@@ -383,14 +388,120 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var ajusteContadorInput = document.getElementById("ajusteContador");
 	var guardarLanzamientoBtn = document.getElementById("guardarLanzamientoBtn");
 
+	var promoActivaEl = document.getElementById("promoActiva");
+	var promoPorcentajeEl = document.getElementById("promoPorcentaje");
+	var promoDesdeEl = document.getElementById("promoDesde");
+	var promoHastaEl = document.getElementById("promoHasta");
+	var promoEtiquetaEl = document.getElementById("promoEtiqueta");
+	var estadoPromoEl = document.getElementById("estadoPromo");
+	var tablaPromoEl = document.getElementById("tablaPromo");
+	var guardarPromoBtn = document.getElementById("guardarPromoBtn");
+
 	async function cargarPrecios() {
-		var res = await window.sb.rpc("admin_estado_precios");
-		if (res.error) {
-			Tienda.toast("No se pudo cargar el estado de precios: " + res.error.message, "error");
+		var res = await Promise.all([
+			window.sb.rpc("admin_estado_precios"),
+			window.sb.rpc("admin_estado_promocion"),
+		]);
+		if (res[0].error) {
+			Tienda.toast("No se pudo cargar el estado de precios: " + res[0].error.message, "error");
 			return;
 		}
-		renderPrecios(res.data);
+		renderPrecios(res[0].data);
+		if (res[1].error) {
+			Tienda.toast("No se pudo cargar la promoción: " + res[1].error.message, "error");
+			return;
+		}
+		renderPromocion(res[1].data);
 	}
+
+	// El <input type="datetime-local"> trabaja en hora local del navegador; la
+	// base guarda timestamptz. Estas dos funciones son la conversión.
+	function aInputLocal(iso) {
+		if (!iso) { return ""; }
+		var d = new Date(iso);
+		if (isNaN(d.getTime())) { return ""; }
+		var p = function (n) { return String(n).padStart(2, "0"); };
+		return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+			"T" + p(d.getHours()) + ":" + p(d.getMinutes());
+	}
+	function aISO(valor) {
+		if (!valor) { return null; }
+		var d = new Date(valor);
+		return isNaN(d.getTime()) ? null : d.toISOString();
+	}
+
+	function renderPromocion(d) {
+		promoActivaEl.checked = !!d.activa;
+		promoPorcentajeEl.value = d.porcentaje != null ? String(d.porcentaje) : "20";
+		promoDesdeEl.value = aInputLocal(d.vigente_desde);
+		promoHastaEl.value = aInputLocal(d.vigente_hasta);
+		promoEtiquetaEl.value = d.etiqueta || "";
+
+		// "Activa" marcada no basta: puede estar programada para más adelante o
+		// ya vencida. Lo que manda es lo que ve el comprador.
+		var ahora = Date.now();
+		var texto;
+		if (d.vigente_ahora) {
+			var hasta = d.vigente_hasta
+				? new Date(d.vigente_hasta).toLocaleString("es-MX", { timeZone: "America/Mexico_City" })
+				: null;
+			texto = "Vigente ahora · -" + d.porcentaje + "%" +
+				(hasta ? " · termina el " + hasta + " (hora del centro)" : " · sin fecha límite");
+		} else if (!d.activa) {
+			texto = "Apagada. Los precios que se muestran y se cobran son los de lista.";
+		} else if (d.vigente_desde && new Date(d.vigente_desde).getTime() > ahora) {
+			texto = "Programada: empieza el " +
+				new Date(d.vigente_desde).toLocaleString("es-MX", { timeZone: "America/Mexico_City" });
+		} else {
+			texto = "Venció el " +
+				new Date(d.vigente_hasta).toLocaleString("es-MX", { timeZone: "America/Mexico_City" }) +
+				". Los precios ya volvieron a los de lista solos.";
+		}
+		estadoPromoEl.textContent = texto;
+
+		var filas = d.previsualizacion || [];
+		tablaPromoEl.innerHTML = filas.map(function (t) {
+			return '<tr class="border-b border-line">' +
+				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
+				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre") + "</td>" +
+				'<td class="py-2 pr-3 text-right text-mute">' + money(t.lista_pdf) + "</td>" +
+				'<td class="py-2 pr-3 text-right font-bold text-ink">' + money(t.promo_pdf) + "</td>" +
+				'<td class="py-2 pr-3 text-right text-mute">' + money(t.lista_editable) + "</td>" +
+				'<td class="py-2 pr-3 text-right font-bold text-ink">' + money(t.promo_editable) + "</td>" +
+				"</tr>";
+		}).join("");
+	}
+
+	guardarPromoBtn.addEventListener("click", async function () {
+		var pct = Number((promoPorcentajeEl.value || "").trim());
+		if (!isFinite(pct) || pct < 1 || pct > 90) {
+			Tienda.toast("El porcentaje debe estar entre 1 y 90.", "error");
+			return;
+		}
+		var desde = aISO(promoDesdeEl.value);
+		var hasta = aISO(promoHastaEl.value);
+		if (desde && hasta && new Date(hasta) <= new Date(desde)) {
+			Tienda.toast("La fecha de fin debe ser posterior a la de inicio.", "error");
+			return;
+		}
+
+		guardarPromoBtn.disabled = true;
+		guardarPromoBtn.textContent = "Guardando...";
+		var res = await window.sb.rpc("admin_guardar_promocion", {
+			p_activa: promoActivaEl.checked,
+			p_porcentaje: pct,
+			p_vigente_hasta: hasta,
+			p_vigente_desde: desde,
+			p_etiqueta: (promoEtiquetaEl.value || "").trim() || null,
+		});
+		guardarPromoBtn.disabled = false;
+		guardarPromoBtn.textContent = "Guardar promoción";
+
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		// No hace falta recargar los paquetes: la promoción no toca sus precios.
+		renderPromocion(res.data);
+		Tienda.toast("Promoción guardada.", "ok");
+	});
 
 	function renderPrecios(d) {
 		var ventas = d.ventas_ciclo || 0;

@@ -60,7 +60,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		.eq("organizacion", org);
 	q = esMulti ? q.eq("grados_combo", combo) : q.eq("grado", Number(g));
 
-	var res = await q;
+	// La promoción viaja con la consulta: ningún precio se pinta antes de
+	// saber si hay descuento.
+	var resultados = await Promise.all([q, Tienda.cargarPromo()]);
+	var res = resultados[0];
 	if (res.error || !res.data || !res.data.length) {
 		estadoEl.textContent = "Este paquete no está disponible.";
 		return;
@@ -118,22 +121,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function losTrimestres() {
 		return productos.filter(function (p) { return p.tipo_paquete === "trimestre"; });
 	}
-	/** Lo que costaría comprar los trimestres sueltos en vez del ciclo. */
+	/**
+	 * Lo que costaría comprar los trimestres sueltos en vez del ciclo.
+	 * Sobre precios finales: durante la promoción ambos lados bajan y el
+	 * ahorro real es menor que el de lista.
+	 */
 	function ahorroDelCiclo() {
 		var ciclo = elCiclo();
 		var tris = losTrimestres();
 		if (!ciclo || tris.length < 2 || ciclo.precio_pdf == null) { return 0; }
-		var suelto = tris.reduce(function (t, p) { return t + Number(p.precio_pdf || 0); }, 0);
-		var dif = suelto - Number(ciclo.precio_pdf);
+		var suelto = tris.reduce(function (t, p) {
+			return t + (p.precio_pdf != null ? Tienda.precioFinal(p.precio_pdf) : 0);
+		}, 0);
+		var dif = suelto - Tienda.precioFinal(ciclo.precio_pdf);
 		return dif > 0 ? dif : 0;
 	}
 	function productoPorDefecto() { return elCiclo() || productos[0]; }
+	// Declaración (no `var`) a propósito: renderPrecios() se ejecuta antes de
+	// esta línea. El cuerpo vive en tienda-common.js.
 	function montoCorto(n) {
-		var num = Number(n || 0);
-		return "$" + num.toLocaleString("es-MX", {
-			minimumFractionDigits: num % 1 === 0 ? 0 : 2,
-			maximumFractionDigits: 2,
-		});
+		return Tienda.montoCorto(n);
 	}
 
 	// ── Cabecera y datos ──────────────────────────────────────────────────────
@@ -209,7 +216,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var minimo = precios.length ? Math.min.apply(null, precios) : null;
 		precioMinimo = minimo;
 
-		document.getElementById("precioDesde").textContent = minimo != null ? money(minimo) : "—";
+		var precioDesdeEl = document.getElementById("precioDesde");
+		if (minimo != null) {
+			precioDesdeEl.innerHTML = Tienda.precioHTML(minimo, {
+				claseLista: "text-mute text-[1.15rem] font-bold align-middle",
+			});
+		} else {
+			precioDesdeEl.textContent = "—";
+		}
+
+		// Con promoción, el badge de la ficha anuncia el descuento en vez del
+		// precio de lanzamiento: dos badges de precio a la vez se leen como dos
+		// descuentos distintos.
+		var badgePrecio = document.getElementById("badgePrecio");
+		if (badgePrecio && Tienda.promoActiva()) {
+			badgePrecio.outerHTML = Tienda.promoBadge({ clase: "h-6 px-2 text-[11px]" });
+			Tienda.iconos();
+		}
+
 		// Solo la unidad del precio. Que el ciclo salga mejor ya lo dice el badge
 		// de al lado, y con la cifra exacta en vez de una vaguedad.
 		document.getElementById("precioNota").textContent = losTrimestres().length
@@ -536,7 +560,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (barraPrecio) {
 			// Reutiliza el mínimo que ya calculó renderPrecios(). Aquí va el
 			// formato corto ("$349"): el largo con " MXN" no cabe en la barra.
-			barraPrecio.textContent = precioMinimo != null ? montoCorto(precioMinimo) : "—";
+			// A 360 px tampoco cabe el tachado: solo el precio final y, si hay
+			// promoción, el chip con el porcentaje.
+			if (precioMinimo == null) {
+				barraPrecio.textContent = "—";
+			} else if (Tienda.promoActiva()) {
+				barraPrecio.innerHTML = montoCorto(Tienda.precioFinal(precioMinimo)) +
+					' <span class="align-middle">' + Tienda.promoChip() + "</span>";
+				Tienda.iconos();
+			} else {
+				barraPrecio.textContent = montoCorto(precioMinimo);
+			}
 		}
 		var barraBtn = document.getElementById("barraCompraBtn");
 		if (barraBtn) { barraBtn.addEventListener("click", abrirModal); }
@@ -613,7 +647,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 				(yaLoTiene ? '<p class="text-[12px] font-semibold mt-1" style="color:#1e3a8a">Ya lo tienes</p>' : "") +
 				"</div>" +
 				'<div class="shrink-0 text-right">' +
-				'<span class="font-black text-ink text-lg">' + (p.precio_pdf != null ? montoCorto(p.precio_pdf) : "—") + "</span>" +
+				(p.precio_pdf != null
+					? Tienda.precioHTML(p.precio_pdf, {
+						corto: true,
+						claseFinal: "font-black text-ink text-lg",
+						claseLista: "text-mute text-[13px] font-bold block",
+					})
+					: '<span class="font-black text-ink text-lg">—</span>') +
 				'<p class="text-[11px] text-mute">desde</p>' +
 				"</div></button>";
 		}).join("");
@@ -645,8 +685,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function renderPaso2() {
 		var p = elegido;
 		var acc = accesosPorProd[p.id] || {};
+		// Diferencia entre los precios YA descontados: con el redondeo hacia
+		// abajo la resta no es aditiva, y descontar el add-on por separado
+		// haría que el desglose no sumara el total ("199 + 39" debe dar 238).
 		var addon = (p.precio_editable != null && p.precio_pdf != null)
-			? Number(p.precio_editable) - Number(p.precio_pdf) : 0;
+			? Tienda.precioFinal(p.precio_editable) - Tienda.precioFinal(p.precio_pdf) : 0;
 		var proyectos = p.num_proyectos || (p.tipo_paquete === "ciclo" ? 12 : 4);
 
 		var opciones = [];
@@ -669,7 +712,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				detalle: "Planeación, anexos y examen en Word, para adaptarlos a tu grupo.",
 				precio: p.precio_editable,
 				desglose: addon > 0
-					? montoCorto(p.precio_pdf) + " del PDF + " + montoCorto(addon) + " por el Word · todo el paquete editable"
+					? montoCorto(Tienda.precioFinal(p.precio_pdf)) + " del PDF + " +
+						montoCorto(addon) + " por el Word · todo el paquete editable"
 					: null,
 				comprado: !!acc.editable,
 				recomendado: true,
@@ -688,7 +732,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 				(o.desglose ? '<p class="text-[12px] mt-1.5" style="color:#1c2434">' + esc(o.desglose) + "</p>" : "") +
 				(o.comprado ? '<p class="text-[12px] font-semibold mt-1" style="color:#1e3a8a">Ya lo tienes</p>' : "") +
 				"</div>" +
-				'<span class="shrink-0 font-black text-ink text-lg">' + montoCorto(o.precio) + "</span>" +
+				'<span class="shrink-0 text-right">' +
+				Tienda.precioHTML(o.precio, {
+					corto: true,
+					claseFinal: "font-black text-ink text-lg",
+					claseLista: "text-mute text-[13px] font-bold block",
+				}) + "</span>" +
 				"</button>";
 		}).join("");
 
@@ -734,7 +783,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var precio = tipoElegido === "pdf" ? elegido.precio_pdf : elegido.precio_editable;
 		modalPagar.disabled = false;
 		modalPagar.style.opacity = "1";
-		modalPagarTexto.textContent = "Continuar al pago · " + money(precio);
+		modalPagarTexto.textContent = "Continuar al pago · " +
+			money(Tienda.precioFinal(precio));
 	}
 
 	// El mismo botón sirve a los dos pasos: primero avanza, después cobra.
@@ -778,13 +828,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Tarifa del combo (RPC del tarifario; el cobro real lo recalcula la
 		// Edge Function) y paquetes multigrado publicados, para saber qué
 		// opciones están completas.
+		// Esta ficha no pasa por la carga común: pide la promoción aquí, y en
+		// paralelo, para no pintar precios antes de saber si hay descuento.
 		var rTrim = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "trimestre" });
 		var rCiclo = await window.sb.rpc("marketplace_precio_unitaria", { p_tipo_paquete: "ciclo" });
-		var rProds = await window.sb
-			.from("marketplace_productos")
-			.select("id, grados_combo, modalidad, tipo_paquete, trimestre, precio_pdf, precio_editable")
-			.eq("activo", true)
-			.eq("organizacion", "multigrado");
+		var rProdsPromo = await Promise.all([
+			window.sb
+				.from("marketplace_productos")
+				.select("id, grados_combo, modalidad, tipo_paquete, trimestre, precio_pdf, precio_editable")
+				.eq("activo", true)
+				.eq("organizacion", "multigrado"),
+			Tienda.cargarPromo(),
+		]);
+		var rProds = rProdsPromo[0];
 		if (rTrim.error || rCiclo.error || !rTrim.data || !rCiclo.data || rProds.error) {
 			estadoEl.textContent = "Este paquete no está disponible.";
 			return;
@@ -831,9 +887,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// ── Precio de entrada ──
 		var desde = Number(tarifas.trimestre.precio_pdf);
 		precioMinimo = desde;
-		document.getElementById("precioDesde").textContent = money(desde);
+		document.getElementById("precioDesde").innerHTML = Tienda.precioHTML(desde, {
+			claseLista: "text-mute text-[1.15rem] font-bold align-middle",
+		});
 		document.getElementById("precioNota").textContent = "por trimestre · incluye todos los combos";
-		var ahorroCiclo = desde * 3 - Number(tarifas.ciclo.precio_pdf);
+		var badgePrecioU = document.getElementById("badgePrecio");
+		if (badgePrecioU && Tienda.promoActiva()) {
+			badgePrecioU.outerHTML = Tienda.promoBadge({ clase: "h-6 px-2 text-[11px]" });
+		}
+		// Ahorro sobre precios finales: durante la promoción bajan los dos
+		// lados de la comparación.
+		var ahorroCiclo = Tienda.precioFinal(desde) * 3 -
+			Tienda.precioFinal(tarifas.ciclo.precio_pdf);
 		if (ahorroCiclo > 0) {
 			var badgeAhorro = document.getElementById("ahorroBadge");
 			badgeAhorro.textContent = "Ahorras " + montoCorto(ahorroCiclo) + " con el ciclo";
@@ -873,7 +938,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		function etiquetaPaqueteSel() {
 			return paqueteSel === "ciclo" ? "Ciclo completo" : "Trimestre " + trimestreSel();
 		}
+		/** Precio que se va a cobrar: ya con la promoción vigente aplicada. */
 		function precioSel(tipo) {
+			return Tienda.precioFinal(precioSelLista(tipo));
+		}
+		/** Precio de lista, el que se tacha cuando hay promoción. */
+		function precioSelLista(tipo) {
 			var t = tarifas[tipoPaqueteSel()];
 			return tipo === "pdf" ? Number(t.precio_pdf) : Number(t.precio_editable);
 		}
@@ -897,7 +967,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		if (barraU && "IntersectionObserver" in window) {
 			var barraPrecioU = document.getElementById("barraCompraPrecio");
-			if (barraPrecioU) { barraPrecioU.textContent = montoCorto(desde); }
+			// Igual que en las fichas normales: a 360 px no cabe el tachado.
+			if (barraPrecioU && Tienda.promoActiva()) {
+				barraPrecioU.innerHTML = montoCorto(Tienda.precioFinal(desde)) +
+					' <span class="align-middle">' + Tienda.promoChip() + "</span>";
+			} else if (barraPrecioU) {
+				barraPrecioU.textContent = montoCorto(desde);
+			}
 			var barraBtnU = document.getElementById("barraCompraBtn");
 			if (barraBtnU) { barraBtnU.addEventListener("click", abrirModalU); }
 			new IntersectionObserver(function (entradas) {
@@ -1004,7 +1080,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 					(o.disp ? "" : '<p class="text-[12px] font-semibold mt-1" style="color:#9ba3af">Disponible próximamente</p>') +
 					"</div>" +
 					'<div class="shrink-0 text-right">' +
-					'<span class="font-black text-ink text-lg">' + montoCorto(precio) + "</span>" +
+					Tienda.precioHTML(precio, {
+						corto: true,
+						claseFinal: "font-black text-ink text-lg",
+						claseLista: "text-mute text-[13px] font-bold block",
+					}) +
 					'<p class="text-[11px] text-mute">desde</p>' +
 					"</div></button>";
 			}).join("");
@@ -1030,17 +1110,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Paso 3: versión, con el mismo desglose del add-on que las fichas normales.
 		function renderPasoVersion() {
+			// precioSel() ya devuelve el precio final: el add-on es la
+			// diferencia entre finales, nunca el add-on descontado aparte.
 			var pdf = precioSel("pdf");
 			var editable = precioSel("editable");
 			var addon = editable - pdf;
 
 			var opciones = [
-				{ tipo: "pdf", nombre: "Solo PDF", detalle: "Lista para imprimir, con anexos y examen.", precio: pdf, desglose: null },
+				{
+					tipo: "pdf",
+					nombre: "Solo PDF",
+					detalle: "Lista para imprimir, con anexos y examen.",
+					precio: precioSelLista("pdf"),
+					desglose: null,
+				},
 				{
 					tipo: "editable",
 					nombre: "PDF + Word editable",
 					detalle: "Planeación, anexos y examen en Word, para adaptarlos a tu grupo.",
-					precio: editable,
+					precio: precioSelLista("editable"),
 					desglose: addon > 0
 						? montoCorto(pdf) + " del PDF + " + montoCorto(addon) + " por el Word · todos tus combos editables"
 						: null,
@@ -1059,7 +1147,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 					'<p class="text-[13px] text-mute mt-0.5">' + esc(o.detalle) + "</p>" +
 					(o.desglose ? '<p class="text-[12px] mt-1.5" style="color:#1c2434">' + esc(o.desglose) + "</p>" : "") +
 					"</div>" +
-					'<span class="shrink-0 font-black text-ink text-lg">' + montoCorto(o.precio) + "</span>" +
+					'<span class="shrink-0 text-right">' +
+					Tienda.precioHTML(o.precio, {
+						corto: true,
+						claseFinal: "font-black text-ink text-lg",
+						claseLista: "text-mute text-[13px] font-bold block",
+					}) + "</span>" +
 					"</button>";
 			}).join("");
 

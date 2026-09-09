@@ -5,7 +5,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	Tienda.montarFooter();
 
 	var esc = Tienda.esc;
-	var money = Tienda.formatMoney;
 
 	var estadoEl = document.getElementById("estado");
 	var gridEl = document.getElementById("grid");
@@ -41,15 +40,34 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	async function cargar() {
 		mostrarCargando();
-		var res = await window.sb
-			.from("marketplace_productos")
-			.select("id, titulo, grado, trimestre, tipo_paquete, num_proyectos, precio_pdf, precio_editable, organizacion, grados_combo, modalidad, portada_url")
-			.eq("activo", true);
+		// La promoción se pide junto al catálogo: ninguna tarjeta se pinta
+		// antes de saber si hay descuento, así el precio no parpadea.
+		var resultados = await Promise.all([
+			window.sb
+				.from("marketplace_productos")
+				.select("id, titulo, grado, trimestre, tipo_paquete, num_proyectos, precio_pdf, precio_editable, organizacion, grados_combo, modalidad, portada_url")
+				.eq("activo", true),
+			Tienda.cargarPromo(),
+		]);
+		var res = resultados[0];
 
 		if (res.error) { mostrarError(); return; }
 		todos = res.data || [];
+		pintarTiraPromo();
 		renderCombos();
 		aplicarFiltros();
+	}
+
+	// Tira superior con el descuento vigente. Oculta si no hay promoción.
+	function pintarTiraPromo() {
+		var el = document.getElementById("tiraPromo");
+		if (!el || !Tienda.promoActiva()) { return; }
+		var hasta = Tienda.promoFechaLimite();
+		el.innerHTML = '<i data-lucide="tag" class="w-4 h-4 shrink-0"></i>' +
+			'<span><strong>-' + Tienda.promoInfo().porcentaje + "% en todo el catálogo</strong>" +
+			(hasta ? " · termina el " + hasta : " · por tiempo limitado") + "</span>";
+		el.classList.remove("hidden");
+		Tienda.iconos();
 	}
 
 	// Deja el filtro de organización en `org` y ajusta los chips y subfiltros.
@@ -260,6 +278,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<div class="relative">' +
 			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
 			badge +
+			// El badge de grado ocupa la esquina izquierda: el descuento va enfrente.
+			(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + '</span>' : "") +
 			'</div>' +
 			'<div class="p-5 flex flex-col flex-1">' +
 			'<h3 class="font-bold text-lg leading-snug" style="color:#1c2434">' + esc(titulo) + '</h3>' +
@@ -271,7 +291,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<div class="mt-4 pt-4 flex items-center justify-between" style="border-top:1px solid #e7e6df">' +
 			'<div>' +
 			(isFinite(precioDesde)
-				? '<span class="font-black text-lg" style="color:#1c2434">Desde ' + money(precioDesde) + '</span><span class="text-sm" style="color:#5b6473"> / trim</span>'
+				? '<span class="text-sm" style="color:#5b6473">Desde </span>' +
+					Tienda.precioHTML(precioDesde, {
+						claseFinal: "font-black text-lg text-ink",
+						claseLista: "text-mute text-[13px] font-bold",
+					}) +
+					'<span class="text-sm" style="color:#5b6473"> / trim</span>'
 				: '<span class="text-sm" style="color:#5b6473">Ver opciones</span>') +
 			'</div>' +
 			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#059669">Ver <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
@@ -311,8 +336,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// no está y no hay nada que actualizar.
 		var precioEl = gridEl.querySelector("[data-precio-unitaria]");
 		if (precioEl && precioUnitaria != null) {
-			precioEl.innerHTML = '<span class="font-black text-lg" style="color:#1c2434">Desde ' + money(precioUnitaria) +
-				'</span><span class="text-sm" style="color:#5b6473"> / trim</span>';
+			precioEl.innerHTML = '<span class="text-sm" style="color:#5b6473">Desde </span>' +
+				Tienda.precioHTML(precioUnitaria, {
+					claseFinal: "font-black text-lg text-ink",
+					claseLista: "text-mute text-[13px] font-bold",
+				}) +
+				'<span class="text-sm" style="color:#5b6473"> / trim</span>';
 		}
 	}
 
@@ -326,6 +355,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<div class="relative">' +
 			'<div class="ph h-40 overflow-hidden rounded-none border-x-0 border-t-0" data-portada style="border-radius:0">' + esc(titulo) + ' · portada</div>' +
 			'<span class="absolute top-3 left-3 h-9 px-3 rounded-xl text-sm font-black flex items-center justify-center shadow" style="background:#1e3a8a;color:#fff">Unitaria</span>' +
+			(Tienda.promoActiva() ? '<span class="absolute top-3 right-3">' + Tienda.promoChip() + '</span>' : "") +
 			'</div>' +
 			'<div class="p-5 flex flex-col flex-1">' +
 			'<h3 class="font-bold text-lg leading-snug" style="color:#1c2434">' + esc(titulo) + '</h3>' +

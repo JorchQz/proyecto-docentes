@@ -30,6 +30,114 @@
 		}) + " MXN";
 	}
 
+	// Importe compacto: "$349" en vez de "$349.00 MXN", que repetido en una
+	// línea se vuelve ilegible.
+	function montoCorto(n) {
+		var num = Number(n || 0);
+		return "$" + num.toLocaleString("es-MX", {
+			minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+			maximumFractionDigits: 2,
+		});
+	}
+
+	// ── Promoción por tiempo limitado ──────────────────────────────────────
+	//
+	// El precio de LISTA es el que vive en la base (marketplace_productos y
+	// marketplace_precios). El descuento se aplica al pintar, nunca se escribe:
+	// marketplace_aplicar_precios() reescribe esas columnas después de cada
+	// venta y se llevaría por delante cualquier descuento guardado ahí.
+	//
+	// La vigencia la evalúa la base contra now(); aquí solo se cachea, durante
+	// esta carga de página, lo que devolvió la RPC. Sin localStorage a
+	// propósito: una promo vencida en caché mostraría un precio que ya no se
+	// va a cobrar.
+	var promo = null;        // {porcentaje, etiqueta, vigente_hasta} o null
+	var promoPromesa = null; // una sola petición aunque la pidan varias funciones
+
+	function cargarPromo() {
+		if (promoPromesa) { return promoPromesa; }
+		promoPromesa = (async function () {
+			if (!window.sb) { return null; }
+			try {
+				var res = await window.sb.rpc("marketplace_promocion_vigente");
+				var d = res.data;
+				// Si la RPC falla, `promo` se queda en null y todo se pinta a
+				// precio de lista mientras el servidor sí descuenta: se cobra
+				// de menos, nunca de más. Es la dirección segura del fallo.
+				if (res.error || !d || !d.activa) { return null; }
+				promo = {
+					porcentaje: Number(d.porcentaje),
+					etiqueta: d.etiqueta || "por tiempo limitado",
+					vigente_hasta: d.vigente_hasta || null,
+				};
+			} catch (_) { promo = null; }
+			return promo;
+		})();
+		return promoPromesa;
+	}
+
+	function promoActiva() { return !!promo; }
+	function promoInfo() { return promo; }
+
+	// Espejo EXACTO de marketplace_redondeo_promo() en
+	// supabase/marketplace_promocion.sql. Si cambia una, cambian las dos.
+	function precioFinal(lista) {
+		var n = Number(lista);
+		if (!isFinite(n)) { return null; }
+		if (!promo) { return n; }
+		return Math.floor(n * (100 - promo.porcentaje) / 100);
+	}
+
+	// Par de precios: lista tachado + precio con descuento. Un solo sitio
+	// decide cómo se ve el tachado para que las cinco superficies de la tienda
+	// no se contradigan. Sin promo devuelve exactamente lo de siempre.
+	//   opts.corto      → "$399" en vez de "$399.00 MXN"
+	//   opts.claseLista → clases del tachado (las tarjetas oscuras necesitan otro color)
+	//   opts.claseFinal → clases del precio final
+	function precioHTML(lista, opts) {
+		var o = opts || {};
+		var fmt = o.corto ? montoCorto : formatMoney;
+		var final = precioFinal(lista);
+		var spanFinal = '<span class="' + (o.claseFinal || "") + '">' + fmt(final) + "</span>";
+		if (!promo || final == null || Number(final) >= Number(lista)) {
+			return spanFinal;
+		}
+		return '<s class="' + (o.claseLista || "text-mute") +
+			'" aria-label="Precio anterior">' + fmt(lista) + "</s> " + spanFinal;
+	}
+
+	// Badge "-20% por tiempo limitado". El número sale de la base: cambiarlo en
+	// el panel admin cambia el badge sin tocar código. Icono Lucide, nunca
+	// emojis; hay que llamar a Tienda.iconos() tras insertarlo.
+	function promoBadge(opts) {
+		if (!promo) { return ""; }
+		var o = opts || {};
+		return '<span class="inline-flex items-center gap-1.5 ' +
+			(o.clase || "h-7 px-2.5 text-[12px]") +
+			' font-bold rounded-full border" style="background:rgba(5,150,105,.08);color:#047857;border-color:rgba(5,150,105,.25)">' +
+			'<i data-lucide="tag" class="w-3.5 h-3.5"></i> -' + promo.porcentaje + "% " +
+			esc(promo.etiqueta) + "</span>";
+	}
+
+	// Chip corto ("-20%") para donde no cabe la frase completa: tarjetas del
+	// catálogo y barra de compra del móvil.
+	function promoChip(clase) {
+		if (!promo) { return ""; }
+		return '<span class="inline-flex items-center h-6 px-2 text-[11px] font-bold rounded-full ' +
+			(clase || "") + '" style="background:#047857;color:#fff">-' + promo.porcentaje + "%</span>";
+	}
+
+	// "30 de septiembre". Siempre en hora de Ciudad de México: la fecha límite
+	// es una sola para todo el país, no la del navegador del comprador.
+	function promoFechaLimite() {
+		if (!promo || !promo.vigente_hasta) { return ""; }
+		try {
+			return new Date(promo.vigente_hasta).toLocaleDateString("es-MX", {
+				day: "numeric", month: "long", timeZone: "America/Mexico_City",
+			});
+		} catch (_) { return ""; }
+	}
+
 	// Convierte los <i data-lucide="..."> presentes en SVG. Llamar tras render dinámico.
 	function iconos() {
 		if (window.lucide && typeof window.lucide.createIcons === "function") {
@@ -548,6 +656,15 @@
 		CF_COLOR: CF_COLOR,
 		esc: esc,
 		formatMoney: formatMoney,
+		montoCorto: montoCorto,
+		cargarPromo: cargarPromo,
+		promoActiva: promoActiva,
+		promoInfo: promoInfo,
+		precioFinal: precioFinal,
+		precioHTML: precioHTML,
+		promoBadge: promoBadge,
+		promoChip: promoChip,
+		promoFechaLimite: promoFechaLimite,
 		iconos: iconos,
 		toast: toast,
 		getSession: getSession,
