@@ -138,19 +138,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: "Planeación en PDF y Word editable, sin anexos";
 		pintarTotal(lista);
 
+		// Mismo formato que "Tu pedido" en el formulario: cada rótulo una vez
+		// (en plural si hay varios) y los elementos en lista.
 		var filas = [];
 		var cfs = (b.campos_formativos || []).filter(function (c) { return Tienda.CF_COLOR[c]; });
-		if (cfs.length) { filas.push([cfs.length > 1 ? "Campos" : "Campo", cfs.map(function (c) { return Tienda.CF_COLOR[c].nombre; }).join(", ")]); }
-		(b.contenidos_texto || []).forEach(function (t) { filas.push(["Contenido", t]); });
-		(b.pdas_texto || []).forEach(function (t) { filas.push(["PDA", t]); });
-		if (b.metodologia) { filas.push(["Metodología", b.metodologia]); }
-		if (b.fecha_necesaria) { filas.push(["Lo necesitas para", b.fecha_necesaria]); }
+		if (cfs.length) { filas.push([cfs.length > 1 ? "Campos" : "Campo", cfs.map(function (c) { return Tienda.CF_COLOR[c].nombre; })]); }
+		var contenidos = b.contenidos_texto || [];
+		if (contenidos.length) { filas.push([contenidos.length > 1 ? "Contenidos" : "Contenido", contenidos]); }
+		var pdas = b.pdas_texto || [];
+		if (pdas.length) { filas.push([pdas.length > 1 ? "PDAs" : "PDA", pdas]); }
+		if (b.metodologia) { filas.push(["Metodología", [b.metodologia]]); }
+		if (b.fecha_necesaria) { filas.push(["Lo necesitas para", [b.fecha_necesaria]]); }
 		var resumenCombo = document.getElementById("resumenCombo");
 		resumenCombo.innerHTML =
 			'<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-2">Lo que pediste</p>' +
 			(filas.length
 				? '<dl class="flex flex-col gap-1.5 text-[13px]">' + filas.map(function (f) {
-					return '<div class="flex gap-2"><dt class="w-20 shrink-0 font-semibold text-mute">' + Tienda.esc(f[0]) + '</dt><dd class="text-ink leading-snug">' + Tienda.esc(f[1]) + "</dd></div>";
+					var valor = f[1].length === 1
+						? Tienda.esc(f[1][0])
+						: '<ul class="list-disc pl-4 flex flex-col gap-1">' + f[1].map(function (v) { return "<li>" + Tienda.esc(v) + "</li>"; }).join("") + "</ul>";
+					return '<div class="flex gap-2"><dt class="w-20 shrink-0 font-semibold text-mute">' + Tienda.esc(f[0]) + '</dt><dd class="text-ink leading-snug min-w-0 flex-1">' + valor + "</dd></div>";
 				}).join("") + "</dl>"
 				: '<p class="text-[13px] text-mute">Sin preferencias: elegimos campo, contenido y PDA para ese grado.</p>') +
 			'<p class="mt-3 text-[13px]" style="color:#047857">Entrega en tu biblioteca en un máximo de ' + Math.round(est.ventana_horas) + " horas después del pago. Te avisamos por correo.</p>" +
