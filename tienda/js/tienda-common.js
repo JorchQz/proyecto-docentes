@@ -119,13 +119,29 @@
 				if (primero) { elegir(primero.getAttribute("data-elegir")); input.value = ""; abrir(); }
 			}
 		});
-		// pointerdown vale para ratón y para dedo, y llega antes de que la
-		// casilla pierda el foco. preventDefault evita el blur en escritorio.
+		// Elegir = tocar y soltar SIN mover. pointerdown solo anota dónde empezó
+		// (y con preventDefault evita que la casilla pierda el foco en
+		// escritorio); la elección se hace en pointerup si el dedo o el ratón
+		// apenas se movieron. Así en el celular se puede deslizar la lista sin
+		// que se elija la opción bajo el dedo (antes se elegía al primer toque).
+		var toque = null;
 		lista.addEventListener("pointerdown", function (e) {
 			var b = e.target.closest("[data-elegir]");
-			if (!b) { return; }
+			if (!b) { toque = null; return; }
 			e.preventDefault();
-			elegir(b.getAttribute("data-elegir"));
+			toque = { id: b.getAttribute("data-elegir"), x: e.clientX, y: e.clientY };
+		});
+		lista.addEventListener("pointercancel", function () { toque = null; });
+		lista.addEventListener("scroll", function () { toque = null; }, { passive: true });
+		lista.addEventListener("pointerup", function (e) {
+			if (!toque) { return; }
+			var b = e.target.closest("[data-elegir]");
+			var movio = Math.abs(e.clientX - toque.x) > 8 || Math.abs(e.clientY - toque.y) > 8;
+			var id = toque.id;
+			toque = null;
+			if (movio || !b || b.getAttribute("data-elegir") !== id) { return; }
+			e.preventDefault();
+			elegir(id);
 			input.value = "";
 			abrir();
 		});

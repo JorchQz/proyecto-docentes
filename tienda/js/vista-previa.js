@@ -68,13 +68,22 @@
 	// siguiente, el número de sesión pegado al campo ("1Saberes y…"). Se
 	// buscan esos dos renglones entre los primeros de cada página; "10…" no
 	// cuenta porque tras el 1 viene otro dígito. Si no se encuentra, null.
-	var RE_SESION_1 = /SESI[OÓ]N\s*CAMPO\s*FORMATIVO\s*MOMENTO\s*1(?![0-9])/i;
+	// Cuando el momento ocupa dos líneas, el "1" puede quedar en un renglón
+	// aparte o más abajo: se admite en cualquiera de los 4 renglones que
+	// siguen a la cabecera. "1°" tampoco cuenta (es un grado).
+	var RE_CABECERA = /SESI[OÓ]N\s*CAMPO\s*FORMATIVO/i;
+	var RE_UNO = /^\s*1(?![0-9°.,:)])/;
 	async function paginaSesion1(doc, opts) {
 		var hasta = Math.min(doc.numPages, opts.buscarHasta || 20);
 		for (var n = 2; n <= hasta; n++) {
 			var renglones = await renglonesDe(doc, n);
-			var arriba = renglones.slice(0, 6).join(" ");
-			if (RE_SESION_1.test(arriba)) { return n; }
+			for (var i = 0; i < Math.min(renglones.length, 8); i++) {
+				if (!RE_CABECERA.test(renglones[i])) { continue; }
+				for (var j = i + 1; j <= i + 4 && j < renglones.length; j++) {
+					if (RE_UNO.test(renglones[j])) { return n; }
+				}
+				break;
+			}
 		}
 		return null;
 	}
