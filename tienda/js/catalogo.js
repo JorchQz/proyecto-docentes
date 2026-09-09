@@ -526,29 +526,50 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// Tarjeta permanente "a la medida": siempre es una opción más del catálogo,
 	// la primera de la lista, no solo el consuelo de cuando no hay resultados.
+	// Tira compacta a lo ancho del grid: una línea con el gancho y el precio;
+	// al tocarla se despliega la explicación y el botón "Pedir". Ocupa poco
+	// (sobre todo en el celular) y sigue siendo lo primero que se ve. El
+	// estado abierto/cerrado sobrevive a los repintados por filtro.
+	var medidaAbierta = false;
 	function cardMedida() {
-		var a = document.createElement("a");
-		a.href = hrefMedida();
-		a.className = "prod-card rounded-3xl overflow-hidden flex flex-col";
-		a.style.cssText = "border:2px dashed rgba(30,58,138,.35);background:#f6f8fe";
-		a.innerHTML =
-			'<div class="p-5 flex flex-col flex-1 gap-3">' +
-			'<span class="w-12 h-12 rounded-2xl flex items-center justify-center" style="background:rgba(30,58,138,.1);color:#1e3a8a"><i data-lucide="pencil-ruler" class="w-6 h-6"></i></span>' +
-			'<div><p class="text-[12px] font-semibold" style="color:#5b6473">¿No está el que buscas?</p>' +
-			'<h3 class="mt-1 font-bold text-[17px] leading-snug" style="color:#1c2434">Pídelo a la medida</h3></div>' +
-			'<p class="text-sm leading-relaxed" style="color:#3b4256">Nos dices grado, campo, contenidos y PDAs (o solo el grado) y lo generamos para ti: PDF y Word editable en tu biblioteca en un máximo de 72 horas.</p>' +
-			'<div class="mt-auto pt-4 flex items-center justify-between" style="border-top:1px solid rgba(30,58,138,.15)">' +
-			'<span id="precioMedida" class="text-sm" style="color:#5b6473">Desde <span class="font-black text-lg text-ink">$120</span></span>' +
-			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#1e3a8a">Pedir <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
+		var wrap = document.createElement("div");
+		wrap.id = "cardMedida";
+		wrap.className = "col-span-full rounded-2xl overflow-hidden";
+		wrap.style.cssText = "border:2px dashed rgba(30,58,138,.35);background:#f6f8fe";
+		wrap.innerHTML =
+			'<button type="button" id="medidaToggle" aria-expanded="' + (medidaAbierta ? "true" : "false") + '" aria-controls="medidaDetalle" class="w-full min-h-[56px] px-4 py-2.5 flex items-center gap-3 text-left">' +
+			'<span class="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center" style="background:rgba(30,58,138,.1);color:#1e3a8a"><i data-lucide="pencil-ruler" class="w-5 h-5"></i></span>' +
+			// Todo el texto va en una sola columna que se parte donde haga falta
+			// (en el celular el precio baja a su propia línea); el precio va en
+			// formato corto ("$96") para que no se coma la fila.
+			'<span class="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">' +
+			'<span class="text-[12px] font-semibold" style="color:#5b6473">¿No está el que buscas?</span>' +
+			'<span class="font-bold text-[15px] leading-snug whitespace-nowrap" style="color:#1c2434">Pídelo a la medida</span>' +
+			'<span id="precioMedida" class="text-[13px] whitespace-nowrap" style="color:#5b6473">desde <span class="font-black text-base text-ink">$120</span></span>' +
+			"</span>" +
+			'<i data-lucide="chevron-down" class="w-5 h-5 shrink-0 transition-transform' + (medidaAbierta ? " rotate-180" : "") + '" style="color:#1e3a8a" data-medida-flecha></i>' +
+			"</button>" +
+			// El "hidden" va en el envoltorio y el flex en un hijo: si fueran la
+			// misma caja, "sm:flex" le ganaría a "hidden" en escritorio.
+			'<div id="medidaDetalle"' + (medidaAbierta ? "" : ' class="hidden"') + '>' +
+			'<div class="px-4 pb-4 pt-3 sm:flex sm:items-center sm:gap-4" style="border-top:1px solid rgba(30,58,138,.15)">' +
+			'<p class="text-sm leading-relaxed sm:flex-1" style="color:#3b4256">Nos dices grado, campo, contenidos y PDAs (o solo el grado) y lo generamos para ti: PDF y Word editable en tu biblioteca en un máximo de 72 horas.</p>' +
+			'<a href="' + esc(hrefMedida()) + '" class="mt-3 sm:mt-0 inline-flex items-center justify-center gap-1.5 h-11 px-5 rounded-xl text-sm font-bold text-white w-full sm:w-auto shrink-0" style="background:#1e3a8a">Pedir <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
 			"</div></div>";
-		return a;
+		wrap.querySelector("#medidaToggle").addEventListener("click", function () {
+			medidaAbierta = !medidaAbierta;
+			wrap.querySelector("#medidaDetalle").classList.toggle("hidden", !medidaAbierta);
+			wrap.querySelector("[data-medida-flecha]").classList.toggle("rotate-180", medidaAbierta);
+			this.setAttribute("aria-expanded", medidaAbierta ? "true" : "false");
+		});
+		return wrap;
 	}
 	var precioMedidaCache = null;
 	function pintarPrecioMedida() {
 		var el = document.getElementById("precioMedida");
 		if (!el) { return; }
 		var pintar = function (lista) {
-			el.innerHTML = 'Desde ' + Tienda.precioHTML(lista, { claseFinal: "font-black text-lg text-ink", claseLista: "text-mute text-[13px] font-bold" });
+			el.innerHTML = 'desde ' + Tienda.precioHTML(lista, { corto: true, claseFinal: "font-black text-base text-ink", claseLista: "text-mute text-[12px] font-bold" });
 		};
 		if (precioMedidaCache != null) { pintar(precioMedidaCache); return; }
 		window.sb.rpc("marketplace_personalizados_estado").then(function (r) {
