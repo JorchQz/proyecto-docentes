@@ -299,14 +299,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 
 	function pintarAyudas() {
+		// Las casillas nunca se deshabilitan: una casilla gris sin explicación
+		// parece rota. Si falta el grado, la propia lista lo dice al hacer clic.
 		var grados = gradosActuales();
 		if (!grados.length) {
-			ayudaContenidoEl.textContent = "Primero elige el grado para ver los contenidos de su fase.";
-			ayudaPdaEl.textContent = "Primero elige el grado para ver sus PDAs.";
-			buscarContenidoEl.disabled = true; buscarPdaEl.disabled = true;
+			ayudaContenidoEl.textContent = "Elige el grado arriba para ver los contenidos de su fase.";
+			ayudaPdaEl.textContent = "Elige el grado arriba para ver sus PDAs.";
 			return;
 		}
-		buscarContenidoEl.disabled = false; buscarPdaEl.disabled = false;
 		var nC = contenidos.filter(pasaCF).length;
 		var nP = pdas.filter(pasaCF).length;
 		ayudaContenidoEl.textContent = nC + " contenidos disponibles" + (pedido.campos_formativos.length ? " en los campos elegidos" : "") + ". Escribe para filtrar o deja vacío y lo elegimos nosotros.";
@@ -319,7 +319,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var consulta = input.value.trim();
 			var items = buscar(consulta);
 			if (!items.length) {
-				lista.innerHTML = '<p class="px-3.5 py-3 text-sm text-mute">' + (consulta ? "Sin coincidencias. Prueba con otra palabra." : "Elige el grado para ver opciones.") + "</p>";
+				var sinGrado = !gradosActuales().length;
+				lista.innerHTML = '<p class="px-3.5 py-3 text-sm ' + (sinGrado ? "font-semibold" : "text-mute") + '" style="' + (sinGrado ? "color:#b45309" : "") + '">' +
+					(sinGrado ? "Primero elige el grado en el paso 1: los contenidos y PDAs dependen de él." : (consulta ? "Sin coincidencias. Prueba con otra palabra." : "No hay opciones con los campos elegidos.")) + "</p>";
 			} else {
 				lista.innerHTML = items.slice(0, MAX_RESULTADOS).map(function (it) {
 					var color = (it.cf && Tienda.CF_COLOR[it.cf]) ? Tienda.CF_COLOR[it.cf].hex : "#5b6473";

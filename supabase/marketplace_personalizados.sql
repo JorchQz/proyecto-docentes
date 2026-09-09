@@ -22,7 +22,7 @@
 create table if not exists marketplace_personalizados_config (
   id boolean primary key default true check (id),
   abierto boolean not null default true,
-  tope_semanal integer not null default 5 check (tope_semanal >= 0),
+  tope_semanal integer not null default 10 check (tope_semanal >= 0),
   ventana_horas integer not null default 72 check (ventana_horas between 1 and 720),
   precio_sin_anexos numeric(10,2) not null default 120 check (precio_sin_anexos >= 0),
   precio_con_anexos numeric(10,2) not null default 160 check (precio_con_anexos >= 0),
