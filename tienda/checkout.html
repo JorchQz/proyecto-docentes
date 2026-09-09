@@ -175,6 +175,16 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					</div>
 				</div>
 
+				<!-- Cupón: va junto al total, que es donde se ve su efecto -->
+				<div id="bloqueCupon" class="pt-4 mt-4 border-t border-line flex flex-col gap-2">
+					<label for="fCupon" class="text-[11px] font-bold uppercase tracking-[0.08em] text-mute">¿Tienes un cupón?</label>
+					<div class="flex gap-2">
+						<input id="fCupon" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24" placeholder="Escribe tu código" class="flex-1 min-w-0 h-11 rounded-xl border border-line px-3 text-ink text-sm uppercase" style="background:#fff">
+						<button id="aplicarCuponBtn" type="button" class="shrink-0 h-11 px-4 rounded-xl border border-line font-bold text-sm text-ink hover:bg-paper transition">Aplicar</button>
+					</div>
+					<p id="cuponMensaje" class="hidden text-[13px] leading-snug"></p>
+				</div>
+
 				<div class="flex justify-between items-center pt-4" id="filaTotal">
 					<span class="font-black text-ink text-lg">Total</span>
 					<!-- Sin clases de tipografía: el JS las pone en el precio final,

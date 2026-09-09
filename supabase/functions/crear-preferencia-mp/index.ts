@@ -84,6 +84,9 @@ Deno.serve(async (req: Request) => {
     if (tipo !== "pdf" && tipo !== "editable") {
       return jsonResponse({ error: "Parámetros inválidos" }, 400);
     }
+    // Código de cupón opcional. Un código inválido NO tumba la compra: la base
+    // lo ignora y se cobra el mejor precio disponible sin él.
+    const cupon = normalizarCupon(body.cupon);
 
     const admin = crearAdmin(supabaseUrl, serviceKey);
 
@@ -144,15 +147,18 @@ Deno.serve(async (req: Request) => {
       );
     }
     // El importe lo decide la BASE, no este archivo: la misma función que
-    // evalúa la vigencia contra now() aplica el redondeo. Si la promoción ya
-    // venció devuelve el precio de lista y aquí no hay nada que apagar.
-    const precio = await precioConPromo(admin, Number(precioLista));
-    if (precio == null) {
+    // evalúa la vigencia contra now() aplica el redondeo y elige entre la
+    // promoción y el cupón. Si todo venció devuelve el precio de lista.
+    const resuelto = await precioConPromo(
+      admin, Number(precioLista), cupon, user.id,
+    );
+    if (resuelto == null) {
       return jsonResponse(
         { error: "No pudimos calcular el precio. Vuelve a intentarlo." },
         503,
       );
     }
+    const precio = resuelto.precio;
 
     // Ya lo compró: no cobrarle dos veces por lo mismo.
     const { data: yaTiene } = await admin
@@ -174,7 +180,7 @@ Deno.serve(async (req: Request) => {
       user.id,
       productoId,
       tipo,
-      precio,
+      resuelto,
     );
     if (!ordenId) {
       return jsonResponse({ error: "No se pudo crear la orden" }, 500);
@@ -196,11 +202,14 @@ Deno.serve(async (req: Request) => {
       failureUrl: siteUrl + "/tienda/checkout?producto_id=" +
         encodeURIComponent(productoId) + "&tipo=" + tipo,
       payerEmail: user.email,
+      cupon: resuelto.cuponCodigo,
+      cuponMotivo: resuelto.cuponMotivo,
       metadata: {
         orden_id: ordenId,
         producto_id: productoId,
         tipo,
         user_id: user.id,
+        cupon: resuelto.cuponCodigo,
       },
     });
   } catch (err) {
@@ -228,6 +237,10 @@ async function crearPreferenciaYResponder(
     precio: number;
     failureUrl: string;
     payerEmail?: string;
+    /** Cupón que ganó, para que el checkout lo confirme. */
+    cupon?: string | null;
+    /** Por qué un cupón enviado no se aplicó (no_mejora, agotado, ...). */
+    cuponMotivo?: string | null;
     metadata: Record<string, unknown>;
   },
 ): Promise<Response> {
@@ -319,18 +332,36 @@ async function crearPreferenciaYResponder(
     sandbox: esCredencialSandbox,
     // Eco del importe realmente cobrado. El checkout lo compara con lo que
     // tiene pintado y no redirige si difiere: cierra la ventana en la que la
-    // promoción termina entre que el comprador ve el precio y pulsa pagar.
+    // promoción o el cupón caducan entre que el comprador ve el precio y pulsa
+    // pagar.
     precio: opts.precio,
+    cupon: opts.cupon ?? null,
+    cupon_motivo: opts.cuponMotivo ?? null,
   });
 }
 
+/** Lo que se cobra y de dónde salió el descuento. */
+interface PrecioResuelto {
+  /** Importe final, ya con promoción o cupón (el mayor de los dos). */
+  precio: number;
+  /** Cupón que GANÓ, ya normalizado. null si mandó la promoción o la lista. */
+  cuponCodigo: string | null;
+  /** Pesos entre el precio de lista y lo que se cobra. */
+  descuento: number;
+  /** Por qué un cupón enviado no se aplicó, para decírselo al comprador. */
+  cuponMotivo: string | null;
+}
+
 /**
- * Precio que se cobra = precio de lista con la promoción vigente aplicada.
+ * Precio que se cobra = precio de lista con el mejor descuento disponible.
  *
- * La regla vive SOLO en SQL (marketplace_precio_final, en
- * supabase/marketplace_promocion.sql). No se replica aquí a propósito: si el
- * redondeo existiera en dos sitios, el importe cobrado podría separarse del
- * que evalúa la base.
+ * La decisión vive SOLO en SQL (marketplace_cupon_evaluar, en
+ * supabase/marketplace_cupones.sql), que es el mismo núcleo que consulta el
+ * checkout al validar un cupón. No se replica aquí a propósito: si la regla
+ * existiera en dos sitios, lo mostrado y lo cobrado podrían separarse.
+ *
+ * El cupón NO se acumula con la promoción: gana el descuento mayor. Si el
+ * cupón no mejora, no se estampa en la orden y por tanto no consume un uso.
  *
  * Falla CERRADO (devuelve null): si la RPC no responde no se cobra el precio
  * de lista, porque durante una promoción eso sería cobrar MÁS de lo que el
@@ -339,20 +370,40 @@ async function crearPreferenciaYResponder(
 async function precioConPromo(
   admin: Cliente,
   lista: number,
-): Promise<number | null> {
-  const { data, error } = await admin.rpc("marketplace_precio_final", {
+  codigoCupon?: string | null,
+  userId?: string | null,
+): Promise<PrecioResuelto | null> {
+  const { data, error } = await admin.rpc("marketplace_precio_con_cupon", {
     p_precio: lista,
+    p_codigo: codigoCupon ?? null,
+    p_user_id: userId ?? null,
   });
   if (error) {
-    console.error("marketplace_precio_final falló:", error);
+    console.error("marketplace_precio_con_cupon falló:", error);
     return null;
   }
-  const precio = Number(data);
+
+  const precio = Number(data?.precio_final);
   if (!Number.isFinite(precio) || precio < 0 || precio > lista) {
-    console.error("precio con promoción fuera de rango:", { lista, data });
+    console.error("precio con descuento fuera de rango:", { lista, data });
     return null;
   }
-  return precio;
+
+  // Solo se sella el cupón cuando de verdad ganó: es lo que cuenta los usos.
+  const aplicado = data?.aplicado === true;
+  return {
+    precio,
+    cuponCodigo: aplicado ? String(data.codigo) : null,
+    descuento: lista - precio,
+    cuponMotivo: data?.motivo ?? null,
+  };
+}
+
+/** Normaliza el código tal y como lo hace la base, antes de mandárselo. */
+function normalizarCupon(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const c = v.trim().toUpperCase().slice(0, 24);
+  return c === "" ? null : c;
 }
 
 // Combos que forman el paquete unitario, por agrupación.
@@ -441,14 +492,18 @@ async function prepararCompraUnitaria(
     ? Number(tarifa.precio_base)
     : Number(tarifa.precio_base) + Number(tarifa.precio_addon_editable);
   // Mismo camino que la compra individual: el descuento vigente lo aplica la
-  // base, nunca este archivo.
-  const precioTotal = await precioConPromo(admin, precioLista);
-  if (precioTotal == null) {
+  // base, nunca este archivo. El cupón se descuenta del TOTAL del combo, antes
+  // de repartirlo entre los paquetes.
+  const resuelto = await precioConPromo(
+    admin, precioLista, normalizarCupon(body.cupon), user.id,
+  );
+  if (resuelto == null) {
     return jsonResponse(
       { error: "No pudimos calcular el precio. Vuelve a intentarlo." },
       503,
     );
   }
+  const precioTotal = resuelto.precio;
 
   // Ya tiene alguno de los paquetes en esa versión: que no pague doble.
   const productoIds = elegidos.map((p) => p.id as string);
@@ -489,7 +544,7 @@ async function prepararCompraUnitaria(
     user.id,
     productoIds,
     tipo,
-    precioTotal,
+    resuelto,
   );
   if (!ordenId) {
     return jsonResponse({ error: "No se pudo crear la orden" }, 500);
@@ -520,8 +575,11 @@ async function prepararCompraUnitaria(
     precio: precioTotal,
     failureUrl: cfg.siteUrl + "/tienda/checkout?" + paramsCombo,
     payerEmail: user.email,
+    cupon: resuelto.cuponCodigo,
+    cuponMotivo: resuelto.cuponMotivo,
     metadata: {
       orden_id: ordenId,
+      cupon: resuelto.cuponCodigo,
       combo: "unitaria",
       agrupacion,
       tipo_paquete: tipoPaquete,
@@ -546,13 +604,14 @@ async function reutilizarOCrearOrdenCombo(
   userId: string,
   productoIds: string[],
   tipo: string,
-  precioTotal: number,
+  resuelto: PrecioResuelto,
 ): Promise<string | null> {
+  const precioTotal = resuelto.precio;
   const precios = repartirPrecio(precioTotal, productoIds.length);
 
   const { data: pendientes } = await admin
     .from("marketplace_ordenes")
-    .select("id, monto_total")
+    .select("id, monto_total, cupon_codigo")
     .eq("user_id", userId)
     .eq("estado", "pendiente")
     .eq("metodo_pago", "mercadopago")
@@ -562,6 +621,11 @@ async function reutilizarOCrearOrdenCombo(
   const montos = new Map<string, number>(
     (pendientes || []).map((o: { id: string; monto_total: number }) =>
       [o.id, Number(o.monto_total)]
+    ),
+  );
+  const cupones = new Map<string, string | null>(
+    (pendientes || []).map((o: { id: string; cupon_codigo: string | null }) =>
+      [o.id, o.cupon_codigo ?? null]
     ),
   );
   const ids = (pendientes || []).map((o: { id: string }) => o.id);
@@ -588,6 +652,9 @@ async function reutilizarOCrearOrdenCombo(
       // preferencia de MP asociada a esta orden sigue siendo la vieja por la
       // clave de idempotencia. Se crea una orden nueva.
       if (montos.get(ordenId) !== precioTotal) continue;
+      // Y el cupón también: dos cupones distintos pueden dar el mismo importe
+      // por casualidad, y la orden quedaría sellada con el que no es.
+      if (cupones.get(ordenId) !== resuelto.cuponCodigo) continue;
       return ordenId;
     }
   }
@@ -599,6 +666,8 @@ async function reutilizarOCrearOrdenCombo(
       monto_total: precioTotal,
       estado: "pendiente",
       metodo_pago: "mercadopago",
+      cupon_codigo: resuelto.cuponCodigo,
+      descuento_aplicado: resuelto.descuento,
     })
     .select("id")
     .single();
@@ -705,11 +774,12 @@ async function reutilizarOCrearOrden(
   userId: string,
   productoId: string,
   tipo: string,
-  precio: number,
+  resuelto: PrecioResuelto,
 ): Promise<string | null> {
+  const precio = resuelto.precio;
   const { data: pendientes } = await admin
     .from("marketplace_ordenes")
-    .select("id, monto_total")
+    .select("id, monto_total, cupon_codigo")
     .eq("user_id", userId)
     .eq("estado", "pendiente")
     .eq("metodo_pago", "mercadopago")
@@ -719,6 +789,11 @@ async function reutilizarOCrearOrden(
   const montos = new Map<string, number>(
     (pendientes || []).map((o: { id: string; monto_total: number }) =>
       [o.id, Number(o.monto_total)]
+    ),
+  );
+  const cupones = new Map<string, string | null>(
+    (pendientes || []).map((o: { id: string; cupon_codigo: string | null }) =>
+      [o.id, o.cupon_codigo ?? null]
     ),
   );
   const ids = (pendientes || []).map((o: { id: string }) => o.id);
@@ -751,6 +826,10 @@ async function reutilizarOCrearOrden(
       // sin acceso. Con una orden nueva hay id nuevo, clave nueva y
       // preferencia nueva al precio correcto.
       if (montos.get(ordenId) !== precio) continue;
+      // El cupón también tiene que ser el mismo: dos cupones distintos pueden
+      // dar el mismo importe por casualidad, y la orden quedaría sellada con
+      // el que no es (y contaría el uso equivocado).
+      if (cupones.get(ordenId) !== resuelto.cuponCodigo) continue;
       return ordenId;
     }
   }
@@ -762,6 +841,8 @@ async function reutilizarOCrearOrden(
       monto_total: precio,
       estado: "pendiente",
       metodo_pago: "mercadopago",
+      cupon_codigo: resuelto.cuponCodigo,
+      descuento_aplicado: resuelto.descuento,
     })
     .select("id")
     .single();

@@ -56,6 +56,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Edge Function antes de mandarlo a Mercado Pago: si la promoción terminó
 	// entre que se pintó el resumen y este clic, no se cobra a ciegas.
 	var precioMostrado = null;
+	// Precio de lista del pedido (sin ningún descuento). Es lo que se manda a
+	// validar el cupón, y la base de todo lo que se repinta.
+	var precioLista = null;
+	// Cupón que el comprador aplicó y GANÓ. null si no puso ninguno o si el
+	// suyo no mejora la oferta vigente.
+	var cuponAplicado = null;
+	// Si el pedido lleva add-on de Word hay desglose, y se puede ocultar y
+	// volver a mostrar según haya cupón o no. Se declara aquí arriba porque
+	// mostrarDesglose() corre dentro de prepararIndividual/prepararCombo, antes
+	// que el resto del cuerpo del archivo.
+	var hayDesglose = false;
 
 	// Antes de pintar cualquier importe: así el precio no aparece a lista y
 	// cambia un instante después.
@@ -76,13 +87,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Tienda.iconos();
 	}
 
-	/** Pinta el total del resumen: con promoción, lista tachado + final. */
-	function pintarTotal(lista) {
-		precioMostrado = Tienda.precioFinal(lista);
-		resumenPrecio.innerHTML = Tienda.precioHTML(lista, {
-			claseLista: "text-mute text-base font-bold mr-1",
-			claseFinal: "font-black text-ink text-2xl",
-		});
+	/**
+	 * Pinta el total del resumen: con descuento, lista tachado + final.
+	 *
+	 * `final` sobreescribe el cálculo de la promoción cuando manda un cupón.
+	 * `precioMostrado` queda siempre sincronizado con lo que hay en pantalla,
+	 * porque es contra eso que se compara el importe que devuelve el servidor
+	 * antes de redirigir a Mercado Pago.
+	 */
+	function pintarTotal(lista, final) {
+		precioLista = Number(lista);
+		precioMostrado = final != null ? Number(final) : Tienda.precioFinal(lista);
+
+		if (precioMostrado < precioLista) {
+			resumenPrecio.innerHTML =
+				'<s class="text-mute text-base font-bold mr-1">' + money(precioLista) + "</s> " +
+				'<span class="font-black text-ink text-2xl">' + money(precioMostrado) + "</span>";
+		} else {
+			resumenPrecio.innerHTML =
+				'<span class="font-black text-ink text-2xl">' + money(precioMostrado) + "</span>";
+		}
 	}
 
 	/** Compra normal de un solo paquete: resumen y cuerpo del pago. */
@@ -213,7 +237,91 @@ document.addEventListener("DOMContentLoaded", async function () {
 		document.getElementById("resumenDesglose").classList.remove("hidden");
 		document.getElementById("filaTotal").style.borderTop = "1px solid #e7e6df";
 		document.getElementById("filaTotal").style.marginTop = "0.5rem";
+		hayDesglose = true;
 	}
+
+	/**
+	 * El desglose reparte el total entre PDF y Word. Un cupón descuenta sobre el
+	 * TOTAL, así que las dos partes dejarían de sumarlo: mejor esconderlo que
+	 * enseñar una cuenta que no cuadra.
+	 */
+	function desgloseVisible(visible) {
+		if (!hayDesglose) { return; }
+		document.getElementById("resumenDesglose").classList.toggle("hidden", !visible);
+	}
+
+	// ── Cupones ──────────────────────────────────────────────────────────────
+	// El navegador solo PINTA lo que la base responde. El importe que se cobra
+	// lo vuelve a resolver crear-preferencia-mp con el mismo núcleo SQL, así que
+	// lo mostrado y lo cobrado no pueden separarse.
+
+	var cuponInput = document.getElementById("fCupon");
+	var cuponBtn = document.getElementById("aplicarCuponBtn");
+	var cuponMsgEl = document.getElementById("cuponMensaje");
+
+	// Comodidad al teclear; la garantía está en la base (upper/btrim + check).
+	cuponInput.addEventListener("input", function () {
+		var pos = cuponInput.selectionStart;
+		cuponInput.value = cuponInput.value.toUpperCase().replace(/\s+/g, "");
+		try { cuponInput.setSelectionRange(pos, pos); } catch (_) {}
+	});
+	cuponInput.addEventListener("keydown", function (e) {
+		if (e.key === "Enter") { e.preventDefault(); cuponBtn.click(); }
+	});
+
+	// tono: "ok" verde · "info" azul · "error" rojo
+	function mensajeCupon(texto, tono) {
+		if (!texto) { cuponMsgEl.classList.add("hidden"); return; }
+		var color = tono === "ok" ? "#047857" : (tono === "error" ? "#b91c1c" : "#1e3a8a");
+		cuponMsgEl.style.color = color;
+		cuponMsgEl.textContent = texto;
+		cuponMsgEl.classList.remove("hidden");
+	}
+
+	cuponBtn.addEventListener("click", async function () {
+		var codigo = (cuponInput.value || "").trim().toUpperCase();
+		if (!codigo) {
+			// Campo vacío = quitar el cupón y volver al precio de la oferta.
+			cuponAplicado = null;
+			pintarTotal(precioLista);
+			desgloseVisible(true);
+			mensajeCupon("", null);
+			return;
+		}
+
+		cuponBtn.disabled = true;
+		cuponBtn.textContent = "...";
+		var r = await Tienda.validarCupon(codigo, precioLista);
+		cuponBtn.disabled = false;
+		cuponBtn.textContent = "Aplicar";
+
+		if (!r) {
+			mensajeCupon("No pudimos comprobar tu cupón. Inténtalo de nuevo.", "error");
+			return;
+		}
+
+		if (r.aplicado) {
+			cuponAplicado = r.codigo;
+			pintarTotal(precioLista, Number(r.precio_final));
+			desgloseVisible(false);
+			mensajeCupon(
+				"Cupón " + r.codigo + " aplicado: ahorras " + money(r.descuento) + "." +
+				(r.requiere_sesion
+					? " Se confirma al crear tu cuenta aquí abajo (es de un uso por persona)."
+					: ""),
+				"ok");
+			return;
+		}
+
+		// No se aplicó. Se vuelve al precio sin cupón en todos los casos.
+		cuponAplicado = null;
+		pintarTotal(precioLista);
+		desgloseVisible(true);
+		// "No mejora" no es un error del comprador: su cupón sigue intacto y se
+		// le deja el precio más barato. Va en azul, nunca en rojo.
+		mensajeCupon(r.mensaje || "Ese cupón no está disponible.",
+			r.motivo === "no_mejora" ? "info" : "error");
+	});
 
 	estadoEl.classList.add("hidden");
 	contenidoEl.classList.remove("hidden");
@@ -319,13 +427,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 			pagarMpBtn.textContent = "Abriendo Mercado Pago...";
 			var token = Tienda.getAccessToken(session);
+			// El código viaja; el precio no. El servidor vuelve a evaluar el
+			// cupón con el user_id real (importa para "uno por cliente", que no
+			// se puede comprobar antes de que exista la cuenta).
+			var cuerpo = Object.assign({}, cuerpoPago);
+			if (cuponAplicado) { cuerpo.cupon = cuponAplicado; }
 			var resp = await fetch(Tienda.EDGE_BASE + "/crear-preferencia-mp", {
 				method: "POST",
 				headers: {
 					Authorization: "Bearer " + token,
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify(cuerpoPago),
+				body: JSON.stringify(cuerpo),
 			});
 			var data = await resp.json();
 			if (!resp.ok) {
@@ -337,18 +450,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 				throw new Error(data.error || "No se pudo iniciar el pago.");
 			}
 			// El servidor devuelve el importe que realmente va a cobrar. Si no
-			// coincide con el que está en pantalla —la promoción terminó, o
-			// cambió el tarifario, entre que se pintó el resumen y este clic—
-			// no se manda a Mercado Pago con una cifra que el comprador no ha
-			// visto: se repinta el total y decide él. La orden ya quedó creada
-			// al precio nuevo, así que el segundo clic es coherente.
+			// coincide con el que está en pantalla —la promoción o el cupón
+			// caducaron entre que se pintó el resumen y este clic— no se manda a
+			// Mercado Pago con una cifra que el comprador no ha visto: se
+			// repinta el total y decide él. La orden ya quedó creada al precio
+			// nuevo, así que el segundo clic es coherente.
 			if (data.precio != null && precioMostrado != null &&
 				Number(data.precio) !== Number(precioMostrado)) {
-				precioMostrado = Number(data.precio);
-				resumenPrecio.innerHTML =
-					'<span class="font-black text-ink text-2xl">' + money(data.precio) + "</span>";
-				document.getElementById("resumenDesglose").classList.add("hidden");
-				Tienda.toast("El precio cambió: revisa el total antes de continuar.", "info");
+				var subio = Number(data.precio) > Number(precioMostrado);
+				// El cupón mandado no sobrevivió a la segunda evaluación (caducó,
+				// se agotó, o resultó que este comprador ya lo había usado).
+				cuponAplicado = data.cupon || null;
+				pintarTotal(precioLista, Number(data.precio));
+				desgloseVisible(!cuponAplicado);
+				if (data.cupon_motivo === "ya_usado") {
+					mensajeCupon("Ya usaste este cupón en una compra anterior.", "error");
+				} else if (data.cupon_motivo === "agotado") {
+					mensajeCupon("Este cupón ya llegó a su límite de usos.", "error");
+				} else if (data.cupon_motivo === "inexistente") {
+					mensajeCupon("Ese cupón ya no está disponible.", "error");
+				} else if (data.cupon_motivo === "no_mejora") {
+					mensajeCupon("Ya tienes el mejor precio: la oferta actual supera a tu cupón, y tu cupón sigue disponible.", "info");
+				}
+				Tienda.toast(
+					subio
+						? "El precio cambió: revisa el total antes de continuar."
+						: "Bajó el precio: ahora pagas " + money(data.precio) + ". Revísalo y continúa.",
+					"info");
 				pagarMpBtn.disabled = false;
 				pagarMpBtn.innerHTML = etiquetaBoton;
 				Tienda.iconos();

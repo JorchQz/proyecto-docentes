@@ -127,6 +127,22 @@
 			(clase || "") + '" style="background:#047857;color:#fff">-' + promo.porcentaje + "%</span>";
 	}
 
+	// Comprueba un cupón contra la base. Devuelve la evaluación completa
+	// (precio final, si gana o no, y el mensaje para el comprador) o null si la
+	// consulta falla. Es el MISMO núcleo que usa la Edge Function al cobrar, así
+	// que lo que se pinta aquí y lo que se cobra no pueden discrepar.
+	async function validarCupon(codigo, precioLista) {
+		if (!window.sb) { return null; }
+		try {
+			var res = await window.sb.rpc("marketplace_validar_cupon", {
+				p_codigo: codigo || null,
+				p_precio_lista: precioLista,
+			});
+			if (res.error || !res.data) { return null; }
+			return res.data;
+		} catch (_) { return null; }
+	}
+
 	// "30 de septiembre". Siempre en hora de Ciudad de México: la fecha límite
 	// es una sola para todo el país, no la del navegador del comprador.
 	function promoFechaLimite() {
@@ -665,6 +681,7 @@
 		promoBadge: promoBadge,
 		promoChip: promoChip,
 		promoFechaLimite: promoFechaLimite,
+		validarCupon: validarCupon,
 		iconos: iconos,
 		toast: toast,
 		getSession: getSession,

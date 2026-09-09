@@ -219,7 +219,32 @@ document.addEventListener("DOMContentLoaded", async function () {
 			F.descripcion.value = "";
 			F.activo.checked = false;
 		}
+		bloquearPrecioPaquete(prod);
 		modal.classList.remove("hidden");
+	}
+
+	/**
+	 * El precio de un paquete es una columna DERIVADA del tarifario:
+	 * marketplace_aplicar_precios() lo reescribe tras cada venta y cada
+	 * reembolso. Dejarlo editable sería mentir: se escribiría un número que
+	 * vuelve solo días después. Se edita en la pestaña Precios.
+	 *
+	 * La excepción es real: esa función salta los paquetes `es_prueba`, así que
+	 * ahí el precio individual sí manda y el campo se habilita.
+	 */
+	function bloquearPrecioPaquete(prod) {
+		var esPrueba = !!(prod && prod.es_prueba);
+		var aviso = document.getElementById("avisoPrecioPaquete");
+		[F.precioPdf, F.precioEditable].forEach(function (input) {
+			input.readOnly = !esPrueba;
+			input.style.background = esPrueba ? "#fff" : "#f1f0ea";
+			input.style.color = esPrueba ? "#1c2434" : "#5b6473";
+		});
+		if (!aviso) { return; }
+		aviso.textContent = esPrueba
+			? "Paquete de prueba: su precio no lo toca el tarifario, se edita aquí."
+			: "Los precios salen del tarifario (pestaña Precios) y se reescriben con cada venta. Para cambiarlos, edítalos allí.";
+		aviso.classList.remove("hidden");
 	}
 
 	function cerrarEditor() { modal.classList.add("hidden"); edit = null; }
@@ -362,11 +387,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		document.getElementById("accesoEmail").value = "";
 	});
 
-	// ── Precios y escalón de lanzamiento ──────────────────────────────────────
-	// Desde el tarifario v3 los precios son PLANOS: los tres niveles del ciclo
-	// llevan la misma tarifa y el nivel está fijado en 1, así que el contador de
-	// ventas es solo informativo. Para subir precios se edita marketplace_precios
-	// (un marketplace_precios_v4.sql), no estos controles.
+	// ── Precios, oferta general y cupones ─────────────────────────────────────
+	// El escalón de lanzamiento (subir el precio con las ventas acumuladas) se
+	// retiró en septiembre de 2026: nunca llegó a usarse y era la única vía por
+	// la que un precio podía subir solo. Ahora los precios se escriben a mano
+	// aquí, en el tarifario.
+	//
 	// Bidocente y tridocente comparten tarifa: el maestro no elige cuál le toca,
 	// se lo dicta su escuela, así que el tarifario no los distingue. "Unitaria"
 	// es el combo de todos los paquetes multigrado de una agrupación (no tiene
@@ -376,17 +402,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		multigrado: "Multigrado (bi y tridocente)",
 		unitaria: "Unitario (combo 6 grados)",
 	};
-	var NIVEL_ETIQUETA = { 1: "Lanzamiento", 2: "Intermedio", 3: "Lista" };
 
-	var ventasCicloEl = document.getElementById("ventasCiclo");
-	var faltanTextoEl = document.getElementById("faltanTexto");
-	var nivelActualEl = document.getElementById("nivelActual");
-	var barraProgresoEl = document.getElementById("barraProgreso");
-	var avisoForzadoEl = document.getElementById("avisoForzado");
-	var tablaTarifasEl = document.getElementById("tablaTarifas");
-	var nivelForzadoSel = document.getElementById("nivelForzado");
-	var ajusteContadorInput = document.getElementById("ajusteContador");
-	var guardarLanzamientoBtn = document.getElementById("guardarLanzamientoBtn");
+	var estadoPreciosTextoEl = document.getElementById("estadoPreciosTexto");
+	var tablaTarifarioEl = document.getElementById("tablaTarifario");
+	var guardarTarifarioBtn = document.getElementById("guardarTarifarioBtn");
 
 	var promoActivaEl = document.getElementById("promoActiva");
 	var promoPorcentajeEl = document.getElementById("promoPorcentaje");
@@ -394,25 +413,138 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var promoHastaEl = document.getElementById("promoHasta");
 	var promoEtiquetaEl = document.getElementById("promoEtiqueta");
 	var estadoPromoEl = document.getElementById("estadoPromo");
-	var tablaPromoEl = document.getElementById("tablaPromo");
 	var guardarPromoBtn = document.getElementById("guardarPromoBtn");
+
+	var tablaCuponesEl = document.getElementById("tablaCupones");
+	var tituloFormCuponEl = document.getElementById("tituloFormCupon");
+	var cupCodigoEl = document.getElementById("cupCodigo");
+	var cupTipoEl = document.getElementById("cupTipo");
+	var cupValorEl = document.getElementById("cupValor");
+	var cupValorEtiquetaEl = document.getElementById("cupValorEtiqueta");
+	var cupHastaEl = document.getElementById("cupHasta");
+	var cupMaxUsosEl = document.getElementById("cupMaxUsos");
+	var cupUnoPorClienteEl = document.getElementById("cupUnoPorCliente");
+	var cupActivoEl = document.getElementById("cupActivo");
+	var cupDescripcionEl = document.getElementById("cupDescripcion");
+	var guardarCuponBtn = document.getElementById("guardarCuponBtn");
+	var cancelarCuponBtn = document.getElementById("cancelarCuponBtn");
+
+	// Última respuesta de admin_estado_promocion(): la comparten la tabla de
+	// precios, la tarjeta de oferta y la franja de estado, así que no pueden
+	// contradecirse entre ellas.
+	var estadoPrecios = null;
+	var cupones = [];
 
 	async function cargarPrecios() {
 		var res = await Promise.all([
-			window.sb.rpc("admin_estado_precios"),
 			window.sb.rpc("admin_estado_promocion"),
+			window.sb.rpc("admin_listar_cupones"),
 		]);
 		if (res[0].error) {
 			Tienda.toast("No se pudo cargar el estado de precios: " + res[0].error.message, "error");
 			return;
 		}
-		renderPrecios(res[0].data);
+		estadoPrecios = res[0].data;
+		renderTarifario(estadoPrecios);
+		renderPromocion(estadoPrecios);
+
 		if (res[1].error) {
-			Tienda.toast("No se pudo cargar la promoción: " + res[1].error.message, "error");
+			Tienda.toast("No se pudieron cargar los cupones: " + res[1].error.message, "error");
+			cupones = [];
+		} else {
+			cupones = res[1].data || [];
+		}
+		renderCupones();
+		renderEstadoPrecios();
+	}
+
+	// Una línea que responde "¿qué se le está cobrando ahora mismo a la gente?".
+	function renderEstadoPrecios() {
+		if (!estadoPreciosTextoEl || !estadoPrecios) { return; }
+		var partes = [];
+		if (estadoPrecios.vigente_ahora) {
+			var hasta = estadoPrecios.vigente_hasta
+				? new Date(estadoPrecios.vigente_hasta).toLocaleDateString("es-MX",
+					{ day: "numeric", month: "long", timeZone: "America/Mexico_City" })
+				: null;
+			partes.push("Hoy se cobra con -" + estadoPrecios.porcentaje + "% " +
+				(estadoPrecios.etiqueta || "") + (hasta ? " hasta el " + hasta : ""));
+		} else {
+			partes.push("Hoy se cobra el precio de lista, sin oferta general");
+		}
+		var activos = cupones.filter(function (c) { return c.vigente_ahora; }).length;
+		partes.push(activos === 0 ? "sin cupones activos"
+			: activos === 1 ? "1 cupón activo"
+			: activos + " cupones activos");
+		estadoPreciosTextoEl.textContent = partes.join(" · ");
+	}
+
+	// Tabla de precios de lista, editable. La última columna es de solo lectura:
+	// es lo que el comprador va a pagar hoy con la oferta general puesta.
+	function renderTarifario(d) {
+		var filas = (d && d.previsualizacion) || [];
+		tablaTarifarioEl.innerHTML = filas.map(function (t) {
+			var clave = t.modalidad_precio + "|" + t.tipo_paquete;
+			var hayOferta = d.vigente_ahora && Number(t.promo_pdf) < Number(t.lista_pdf);
+			return '<tr class="border-b border-line" data-tarifa="' + esc(clave) + '">' +
+				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
+				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre") + "</td>" +
+				'<td class="py-2 pr-3 text-right"><input type="number" min="10" step="1" inputmode="numeric" data-campo="base" value="' +
+					esc(Number(t.lista_pdf)) + '" class="w-24 h-10 rounded-lg border border-line px-2 text-right text-ink" style="background:#fff"></td>' +
+				'<td class="py-2 pr-3 text-right"><input type="number" min="0" step="1" inputmode="numeric" data-campo="addon" value="' +
+					esc(Number(t.addon)) + '" class="w-24 h-10 rounded-lg border border-line px-2 text-right text-ink" style="background:#fff"></td>' +
+				'<td class="py-2 pr-3 text-right font-semibold text-ink">' + money(t.lista_editable) + "</td>" +
+				'<td class="py-2 pr-3 text-right ' + (hayOferta ? "font-bold" : "text-mute") + '" style="' +
+					(hayOferta ? "color:#047857" : "") + '">' +
+					money(t.promo_pdf) + '<span class="text-mute font-normal"> / ' + money(t.promo_editable) + "</span></td>" +
+				"</tr>";
+		}).join("");
+	}
+
+	guardarTarifarioBtn.addEventListener("click", async function () {
+		var tarifas = [];
+		var error = null;
+		tablaTarifarioEl.querySelectorAll("[data-tarifa]").forEach(function (tr) {
+			var partes = tr.getAttribute("data-tarifa").split("|");
+			var base = Number(tr.querySelector('[data-campo="base"]').value);
+			var addon = Number(tr.querySelector('[data-campo="addon"]').value);
+			if (!isFinite(base) || !isFinite(addon) || base < 10 || addon < 0) {
+				error = "Revisa los precios: el PDF va de 10 en adelante y el extra de Word no puede ser negativo.";
+				return;
+			}
+			if (base !== Math.floor(base) || addon !== Math.floor(addon)) {
+				error = "Los precios van en pesos completos, sin centavos.";
+				return;
+			}
+			tarifas.push({
+				modalidad_precio: partes[0],
+				tipo_paquete: partes[1],
+				precio_base: base,
+				precio_addon_editable: addon,
+			});
+		});
+		if (error) { Tienda.toast(error, "error"); return; }
+		if (tarifas.length !== 6) {
+			Tienda.toast("Falta algún renglón del tarifario. Recarga la página.", "error");
 			return;
 		}
-		renderPromocion(res[1].data);
-	}
+
+		guardarTarifarioBtn.disabled = true;
+		guardarTarifarioBtn.textContent = "Guardando...";
+		var res = await window.sb.rpc("admin_guardar_tarifario", { p_tarifas: tarifas });
+		guardarTarifarioBtn.disabled = false;
+		guardarTarifarioBtn.textContent = "Guardar precios";
+
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+		estadoPrecios = res.data;
+		renderTarifario(estadoPrecios);
+		renderPromocion(estadoPrecios);
+		renderEstadoPrecios();
+		Tienda.toast("Precios guardados y aplicados a " +
+			(res.data.productos_actualizados || 0) + " paquetes.", "ok");
+		// El grid de la pestaña Paquetes muestra precios: sin esto se queda viejo.
+		await cargarProductos();
+	});
 
 	// El <input type="datetime-local"> trabaja en hora local del navegador; la
 	// base guarda timestamptz. Estas dos funciones son la conversión.
@@ -458,18 +590,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				". Los precios ya volvieron a los de lista solos.";
 		}
 		estadoPromoEl.textContent = texto;
-
-		var filas = d.previsualizacion || [];
-		tablaPromoEl.innerHTML = filas.map(function (t) {
-			return '<tr class="border-b border-line">' +
-				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
-				'<td class="py-2 pr-3">' + (t.tipo_paquete === "ciclo" ? "Ciclo completo" : "Trimestre") + "</td>" +
-				'<td class="py-2 pr-3 text-right text-mute">' + money(t.lista_pdf) + "</td>" +
-				'<td class="py-2 pr-3 text-right font-bold text-ink">' + money(t.promo_pdf) + "</td>" +
-				'<td class="py-2 pr-3 text-right text-mute">' + money(t.lista_editable) + "</td>" +
-				'<td class="py-2 pr-3 text-right font-bold text-ink">' + money(t.promo_editable) + "</td>" +
-				"</tr>";
-		}).join("");
+		// Los precios resultantes no se pintan aquí: viven en la columna "Se
+		// cobra hoy" de la tabla de precios, para no tener dos tablas que
+		// puedan contradecirse.
 	}
 
 	guardarPromoBtn.addEventListener("click", async function () {
@@ -498,75 +621,197 @@ document.addEventListener("DOMContentLoaded", async function () {
 		guardarPromoBtn.textContent = "Guardar promoción";
 
 		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
-		// No hace falta recargar los paquetes: la promoción no toca sus precios.
-		renderPromocion(res.data);
+		// No hace falta recargar los paquetes: la promoción no toca sus precios
+		// de lista, solo lo que se muestra y se cobra.
+		estadoPrecios = res.data;
+		renderPromocion(estadoPrecios);
+		renderTarifario(estadoPrecios);
+		renderEstadoPrecios();
 		Tienda.toast("Promoción guardada.", "ok");
 	});
 
-	function renderPrecios(d) {
-		var ventas = d.ventas_ciclo || 0;
-		ventasCicloEl.textContent = ventas;
-		nivelActualEl.textContent = d.nivel;
+	// ── Cupones ───────────────────────────────────────────────────────────────
 
-		if (d.faltan_para_siguiente != null && d.faltan_para_siguiente > 0) {
-			faltanTextoEl.textContent = "faltan " + d.faltan_para_siguiente + " para subir de nivel";
-		} else if (d.nivel === 3) {
-			faltanTextoEl.textContent = "precio de lista alcanzado";
-		} else {
-			faltanTextoEl.textContent = "";
-		}
-
-		// La barra cubre 0-100 ventas, que es donde ocurren los dos escalones.
-		barraProgresoEl.style.width = Math.min(100, (ventas / 100) * 100) + "%";
-
-		if (d.nivel_forzado) {
-			avisoForzadoEl.classList.remove("hidden");
-			avisoForzadoEl.textContent =
-				"Nivel fijado a mano en " + d.nivel_forzado +
-				". El conteo de ventas no lo cambiará hasta que vuelvas a ponerlo en automático.";
-		} else {
-			avisoForzadoEl.classList.add("hidden");
-		}
-
-		nivelForzadoSel.value = d.nivel_forzado ? String(d.nivel_forzado) : "";
-		ajusteContadorInput.value = d.ajuste_contador ? String(d.ajuste_contador) : "";
-
-		var tarifas = d.tarifas || [];
-		tablaTarifasEl.innerHTML = tarifas.map(function (t) {
-			var esCiclo = t.tipo_paquete === "ciclo";
-			var estilo = t.vigente ? "font-weight:700;color:#1c2434" : "color:#9ba3af";
-			var nivelTxt = esCiclo
-				? t.nivel + " · " + (NIVEL_ETIQUETA[t.nivel] || "")
-				: "fijo";
-			return '<tr class="border-b border-line" style="' + estilo + '">' +
-				'<td class="py-2 pr-3">' + esc(MODALIDAD_ETIQUETA[t.modalidad_precio] || t.modalidad_precio) + "</td>" +
-				'<td class="py-2 pr-3">' + (esCiclo ? "Ciclo completo" : "Trimestre") + "</td>" +
-				'<td class="py-2 pr-3">' + esc(nivelTxt) + (t.vigente ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#dcfce7;color:#166534">VIGENTE</span>' : "") + "</td>" +
-				'<td class="py-2 pr-3 text-right">' + money(t.precio_base) + "</td>" +
-				'<td class="py-2 pr-3 text-right">' + money(t.precio_con_editable) + "</td>" +
-				"</tr>";
-		}).join("");
+	function etiquetaDescuento(c) {
+		return c.tipo === "porcentaje"
+			? "-" + Number(c.valor) + "%"
+			: "-" + money(c.valor);
 	}
 
-	guardarLanzamientoBtn.addEventListener("click", async function () {
-		var nivel = nivelForzadoSel.value ? Number(nivelForzadoSel.value) : null;
-		var ajusteTxt = (ajusteContadorInput.value || "").trim();
-		var ajuste = ajusteTxt === "" ? 0 : Number(ajusteTxt);
-		if (isNaN(ajuste)) { Tienda.toast("El ajuste debe ser un número.", "error"); return; }
+	function renderCupones() {
+		if (!cupones.length) {
+			tablaCuponesEl.innerHTML =
+				'<tr><td colspan="6" class="py-4 text-sm text-mute">Todavía no hay cupones. Crea el primero abajo.</td></tr>';
+			return;
+		}
+		tablaCuponesEl.innerHTML = cupones.map(function (c) {
+			var estado, color;
+			if (!c.activo) { estado = "Apagado"; color = "#9ba3af"; }
+			else if (c.vencido) { estado = "Vencido"; color = "#b45309"; }
+			else if (c.agotado) { estado = "Agotado"; color = "#b45309"; }
+			else { estado = "Activo"; color = "#047857"; }
 
-		guardarLanzamientoBtn.disabled = true;
-		guardarLanzamientoBtn.textContent = "Aplicando...";
-		var res = await window.sb.rpc("admin_ajustar_lanzamiento", {
-			p_nivel_forzado: nivel,
-			p_ajuste_contador: ajuste,
+			// Si se pasó del máximo (dos compras simultáneas), se ve en rojo.
+			var excedido = c.max_usos != null && c.usos > c.max_usos;
+			var usos = c.usos + (c.max_usos != null ? " / " + c.max_usos : "");
+			var hasta = c.vigente_hasta
+				? new Date(c.vigente_hasta).toLocaleDateString("es-MX",
+					{ day: "numeric", month: "short", year: "numeric", timeZone: "America/Mexico_City" })
+				: "Sin caducidad";
+
+			return '<tr class="border-b border-line">' +
+				'<td class="py-2 pr-3"><span class="font-bold text-ink">' + esc(c.codigo) + "</span>" +
+					(c.descripcion ? '<br><span class="text-xs text-mute">' + esc(c.descripcion) + "</span>" : "") +
+					(c.uno_por_cliente ? '<br><span class="text-xs text-mute">Uno por cliente</span>' : "") + "</td>" +
+				'<td class="py-2 pr-3 font-semibold text-ink">' + esc(etiquetaDescuento(c)) + "</td>" +
+				'<td class="py-2 pr-3' + (excedido ? ' font-bold" style="color:#b91c1c"' : '"') + ">" + esc(usos) + "</td>" +
+				'<td class="py-2 pr-3 text-mute">' + esc(hasta) + "</td>" +
+				'<td class="py-2 pr-3 font-semibold" style="color:' + color + '">' + esc(estado) + "</td>" +
+				'<td class="py-2 text-right whitespace-nowrap">' +
+					'<button type="button" data-cupon-editar="' + esc(c.codigo) + '" class="text-sm font-semibold underline" style="color:#1e3a8a">Editar</button>' +
+					'<button type="button" data-cupon-toggle="' + esc(c.codigo) + '" class="ml-3 text-sm font-semibold underline text-mute">' +
+						(c.activo ? "Apagar" : "Encender") + "</button>" +
+					(c.usos === 0
+						? '<button type="button" data-cupon-borrar="' + esc(c.codigo) + '" class="ml-3 text-sm font-semibold underline" style="color:#b91c1c">Borrar</button>'
+						: "") +
+				"</td></tr>";
+		}).join("");
+
+		tablaCuponesEl.querySelectorAll("[data-cupon-editar]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				llenarFormCupon(b.getAttribute("data-cupon-editar"));
+			});
 		});
-		guardarLanzamientoBtn.disabled = false;
-		guardarLanzamientoBtn.textContent = "Guardar y aplicar precios";
+		tablaCuponesEl.querySelectorAll("[data-cupon-toggle]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				var c = cupones.find(function (x) { return x.codigo === b.getAttribute("data-cupon-toggle"); });
+				if (c) { guardarCupon(Object.assign({}, c, { activo: !c.activo }), true); }
+			});
+		});
+		tablaCuponesEl.querySelectorAll("[data-cupon-borrar]").forEach(function (b) {
+			b.addEventListener("click", async function () {
+				var codigo = b.getAttribute("data-cupon-borrar");
+				if (!confirm("¿Borrar el cupón " + codigo + "? Nunca se ha usado, así que no se pierde ningún historial.")) { return; }
+				var res = await window.sb.rpc("admin_borrar_cupon", { p_codigo: codigo });
+				if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
+				cupones = res.data || [];
+				renderCupones();
+				renderEstadoPrecios();
+				Tienda.toast("Cupón borrado.", "ok");
+			});
+		});
+	}
 
-		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return; }
-		Tienda.toast("Precios aplicados a " + (res.data.productos_actualizados || 0) + " paquetes.", "ok");
-		await cargarPrecios();
-		await cargarProductos();
+	// "Descuento (%)" o "Descuento (MXN)", según el tipo elegido.
+	function sincronizarEtiquetaValor() {
+		cupValorEtiquetaEl.textContent = cupTipoEl.value === "monto"
+			? "Descuento (MXN)" : "Descuento (%)";
+		cupValorEl.max = cupTipoEl.value === "monto" ? "" : "90";
+	}
+	cupTipoEl.addEventListener("change", sincronizarEtiquetaValor);
+
+	// Comodidad al teclear; la garantía de formato está en la base.
+	cupCodigoEl.addEventListener("input", function () {
+		cupCodigoEl.value = cupCodigoEl.value.toUpperCase().replace(/\s+/g, "");
+	});
+
+	function limpiarFormCupon() {
+		tituloFormCuponEl.textContent = "Crear un cupón";
+		cupCodigoEl.value = "";
+		cupCodigoEl.readOnly = false;
+		cupTipoEl.value = "porcentaje";
+		cupValorEl.value = "";
+		cupHastaEl.value = "";
+		cupMaxUsosEl.value = "";
+		cupUnoPorClienteEl.checked = true;
+		cupActivoEl.checked = true;
+		cupDescripcionEl.value = "";
+		cancelarCuponBtn.classList.add("hidden");
+		sincronizarEtiquetaValor();
+	}
+
+	function llenarFormCupon(codigo) {
+		var c = cupones.find(function (x) { return x.codigo === codigo; });
+		if (!c) { return; }
+		// El código es la clave: al editar no se cambia, se crea otro.
+		tituloFormCuponEl.textContent = "Editando " + c.codigo;
+		cupCodigoEl.value = c.codigo;
+		cupCodigoEl.readOnly = true;
+		cupTipoEl.value = c.tipo;
+		cupValorEl.value = String(Number(c.valor));
+		cupHastaEl.value = aInputLocal(c.vigente_hasta);
+		cupMaxUsosEl.value = c.max_usos != null ? String(c.max_usos) : "";
+		cupUnoPorClienteEl.checked = !!c.uno_por_cliente;
+		cupActivoEl.checked = !!c.activo;
+		cupDescripcionEl.value = c.descripcion || "";
+		cancelarCuponBtn.classList.remove("hidden");
+		sincronizarEtiquetaValor();
+		tituloFormCuponEl.scrollIntoView({ behavior: "smooth", block: "center" });
+	}
+
+	cancelarCuponBtn.addEventListener("click", limpiarFormCupon);
+
+	/**
+	 * Guarda un cupón. `silencioso` lo usa el botón de encender/apagar de la
+	 * tabla, que no debe tocar ni vaciar el formulario de abajo.
+	 */
+	async function guardarCupon(c, silencioso) {
+		var res = await window.sb.rpc("admin_guardar_cupon", {
+			p_codigo: c.codigo,
+			p_tipo: c.tipo,
+			p_valor: c.valor,
+			p_activo: c.activo,
+			p_vigente_hasta: c.vigente_hasta || null,
+			p_max_usos: c.max_usos != null ? c.max_usos : null,
+			p_uno_por_cliente: c.uno_por_cliente,
+			p_descripcion: c.descripcion || null,
+		});
+		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return false; }
+		cupones = res.data || [];
+		renderCupones();
+		renderEstadoPrecios();
+		if (!silencioso) { limpiarFormCupon(); }
+		Tienda.toast("Cupón " + c.codigo + " guardado.", "ok");
+		return true;
+	}
+
+	guardarCuponBtn.addEventListener("click", async function () {
+		var codigo = (cupCodigoEl.value || "").trim().toUpperCase();
+		if (!/^[A-Z0-9][A-Z0-9._-]{2,23}$/.test(codigo)) {
+			Tienda.toast("El código debe tener de 3 a 24 caracteres: letras, números, punto o guion. Sin espacios ni acentos.", "error");
+			return;
+		}
+		var tipo = cupTipoEl.value;
+		var valor = Number((cupValorEl.value || "").trim());
+		if (!isFinite(valor) || valor <= 0 || valor !== Math.floor(valor)) {
+			Tienda.toast("El descuento debe ser un número entero mayor que cero.", "error");
+			return;
+		}
+		if (tipo === "porcentaje" && valor > 90) {
+			Tienda.toast("El porcentaje no puede pasar de 90.", "error");
+			return;
+		}
+		var maxTxt = (cupMaxUsosEl.value || "").trim();
+		var maxUsos = maxTxt === "" ? null : Number(maxTxt);
+		if (maxUsos != null && (!isFinite(maxUsos) || maxUsos < 1)) {
+			Tienda.toast("El máximo de usos debe ser 1 o más, o dejarse vacío.", "error");
+			return;
+		}
+
+		guardarCuponBtn.disabled = true;
+		guardarCuponBtn.textContent = "Guardando...";
+		await guardarCupon({
+			codigo: codigo,
+			tipo: tipo,
+			valor: valor,
+			activo: cupActivoEl.checked,
+			vigente_hasta: aISO(cupHastaEl.value),
+			max_usos: maxUsos,
+			uno_por_cliente: cupUnoPorClienteEl.checked,
+			descripcion: (cupDescripcionEl.value || "").trim() || null,
+		});
+		guardarCuponBtn.disabled = false;
+		guardarCuponBtn.textContent = "Guardar cupón";
 	});
 
 	// Carga inicial: al final, cuando gridEl y accesoProductoSel ya están referenciados.
