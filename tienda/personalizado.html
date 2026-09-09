@@ -158,13 +158,10 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 			</section>
 
-			<!-- Aviso visible, no enterrado en el documento legal (8.3 del doc) -->
-			<div class="rounded-2xl border border-line p-4 text-sm flex flex-col gap-1.5" style="background:#faf9f4;color:#3b4256">
-				<p class="font-semibold text-ink">Antes de pedir, toma en cuenta:</p>
-				<p>· El pago es por adelantado; te comprometemos una fecha de entrega al confirmar.</p>
-				<p>· Si no corresponde a lo pedido, lo corregimos sin costo. Si no entregamos a tiempo, te devolvemos el total.</p>
-				<p>· Tu proyecto puede integrarse después al catálogo general para otros maestros. Eso no cambia lo que pagaste.</p>
-			</div>
+			<!-- En el celular, "Tu pedido" y la garantía se mueven aquí (antes del
+			     botón) desde el lateral: personalizado.js los recoloca según el
+			     ancho. Así se ve qué se va a pedir antes de continuar. -->
+			<div id="resumenMovil" class="contents"></div>
 
 			<div id="mensajeForm" class="hidden rounded-xl px-3.5 py-2.5 text-sm font-medium"></div>
 
@@ -174,8 +171,8 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 		</form>
 
 		<!-- Resumen lateral -->
-		<aside class="lg:sticky lg:top-24 flex flex-col gap-4">
-			<div class="bg-white rounded-3xl border border-line p-6 shadow-sm">
+		<aside id="asideResumen" class="lg:sticky lg:top-24 flex flex-col gap-4">
+			<div id="tarjetaPedido" class="bg-white rounded-3xl border border-line p-6 shadow-sm">
 				<h3 class="font-bold text-ink text-lg mb-3">Tu pedido</h3>
 				<dl id="resumen" class="flex flex-col gap-2 text-sm"></dl>
 				<div class="mt-4 pt-4 border-t border-line flex items-center justify-between">
@@ -184,11 +181,15 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 				<p id="resumenEntrega" class="mt-3 text-[13px] text-mute"></p>
 			</div>
-			<div class="bg-white rounded-2xl border border-line p-4 flex flex-col gap-2 text-sm text-mute">
+			<!-- Única tarjeta de condiciones (el aviso 8.3 del catálogo va aquí,
+			     visible, sin repetirlo en otro bloque). -->
+			<div id="tarjetaGarantia" class="bg-white rounded-2xl border border-line p-4 flex flex-col gap-2 text-sm text-mute">
 				<span class="inline-flex items-center gap-2 font-semibold text-ink"><i data-lucide="shield-check" class="w-4 h-4" style="color:#059669"></i> Garantía</span>
-				<span class="inline-flex items-center gap-2"><i data-lucide="pencil-line" class="w-4 h-4"></i> Revisión gratuita si no corresponde a lo pedido</span>
-				<span class="inline-flex items-center gap-2"><i data-lucide="clock" class="w-4 h-4"></i> Reembolso total si no entregamos a tiempo</span>
-				<span class="inline-flex items-center gap-2"><i data-lucide="file-pen-line" class="w-4 h-4"></i> PDF y Word editable incluidos</span>
+				<span class="inline-flex items-start gap-2"><i data-lucide="credit-card" class="w-4 h-4 shrink-0 mt-0.5"></i> Pago por adelantado; te comprometemos la fecha de entrega al confirmar</span>
+				<span class="inline-flex items-start gap-2"><i data-lucide="pencil-line" class="w-4 h-4 shrink-0 mt-0.5"></i> Revisión gratuita si no corresponde a lo pedido</span>
+				<span class="inline-flex items-start gap-2"><i data-lucide="clock" class="w-4 h-4 shrink-0 mt-0.5"></i> Reembolso total si no entregamos a tiempo</span>
+				<span class="inline-flex items-start gap-2"><i data-lucide="file-pen-line" class="w-4 h-4 shrink-0 mt-0.5"></i> PDF y Word editable incluidos</span>
+				<span class="inline-flex items-start gap-2"><i data-lucide="library" class="w-4 h-4 shrink-0 mt-0.5"></i> Tu proyecto puede integrarse después al catálogo para otros maestros; eso no cambia lo que pagaste</span>
 			</div>
 		</aside>
 	</div>

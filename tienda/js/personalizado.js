@@ -64,6 +64,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		notas: "",
 	};
 	var estado = null;         // respuesta de marketplace_personalizados_estado
+	// Buscadores (Tienda.combobox): se repintan al llegar el catálogo, por si
+	// el maestro abrió la lista antes de que terminara de cargar.
+	var cbContenidos = null, cbPdas = null;
 	var contenidos = [];       // catalogo_contenidos de la(s) fase(s) actual(es)
 	var pdas = [];             // catalogo_pda de los grados actuales
 	var contenidoPorId = {};
@@ -215,6 +218,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// pintan en cuanto se elige el grado.
 			contenidos = []; pdas = []; contenidoPorId = {}; pdaPorId = {};
 			pintarSelecciones(); pintarAyudas();
+			if (cbContenidos) { cbContenidos.repintar(); }
+			if (cbPdas) { cbPdas.repintar(); }
 			return;
 		}
 		var r = await Promise.all([
@@ -245,6 +250,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pedido.pda_ids.forEach(function (id) { agregarContenido(pdaPorId[id].contenido_id, true); });
 		pintarSelecciones();
 		pintarAyudas();
+		if (cbContenidos) { cbContenidos.repintar(); }
+		if (cbPdas) { cbPdas.repintar(); }
 	}
 
 	function normalizar(s) { return Tienda.normalizarTexto(s); }
@@ -317,7 +324,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── Buscadores (Tienda.combobox, compartido con el catálogo) ─────────────
 	function combobox(input, lista, buscar, elegir) { return Tienda.combobox(input, lista, buscar, elegir); }
 
-	combobox(buscarContenidoEl, listaContenidosEl, function (consulta) {
+	cbContenidos = combobox(buscarContenidoEl, listaContenidosEl, function (consulta) {
 		var items = contenidos.filter(pasaCF).filter(function (c) { return !consulta || coincide(c, consulta); })
 			.map(function (c) { return { id: c.id, texto: c.texto, cf: c.cf, sub: Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "", elegido: pedido.contenido_ids.indexOf(c.id) !== -1 }; });
 		return { items: items, vacio: gradosActuales().length ? null : "Primero elige el grado en el paso 1: los contenidos y PDAs dependen de él." };
@@ -327,7 +334,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// elegidos y la casilla vacía, SOLO los de esos contenidos (es lo que casi
 	// siempre se busca). Al escribir se busca entre todos: si eliges uno de otro
 	// contenido, ese contenido se agrega solo.
-	combobox(buscarPdaEl, listaPdasEl, function (consulta) {
+	cbPdas = combobox(buscarPdaEl, listaPdasEl, function (consulta) {
 		var hayContenidos = pedido.contenido_ids.length > 0;
 		var base = pdas.filter(pasaCF);
 		var esDeElegido = function (p) { return pedido.contenido_ids.indexOf(p.contenido_id) !== -1; };
@@ -382,22 +389,46 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		return pedido.grado ? pedido.grado + "° de Primaria" : "Elige el grado";
 	}
+	// Cada rótulo va UNA vez ("Contenidos", "PDAs") y sus elementos en lista,
+	// en vez de repetir el rótulo por cada uno elegido.
 	function pintarResumen() {
-		var filas = [["Grupo", aulaTexto()], ["Versión", pedido.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)"]];
+		var filas = [["Grupo", [aulaTexto()]], ["Versión", [pedido.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)"]]];
 		if (pedido.campos_formativos.length) {
-			filas.push([pedido.campos_formativos.length > 1 ? "Campos" : "Campo", pedido.campos_formativos.map(function (c) { return Tienda.CF_COLOR[c].nombre; }).join(", ")]);
+			filas.push([pedido.campos_formativos.length > 1 ? "Campos" : "Campo", pedido.campos_formativos.map(function (c) { return Tienda.CF_COLOR[c].nombre; })]);
 		}
-		pedido.contenido_ids.forEach(function (id) { if (contenidoPorId[id]) { filas.push(["Contenido", contenidoPorId[id].texto]); } });
-		pedido.pda_ids.forEach(function (id) { if (pdaPorId[id]) { filas.push(["PDA", pdaPorId[id].grado + "° · " + pdaPorId[id].texto]); } });
-		if (pedido.metodologia) { filas.push(["Metodología", pedido.metodologia]); }
-		if (pedido.fecha_necesaria) { filas.push(["Lo necesitas para", pedido.fecha_necesaria]); }
+		var contenidos = pedido.contenido_ids.filter(function (id) { return contenidoPorId[id]; }).map(function (id) { return contenidoPorId[id].texto; });
+		if (contenidos.length) { filas.push([contenidos.length > 1 ? "Contenidos" : "Contenido", contenidos]); }
+		var pdas = pedido.pda_ids.filter(function (id) { return pdaPorId[id]; }).map(function (id) { return pdaPorId[id].grado + "° · " + pdaPorId[id].texto; });
+		if (pdas.length) { filas.push([pdas.length > 1 ? "PDAs" : "PDA", pdas]); }
+		if (pedido.metodologia) { filas.push(["Metodología", [pedido.metodologia]]); }
+		if (pedido.fecha_necesaria) { filas.push(["Lo necesitas para", [pedido.fecha_necesaria]]); }
 		resumenEl.innerHTML = filas.map(function (f) {
-			return '<div class="flex gap-3"><dt class="w-24 shrink-0 text-[11px] font-bold uppercase tracking-[0.08em] text-mute pt-0.5">' + esc(f[0]) + '</dt><dd class="text-ink leading-snug">' + esc(f[1]) + "</dd></div>";
+			var valor = f[1].length === 1
+				? esc(f[1][0])
+				: '<ul class="list-disc pl-4 flex flex-col gap-1">' + f[1].map(function (v) { return "<li>" + esc(v) + "</li>"; }).join("") + "</ul>";
+			return '<div class="flex gap-3"><dt class="w-24 shrink-0 text-[11px] font-bold uppercase tracking-[0.08em] text-mute pt-0.5">' + esc(f[0]) + '</dt><dd class="text-ink leading-snug min-w-0 flex-1">' + valor + "</dd></div>";
 		}).join("");
 		var lista = Number(pedido.nivel === "con_anexos" ? estado.precio_con_anexos : estado.precio_sin_anexos);
 		resumenPrecio.innerHTML = Tienda.precioHTML(lista, { claseFinal: "font-black text-ink text-2xl", claseLista: "text-mute text-base font-bold" });
 		resumenEntrega.textContent = "Se paga por adelantado. Entrega comprometida: hasta " + Math.round(estado.ventana_horas) + " horas después del pago.";
 	}
+
+	// ── "Tu pedido" antes del botón en el celular ────────────────────────────
+	// En escritorio las dos tarjetas viven en el lateral fijo; en pantallas
+	// angostas el lateral cae DEBAJO del formulario y el botón quedaba antes
+	// del resumen. Se mueven al hueco previo al botón y vuelven al crecer.
+	var mqEscritorio = window.matchMedia("(min-width: 1024px)");
+	function colocarResumen() {
+		var destino = mqEscritorio.matches ? document.getElementById("asideResumen") : document.getElementById("resumenMovil");
+		var pedidoCard = document.getElementById("tarjetaPedido");
+		var garantiaCard = document.getElementById("tarjetaGarantia");
+		if (!destino || !pedidoCard || !garantiaCard) { return; }
+		if (pedidoCard.parentNode !== destino) { destino.appendChild(pedidoCard); destino.appendChild(garantiaCard); }
+		var lateral = document.getElementById("asideResumen");
+		if (lateral) { lateral.classList.toggle("hidden", !mqEscritorio.matches); }
+	}
+	colocarResumen();
+	if (mqEscritorio.addEventListener) { mqEscritorio.addEventListener("change", colocarResumen); } else { mqEscritorio.addListener(colocarResumen); }
 
 	// ── Continuar ─────────────────────────────────────────────────────────────
 	document.getElementById("formPedido").addEventListener("submit", function (e) {
