@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Aviso de Privacidad · Jissez</title>
+	<meta name="description" content="Aviso de Privacidad de jissez.com: qué datos recabamos, para qué, con quién se comparten y cómo ejercer sus derechos ARCO.">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<link rel="stylesheet" href="css/tienda.css">
+	<style>
+		.legal { max-width: 46rem; }
+		.legal h2 { font-weight: 800; color: #1c2434; font-size: 1.05rem; margin-top: 2rem; margin-bottom: .5rem; letter-spacing: -.01em; }
+		.legal p, .legal li { color: #3b4256; font-size: 15px; line-height: 1.65; }
+		.legal p + p { margin-top: .6rem; }
+		.legal ul { list-style: disc; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .35rem; margin-top: .5rem; }
+		.legal mark { background: #fef3c7; color: #92400e; padding: 0 .25em; border-radius: .25em; font-weight: 600; }
+	</style>
+</head>
+<body class="antialiased min-h-screen">
+
+<div class="border-b border-line bg-white">
+	<div class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-10">
+		<div class="flex items-center gap-2 text-[13px] text-mute mb-2">
+			<a href="index.html" class="hover:text-ink transition">Inicio</a>
+			<i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+			<span class="text-ink font-medium">Aviso de Privacidad</span>
+		</div>
+		<h1 class="font-black text-ink text-[clamp(1.8rem,3.5vw,2.6rem)] tracking-tight leading-tight">Aviso de Privacidad</h1>
+		<p class="mt-2 text-mute">Última actualización: <mark>[fecha de publicación]</mark></p>
+	</div>
+</div>
+
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-12">
+	<article class="legal bg-white rounded-3xl border border-line p-6 sm:p-10 shadow-sm">
+		<p>De conformidad con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares:</p>
+
+		<h2>1. Responsable</h2>
+		<p><mark>[Nombre completo del titular / razón social]</mark>, con domicilio en <mark>[domicilio fiscal]</mark>.</p>
+
+		<h2>2. Datos que recabamos</h2>
+		<p>Nombre, correo electrónico, credenciales de cuenta e historial de compras. No recabamos datos de tarjeta: los procesa Mercado Pago. Para proyectos personalizados, además, los datos del formulario de pedido (grado, contenidos, fechas y notas que usted escriba).</p>
+
+		<h2>3. Finalidades</h2>
+		<p><strong>Necesarias:</strong> crear y administrar su cuenta, procesar compras, dar acceso a los materiales, elaborar proyectos personalizados, avisar el estado de sus pedidos y dar soporte.</p>
+		<p><strong>Secundarias</strong> (puede oponerse sin que afecte el servicio): enviar novedades o promociones.</p>
+
+		<h2>4. Transferencia de datos</h2>
+		<p>A <strong>Mercado Pago</strong> (procesar pagos) y a <strong>Resend</strong> (envío de correos transaccionales). No se venden ni comparten datos con terceros para otros fines.</p>
+
+		<h2>5. Tecnologías de rastreo</h2>
+		<p>El Sitio guarda en su navegador la información necesaria para mantener su sesión iniciada (almacenamiento local, sin fines publicitarios). Además usa el <strong>píxel de Meta</strong> (Facebook) para medir el resultado de nuestros anuncios; ese píxel puede colocar cookies de Meta en su navegador. Puede bloquearlas desde la configuración de su navegador o con un bloqueador de rastreadores sin que el Sitio deje de funcionar, y puede oponerse a esta medición escribiéndonos a soporte@jissez.com.</p>
+
+		<h2>6. Derechos ARCO</h2>
+		<p>Usted puede ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición, así como revocar su consentimiento, escribiendo a <a href="mailto:soporte@jissez.com" class="font-semibold" style="color:#1e3a8a">soporte@jissez.com</a>.</p>
+
+		<h2>7. Menores de edad</h2>
+		<p>El Sitio está dirigido a docentes y estudiantes normalistas, mayores de edad. No recabamos intencionalmente datos de menores.</p>
+
+		<h2>8. Cambios</h2>
+		<p>Se publicarán en esta misma página con la fecha de actualización.</p>
+
+		<h2>9. Contacto</h2>
+		<p><a href="mailto:soporte@jissez.com" class="font-semibold" style="color:#1e3a8a">soporte@jissez.com</a></p>
+
+		<p class="mt-8 text-[13px]" style="color:#5b6473">Consulte también nuestros <a href="terminos.html" class="font-semibold" style="color:#1e3a8a">Términos y Condiciones</a>.</p>
+	</article>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script>
+	document.addEventListener("DOMContentLoaded", async function () {
+		await Tienda.montarNav("");
+		Tienda.montarFooter();
+		Tienda.iconos();
+	});
+</script>
+</body>
+</html>

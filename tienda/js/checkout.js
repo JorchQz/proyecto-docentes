@@ -10,6 +10,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// pleno pago es donde más gente abandona.
 
 	var session = await Tienda.montarNav("");
+	// El pie lleva los enlaces a Términos y Privacidad: en el pago no pueden faltar.
+	Tienda.montarFooter();
 	var money = Tienda.formatMoney;
 
 	var estadoEl = document.getElementById("estado");

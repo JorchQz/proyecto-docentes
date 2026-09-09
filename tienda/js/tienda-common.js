@@ -8,13 +8,36 @@
 	// solo decide qué enlaces se muestran; la seguridad real es la RPC.
 	var ADMIN_EMAIL = "soporte.jissez@gmail.com";
 
-	// Colores por campo formativo (design tokens).
+	// Colores por campo formativo (design tokens). `hex` es el color NEM que se
+	// usa en render dinámico (estilo en línea), porque Tailwind CDN no genera
+	// las clases con opacidad arbitraria que aparecen en cadenas construidas.
 	var CF_COLOR = {
-		LEN: { bg: "bg-gisMenta/25", text: "text-action-dark", nombre: "Lenguajes" },
-		SAB: { bg: "bg-gisCoral/25", text: "text-gisCoral", nombre: "Saberes y Pensamiento Científico" },
-		DHL: { bg: "bg-gisCielo/25", text: "text-board", nombre: "De lo Humano y lo Comunitario" },
-		ETI: { bg: "bg-gisAmarillo/25", text: "text-amber-800", nombre: "Ética, Naturaleza y Sociedades" },
+		LEN: { bg: "bg-gisMenta/25", text: "text-action-dark", nombre: "Lenguajes", corto: "Lenguajes", hex: "#059669" },
+		SAB: { bg: "bg-gisCoral/25", text: "text-gisCoral", nombre: "Saberes y Pensamiento Científico", corto: "Saberes", hex: "#ea580c" },
+		ETI: { bg: "bg-gisAmarillo/25", text: "text-amber-800", nombre: "Ética, Naturaleza y Sociedades", corto: "Ética", hex: "#7c3aed" },
+		DHL: { bg: "bg-gisCielo/25", text: "text-board", nombre: "De lo Humano y lo Comunitario", corto: "Humano", hex: "#0284c7" },
 	};
+	var CF_ORDEN = ["LEN", "SAB", "ETI", "DHL"];
+
+	// Colores de gis por grado. Vivía copiado en cuatro archivos (catálogo,
+	// ficha, Mis compras y biblioteca); aquí queda una sola vez.
+	var GRADO_COLOR = {
+		"1": { bg: "#f2cf6b", txt: "rgba(30,58,138,.85)" },
+		"2": { bg: "#ef9277", txt: "#fff" },
+		"3": { bg: "#79c8a6", txt: "rgba(30,58,138,.85)" },
+		"4": { bg: "#a99fe0", txt: "#fff" },
+		"5": { bg: "#85b8e6", txt: "rgba(30,58,138,.85)" },
+		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
+	};
+
+	// Chip pequeño de campo formativo para tarjetas y fichas.
+	function chipCF(codigo, opts) {
+		var c = CF_COLOR[codigo];
+		if (!c) { return ""; }
+		var texto = opts && opts.largo ? c.nombre : c.corto;
+		return '<span class="inline-flex items-center gap-1.5 text-[11px] font-semibold h-6 px-2 rounded-md" style="background:' + c.hex + '14;color:' + c.hex + ';border:1px solid ' + c.hex + '40">' +
+			'<span class="w-1.5 h-1.5 rounded-full" style="background:' + c.hex + '"></span>' + esc(texto) + "</span>";
+	}
 
 	function esc(str) {
 		return String(str == null ? "" : str)
@@ -389,9 +412,11 @@
 			'<img src="assets/jissez-wordmark-blue.png" alt="Jissez" style="height:24px;width:auto" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline\'" />' +
 			'<span style="display:none;color:#1e3a8a;font-weight:800">Jissez</span>' +
 			'<p>© ' + anio + ' Jissez · Planeaciones NEM</p>' +
-			'<div class="flex gap-5">' +
+			'<div class="flex flex-wrap justify-center gap-x-5 gap-y-2">' +
 			'<a href="index.html" class="hover:text-ink transition">Inicio</a>' +
 			'<a href="catalogo.html" class="hover:text-ink transition">Catálogo</a>' +
+			'<a href="terminos.html" class="hover:text-ink transition">Términos y Condiciones</a>' +
+			'<a href="privacidad.html" class="hover:text-ink transition">Aviso de Privacidad</a>' +
 			'<a href="mailto:soporte@jissez.com" class="hover:text-ink transition">Contacto</a>' +
 			'</div>' +
 			'</div>' +
@@ -672,6 +697,9 @@
 		EDGE_BASE: EDGE_BASE,
 		ADMIN_EMAIL: ADMIN_EMAIL,
 		CF_COLOR: CF_COLOR,
+		CF_ORDEN: CF_ORDEN,
+		GRADO_COLOR: GRADO_COLOR,
+		chipCF: chipCF,
 		esc: esc,
 		formatMoney: formatMoney,
 		montoCorto: montoCorto,

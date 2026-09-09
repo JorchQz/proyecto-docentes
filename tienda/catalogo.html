@@ -43,7 +43,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					<span class="text-ink font-medium">Catálogo</span>
 				</div>
 				<h1 class="font-black text-ink text-[clamp(1.8rem,3.5vw,2.6rem)] tracking-tight leading-tight">Catálogo de planeaciones</h1>
-				<p class="mt-2 text-mute">Elige tu grado o modalidad. Seleccionas T1, T2, T3 o ciclo completo en la página del paquete.</p>
+				<p id="subtituloCatalogo" class="mt-2 text-mute">Elige tu grado o modalidad. Seleccionas T1, T2, T3 o ciclo completo en la página del paquete.</p>
 				<div id="tiraPromo" class="hidden mt-3 inline-flex items-center gap-2 h-9 px-3.5 rounded-xl text-[13px] font-semibold border" style="background:rgba(5,150,105,.08);color:#047857;border-color:rgba(5,150,105,.25)"></div>
 			</div>
 			<p class="text-[14px] text-mute"><span id="contadorTexto"></span></p>
@@ -56,6 +56,16 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 	<!-- Filtros. Pegajosos solo desde tablet: en un teléfono la caja llega a
 	     ocupar tres filas de chips y se comía casi la mitad de la pantalla. -->
 	<div class="bg-white border border-line rounded-2xl shadow-sm p-4 mb-6 md:sticky md:top-16 z-20 flex flex-col gap-4">
+		<!-- Qué se compra: el paquete de un grado (trimestre o ciclo) o UN proyecto
+		     suelto. Son productos distintos con precios distintos; mezclarlos en la
+		     misma tarjeta haría que el "desde" del grado bajara al del proyecto. -->
+		<div>
+			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Qué buscas</p>
+			<div id="chipsVista" class="flex flex-wrap gap-2">
+				<button data-vista="paquetes" class="chip-vista chip active border text-sm font-semibold h-10 px-4 rounded-xl">Paquetes completos</button>
+				<button data-vista="proyectos" class="chip-vista chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl">Proyectos individuales</button>
+			</div>
+		</div>
 		<div>
 			<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Organización</p>
 			<div id="chipsOrg" class="flex flex-wrap gap-2">
@@ -92,25 +102,67 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				<div id="chipsCombo" class="flex flex-wrap gap-2"></div>
 			</div>
 		</div>
+
+		<!-- Filtro curricular: solo en la vista de proyectos. Los chips de campo
+		     se marcan con el color NEM de cada campo; el contenido se escribe o se
+		     elige de la lista (solo aparecen los contenidos que de verdad cubre
+		     algún proyecto publicado); el PDA se abre al fijar un contenido. -->
+		<div id="subProyectos" class="hidden flex-col gap-4">
+			<div>
+				<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Campo formativo</p>
+				<div id="chipsCF" class="flex flex-wrap gap-2">
+					<button data-cf="LEN" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#059669"></span>Lenguajes</button>
+					<button data-cf="SAB" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#ea580c"></span>Saberes y Pensamiento Científico</button>
+					<button data-cf="ETI" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#7c3aed"></span>Ética, Naturaleza y Sociedades</button>
+					<button data-cf="DHL" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-10 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#0284c7"></span>De lo Humano y lo Comunitario</button>
+				</div>
+			</div>
+			<div class="grid gap-3 sm:grid-cols-2">
+				<div>
+					<label for="filtroContenido" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Contenido</label>
+					<div class="relative">
+						<input id="filtroContenido" type="text" list="listaContenidos" autocomplete="off" placeholder="Escribe o elige un contenido del programa"
+							class="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						<datalist id="listaContenidos"></datalist>
+						<button id="limpiarContenido" type="button" aria-label="Quitar contenido" class="hidden absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-paper transition"><i data-lucide="x" class="w-4 h-4 text-mute"></i></button>
+					</div>
+				</div>
+				<div id="bloquePda" class="hidden">
+					<label for="filtroPda" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Proceso de desarrollo de aprendizaje (PDA)</label>
+					<select id="filtroPda" class="w-full h-11 px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff"></select>
+				</div>
+			</div>
+		</div>
 	</div>
 
-	<!-- Aplica ?org= ANTES del primer pintado. Si se deja para catalogo.js, la
-	     caja se dibuja en "Organización completa" y salta a multigrado a la
+	<!-- Aplica ?org= y ?vista= ANTES del primer pintado. Si se deja para
+	     catalogo.js, la caja se dibuja en su estado por defecto y salta a la
 	     vista, con su cambio de altura. catalogo.js lo repite sin efecto. -->
 	<script>
 		(function () {
-			if (new URLSearchParams(location.search).get("org") !== "multigrado") { return; }
-			var chips = document.querySelectorAll("#chipsOrg .chip-org");
-			for (var i = 0; i < chips.length; i++) {
-				var activo = chips[i].getAttribute("data-org") === "multigrado";
-				chips[i].classList.toggle("active", activo);
-				chips[i].classList.toggle("border-line", !activo);
-				chips[i].classList.toggle("text-ink", !activo);
+			var q = new URLSearchParams(location.search);
+			function marcar(selector, attr, valor) {
+				var chips = document.querySelectorAll(selector);
+				for (var i = 0; i < chips.length; i++) {
+					var activo = chips[i].getAttribute(attr) === valor;
+					chips[i].classList.toggle("active", activo);
+					chips[i].classList.toggle("border-line", !activo);
+					chips[i].classList.toggle("text-ink", !activo);
+				}
 			}
-			document.getElementById("subCompleta").classList.add("hidden");
-			var multi = document.getElementById("subMultigrado");
-			multi.classList.remove("hidden");
-			multi.classList.add("flex");
+			if (q.get("org") === "multigrado") {
+				marcar("#chipsOrg .chip-org", "data-org", "multigrado");
+				document.getElementById("subCompleta").classList.add("hidden");
+				var multi = document.getElementById("subMultigrado");
+				multi.classList.remove("hidden");
+				multi.classList.add("flex");
+			}
+			if (q.get("vista") === "proyectos") {
+				marcar("#chipsVista .chip-vista", "data-vista", "proyectos");
+				var sp = document.getElementById("subProyectos");
+				sp.classList.remove("hidden");
+				sp.classList.add("flex");
+			}
 		})();
 	</script>
 
@@ -122,6 +174,8 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../js/supabase.js"></script>
+<!-- Único lugar del mapeo nombre largo ↔ código corto de campo formativo. -->
+<script src="../js/campos-formativos.js"></script>
 <script src="js/tienda-common.js"></script>
 <script src="js/catalogo.js"></script>
 </body>
