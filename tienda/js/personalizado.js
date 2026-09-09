@@ -4,16 +4,20 @@
 // checkout (checkout.html?personalizado=1), que es quien crea la cuenta si
 // hace falta, aplica cupón y abre Mercado Pago. Precio, cupo y ventana salen
 // de la RPC pública marketplace_personalizados_estado.
+//
+// Campos, contenidos y PDAs son de selección MÚLTIPLE, con buscador de texto.
+// Un PDA pertenece a un solo contenido: al elegir un PDA se agrega su
+// contenido solo; al quitar un contenido se quitan sus PDAs.
 document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) { return; }
 
 	await Tienda.montarNav("");
 	Tienda.montarFooter();
 	var esc = Tienda.esc;
-	var money = Tienda.formatMoney;
 
 	var CLAVE_BORRADOR = "jissez_pedido";
 	var COMBOS = { "1-2": "tridocente", "3-4": "tridocente", "5-6": "tridocente", "1-2-3": "bidocente", "4-5-6": "bidocente" };
+	var MAX_RESULTADOS = 40;
 
 	var cargandoEl = document.getElementById("cargando");
 	var contenidoEl = document.getElementById("contenido");
@@ -25,8 +29,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var chipsComboEl = document.getElementById("chipsCombo");
 	var opcionesNivelEl = document.getElementById("opcionesNivel");
 	var chipsCFEl = document.getElementById("chipsCF");
-	var selContenido = document.getElementById("selContenido");
-	var selPda = document.getElementById("selPda");
+	var chipsContenidosEl = document.getElementById("chipsContenidos");
+	var buscarContenidoEl = document.getElementById("buscarContenido");
+	var listaContenidosEl = document.getElementById("listaContenidos");
+	var ayudaContenidoEl = document.getElementById("ayudaContenido");
+	var chipsPdasEl = document.getElementById("chipsPdas");
+	var buscarPdaEl = document.getElementById("buscarPda");
+	var listaPdasEl = document.getElementById("listaPdas");
+	var ayudaPdaEl = document.getElementById("ayudaPda");
 	var selMetodologia = document.getElementById("selMetodologia");
 	var fFecha = document.getElementById("fFecha");
 	var fNotas = document.getElementById("fNotas");
@@ -43,16 +53,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		grado: null,
 		grados_combo: null,
 		nivel: "con_anexos",
-		campo_formativo: null,
-		contenido_id: null,
-		pda_id: null,
+		campos_formativos: [],
+		contenido_ids: [],
+		pda_ids: [],
 		metodologia: "",
 		fecha_necesaria: "",
 		notas: "",
 	};
-	var estado = null;      // respuesta de marketplace_personalizados_estado
-	var contenidos = [];    // catalogo_contenidos de la fase actual
-	var pdas = [];          // catalogo_pda del contenido elegido
+	var estado = null;         // respuesta de marketplace_personalizados_estado
+	var contenidos = [];       // catalogo_contenidos de la(s) fase(s) actual(es)
+	var pdas = [];             // catalogo_pda de los grados actuales
+	var contenidoPorId = {};
+	var pdaPorId = {};
+	var cargaActual = 0;       // evita que una carga vieja pise a la nueva
 
 	var params = new URLSearchParams(location.search);
 	var borrador = leerBorrador();
@@ -63,10 +76,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var gParam = (params.get("grado") || "").split(",")[0];
 	if (/^[1-6]$/.test(gParam)) { pedido.grado = Number(gParam); }
 	if (COMBOS[params.get("combo") || ""]) { pedido.grados_combo = params.get("combo"); pedido.organizacion = "multigrado"; }
-	var cfParam = (params.get("cf") || "").split(",")[0];
-	if (Tienda.CF_COLOR[cfParam]) { pedido.campo_formativo = cfParam; }
-	if (params.get("contenido_id")) { pedido.contenido_id = params.get("contenido_id"); }
-	if (params.get("pda_id")) { pedido.pda_id = params.get("pda_id"); }
+	(params.get("cf") || "").split(",").forEach(function (cf) {
+		if (Tienda.CF_COLOR[cf] && pedido.campos_formativos.indexOf(cf) === -1) { pedido.campos_formativos.push(cf); }
+	});
+	if (params.get("contenido_id") && pedido.contenido_ids.indexOf(params.get("contenido_id")) === -1) { pedido.contenido_ids.push(params.get("contenido_id")); }
+	if (params.get("pda_id") && pedido.pda_ids.indexOf(params.get("pda_id")) === -1) { pedido.pda_ids.push(params.get("pda_id")); }
 
 	// ── Disponibilidad y precios ──────────────────────────────────────────────
 	var res = await Promise.all([
@@ -90,17 +104,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 	selMetodologia.value = pedido.metodologia || "";
 	fFecha.value = pedido.fecha_necesaria || "";
 	fNotas.value = pedido.notas || "";
-	await cargarContenidos();
+	// El precio y el grupo se pintan ya; los catálogos SEP llegan después y
+	// vuelven a pintar el resumen con contenidos y PDAs.
+	pintarResumen();
+	Tienda.iconos();
+	await cargarCatalogos();
 	pintarResumen();
 	Tienda.iconos();
 
-	// ── Chips ─────────────────────────────────────────────────────────────────
+	// ── Chips de grupo, versión y campo ──────────────────────────────────────
 	chipsOrgEl.addEventListener("click", function (e) {
 		var c = e.target.closest(".chip-org");
 		if (!c) { return; }
 		pedido.organizacion = c.getAttribute("data-org");
 		pintarOrg();
-		cargarContenidos().then(pintarResumen);
+		cargarCatalogos().then(pintarResumen);
 		pintarResumen();
 	});
 	chipsGradoEl.addEventListener("click", function (e) {
@@ -108,7 +126,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!c) { return; }
 		pedido.grado = Number(c.getAttribute("data-grado"));
 		pintarGradoCombo();
-		cargarContenidos().then(pintarResumen);
+		cargarCatalogos().then(pintarResumen);
 		pintarResumen();
 	});
 	chipsComboEl.addEventListener("click", function (e) {
@@ -116,25 +134,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!c) { return; }
 		pedido.grados_combo = c.getAttribute("data-combo");
 		pintarGradoCombo();
-		cargarContenidos().then(pintarResumen);
+		cargarCatalogos().then(pintarResumen);
 		pintarResumen();
 	});
 	chipsCFEl.addEventListener("click", function (e) {
 		var c = e.target.closest(".chip-cf");
 		if (!c) { return; }
 		var cf = c.getAttribute("data-cf");
-		pedido.campo_formativo = pedido.campo_formativo === cf ? null : cf;
+		var i = pedido.campos_formativos.indexOf(cf);
+		if (i === -1) { pedido.campos_formativos.push(cf); } else { pedido.campos_formativos.splice(i, 1); }
 		pintarCF();
-		llenarContenidos();
-		pintarResumen();
-	});
-	selContenido.addEventListener("change", function () {
-		pedido.contenido_id = selContenido.value || null;
-		pedido.pda_id = null;
-		cargarPdas().then(pintarResumen);
-	});
-	selPda.addEventListener("change", function () {
-		pedido.pda_id = selPda.value || null;
+		pintarAyudas();
 		pintarResumen();
 	});
 	selMetodologia.addEventListener("change", function () { pedido.metodologia = selMetodologia.value; pintarResumen(); });
@@ -157,85 +167,212 @@ document.addEventListener("DOMContentLoaded", async function () {
 		chipsComboEl.querySelectorAll(".chip-combo").forEach(function (x) { setChip(x, x.getAttribute("data-combo") === pedido.grados_combo); });
 	}
 	function pintarCF() {
-		chipsCFEl.querySelectorAll(".chip-cf").forEach(function (x) { setChip(x, x.getAttribute("data-cf") === pedido.campo_formativo); });
+		chipsCFEl.querySelectorAll(".chip-cf").forEach(function (x) { setChip(x, pedido.campos_formativos.indexOf(x.getAttribute("data-cf")) !== -1); });
 	}
 
 	// ── Versión ───────────────────────────────────────────────────────────────
 	function pintarNivel() {
 		var opciones = [
-			{ nivel: "sin_anexos", titulo: "Sin anexos", sub: "Planeación completa en PDF y Word", precio: estado.precio_sin_anexos },
-			{ nivel: "con_anexos", titulo: "Con anexos", sub: "Planeación en PDF y Word + anexos imprimibles por sesión", precio: estado.precio_con_anexos },
+			{ valor: "sin_anexos", titulo: "Sin anexos", sub: "Planeación completa en PDF y Word", precio: estado.precio_sin_anexos },
+			{ valor: "con_anexos", titulo: "Con anexos", sub: "Planeación en PDF y Word + anexos imprimibles por sesión", precio: estado.precio_con_anexos },
 		];
-		opcionesNivelEl.innerHTML = opciones.map(function (o) {
-			var sel = o.nivel === pedido.nivel;
-			return '<button type="button" data-nivel="' + o.nivel + '" class="opt-btn w-full text-left rounded-2xl border px-4 py-3 flex items-center gap-3' + (sel ? " selected" : " border-line bg-white") + '">' +
-				'<span class="w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center" style="border-color:' + (sel ? "#fff" : "#9ba3af") + '">' + (sel ? '<span class="w-2.5 h-2.5 rounded-full" style="background:#fff"></span>' : "") + "</span>" +
-				'<span class="min-w-0 flex-1"><span class="block font-bold">' + esc(o.titulo) + '</span><span class="block text-[13px]' + (sel ? " opacity-90" : " text-mute") + '">' + esc(o.sub) + "</span></span>" +
-				'<span class="shrink-0 text-right">' + Tienda.precioHTML(o.precio, {
-					claseFinal: "font-black text-lg" + (sel ? "" : " text-ink"),
-					claseLista: "text-[12px] font-bold" + (sel ? " opacity-80" : " text-mute"),
-				}) + "</span></button>";
-		}).join("");
-		opcionesNivelEl.querySelectorAll("[data-nivel]").forEach(function (b) {
-			b.addEventListener("click", function () { pedido.nivel = b.getAttribute("data-nivel"); pintarNivel(); pintarResumen(); });
+		opcionesNivelEl.innerHTML = opciones.map(function (o) { return Tienda.opcionVersion(o, o.valor === pedido.nivel); }).join("");
+		opcionesNivelEl.querySelectorAll("[data-opcion]").forEach(function (b) {
+			b.addEventListener("click", function () { pedido.nivel = b.getAttribute("data-opcion"); pintarNivel(); pintarResumen(); });
 		});
 	}
 
-	// ── Contenidos y PDAs del catálogo SEP ────────────────────────────────────
-	function fasesActuales() {
-		var grados = pedido.organizacion === "multigrado"
+	// ── Catálogos SEP del grupo elegido ───────────────────────────────────────
+	function gradosActuales() {
+		return pedido.organizacion === "multigrado"
 			? (pedido.grados_combo ? pedido.grados_combo.split("-").map(Number) : [])
 			: (pedido.grado ? [pedido.grado] : []);
+	}
+	function fasesActuales(grados) {
 		// catalogo_contenidos.fase es texto ("Fase 3"), no número.
 		var fases = {};
 		grados.forEach(function (g) { fases["Fase " + (g <= 2 ? 3 : (g <= 4 ? 4 : 5))] = true; });
-		return { grados: grados, fases: Object.keys(fases) };
+		return Object.keys(fases);
 	}
-	async function cargarContenidos() {
-		var f = fasesActuales();
-		if (!f.fases.length) { contenidos = []; llenarContenidos(); return; }
-		var r = await window.sb
-			.from("catalogo_contenidos")
-			.select("id, fase, campo_formativo, contenido, orden")
-			.in("fase", f.fases)
-			.order("campo_formativo").order("orden");
-		contenidos = (r.data || []).map(function (c) {
-			return { id: c.id, fase: c.fase, cf: window.CamposFormativos.corto(c.campo_formativo), texto: c.contenido };
-		});
-		llenarContenidos();
-		if (pedido.contenido_id) { await cargarPdas(); }
-	}
-	function llenarContenidos() {
-		var lista = contenidos.filter(function (c) { return !pedido.campo_formativo || c.cf === pedido.campo_formativo; });
-		var existe = lista.some(function (c) { return c.id === pedido.contenido_id; });
-		if (!existe) { pedido.contenido_id = null; pedido.pda_id = null; cargarPdas(); }
-		selContenido.innerHTML = '<option value="">Cualquiera (lo elegimos nosotros)</option>' +
-			lista.map(function (c) {
-				var cfNombre = Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "";
-				return '<option value="' + esc(c.id) + '"' + (c.id === pedido.contenido_id ? " selected" : "") + ">" +
-					(cfNombre ? esc(cfNombre) + " · " : "") + esc(c.texto) + "</option>";
-			}).join("");
-		selContenido.disabled = !lista.length;
-	}
-	async function cargarPdas() {
-		if (!pedido.contenido_id) {
-			pdas = [];
-			selPda.innerHTML = '<option value="">Primero elige un contenido</option>';
-			selPda.disabled = true;
+
+	// Contenidos de la fase y PDAs de los grados, en un solo viaje cada uno.
+	// Las selecciones que ya no pertenecen al grupo nuevo se descartan.
+	async function cargarCatalogos() {
+		var grados = gradosActuales();
+		var mia = ++cargaActual;
+		if (!grados.length) {
+			contenidos = []; pdas = []; contenidoPorId = {}; pdaPorId = {};
+			pedido.contenido_ids = []; pedido.pda_ids = [];
+			pintarSelecciones(); pintarAyudas();
 			return;
 		}
-		var f = fasesActuales();
-		var q = window.sb.from("catalogo_pda").select("id, grado, pda, orden").eq("contenido_id", pedido.contenido_id).order("grado").order("orden");
-		if (f.grados.length) { q = q.in("grado", f.grados); }
-		var r = await q;
-		pdas = r.data || [];
-		selPda.innerHTML = '<option value="">Cualquier PDA de este contenido</option>' +
-			pdas.map(function (p) {
-				return '<option value="' + esc(p.id) + '"' + (p.id === pedido.pda_id ? " selected" : "") + ">" + p.grado + "° · " + esc(p.pda) + "</option>";
-			}).join("");
-		selPda.disabled = !pdas.length;
-		if (!pdas.some(function (p) { return p.id === pedido.pda_id; })) { pedido.pda_id = null; }
+		var r = await Promise.all([
+			window.sb.from("catalogo_contenidos")
+				.select("id, fase, campo_formativo, contenido, orden")
+				.in("fase", fasesActuales(grados)).order("campo_formativo").order("orden"),
+			window.sb.from("catalogo_pda")
+				.select("id, contenido_id, grado, pda, orden")
+				.in("grado", grados).order("grado").order("orden"),
+		]);
+		if (mia !== cargaActual) { return; }
+		contenidoPorId = {};
+		contenidos = (r[0].data || []).map(function (c) {
+			var item = { id: c.id, cf: window.CamposFormativos.corto(c.campo_formativo), texto: c.contenido, norm: normalizar(c.contenido) };
+			contenidoPorId[c.id] = item;
+			return item;
+		});
+		pdaPorId = {};
+		pdas = (r[1].data || []).map(function (p) {
+			var c = contenidoPorId[p.contenido_id];
+			var item = { id: p.id, contenido_id: p.contenido_id, grado: p.grado, texto: p.pda, cf: c ? c.cf : null, norm: normalizar(p.pda + " " + (c ? c.texto : "")) };
+			pdaPorId[p.id] = item;
+			return item;
+		});
+		pedido.contenido_ids = pedido.contenido_ids.filter(function (id) { return !!contenidoPorId[id]; });
+		pedido.pda_ids = pedido.pda_ids.filter(function (id) { return !!pdaPorId[id]; });
+		// Un PDA elegido desde el catálogo trae su contenido.
+		pedido.pda_ids.forEach(function (id) { agregarContenido(pdaPorId[id].contenido_id, true); });
+		pintarSelecciones();
+		pintarAyudas();
 	}
+
+	function normalizar(s) {
+		// Sin acentos ni mayúsculas: "Etica" encuentra "Ética".
+		return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+	}
+	function coincide(item, consulta) {
+		var palabras = normalizar(consulta).split(/\s+/).filter(Boolean);
+		return palabras.every(function (w) { return item.norm.indexOf(w) !== -1; });
+	}
+	function pasaCF(item) {
+		return !pedido.campos_formativos.length || pedido.campos_formativos.indexOf(item.cf) !== -1;
+	}
+
+	// ── Selección de contenidos y PDAs ────────────────────────────────────────
+	function agregarContenido(id, silencioso) {
+		if (!contenidoPorId[id] || pedido.contenido_ids.indexOf(id) !== -1) { return; }
+		pedido.contenido_ids.push(id);
+		if (!silencioso) { pintarSelecciones(); pintarAyudas(); pintarResumen(); }
+	}
+	function quitarContenido(id) {
+		pedido.contenido_ids = pedido.contenido_ids.filter(function (x) { return x !== id; });
+		// Sus PDAs ya no tienen sentido sin el contenido.
+		pedido.pda_ids = pedido.pda_ids.filter(function (p) { return !pdaPorId[p] || pdaPorId[p].contenido_id !== id; });
+		pintarSelecciones(); pintarAyudas(); pintarResumen();
+	}
+	function agregarPda(id) {
+		var p = pdaPorId[id];
+		if (!p || pedido.pda_ids.indexOf(id) !== -1) { return; }
+		pedido.pda_ids.push(id);
+		// El PDA es único de su contenido: el contenido se agrega solo.
+		agregarContenido(p.contenido_id, true);
+		pintarSelecciones(); pintarAyudas(); pintarResumen();
+	}
+	function quitarPda(id) {
+		pedido.pda_ids = pedido.pda_ids.filter(function (x) { return x !== id; });
+		pintarSelecciones(); pintarAyudas(); pintarResumen();
+	}
+
+	function chipSeleccion(texto, cf, tipo, id) {
+		var color = (cf && Tienda.CF_COLOR[cf]) ? Tienda.CF_COLOR[cf].hex : "#5b6473";
+		return '<span class="inline-flex items-start gap-1.5 max-w-full text-[13px] font-medium rounded-lg pl-2.5 pr-1 py-1.5" style="background:' + color + '14;color:#1c2434;border:1px solid ' + color + '40">' +
+			'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
+			'<span class="leading-snug">' + esc(texto) + "</span>" +
+			'<button type="button" data-quitar="' + tipo + '" data-id="' + esc(id) + '" aria-label="Quitar" class="shrink-0 w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/70 transition"><i data-lucide="x" class="w-3.5 h-3.5 text-mute"></i></button></span>';
+	}
+	function pintarSelecciones() {
+		chipsContenidosEl.innerHTML = pedido.contenido_ids.map(function (id) {
+			var c = contenidoPorId[id];
+			return c ? chipSeleccion(c.texto, c.cf, "contenido", id) : "";
+		}).join("");
+		chipsPdasEl.innerHTML = pedido.pda_ids.map(function (id) {
+			var p = pdaPorId[id];
+			return p ? chipSeleccion(p.grado + "° · " + p.texto, p.cf, "pda", id) : "";
+		}).join("");
+		Tienda.iconos();
+	}
+	document.addEventListener("click", function (e) {
+		var b = e.target.closest("[data-quitar]");
+		if (!b) { return; }
+		if (b.getAttribute("data-quitar") === "contenido") { quitarContenido(b.getAttribute("data-id")); }
+		else { quitarPda(b.getAttribute("data-id")); }
+	});
+
+	function pintarAyudas() {
+		var grados = gradosActuales();
+		if (!grados.length) {
+			ayudaContenidoEl.textContent = "Primero elige el grado para ver los contenidos de su fase.";
+			ayudaPdaEl.textContent = "Primero elige el grado para ver sus PDAs.";
+			buscarContenidoEl.disabled = true; buscarPdaEl.disabled = true;
+			return;
+		}
+		buscarContenidoEl.disabled = false; buscarPdaEl.disabled = false;
+		var nC = contenidos.filter(pasaCF).length;
+		var nP = pdas.filter(pasaCF).length;
+		ayudaContenidoEl.textContent = nC + " contenidos disponibles" + (pedido.campos_formativos.length ? " en los campos elegidos" : "") + ". Escribe para filtrar o deja vacío y lo elegimos nosotros.";
+		ayudaPdaEl.textContent = nP + " PDAs disponibles" + (pedido.contenido_ids.length ? "; los de tus contenidos aparecen primero" : "") + ". Al elegir un PDA se agrega su contenido.";
+	}
+
+	// ── Buscadores (combobox) ─────────────────────────────────────────────────
+	function combobox(input, lista, buscar, elegir) {
+		function abrir() {
+			var consulta = input.value.trim();
+			var items = buscar(consulta);
+			if (!items.length) {
+				lista.innerHTML = '<p class="px-3.5 py-3 text-sm text-mute">' + (consulta ? "Sin coincidencias. Prueba con otra palabra." : "Elige el grado para ver opciones.") + "</p>";
+			} else {
+				lista.innerHTML = items.slice(0, MAX_RESULTADOS).map(function (it) {
+					var color = (it.cf && Tienda.CF_COLOR[it.cf]) ? Tienda.CF_COLOR[it.cf].hex : "#5b6473";
+					return '<button type="button" data-elegir="' + esc(it.id) + '" class="w-full text-left px-3.5 py-2.5 text-sm flex items-start gap-2 hover:bg-paper transition' + (it.elegido ? " opacity-50" : "") + '">' +
+						'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
+						'<span class="leading-snug" style="color:#1c2434">' + (it.prefijo ? '<span class="font-semibold">' + esc(it.prefijo) + "</span> " : "") + esc(it.texto) +
+						(it.sub ? '<span class="block text-[12px] text-mute">' + esc(it.sub) + "</span>" : "") + "</span></button>";
+				}).join("") + (items.length > MAX_RESULTADOS ? '<p class="px-3.5 py-2 text-[12px] text-mute">Hay más: escribe una palabra para acotar.</p>' : "");
+			}
+			lista.classList.remove("hidden");
+		}
+		function cerrar() { lista.classList.add("hidden"); }
+		input.addEventListener("focus", abrir);
+		input.addEventListener("input", abrir);
+		input.addEventListener("keydown", function (e) {
+			if (e.key === "Escape") { cerrar(); input.blur(); }
+			if (e.key === "Enter") {
+				e.preventDefault();
+				var primero = lista.querySelector("[data-elegir]:not(.opacity-50)");
+				if (primero) { elegir(primero.getAttribute("data-elegir")); input.value = ""; abrir(); }
+			}
+		});
+		// mousedown y no click: el blur del input cerraría la lista antes del click.
+		lista.addEventListener("mousedown", function (e) {
+			var b = e.target.closest("[data-elegir]");
+			if (!b) { return; }
+			e.preventDefault();
+			elegir(b.getAttribute("data-elegir"));
+			input.value = "";
+			abrir();
+			input.focus();
+		});
+		input.addEventListener("blur", function () { setTimeout(cerrar, 150); });
+	}
+
+	combobox(buscarContenidoEl, listaContenidosEl, function (consulta) {
+		return contenidos.filter(pasaCF).filter(function (c) { return !consulta || coincide(c, consulta); })
+			.map(function (c) { return { id: c.id, texto: c.texto, cf: c.cf, sub: Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "", elegido: pedido.contenido_ids.indexOf(c.id) !== -1 }; });
+	}, agregarContenido);
+
+	combobox(buscarPdaEl, listaPdasEl, function (consulta) {
+		var lista = pdas.filter(pasaCF).filter(function (p) { return !consulta || coincide(p, consulta); });
+		// Primero los PDAs de los contenidos ya elegidos.
+		lista.sort(function (a, b) {
+			var pa = pedido.contenido_ids.indexOf(a.contenido_id) !== -1 ? 0 : 1;
+			var pb = pedido.contenido_ids.indexOf(b.contenido_id) !== -1 ? 0 : 1;
+			return pa - pb;
+		});
+		return lista.map(function (p) {
+			var c = contenidoPorId[p.contenido_id];
+			return { id: p.id, prefijo: p.grado + "°", texto: p.texto, cf: p.cf, sub: c ? c.texto : "", elegido: pedido.pda_ids.indexOf(p.id) !== -1 };
+		});
+	}, agregarPda);
 
 	// ── Cupo ──────────────────────────────────────────────────────────────────
 	function pintarCupo() {
@@ -270,11 +407,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 	function pintarResumen() {
 		var filas = [["Grupo", aulaTexto()], ["Versión", pedido.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)"]];
-		if (pedido.campo_formativo) { filas.push(["Campo", Tienda.CF_COLOR[pedido.campo_formativo].nombre]); }
-		var c = contenidos.find(function (x) { return x.id === pedido.contenido_id; });
-		if (c) { filas.push(["Contenido", c.texto]); }
-		var p = pdas.find(function (x) { return x.id === pedido.pda_id; });
-		if (p) { filas.push(["PDA", p.grado + "° · " + p.pda]); }
+		if (pedido.campos_formativos.length) {
+			filas.push([pedido.campos_formativos.length > 1 ? "Campos" : "Campo", pedido.campos_formativos.map(function (c) { return Tienda.CF_COLOR[c].nombre; }).join(", ")]);
+		}
+		pedido.contenido_ids.forEach(function (id) { if (contenidoPorId[id]) { filas.push(["Contenido", contenidoPorId[id].texto]); } });
+		pedido.pda_ids.forEach(function (id) { if (pdaPorId[id]) { filas.push(["PDA", pdaPorId[id].grado + "° · " + pdaPorId[id].texto]); } });
 		if (pedido.metodologia) { filas.push(["Metodología", pedido.metodologia]); }
 		if (pedido.fecha_necesaria) { filas.push(["Lo necesitas para", pedido.fecha_necesaria]); }
 		resumenEl.innerHTML = filas.map(function (f) {
@@ -298,15 +435,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			grado: esMulti ? null : pedido.grado,
 			grados_combo: esMulti ? pedido.grados_combo : null,
 			nivel: pedido.nivel,
-			campo_formativo: pedido.campo_formativo,
-			contenido_id: pedido.contenido_id,
-			pda_id: pedido.pda_id,
+			campos_formativos: pedido.campos_formativos.slice(),
+			contenido_ids: pedido.contenido_ids.slice(),
+			pda_ids: pedido.pda_ids.slice(),
 			metodologia: pedido.metodologia || "",
 			fecha_necesaria: pedido.fecha_necesaria || "",
 			notas: (pedido.notas || "").trim(),
 			// Textos para pintar el resumen en el checkout sin volver a consultar.
-			contenido_texto: (contenidos.find(function (x) { return x.id === pedido.contenido_id; }) || {}).texto || null,
-			pda_texto: (pdas.find(function (x) { return x.id === pedido.pda_id; }) || {}).pda || null,
+			contenidos_texto: pedido.contenido_ids.map(function (id) { return contenidoPorId[id] ? contenidoPorId[id].texto : null; }).filter(Boolean),
+			pdas_texto: pedido.pda_ids.map(function (id) { return pdaPorId[id] ? pdaPorId[id].grado + "° · " + pdaPorId[id].texto : null; }).filter(Boolean),
 			guardado_en: new Date().toISOString(),
 		};
 		try { localStorage.setItem(CLAVE_BORRADOR, JSON.stringify(borradorNuevo)); } catch (_) {

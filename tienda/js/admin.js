@@ -1139,9 +1139,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var rows = pedidos.map(function (p) {
 			var est = ESTADO_PEDIDO[p.estado] || ESTADO_PEDIDO.cancelado;
 			var detalle = [];
-			if (p.campo_formativo) { detalle.push(NOMBRE_CF[p.campo_formativo] || p.campo_formativo); }
-			if (p.contenido) { detalle.push(p.contenido); }
-			if (p.pda) { detalle.push("PDA: " + p.pda); }
+			if (p.campos_formativos && p.campos_formativos.length) { detalle.push(p.campos_formativos.map(function (c) { return NOMBRE_CF[c] || c; }).join(", ")); }
+			(p.contenidos || []).forEach(function (c) { detalle.push("Contenido: " + c); });
+			(p.pdas || []).forEach(function (d) { detalle.push("PDA: " + d); });
 			if (p.metodologia) { detalle.push(p.metodologia); }
 			if (p.fecha_necesaria) { detalle.push("Lo necesita: " + p.fecha_necesaria); }
 			if (p.notas) { detalle.push("Notas: " + p.notas); }
@@ -1218,7 +1218,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		document.getElementById("modalPedidoResumen").innerHTML =
 			"<strong>" + esc(p.nombre_cliente || "") + "</strong> · " + esc(p.email || "") + "<br>" +
 			esc(aulaPedido(p)) + " · " + (p.nivel === "con_anexos" ? "CON anexos (la carpeta debe tener subcarpetas S##)" : "sin anexos") +
-			(p.contenido ? "<br>" + esc(p.contenido) : "");
+			((p.contenidos || []).length ? "<br>" + esc((p.contenidos || []).join(" · ")) : "");
 		pedDriveFolderEl.value = p.drive_folder_id || "";
 		pedDosifEl.value = "";
 		pedTituloEl.value = "";

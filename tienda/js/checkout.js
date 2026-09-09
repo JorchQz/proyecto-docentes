@@ -129,9 +129,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pintarTotal(lista);
 
 		var filas = [];
-		if (b.campo_formativo && Tienda.CF_COLOR[b.campo_formativo]) { filas.push(["Campo", Tienda.CF_COLOR[b.campo_formativo].nombre]); }
-		if (b.contenido_texto) { filas.push(["Contenido", b.contenido_texto]); }
-		if (b.pda_texto) { filas.push(["PDA", b.pda_texto]); }
+		var cfs = (b.campos_formativos || []).filter(function (c) { return Tienda.CF_COLOR[c]; });
+		if (cfs.length) { filas.push([cfs.length > 1 ? "Campos" : "Campo", cfs.map(function (c) { return Tienda.CF_COLOR[c].nombre; }).join(", ")]); }
+		(b.contenidos_texto || []).forEach(function (t) { filas.push(["Contenido", t]); });
+		(b.pdas_texto || []).forEach(function (t) { filas.push(["PDA", t]); });
 		if (b.metodologia) { filas.push(["Metodología", b.metodologia]); }
 		if (b.fecha_necesaria) { filas.push(["Lo necesitas para", b.fecha_necesaria]); }
 		var resumenCombo = document.getElementById("resumenCombo");
@@ -151,9 +152,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				organizacion: b.organizacion,
 				grado: b.grado,
 				grados_combo: b.grados_combo,
-				campo_formativo: b.campo_formativo,
-				contenido_id: b.contenido_id,
-				pda_id: b.pda_id,
+				campos_formativos: b.campos_formativos || [],
+				contenido_ids: b.contenido_ids || [],
+				pda_ids: b.pda_ids || [],
 				metodologia: b.metodologia || null,
 				fecha_necesaria: b.fecha_necesaria || null,
 				notas: b.notas || null,

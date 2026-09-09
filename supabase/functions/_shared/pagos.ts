@@ -225,13 +225,14 @@ const NOMBRE_CF: Record<string, string> = {
 };
 
 /** Líneas de resumen de un pedido para los correos (sin HTML). */
-export function resumenDePedido(p: Record<string, any>, extra?: { contenido?: string | null; pda?: string | null }): string[] {
+export function resumenDePedido(p: Record<string, any>, extra?: { contenidos?: string[] | null; pdas?: string[] | null }): string[] {
   const lineas: string[] = [];
   lineas.push("Aula: " + aulaDePedido(p));
   lineas.push("Versión: " + (p.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)"));
-  if (p.campo_formativo) lineas.push("Campo formativo: " + (NOMBRE_CF[p.campo_formativo] || p.campo_formativo));
-  if (extra?.contenido) lineas.push("Contenido: " + extra.contenido);
-  if (extra?.pda) lineas.push("PDA: " + extra.pda);
+  const cfs: string[] = Array.isArray(p.campos_formativos) ? p.campos_formativos : [];
+  if (cfs.length) lineas.push("Campos formativos: " + cfs.map((c) => NOMBRE_CF[c] || c).join(", "));
+  for (const c of extra?.contenidos || []) lineas.push("Contenido: " + c);
+  for (const d of extra?.pdas || []) lineas.push("PDA: " + d);
   if (p.metodologia) lineas.push("Metodología: " + p.metodologia);
   if (p.fecha_necesaria) lineas.push("Lo necesita para: " + p.fecha_necesaria);
   if (p.notas) lineas.push("Notas: " + p.notas);
@@ -263,7 +264,7 @@ export async function activarPedidosDeOrden(
 ): Promise<number> {
   const { data: pedidos } = await admin
     .from("marketplace_pedidos")
-    .select("id, numero_pedido, nivel, organizacion, grados, grados_combo, campo_formativo, contenido_id, pda_id, metodologia, fecha_necesaria, notas, nombre_cliente, precio")
+    .select("id, numero_pedido, nivel, organizacion, grados, grados_combo, campos_formativos, contenido_ids, pda_ids, metodologia, fecha_necesaria, notas, nombre_cliente, precio")
     .eq("orden_id", ordenId)
     .eq("estado", "pendiente_pago");
   if (!pedidos || !pedidos.length) return 0;
@@ -287,17 +288,12 @@ export async function activarPedidosDeOrden(
     if (error) { console.error("activar pedido falló:", p.id, error); continue; }
     n++;
 
-    // Textos de contenido y PDA para el correo (ids → texto).
-    let contenido: string | null = null, pda: string | null = null;
-    if (p.contenido_id) {
-      const { data: c } = await admin.from("catalogo_contenidos").select("contenido").eq("id", p.contenido_id).maybeSingle();
-      contenido = c?.contenido || null;
-    }
-    if (p.pda_id) {
-      const { data: d } = await admin.from("catalogo_pda").select("pda").eq("id", p.pda_id).maybeSingle();
-      pda = d?.pda || null;
-    }
-    const lineas = resumenDePedido(p, { contenido, pda });
+    // Textos de contenidos y PDAs para el correo (ids → texto).
+    const { data: textos } = await admin.rpc("marketplace_pedido_textos", {
+      p_contenidos: p.contenido_ids || [], p_pdas: p.pda_ids || [],
+    });
+    const t = Array.isArray(textos) ? textos[0] : textos;
+    const lineas = resumenDePedido(p, { contenidos: t?.contenidos || [], pdas: t?.pdas || [] });
     const listaHtml = "<ul style=\"padding-left:18px;margin:16px 0 0;color:#1c2434;font-size:15px;line-height:1.6\">" +
       lineas.map((l) => "<li>" + escaparHtml(l) + "</li>").join("") + "</ul>";
     const siteUrl = (opts.siteUrl || "").replace(/\/+$/, "");

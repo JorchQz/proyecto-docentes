@@ -123,3 +123,28 @@ Todo lo de servidor se probó en producción con un usuario de pruebas (`pruebas
 - **Secretos nuevos:** `MAIL_ADMIN`, `CRON_SECRET`; Vault `cron_secret`.
 - **Tienda:** nuevas `proyecto.html` + `js/proyecto.js`, `personalizado.html` + `js/personalizado.js`, `terminos.html`, `privacidad.html`, `practicantes.html`; modificadas `catalogo.html/js`, `checkout.html/js`, `mis-compras.html/js`, `admin.html/js`, `index.html`, `js/tienda-common.js`, `js/anexo.js`, `js/landing.js`, `README-DESPLIEGUE.md`.
 - **Docs:** `docs/CONTEXTO.md` §6.4 y §7, `docs/TESTING.md` §20, `bot/instrucciones_planeacion.md` (carpeta y link de personalizados), corrección de `proyecto_dos_id` en la spec.
+
+---
+
+## Ajustes posteriores (2026-09-09, segunda tanda)
+
+Pedidos de Jorge tras revisar el trabajo, ya hechos y probados:
+
+### Pedidos a la medida: varios campos, contenidos y PDAs
+- `marketplace_pedidos` cambió de `campo_formativo`, `contenido_id`, `pda_id` a listas `campos_formativos text[]`, `contenido_ids uuid[]`, `pda_ids uuid[]` (migración `supabase/marketplace_personalizados_multi.sql`, datos existentes migrados; PZ-0001 conservó lo suyo). RPC nueva `marketplace_pedido_textos()` resuelve los textos para el admin y los correos; `admin_listar_pedidos` devuelve `campos_formativos`, `contenidos[]`, `pdas[]`.
+- `personalizado.html`: campos formativos de selección múltiple; contenidos y PDAs con **buscador por texto** (sin distinguir acentos ni mayúsculas) y chips de lo elegido. Al elegir un PDA se agrega solo su contenido (un PDA pertenece a un único contenido); al quitar un contenido se quitan sus PDAs. Los PDAs de los contenidos elegidos aparecen primero, pero se puede buscar cualquiera del grado. Enter elige el primer resultado.
+- `crear-preferencia-mp` valida las listas (máximo 12 contenidos y 30 PDAs, códigos de campo válidos) y acepta las claves en singular por compatibilidad. Los correos y el admin listan todos los contenidos y PDAs.
+- Checkout y Mis compras muestran las listas.
+
+### Tarjetas "sin anexos / con anexos" en móvil
+- Nuevo `Tienda.opcionVersion()` y `Tienda.precioColumna()` en `tienda-common.js`: el precio va en columna (lista tachada arriba, final abajo) y ya no se parte la línea en pantallas estrechas. Lo usan `proyecto.html` y `personalizado.html`.
+
+### Resumen del pedido antes del pago en móvil
+- `checkout.html`: la columna del resumen (con el cupón) lleva `order-first lg:order-none`; en el celular aparece antes de "Tus datos" y del botón de continuar, y en escritorio sigue a la derecha.
+
+### Pruebas (Chromium headless contra producción)
+- Formulario: dos campos activos a la vez; buscar "cuerpo" y "lectura" filtra; dos contenidos como chips; los primeros PDAs son de los contenidos elegidos; buscar "numeros" (sin acento) encuentra "números"; elegir un PDA primero agregó su contenido; quitar un contenido quitó sus PDAs; Enter elige; el resumen lista 2 contenidos, 2 PDAs y "Campos".
+- Checkout: "Lo que pediste" con campos, contenidos y PDAs; `crear-preferencia-mp` creó el pedido con las listas (PZ-0002, borrado después de la prueba).
+- Móvil (375 px): tarjeta de versión de 104 px de alto sin desborde y precio en columna; página sin desborde; en el checkout el resumen y el cupón quedan antes del botón de pago y antes de "Tus datos"; en escritorio el resumen sigue a la derecha.
+- Regresión del color de descuento (commit `a754170` de la otra sesión): tira, chips "-20%" (`#dc2626`), notas de descuento en ficha y checkout, y "Ahorras" en rojo; botones de acción y estados siguen en verde; sin errores de JavaScript.
+- Funciones redesplegadas: `crear-preferencia-mp`, `webhook-mercadopago`, `confirmar-pago`, `completar-pedido`, `avisos-pedidos`.

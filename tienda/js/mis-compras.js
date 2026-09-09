@@ -73,7 +73,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// de Drive no es legible desde aquí.
 		var pedRes = await window.sb
 			.from("marketplace_pedidos")
-			.select("id, numero_pedido, estado, nivel, organizacion, grados, grados_combo, campo_formativo, metodologia, fecha_necesaria, precio, pagado_en, fecha_compromiso_entrega, producto_id, completado_en, created_at")
+			.select("id, numero_pedido, estado, nivel, organizacion, grados, grados_combo, campos_formativos, metodologia, fecha_necesaria, precio, pagado_en, fecha_compromiso_entrega, producto_id, completado_en, created_at")
 			.eq("user_id", session.user.id)
 			.neq("estado", "pendiente_pago")
 			.order("created_at", { ascending: false });
@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: (p.grados && p.grados[0] ? p.grados[0] + "° de Primaria" : "Primaria");
 			var version = p.nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word (sin anexos)";
 			var detalle = [];
-			if (p.campo_formativo && Tienda.CF_COLOR[p.campo_formativo]) { detalle.push(Tienda.CF_COLOR[p.campo_formativo].nombre); }
+			(p.campos_formativos || []).forEach(function (c) { if (Tienda.CF_COLOR[c]) { detalle.push(Tienda.CF_COLOR[c].corto); } });
 			if (p.metodologia) { detalle.push(p.metodologia); }
 
 			var fechaTxt = "";

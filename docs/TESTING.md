@@ -356,6 +356,13 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 - [ ] **Pendiente de probar con la cuenta admin en navegador:** admin → A la medida → Entregar PZ-0001 con una carpeta de prueba (PDF + Word + S01) → el cliente de pruebas ve el proyecto en su biblioteca y recibe el correo; y Proyectos sueltos → Detectar
 - [ ] Correos de "pedido recibido" (cliente y negocio) se disparan al acreditarse un pago real; el helper de envío quedó probado con el aviso de vencidos
 
+### Ajustes del 2026-09-09 (segunda tanda, probados en navegador)
+- [x] `personalizado.html`: varios campos formativos a la vez; buscador de contenidos y de PDAs por texto (sin acentos); elegir un PDA agrega su contenido; quitar un contenido quita sus PDAs; Enter elige el primero
+- [x] Checkout y servidor aceptan listas de campos, contenidos y PDAs; admin y correos las muestran
+- [x] Móvil: tarjetas "sin/con anexos" con precio en columna, sin desborde (ficha y formulario)
+- [x] Móvil: en el checkout el resumen y el cupón van antes del botón de pago; en escritorio sigue a la derecha
+- [x] Descuentos en rojo en toda la tienda; botones y estados siguen en verde
+
 ### Bloque 4 — mejoras (probado el 2026-09-09)
 - [x] `avisos-pedidos`: 403 sin secreto; con un pedido vencido manda el correo a `soporte.jissez@gmail.com`; el job `avisos-pedidos-diario` (8:00 hora del centro) disparó la función vía pg_net + Vault y registró 200
 - [x] `practicantes.html` carga sin errores ni desborde en escritorio y móvil, con enlaces al catálogo de proyectos y al pedido a la medida

@@ -17,7 +17,7 @@
 //                             trimestre: 1 | 2 | 3,   // solo si tipo_paquete = 'trimestre'
 //                             tipo: 'pdf' | 'editable' }
 //   body proyecto a la medida: { pedido: { organizacion, grado | grados_combo,
-//                                campo_formativo?, contenido_id?, pda_id?,
+//                                campos_formativos?[], contenido_ids?[], pda_ids?[],
 //                                metodologia?, fecha_necesaria?, notas? },
 //                                tipo: 'pdf' (sin anexos) | 'anexos' }
 //   en todos, opcionales: cupon (código) y acepta_terminos (true cuando el
@@ -769,8 +769,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * Prepara el cobro de un proyecto a la medida.
  *
  * body.pedido: { organizacion: 'completa'|'multigrado', grado?: 1-6,
- *                grados_combo?: '1-2'…, campo_formativo?: LEN|SAB|ETI|DHL,
- *                contenido_id?, pda_id?, metodologia?, fecha_necesaria?, notas? }
+ *                grados_combo?: '1-2'…, campos_formativos?: [LEN|SAB|ETI|DHL],
+ *                contenido_ids?: [uuid], pda_ids?: [uuid], metodologia?,
+ *                fecha_necesaria?, notas? }
  * body.tipo:   'pdf' = sin anexos · 'anexos' = con anexos
  *
  * El precio sale de marketplace_personalizados_config (nunca del cliente) y
@@ -805,12 +806,18 @@ async function prepararPedidoPersonalizado(
     if (!(g >= 1 && g <= 6)) return jsonResponse({ error: "Elige el grado" }, 400);
     grados = [g];
   }
-  const cf = pd.campo_formativo ? String(pd.campo_formativo).toUpperCase() : null;
-  if (cf && !["LEN", "SAB", "ETI", "DHL"].includes(cf)) {
+  // Listas (varios campos, contenidos y PDAs). Se aceptan también las claves en
+  // singular por compatibilidad con enlaces viejos.
+  const listaDe = (plural: unknown, singular: unknown): string[] => {
+    const arr = Array.isArray(plural) ? plural : (singular != null ? [singular] : []);
+    return Array.from(new Set(arr.map((v) => String(v))));
+  };
+  const cfs = listaDe(pd.campos_formativos, pd.campo_formativo).map((c) => c.toUpperCase());
+  if (cfs.some((c) => !["LEN", "SAB", "ETI", "DHL"].includes(c))) {
     return jsonResponse({ error: "Campo formativo inválido" }, 400);
   }
-  const contenidoId = pd.contenido_id && UUID_RE.test(String(pd.contenido_id)) ? String(pd.contenido_id) : null;
-  const pdaId = pd.pda_id && UUID_RE.test(String(pd.pda_id)) ? String(pd.pda_id) : null;
+  const contenidoIds = listaDe(pd.contenido_ids, pd.contenido_id).filter((v) => UUID_RE.test(v)).slice(0, 12);
+  const pdaIds = listaDe(pd.pda_ids, pd.pda_id).filter((v) => UUID_RE.test(v)).slice(0, 30);
   const metodologia = pd.metodologia ? String(pd.metodologia).slice(0, 120) : null;
   const notas = pd.notas ? String(pd.notas).slice(0, 2000) : null;
   const fechaNecesaria = pd.fecha_necesaria && /^\d{4}-\d{2}-\d{2}$/.test(String(pd.fecha_necesaria))
@@ -854,7 +861,7 @@ async function prepararPedidoPersonalizado(
   // formulario se actualiza con lo último que escribió el comprador.
   const campos = {
     nivel, organizacion, grados, grados_combo: gradosCombo, modalidad,
-    campo_formativo: cf, contenido_id: contenidoId, pda_id: pdaId, metodologia,
+    campos_formativos: cfs, contenido_ids: contenidoIds, pda_ids: pdaIds, metodologia,
     fecha_necesaria: fechaNecesaria, notas, nombre_cliente: nombreCliente,
     precio, updated_at: new Date().toISOString(),
   };

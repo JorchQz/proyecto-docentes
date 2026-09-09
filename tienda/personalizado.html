@@ -102,7 +102,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					<p class="text-sm text-mute mt-1">Lo que dejes vacío lo elegimos nosotros con criterio pedagógico para ese grado.</p>
 				</div>
 				<div>
-					<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Campo formativo</p>
+					<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Campos formativos <span class="normal-case tracking-normal font-semibold">· puedes elegir varios</span></p>
 					<div id="chipsCF" class="flex flex-wrap gap-2">
 						<button type="button" data-cf="LEN" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-11 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#059669"></span>Lenguajes</button>
 						<button type="button" data-cf="SAB" class="chip-cf chip border border-line text-ink bg-white text-sm font-semibold h-11 px-4 rounded-xl inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:#ea580c"></span>Saberes y Pensamiento Científico</button>
@@ -111,17 +111,30 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					</div>
 				</div>
 				<div class="grid gap-4 sm:grid-cols-2">
+					<!-- Buscadores de selección múltiple: se escribe para filtrar, se
+					     elige de la lista y queda como chip. Puedes elegir varios. Si
+					     eliges un PDA primero, su contenido se agrega solo. -->
 					<div class="sm:col-span-2">
-						<label for="selContenido" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Contenido del programa</label>
-						<select id="selContenido" class="w-full min-h-[3rem] px-3 py-2 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
-							<option value="">Cualquiera (lo elegimos nosotros)</option>
-						</select>
+						<label for="buscarContenido" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Contenidos del programa <span class="normal-case tracking-normal font-semibold">· puedes elegir varios</span></label>
+						<div id="chipsContenidos" class="flex flex-wrap gap-1.5 mb-2 empty:hidden"></div>
+						<div class="relative">
+							<input id="buscarContenido" type="text" autocomplete="off" placeholder="Escribe para buscar un contenido (ej. cuerpo humano, lectura, números)"
+								class="w-full h-12 pl-3.5 pr-10 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+							<i data-lucide="search" class="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-mute pointer-events-none"></i>
+							<div id="listaContenidos" class="hidden absolute z-30 left-0 right-0 top-full mt-1 max-h-72 overflow-y-auto bg-white border border-line rounded-xl shadow-lg"></div>
+						</div>
+						<p id="ayudaContenido" class="text-xs text-mute mt-1">Primero elige el grado para ver los contenidos de su fase.</p>
 					</div>
-					<div class="sm:col-span-2" id="bloquePda">
-						<label for="selPda" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Proceso de desarrollo de aprendizaje (PDA)</label>
-						<select id="selPda" class="w-full min-h-[3rem] px-3 py-2 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff" disabled>
-							<option value="">Primero elige un contenido</option>
-						</select>
+					<div class="sm:col-span-2">
+						<label for="buscarPda" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Procesos de desarrollo de aprendizaje (PDA) <span class="normal-case tracking-normal font-semibold">· puedes elegir varios</span></label>
+						<div id="chipsPdas" class="flex flex-wrap gap-1.5 mb-2 empty:hidden"></div>
+						<div class="relative">
+							<input id="buscarPda" type="text" autocomplete="off" placeholder="Escribe para buscar un PDA; al elegirlo se agrega su contenido"
+								class="w-full h-12 pl-3.5 pr-10 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+							<i data-lucide="search" class="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-mute pointer-events-none"></i>
+							<div id="listaPdas" class="hidden absolute z-30 left-0 right-0 top-full mt-1 max-h-72 overflow-y-auto bg-white border border-line rounded-xl shadow-lg"></div>
+						</div>
+						<p id="ayudaPda" class="text-xs text-mute mt-1">Si ya elegiste contenidos, sus PDAs aparecen primero; también puedes buscar cualquiera del grado.</p>
 					</div>
 					<div>
 						<label for="selMetodologia" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Metodología</label>

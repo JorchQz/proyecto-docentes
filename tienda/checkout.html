@@ -157,8 +157,10 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 		</div>
 
-		<!-- ===== Columna derecha: resumen del pedido ===== -->
-		<div class="lg:sticky lg:top-24">
+		<!-- ===== Columna derecha: resumen del pedido =====
+		     En móvil va PRIMERO: aquí se revisa el pedido y se escribe el cupón,
+		     y eso tiene que verse antes del botón de continuar al pago. -->
+		<div class="order-first lg:order-none lg:sticky lg:top-24">
 			<div class="bg-white border border-line rounded-3xl p-6 shadow-sm">
 				<h3 class="font-bold text-ink text-lg mb-4">Resumen del pedido</h3>
 

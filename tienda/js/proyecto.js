@@ -93,17 +93,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			{ tipo: "anexos", titulo: "Con anexos", sub: "Planeación en PDF y Word + anexos imprimibles por sesión", precio: p.precio_pdf_con_anexos },
 		].filter(function (o) { return o.precio != null; });
 		opcionesEl.innerHTML = opciones.map(function (o) {
-			var sel = o.tipo === tipoElegido;
-			return '<button type="button" data-tipo="' + o.tipo + '" class="opt-btn w-full text-left rounded-2xl border px-4 py-3 flex items-center gap-3' + (sel ? " selected" : " border-line bg-white") + '">' +
-				'<span class="w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center" style="border-color:' + (sel ? "#fff" : "#9ba3af") + '">' + (sel ? '<span class="w-2.5 h-2.5 rounded-full" style="background:#fff"></span>' : "") + "</span>" +
-				'<span class="min-w-0 flex-1"><span class="block font-bold">' + esc(o.titulo) + '</span><span class="block text-[13px]' + (sel ? " opacity-90" : " text-mute") + '">' + esc(o.sub) + "</span></span>" +
-				'<span class="shrink-0 text-right">' + Tienda.precioHTML(o.precio, {
-					claseFinal: "font-black text-lg" + (sel ? "" : " text-ink"),
-					claseLista: "text-[12px] font-bold" + (sel ? " opacity-80" : " text-mute"),
-				}) + "</span></button>";
+			return Tienda.opcionVersion({ valor: o.tipo, titulo: o.titulo, sub: o.sub, precio: o.precio }, o.tipo === tipoElegido);
 		}).join("");
-		opcionesEl.querySelectorAll("[data-tipo]").forEach(function (b) {
-			b.addEventListener("click", function () { tipoElegido = b.getAttribute("data-tipo"); renderOpciones(); });
+		opcionesEl.querySelectorAll("[data-opcion]").forEach(function (b) {
+			b.addEventListener("click", function () { tipoElegido = b.getAttribute("data-opcion"); renderOpciones(); });
 		});
 		var precio = tipoElegido === "anexos" ? p.precio_pdf_con_anexos : p.precio_pdf;
 		comprarTexto.textContent = "Continuar al pago · " + money(Tienda.precioFinal(precio));

@@ -44,6 +44,33 @@
 		"6": { bg: "#f0b285", txt: "rgba(30,58,138,.85)" },
 	};
 
+	// Precio en columna (lista tachada arriba, final abajo) para tarjetas de
+	// opción estrechas: en una fila, en el celular la línea se partía a medias.
+	function precioColumna(lista, opts) {
+		opts = opts || {};
+		var final = precioFinal(lista);
+		var cFinal = opts.claseFinal || "font-black text-lg text-ink";
+		var cLista = opts.claseLista || "text-[12px] font-bold text-mute";
+		if (final < Number(lista)) {
+			return '<span class="inline-flex flex-col items-end leading-tight"><s class="' + cLista + '">' + montoCorto(lista) + "</s>" +
+				'<span class="' + cFinal + '">' + montoCorto(final) + "</span></span>";
+		}
+		return '<span class="' + cFinal + '">' + montoCorto(final) + "</span>";
+	}
+
+	// Tarjeta de opción (radio grande) para elegir versión: título y detalle a
+	// la izquierda, precio en columna a la derecha. La usan la ficha del
+	// proyecto suelto y el formulario a la medida.
+	function opcionVersion(o, seleccionada) {
+		return '<button type="button" data-opcion="' + esc(o.valor) + '" class="opt-btn w-full text-left rounded-2xl border px-4 py-3 flex items-center gap-3' + (seleccionada ? " selected" : " border-line bg-white") + '">' +
+			'<span class="w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center" style="border-color:' + (seleccionada ? "#fff" : "#9ba3af") + '">' + (seleccionada ? '<span class="w-2.5 h-2.5 rounded-full" style="background:#fff"></span>' : "") + "</span>" +
+			'<span class="min-w-0 flex-1"><span class="block font-bold leading-snug">' + esc(o.titulo) + '</span><span class="block text-[13px] leading-snug mt-0.5' + (seleccionada ? " opacity-90" : " text-mute") + '">' + esc(o.sub) + "</span></span>" +
+			'<span class="shrink-0 pl-2">' + precioColumna(o.precio, {
+				claseFinal: "font-black text-lg" + (seleccionada ? "" : " text-ink"),
+				claseLista: "text-[12px] font-bold" + (seleccionada ? " opacity-80" : " text-mute"),
+			}) + "</span></button>";
+	}
+
 	// Chip pequeño de campo formativo para tarjetas y fichas.
 	function chipCF(codigo, opts) {
 		var c = CF_COLOR[codigo];
@@ -716,6 +743,8 @@
 		CF_ORDEN: CF_ORDEN,
 		GRADO_COLOR: GRADO_COLOR,
 		chipCF: chipCF,
+		precioColumna: precioColumna,
+		opcionVersion: opcionVersion,
 		esc: esc,
 		formatMoney: formatMoney,
 		montoCorto: montoCorto,
