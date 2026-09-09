@@ -966,8 +966,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var btn = document.getElementById("crearSueltosBtn");
 		btn.disabled = true; btn.textContent = "Creando...";
 
-		var filas = marcados.map(function (cb) {
-			var p = d.proyectos[Number(cb.getAttribute("data-idx"))];
+		// Contra el doble clic: se descartan los que ya existen según la lista
+		// de productos recién cargada (la tabla de detección puede estar vieja).
+		// La base además tiene un índice único por proyecto, por si acaso.
+		var yaExiste = function (p) {
+			return productos.some(function (x) {
+				return x.tipo_paquete === "proyecto" && !x.es_prueba && (
+					(p.dosificacion && x.dosificacion_proyecto_id === p.dosificacion.id) ||
+					(x.organizacion === d.organizacion && (x.grados_combo || null) === (d.grados_combo || null) &&
+						x.grado === d.grado && Number(x.numero_proyecto) === Number(p.numero_proyecto))
+				);
+			});
+		};
+		var elegidos = marcados.map(function (cb) { return d.proyectos[Number(cb.getAttribute("data-idx"))]; })
+			.filter(function (p) { return !yaExiste(p); });
+		if (!elegidos.length) {
+			Tienda.toast("Esos proyectos ya estaban creados.", "info");
+			btn.disabled = false; btn.textContent = "Crear productos seleccionados";
+			detectarSueltosBtn.click();
+			return;
+		}
+
+		var filas = elegidos.map(function (p) {
 			return {
 				titulo: tituloSuelto(d.organizacion, d.grado, d.grados_combo, p.numero_proyecto, p.dosificacion ? p.dosificacion.nombre_proyecto : null),
 				descripcion: null,
@@ -993,12 +1013,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 
 		var res = await window.sb.from("marketplace_productos").insert(filas);
-		btn.disabled = false; btn.textContent = "Crear productos seleccionados";
-		if (res.error) { Tienda.toast("No se pudo crear: " + res.error.message, "error"); return; }
+		if (res.error) {
+			btn.disabled = false; btn.textContent = "Crear productos seleccionados";
+			var duplicado = /suelto_dosif_unico|suelto_numero_unico|duplicate key/i.test(res.error.message);
+			Tienda.toast(duplicado ? "Alguno de esos proyectos ya existe: no se creó dos veces." : "No se pudo crear: " + res.error.message, "error");
+			if (duplicado) { await cargarProductos(); detectarSueltosBtn.click(); renderSueltos(); }
+			return;
+		}
+		// La tabla vieja se retira de inmediato: mientras se vuelve a detectar,
+		// un segundo clic ya no encuentra casillas ni botón.
+		sueltosDeteccionEl.innerHTML = '<p class="text-sm text-mute">' + filas.length + " proyecto(s) creado(s). Actualizando la lista...</p>";
 		Tienda.toast(filas.length + " proyecto(s) creado(s), ocultos.", "ok");
 		await cargarProductos();
+		renderSueltos();
 		// Repetir la detección para que la tabla marque "Ya creado".
 		detectarSueltosBtn.click();
+	}
+
+	// Eliminar un suelto que se creó por error. Si alguien ya lo compró, la
+	// base lo impide (acceso u orden lo referencian): en ese caso, ocultarlo.
+	async function eliminarSuelto(id) {
+		var p = productos.find(function (x) { return x.id === id; });
+		if (!p) { return; }
+		if (!confirm("¿Eliminar \"" + p.titulo + "\" del catálogo? Si alguien ya lo compró no se podrá borrar; en ese caso solo ocúltalo.")) { return; }
+		var res = await window.sb.from("marketplace_productos").delete().eq("id", id);
+		if (res.error) {
+			var conCompras = /foreign key|violates|viola/i.test(res.error.message);
+			Tienda.toast(conCompras ? "No se puede eliminar: ya tiene compras o accesos. Desmarca \"Publicado\" para ocultarlo." : "No se pudo eliminar: " + res.error.message, "error");
+			return;
+		}
+		Tienda.toast("Proyecto eliminado.", "ok");
+		await cargarProductos();
 		renderSueltos();
 	}
 
@@ -1043,7 +1088,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 					(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") + "</td>" +
 					'<td class="py-2 pr-3 text-xs whitespace-nowrap" style="color:#5b6473">' + (p.trimestre ? "T" + p.trimestre : "—") + "</td>" +
 					'<td class="py-2 pr-3 text-sm whitespace-nowrap" style="color:#1c2434">' + money(p.precio_pdf) + ' <span class="text-mute">/</span> ' + money(p.precio_pdf_con_anexos) + "</td>" +
-					'<td class="py-2"><label class="inline-flex items-center gap-2 text-sm text-ink cursor-pointer"><input data-publicar="' + esc(p.id) + '" type="checkbox" class="w-4 h-4 rounded" style="accent-color:#059669"' + (p.activo ? " checked" : "") + "> Publicado</label></td></tr>";
+					'<td class="py-2"><div class="flex items-center gap-3">' +
+					'<label class="inline-flex items-center gap-2 text-sm text-ink cursor-pointer"><input data-publicar="' + esc(p.id) + '" type="checkbox" class="w-4 h-4 rounded" style="accent-color:#059669"' + (p.activo ? " checked" : "") + "> Publicado</label>" +
+					'<button type="button" data-eliminar-suelto="' + esc(p.id) + '" aria-label="Eliminar" title="Eliminar" class="w-9 h-9 rounded-lg flex items-center justify-center transition hover:bg-red-50" style="color:#b91c1c"><i data-lucide="trash-2" class="w-4 h-4"></i></button>' +
+					"</div></td></tr>";
 			}).join("");
 			return '<div class="mb-5">' +
 				'<div class="flex flex-wrap items-center justify-between gap-2 mb-2">' +
@@ -1060,6 +1108,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		listaSueltosEl.querySelectorAll("[data-publicar]").forEach(function (cb) {
 			cb.addEventListener("change", function () { publicarSueltos([cb.getAttribute("data-publicar")], cb.checked); });
 		});
+		listaSueltosEl.querySelectorAll("[data-eliminar-suelto]").forEach(function (b) {
+			b.addEventListener("click", function () { eliminarSuelto(b.getAttribute("data-eliminar-suelto")); });
+		});
+		Tienda.iconos();
 		listaSueltosEl.querySelectorAll("[data-grupo-publicar]").forEach(function (b) {
 			b.addEventListener("click", function () {
 				var ids = grupos[b.getAttribute("data-grupo-publicar")].items
