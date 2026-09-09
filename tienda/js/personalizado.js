@@ -310,31 +310,47 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var nC = contenidos.filter(pasaCF).length;
 		var nP = pdas.filter(pasaCF).length;
 		ayudaContenidoEl.textContent = nC + " contenidos disponibles" + (pedido.campos_formativos.length ? " en los campos elegidos" : "") + ". Escribe para filtrar o deja vacío y lo elegimos nosotros.";
-		ayudaPdaEl.textContent = nP + " PDAs disponibles" + (pedido.contenido_ids.length ? "; los de tus contenidos aparecen primero" : "") + ". Al elegir un PDA se agrega su contenido.";
+		ayudaPdaEl.textContent = pedido.contenido_ids.length
+			? "Verás los PDAs de tus contenidos; escribe para buscar entre los " + nP + " del grado (su contenido se agrega solo)."
+			: nP + " PDAs disponibles. Al elegir un PDA se agrega su contenido.";
 	}
 
 	// ── Buscadores (combobox) ─────────────────────────────────────────────────
+	// La lista tiene su propio estado abierta/cerrada y NO depende del foco de
+	// la casilla: en tableta y celular, tocar la lista le quita el foco a la
+	// casilla antes de registrar la elección, y con un cierre "al perder el
+	// foco" la lista desaparecía tras cada elección. Se cierra solo al tocar
+	// fuera o con Escape; al elegir se queda abierta y se repinta, para seguir
+	// eligiendo varios sin volver a tocar la casilla.
 	function combobox(input, lista, buscar, elegir) {
-		function abrir() {
+		var abierta = false;
+
+		function pintar() {
 			var consulta = input.value.trim();
-			var items = buscar(consulta);
+			var r = buscar(consulta);
+			var items = r.items, encabezado = r.encabezado || "";
 			if (!items.length) {
 				var sinGrado = !gradosActuales().length;
 				lista.innerHTML = '<p class="px-3.5 py-3 text-sm ' + (sinGrado ? "font-semibold" : "text-mute") + '" style="' + (sinGrado ? "color:#b45309" : "") + '">' +
 					(sinGrado ? "Primero elige el grado en el paso 1: los contenidos y PDAs dependen de él." : (consulta ? "Sin coincidencias. Prueba con otra palabra." : "No hay opciones con los campos elegidos.")) + "</p>";
 			} else {
-				lista.innerHTML = items.slice(0, MAX_RESULTADOS).map(function (it) {
-					var color = (it.cf && Tienda.CF_COLOR[it.cf]) ? Tienda.CF_COLOR[it.cf].hex : "#5b6473";
-					return '<button type="button" data-elegir="' + esc(it.id) + '" class="w-full text-left px-3.5 py-2.5 text-sm flex items-start gap-2 hover:bg-paper transition' + (it.elegido ? " opacity-50" : "") + '">' +
-						'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
-						'<span class="leading-snug" style="color:#1c2434">' + (it.prefijo ? '<span class="font-semibold">' + esc(it.prefijo) + "</span> " : "") + esc(it.texto) +
-						(it.sub ? '<span class="block text-[12px] text-mute">' + esc(it.sub) + "</span>" : "") + "</span></button>";
-				}).join("") + (items.length > MAX_RESULTADOS ? '<p class="px-3.5 py-2 text-[12px] text-mute">Hay más: escribe una palabra para acotar.</p>' : "");
+				lista.innerHTML =
+					(encabezado ? '<p class="px-3.5 pt-2.5 pb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-mute">' + esc(encabezado) + "</p>" : "") +
+					items.slice(0, MAX_RESULTADOS).map(function (it) {
+						var color = (it.cf && Tienda.CF_COLOR[it.cf]) ? Tienda.CF_COLOR[it.cf].hex : "#5b6473";
+						return '<button type="button" data-elegir="' + esc(it.id) + '" class="w-full text-left px-3.5 py-2.5 text-sm flex items-start gap-2 hover:bg-paper transition' + (it.elegido ? " opacity-50" : "") + '">' +
+							'<span class="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]" style="background:' + color + '"></span>' +
+							'<span class="leading-snug" style="color:#1c2434">' + (it.prefijo ? '<span class="font-semibold">' + esc(it.prefijo) + "</span> " : "") + esc(it.texto) +
+							(it.sub ? '<span class="block text-[12px] text-mute">' + esc(it.sub) + "</span>" : "") +
+							(it.elegido ? '<span class="block text-[11px] font-semibold" style="color:#047857">Ya elegido</span>' : "") + "</span></button>";
+					}).join("") + (items.length > MAX_RESULTADOS ? '<p class="px-3.5 py-2 text-[12px] text-mute">Hay más: escribe una palabra para acotar.</p>' : "");
 			}
-			lista.classList.remove("hidden");
 		}
-		function cerrar() { lista.classList.add("hidden"); }
+		function abrir() { abierta = true; pintar(); lista.classList.remove("hidden"); }
+		function cerrar() { abierta = false; lista.classList.add("hidden"); }
+
 		input.addEventListener("focus", abrir);
+		input.addEventListener("click", abrir);
 		input.addEventListener("input", abrir);
 		input.addEventListener("keydown", function (e) {
 			if (e.key === "Escape") { cerrar(); input.blur(); }
@@ -344,43 +360,65 @@ document.addEventListener("DOMContentLoaded", async function () {
 				if (primero) { elegir(primero.getAttribute("data-elegir")); input.value = ""; abrir(); }
 			}
 		});
-		// mousedown y no click: el blur del input cerraría la lista antes del click.
-		lista.addEventListener("mousedown", function (e) {
+		// pointerdown vale para ratón y para dedo, y llega antes de que la
+		// casilla pierda el foco. preventDefault evita el blur en escritorio.
+		lista.addEventListener("pointerdown", function (e) {
 			var b = e.target.closest("[data-elegir]");
 			if (!b) { return; }
 			e.preventDefault();
 			elegir(b.getAttribute("data-elegir"));
 			input.value = "";
 			abrir();
-			input.focus();
 		});
-		input.addEventListener("blur", function () { setTimeout(cerrar, 150); });
-		// Clic fuera de la casilla y de su lista: se cierra al instante. La lista
-		// va en el flujo de la página (no flota), así nunca tapa la casilla de
-		// abajo; esto solo evita que quede abierta al tocar otra cosa.
-		document.addEventListener("mousedown", function (e) {
-			if (e.target === input || input.contains(e.target) || lista.contains(e.target)) { return; }
+		// Un clic (no pointerdown) en la lista no debe hacer nada más: ya se
+		// eligió en pointerdown. Sin esto, en algunos navegadores el click
+		// posterior caía en el elemento que quedó debajo tras repintar.
+		lista.addEventListener("click", function (e) { e.preventDefault(); });
+		// Tocar fuera de la casilla y de su lista la cierra. La lista va en el
+		// flujo de la página, así que nunca tapa la casilla de abajo.
+		// Se mira la ruta del evento (composedPath) y no `contains`: al elegir,
+		// la lista se repinta y el botón tocado ya no está dentro de ella, con
+		// lo que `contains` diría "fuera" y cerraría la lista recién repintada.
+		document.addEventListener("pointerdown", function (e) {
+			if (!abierta) { return; }
+			var ruta = e.composedPath ? e.composedPath() : [];
+			if (ruta.indexOf(input) !== -1 || ruta.indexOf(lista) !== -1) { return; }
 			cerrar();
 		});
 	}
 
 	combobox(buscarContenidoEl, listaContenidosEl, function (consulta) {
-		return contenidos.filter(pasaCF).filter(function (c) { return !consulta || coincide(c, consulta); })
+		var items = contenidos.filter(pasaCF).filter(function (c) { return !consulta || coincide(c, consulta); })
 			.map(function (c) { return { id: c.id, texto: c.texto, cf: c.cf, sub: Tienda.CF_COLOR[c.cf] ? Tienda.CF_COLOR[c.cf].corto : "", elegido: pedido.contenido_ids.indexOf(c.id) !== -1 }; });
+		return { items: items };
 	}, agregarContenido);
 
+	// PDAs: sin contenidos elegidos, todos los del grado. Con contenidos
+	// elegidos y la casilla vacía, SOLO los de esos contenidos (es lo que casi
+	// siempre se busca). Al escribir se busca entre todos: si eliges uno de otro
+	// contenido, ese contenido se agrega solo.
 	combobox(buscarPdaEl, listaPdasEl, function (consulta) {
-		var lista = pdas.filter(pasaCF).filter(function (p) { return !consulta || coincide(p, consulta); });
-		// Primero los PDAs de los contenidos ya elegidos.
-		lista.sort(function (a, b) {
-			var pa = pedido.contenido_ids.indexOf(a.contenido_id) !== -1 ? 0 : 1;
-			var pb = pedido.contenido_ids.indexOf(b.contenido_id) !== -1 ? 0 : 1;
-			return pa - pb;
-		});
-		return lista.map(function (p) {
-			var c = contenidoPorId[p.contenido_id];
-			return { id: p.id, prefijo: p.grado + "°", texto: p.texto, cf: p.cf, sub: c ? c.texto : "", elegido: pedido.pda_ids.indexOf(p.id) !== -1 };
-		});
+		var hayContenidos = pedido.contenido_ids.length > 0;
+		var base = pdas.filter(pasaCF);
+		var esDeElegido = function (p) { return pedido.contenido_ids.indexOf(p.contenido_id) !== -1; };
+		var lista, encabezado = "";
+		if (!consulta && hayContenidos) {
+			lista = base.filter(esDeElegido);
+			encabezado = "PDAs de tus contenidos · escribe para buscar cualquier otro";
+		} else {
+			lista = base.filter(function (p) { return !consulta || coincide(p, consulta); });
+			if (hayContenidos) {
+				lista.sort(function (a, b) { return (esDeElegido(a) ? 0 : 1) - (esDeElegido(b) ? 0 : 1); });
+				encabezado = "Primero los de tus contenidos; al elegir otro, su contenido se agrega solo";
+			}
+		}
+		return {
+			encabezado: encabezado,
+			items: lista.map(function (p) {
+				var c = contenidoPorId[p.contenido_id];
+				return { id: p.id, prefijo: p.grado + "°", texto: p.texto, cf: p.cf, sub: c ? c.texto : "", elegido: pedido.pda_ids.indexOf(p.id) !== -1 };
+			}),
+		};
 	}, agregarPda);
 
 	// ── Cupo ──────────────────────────────────────────────────────────────────
