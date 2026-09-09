@@ -70,7 +70,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			<div class="flex border-b border-line">
 				<button data-tab="productos" class="tab-btn active flex-1 py-4 text-sm font-semibold border-b-2 transition">Paquetes</button>
 				<button data-tab="sueltos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Proyectos individuales</button>
-				<button data-tab="pedidos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">A la medida</button>
+				<button data-tab="pedidos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Personalizados</button>
 				<button data-tab="precios" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Precios</button>
 				<button data-tab="ordenes" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Órdenes</button>
 				<button data-tab="acceso" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Acceso manual</button>
@@ -148,7 +148,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 							</label>
 							<label class="flex items-center gap-3 min-h-[44px] cursor-pointer">
 								<input type="checkbox" id="promoAplicaPersonalizados" class="w-5 h-5 rounded border-line">
-								<span class="text-ink"><span class="font-semibold">Proyectos a la medida</span> <span class="text-mute text-sm">· pedidos personalizados</span></span>
+								<span class="text-ink"><span class="font-semibold">Proyectos personalizados</span> <span class="text-mute text-sm">· pedidos personalizados</span></span>
 							</label>
 							<p id="promoPersonalizadosPreview" class="text-xs text-mute"></p>
 						</div>
@@ -378,7 +378,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 			</div>
 
-			<!-- Tab Proyectos a la medida -->
+			<!-- Tab Proyectos personalizados -->
 			<div id="panelPedidos" class="hidden p-5 flex flex-col gap-6">
 
 				<!-- Cupo, ventana y precios -->
@@ -393,7 +393,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 						<label class="flex items-center gap-3 h-12 sm:col-span-2 lg:col-span-4">
 							<input type="checkbox" id="pedAbierto" class="w-5 h-5 rounded border-line" style="accent-color:#059669">
-							<span class="font-semibold text-ink text-sm">Recibir pedidos a la medida</span>
+							<span class="font-semibold text-ink text-sm">Recibir pedidos personalizados</span>
 						</label>
 						<div>
 							<label for="pedTope" class="block text-[11px] font-bold uppercase tracking-[0.08em] text-mute mb-1">Pedidos a la vez (cupo simultáneo)</label>
@@ -473,7 +473,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 	</div>
 </div>
 
-<!-- Modal: completar un pedido a la medida -->
+<!-- Modal: completar un pedido personalizado -->
 <div id="modalPedido" class="hidden fixed inset-0 z-40 bg-black/50 flex items-start justify-center p-4 overflow-y-auto">
 	<div class="bg-white rounded-2xl shadow-xl w-full max-w-lg my-8">
 		<div class="px-5 py-4 rounded-t-2xl flex items-center justify-between" style="background:#1e3a8a">

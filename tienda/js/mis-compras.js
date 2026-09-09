@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.eq("estado", "pendiente")
 			.order("created_at", { ascending: false });
 
-		// Pedidos a la medida ya pagados (los que aún no se pagan salen como
+		// Pedidos personalizados ya pagados (los que aún no se pagan salen como
 		// órdenes pendientes arriba). Columnas explícitas: el ID de la carpeta
 		// de Drive no es legible desde aquí.
 		var pedRes = await window.sb
@@ -96,7 +96,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
-	// ── Pedidos a la medida ─────────────────────────────────────────────────
+	// ── Pedidos personalizados ─────────────────────────────────────────────────
 	function renderPedidos(pedidos, accesos) {
 		if (!pedidos.length) { return; }
 		seccionPedidos.classList.remove("hidden");
@@ -135,7 +135,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				'<div class="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center" style="background:rgba(5,150,105,.1)"><i data-lucide="pencil-ruler" style="width:1.6rem;height:1.6rem;color:#047857"></i></div>' +
 				'<div class="min-w-0 flex-1">' +
 				'<div class="flex flex-wrap items-center gap-2">' +
-				'<h3 class="font-bold text-ink leading-snug">Proyecto a la medida · ' + esc(aula) + "</h3>" +
+				'<h3 class="font-bold text-ink leading-snug">Proyecto personalizado · ' + esc(aula) + "</h3>" +
 				'<span class="text-[11px] font-bold h-6 px-2.5 rounded-full inline-flex items-center" style="' + est.css + '">' + esc(est.texto) + "</span>" +
 				"</div>" +
 				'<div class="flex flex-wrap gap-1.5 mt-2">' +
@@ -228,7 +228,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: (esProyecto
 					? (prod.numero_proyecto
 						? "Proyecto " + prod.numero_proyecto + (prod.trimestre ? " · Trimestre " + prod.trimestre : "")
-						: "Proyecto a la medida")
+						: "Proyecto personalizado")
 					: "Trimestre " + (prod.trimestre || ""));
 			var esEditable = !!info.tipos.editable;
 			var accesoId = esEditable ? info.tipos.editable : info.tipos.pdf;
@@ -271,12 +271,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		ordenes.forEach(function (o) {
 			var items = o.marketplace_orden_items || [];
 			// Una orden con varios items es el paquete unitario (combo multigrado).
-			// Un item con pedido es un proyecto a la medida sin pagar todavía.
+			// Un item con pedido es un proyecto personalizado sin pagar todavía.
 			var titulo;
 			if (items.length > 1) {
 				titulo = "Paquete unitario (" + items.length + " paquetes multigrado)";
 			} else if (items.length && items[0].marketplace_pedidos) {
-				titulo = "Proyecto a la medida " + (items[0].marketplace_pedidos.numero_pedido || "") +
+				titulo = "Proyecto personalizado " + (items[0].marketplace_pedidos.numero_pedido || "") +
 					(items[0].marketplace_pedidos.nivel === "con_anexos" ? " · con anexos" : " · sin anexos");
 			} else {
 				titulo = items.length && items[0].marketplace_productos ? items[0].marketplace_productos.titulo : "Paquete";

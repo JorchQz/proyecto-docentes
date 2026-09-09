@@ -222,7 +222,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			else { cfActivos.add(cf); setChip(c, true); }
 			aplicarFiltros();
 		});
-		// Buscadores de selección múltiple (mismos que el formulario a la medida).
+		// Buscadores de selección múltiple (mismos que el formulario de personalizados).
 		// Solo listan lo que cubre algún proyecto publicado de la selección de
 		// aula y campo actual: así nunca se ofrece un contenido sin proyecto.
 		buscadorContenidos = Tienda.combobox(filtroContenidoEl, listaContenidosEl, function (consulta) {
@@ -520,7 +520,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Tienda.iconos();
 	}
 
-	// Enlace al pedido a la medida con lo que ya se buscó (9.a del documento).
+	// Enlace al pedido personalizado con lo que ya se buscó (9.a del documento).
 	function hrefMedida() {
 		var qs = [];
 		qs.push("org=" + encodeURIComponent(orgActiva));
@@ -532,7 +532,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return "personalizado.html?" + qs.join("&");
 	}
 
-	// Tarjeta permanente "a la medida": siempre es una opción más del catálogo,
+	// Tarjeta permanente "personalizado": siempre es una opción más del catálogo,
 	// la primera de la lista, no solo el consuelo de cuando no hay resultados.
 	// Tira compacta a lo ancho del grid: una línea con el gancho y el precio;
 	// al tocarla se despliega la explicación y el botón "Pedir". Ocupa poco
@@ -552,7 +552,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// formato corto ("$96") para que no se coma la fila.
 			'<span class="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">' +
 			'<span class="text-[12px] font-semibold" style="color:#5b6473">¿No está el que buscas?</span>' +
-			'<span class="font-bold text-[15px] leading-snug whitespace-nowrap" style="color:#1c2434">Pídelo a la medida</span>' +
+			'<span class="font-bold text-[15px] leading-snug whitespace-nowrap" style="color:#1c2434">Pide uno personalizado</span>' +
 			// Sin importe provisional: se llena con el del tarifario (en caché
 			// tras la primera vez) para no enseñar un precio y luego otro.
 			'<span id="precioMedida" class="text-[13px] whitespace-nowrap" style="color:#5b6473"></span>' +
@@ -601,7 +601,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.classList.add("hidden");
 		gridEl.classList.remove("hidden");
 		gridEl.innerHTML = "";
-		// La tarjeta "a la medida" va PRIMERO: con cien proyectos publicados, al
+		// La tarjeta "personalizado" va PRIMERO: con cien proyectos publicados, al
 		// final nadie la vería sin filtrar.
 		gridEl.appendChild(cardMedida());
 		lista.forEach(function (p) { gridEl.appendChild(cardProyecto(p)); });
@@ -661,7 +661,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return a;
 	}
 
-	// Sin resultados en proyectos: puente al pedido a la medida con lo que ya
+	// Sin resultados en proyectos: puente al pedido personalizado con lo que ya
 	// se buscó, y registro silencioso de la búsqueda (señal de qué generar).
 	function mostrarVacioProyectos(catalogoVacio) {
 		estadoEl.classList.remove("hidden");
@@ -673,9 +673,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<i data-lucide="search-x" style="width:3rem;height:3rem;color:#5b6473"></i>' +
 			'<p class="font-semibold text-lg" style="color:#1c2434">' + (catalogoVacio ? "Todavía no hay proyectos individuales publicados" : "No hay un proyecto con esa combinación") + "</p>" +
 			'<p class="text-sm" style="color:#5b6473">' + (catalogoVacio
-				? "Estamos publicándolos. Mientras tanto puedes pedir uno a la medida."
-				: "Prueba con otro campo o contenido, o pídelo a la medida con lo que ya elegiste: lo generamos y te lo entregamos en unos días.") + "</p>" +
-			'<a href="' + esc(href) + '" class="mt-2 inline-flex items-center gap-2 text-white font-bold px-6 h-12 rounded-xl text-sm transition" style="background:#059669">Pedir un proyecto a la medida <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
+				? "Estamos publicándolos. Mientras tanto puedes pedir uno personalizado."
+				: "Prueba con otro campo o contenido, o pide uno personalizado con lo que ya elegiste: lo generamos y te lo entregamos en unos días.") + "</p>" +
+			'<a href="' + esc(href) + '" class="mt-2 inline-flex items-center gap-2 text-white font-bold px-6 h-12 rounded-xl text-sm transition" style="background:#059669">Pedir un proyecto personalizado <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
 			"</div>";
 		Tienda.iconos();
 		if (!catalogoVacio) { registrarBusquedaVacia(); }

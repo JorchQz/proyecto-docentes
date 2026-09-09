@@ -1,6 +1,6 @@
 // Edge Function: avisos-pedidos (la llama pg_cron una vez al día)
 //
-// Revisa los pedidos a la medida pagados y sin entregar y, si hay alguno
+// Revisa los pedidos personalizados pagados y sin entregar y, si hay alguno
 // vencido (pasó su fecha comprometida) o por vencer en las próximas 24 h,
 // manda UN correo al negocio (MAIL_ADMIN) desde soporte@jissez.com con la
 // lista. Si no hay nada que avisar, no manda nada.
@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
       correoEnviado = await enviarCorreo(
         resendKey,
         destino,
-        (vencidos.length ? "VENCIDOS: " + vencidos.length + " pedido(s) a la medida" : "Pedidos a la medida por vencer") + " — Jissez",
+        (vencidos.length ? "VENCIDOS: " + vencidos.length + " pedido(s) personalizado(s)" : "Pedidos personalizados por vencer") + " — Jissez",
         html,
       );
     }

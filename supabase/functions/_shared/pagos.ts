@@ -123,7 +123,7 @@ export async function procesarPago(
       .update({ estado: "reembolsado", referencia_pago: paymentId })
       .eq("id", ordenId);
     await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
-    // Un pedido a la medida devuelto se cancela (si ya estaba entregado, el
+    // Un pedido personalizado devuelto se cancela (si ya estaba entregado, el
     // acceso se acaba de retirar arriba).
     await admin
       .from("marketplace_pedidos")
@@ -187,7 +187,7 @@ export async function procesarPago(
 
   const accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
 
-  // Pedidos a la medida de esta orden: pasan a la cola y se avisa por correo
+  // Pedidos personalizados de esta orden: pasan a la cola y se avisa por correo
   // al cliente y al negocio. Nunca bloquea la entrega del resto.
   let pedidosActivados = 0;
   try {
@@ -253,7 +253,7 @@ function fechaLegible(iso: string | null | undefined): string {
 }
 
 /**
- * Pasa a la cola los pedidos a la medida de una orden recién pagada: estado
+ * Pasa a la cola los pedidos personalizados de una orden recién pagada: estado
  * 'pendiente', fecha de pago y fecha compromiso (= ahora + ventana configurada).
  * Avisa al cliente (con la ventana y la garantía) y al negocio (con el detalle
  * para generarlo). Idempotente: solo toca pedidos en 'pendiente_pago'.
@@ -304,7 +304,7 @@ export async function activarPedidosDeOrden(
       const html = plantillaCorreo(`
         <h1 style="${estiloTitulo}">Recibimos tu pedido ${escaparHtml(p.numero_pedido)}</h1>
         <p style="${estiloTexto}">
-          Tu pago quedó confirmado. Ya estamos preparando tu proyecto a la medida y te lo
+          Tu pago quedó confirmado. Ya estamos preparando tu proyecto personalizado y te lo
           entregaremos en tu biblioteca <strong>a más tardar el ${escaparHtml(fechaLegible(compromiso))}</strong>
           (hora del centro). Te avisamos por este correo en cuanto esté listo.
         </p>
@@ -322,7 +322,7 @@ export async function activarPedidosDeOrden(
     const destinoAdmin = Deno.env.get("MAIL_ADMIN");
     if (opts.resendKey && destinoAdmin) {
       const html = plantillaCorreo(`
-        <h1 style="${estiloTitulo}">Nuevo pedido a la medida ${escaparHtml(p.numero_pedido)}</h1>
+        <h1 style="${estiloTitulo}">Nuevo pedido personalizado ${escaparHtml(p.numero_pedido)}</h1>
         <p style="${estiloTexto}">
           Cliente: <strong>${escaparHtml(p.nombre_cliente || "")}</strong> (${escaparHtml(email || "sin correo")}) ·
           pagó $${escaparHtml(String(p.precio ?? ""))} MXN. Entrega comprometida: <strong>${escaparHtml(fechaLegible(compromiso))}</strong>.
@@ -333,7 +333,7 @@ export async function activarPedidosDeOrden(
         </p>
         ${botonCorreo(siteUrl + "/tienda/admin", "Abrir el panel de pedidos")}
       `);
-      await enviarCorreo(opts.resendKey, destinoAdmin, "Nuevo pedido a la medida " + p.numero_pedido, html);
+      await enviarCorreo(opts.resendKey, destinoAdmin, "Nuevo pedido personalizado " + p.numero_pedido, html);
     }
   }
   return n;
@@ -463,7 +463,7 @@ async function avisarCompraPorCorreo(
     .select("tipo, producto_id, marketplace_productos(titulo, tipo_paquete)")
     .eq("orden_id", ordenId);
 
-  // Los pedidos a la medida tienen su propio correo (activarPedidosDeOrden);
+  // Los pedidos personalizados tienen su propio correo (activarPedidosDeOrden);
   // aquí solo se listan los productos entregados de inmediato.
   const conProducto = (items || []).filter((i: any) => i.producto_id);
   if (!conProducto.length) return;

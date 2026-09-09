@@ -82,9 +82,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 	var info = productos[0];
 
-	// Enlace a los proyectos individuales de este grado: en la ficha y en el
-	// modal. No se compran aquí (tienen su propio flujo: con o sin anexos),
-	// pero quien solo necesita uno debe encontrarlos sin salir a buscar.
+	// Enlace a los proyectos individuales de este grado, solo dentro del modal
+	// de compra (la ficha se mantiene limpia). No se compran aquí: tienen su
+	// propio flujo (con o sin anexos) y su propia ficha.
 	var hrefSueltos = esMulti
 		? "catalogo.html?vista=proyectos&org=multigrado" + (info.modalidad ? "&mod=" + encodeURIComponent(info.modalidad) : "")
 		: "catalogo.html?vista=proyectos&g=" + encodeURIComponent(info.grado);
@@ -95,12 +95,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return "¿Solo necesitas un proyecto? " + (sueltosGrado.length === 1 ? "Hay 1 proyecto individual" : "Hay " + sueltosGrado.length + " proyectos individuales") +
 			(precioSueltoMin != null ? " desde " + montoCorto(Tienda.precioFinal(precioSueltoMin, "proyecto")) : "") + ".";
 	}
-	var enlaceSueltosEl = document.getElementById("enlaceSueltos");
-	if (enlaceSueltosEl && sueltosGrado.length) {
-		enlaceSueltosEl.innerHTML = '<i data-lucide="file-text" class="w-4 h-4 shrink-0"></i><span>' + esc(textoSueltos()) +
-			' <a href="' + esc(hrefSueltos) + '" class="font-semibold underline" style="color:#1e3a8a">Verlos</a></span>';
-		enlaceSueltosEl.classList.remove("hidden");
-	}
+
 	var gradoNum = info.grado;
 	var comboArr = esMulti ? (info.grados_combo || "").split("-") : [String(gradoNum)];
 
@@ -270,12 +265,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			? "por trimestre"
 			: "pago único, sin caducidad";
 
-		var ahorro = ahorroDelCiclo();
-		var badge = document.getElementById("ahorroBadge");
-		if (ahorro > 0) {
-			badge.textContent = "Ahorras " + montoCorto(ahorro) + " con el ciclo";
-			badge.classList.remove("hidden");
-		}
+		// El ahorro del ciclo se anuncia dentro del modal de compra, no aquí.
 	}
 
 	// Los proyectos son lo más concreto de la ficha: aquí el maestro comprueba
@@ -939,11 +929,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// lados de la comparación.
 		var ahorroCiclo = Tienda.precioFinal(desde) * 3 -
 			Tienda.precioFinal(tarifas.ciclo.precio_pdf);
-		if (ahorroCiclo > 0) {
-			var badgeAhorro = document.getElementById("ahorroBadge");
-			badgeAhorro.textContent = "Ahorras " + montoCorto(ahorroCiclo) + " con el ciclo";
-			badgeAhorro.classList.remove("hidden");
-		}
 
 		estadoEl.classList.add("hidden");
 		contenidoEl.classList.remove("hidden");

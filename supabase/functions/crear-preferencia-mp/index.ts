@@ -16,7 +16,7 @@
 //                             tipo_paquete: 'trimestre' | 'ciclo',
 //                             trimestre: 1 | 2 | 3,   // solo si tipo_paquete = 'trimestre'
 //                             tipo: 'pdf' | 'editable' }
-//   body proyecto a la medida: { pedido: { organizacion, grado | grados_combo,
+//   body proyecto personalizado: { pedido: { organizacion, grado | grados_combo,
 //                                campos_formativos?[], contenido_ids?[], pda_ids?[],
 //                                metodologia?, fecha_necesaria?, notas? },
 //                                tipo: 'pdf' (sin anexos) | 'anexos' }
@@ -114,7 +114,7 @@ Deno.serve(async (req: Request) => {
 
     const admin = crearAdmin(supabaseUrl, serviceKey);
 
-    // Proyecto a la medida: no hay producto todavía, se crea un pedido y la
+    // Proyecto personalizado: no hay producto todavía, se crea un pedido y la
     // orden apunta a él. Se entrega cuando Jorge lo completa desde el admin.
     if (body.pedido && typeof body.pedido === "object") {
       if (tipo === "editable") return jsonResponse({ error: "Parámetros inválidos" }, 400);
@@ -435,7 +435,7 @@ async function precioConPromo(
   codigoCupon: string | null | undefined,
   userId: string | null | undefined,
   // A qué se aplica la promoción general: el admin decide por ámbito
-  // (paquetes / proyectos individuales / a la medida).
+  // (paquetes / proyectos individuales / personalizados).
   ambito: "paquete" | "proyecto" | "personalizado",
 ): Promise<PrecioResuelto | null> {
   const { data, error } = await admin.rpc("marketplace_precio_con_cupon", {
@@ -785,7 +785,7 @@ const COMBOS_PEDIDO: Record<string, string> = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Prepara el cobro de un proyecto a la medida.
+ * Prepara el cobro de un proyecto personalizado.
  *
  * body.pedido: { organizacion: 'completa'|'multigrado', grado?: 1-6,
  *                grados_combo?: '1-2'…, campos_formativos?: [LEN|SAB|ETI|DHL],
@@ -853,19 +853,19 @@ async function prepararPedidoPersonalizado(
   }
   if (!estado.abierto) {
     return jsonResponse({
-      error: estado.mensaje || "Por ahora no estamos recibiendo pedidos a la medida.",
+      error: estado.mensaje || "Por ahora no estamos recibiendo pedidos personalizados.",
       cerrado: true,
     }, 409);
   }
   if (Number(estado.cupos_disponibles) <= 0) {
     return jsonResponse({
-      error: "Por ahora no hay cupo para pedidos a la medida: en cuanto entreguemos uno se libera un lugar.",
+      error: "Por ahora no hay cupo para pedidos personalizados: en cuanto entreguemos uno se libera un lugar.",
       agotado: true,
     }, 409);
   }
   const precioLista = Number(nivel === "con_anexos" ? estado.precio_con_anexos : estado.precio_sin_anexos);
   if (!Number.isFinite(precioLista) || precioLista <= 0) {
-    return jsonResponse({ error: "El pedido a la medida no tiene precio configurado" }, 400);
+    return jsonResponse({ error: "El pedido personalizado no tiene precio configurado" }, 400);
   }
   const resuelto = await precioConPromo(admin, precioLista, cfg.cupon, user.id, "personalizado");
   if (resuelto == null) {
@@ -962,7 +962,7 @@ async function prepararPedidoPersonalizado(
     siteUrl: cfg.siteUrl,
     ordenId,
     itemId: "pedido-" + pedidoId,
-    titulo: "Proyecto a la medida " + numero + " — " + aula + " — " +
+    titulo: "Proyecto personalizado " + numero + " — " + aula + " — " +
       (nivel === "con_anexos" ? "PDF + Word + anexos" : "PDF + Word"),
     precio,
     failureUrl: cfg.siteUrl + "/tienda/checkout?personalizado=1",

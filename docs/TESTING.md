@@ -338,22 +338,22 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 ### Bloque 2 — catálogo de proyectos, ficha y legal (probado en navegador el 2026-09-09; 41 comprobaciones)
 - [x] `catalogo.html?vista=proyectos` muestra una tarjeta por proyecto con chips de campo formativo y "Desde $80"
 - [x] Chip de campo, contenido (lista acotada) y PDA filtran; quitar el contenido restaura
-- [x] Sin resultados → CTA "Pedir un proyecto a la medida" con los filtros en la URL; se registra en `marketplace_busquedas_vacias`
+- [x] Sin resultados → CTA "Pedir un proyecto personalizado" con los filtros en la URL; se registra en `marketplace_busquedas_vacias`
 - [x] Vista de paquetes intacta (1° sigue "desde $249"); landing no baja a $80
 - [x] `proyecto.html?id=` pinta título, dos versiones (con/sin anexos, promo aplicada), temario por campo, vista previa PDF, puente al paquete del trimestre; sin desborde en móvil
 - [x] Checkout: resumen del proyecto, desglose "Proyecto en PDF + Word / Anexos imprimibles", casilla de Términos obligatoria, `tipo=editable` rechazado
 - [x] `terminos.html` (12 cláusulas, huecos marcados) y `privacidad.html` (menciona Meta Pixel) con footer y enlaces en ambos footers
 - [ ] Publicar sueltos reales: admin → Proyectos individuales → detectar 1° T1 → crear → marcar Publicado (los 4 de 1° T1 ya están creados, ocultos)
 
-### Bloque 3 — proyectos a la medida (probado el 2026-09-09)
+### Bloque 3 — proyectos personalizados (probado el 2026-09-09)
 - [x] `personalizado.html` con prefill desde la URL, contenidos de la fase filtrados por campo, PDAs del contenido, resumen y total con promo; cupo visible
 - [x] Multigrado sin combo no avanza; con cupo 0 el formulario se bloquea y el checkout no deja pagar
 - [x] Checkout modo pedido: resumen "Lo que pediste", casilla legal, `crear-preferencia-mp` crea pedido PZ-0001 + orden + ítem `anexos`, sella términos, reutiliza el intento pendiente y actualiza el formulario
 - [x] Servidor: 409 `agotado` con cupo 0, 400 combo inválido, 400 `editable`
-- [x] Mis compras: sección "Proyectos a la medida" con estado, número y fecha comprometida; el pedido pagado no sale como pago en proceso
+- [x] Mis compras: sección "Proyectos personalizados" con estado, número y fecha comprometida; el pedido pagado no sale como pago en proceso
 - [x] `anexo.html?pedido=PZ-0001&a=…` de un pedido sin entregar: mensaje claro
 - [x] RPC admin (listar con vencido, cambiar estado, estado/guardar config, búsquedas vacías) bajo la identidad del admin; rechazadas para no admin. `completar-pedido` y `admin-proyectos-drive` rechazan a no admin
-- [ ] **Pendiente de probar con la cuenta admin en navegador:** admin → A la medida → Entregar PZ-0001 con una carpeta de prueba (PDF + Word + S01) → el cliente de pruebas ve el proyecto en su biblioteca y recibe el correo; y Proyectos individuales → Detectar
+- [ ] **Pendiente de probar con la cuenta admin en navegador:** admin → Personalizados → Entregar PZ-0001 con una carpeta de prueba (PDF + Word + S01) → el cliente de pruebas ve el proyecto en su biblioteca y recibe el correo; y Proyectos individuales → Detectar
 - [ ] Correos de "pedido recibido" (cliente y negocio) se disparan al acreditarse un pago real; el helper de envío quedó probado con el aviso de vencidos
 
 ### Ajustes del 2026-09-09 (segunda tanda, probados en navegador)
@@ -365,7 +365,7 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 
 ### Bloque 4 — mejoras (probado el 2026-09-09)
 - [x] `avisos-pedidos`: 403 sin secreto; con un pedido vencido manda el correo a `soporte.jissez@gmail.com`; el job `avisos-pedidos-diario` (8:00 hora del centro) disparó la función vía pg_net + Vault y registró 200
-- [x] `practicantes.html` carga sin errores ni desborde en escritorio y móvil, con enlaces al catálogo de proyectos y al pedido a la medida
+- [x] `practicantes.html` carga sin errores ni desborde en escritorio y móvil, con enlaces al catálogo de proyectos y al pedido personalizado
 - [x] Búsquedas vacías: inserción anónima permitida, lectura solo admin
 
 ---

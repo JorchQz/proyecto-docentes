@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
     const pr = parseInt(url.searchParams.get("pr") || "", 10);
     const codigo = (url.searchParams.get("a") || "").trim();
     const modo = url.searchParams.get("modo") === "download" ? "download" : "inline";
-    // Proyecto a la medida: no tiene coordenadas de grado/trimestre. El bot
+    // Proyecto personalizado: no tiene coordenadas de grado/trimestre. El bot
     // imprime el número de pedido (anexo.html?pedido=PZ-0001&a=...), que aquí
     // se resuelve al producto que se creó al entregarlo.
     const numeroPedido = (url.searchParams.get("pedido") || "").trim().toUpperCase();
@@ -130,7 +130,7 @@ Deno.serve(async (req: Request) => {
     for (const ac of accesos || []) {
       const prod: any = ac.marketplace_productos;
       if (!prod || !prod.proyecto_folder_drive_id) continue;
-      // Pedido a la medida: solo cuenta el producto de ESE pedido.
+      // Pedido personalizado: solo cuenta el producto de ESE pedido.
       if (productoDePedido) {
         if (ac.producto_id !== productoDePedido) continue;
         if (!tieneFila(ac.producto_id, "anexos")) { sueltoSinAnexos = ac.producto_id; continue; }

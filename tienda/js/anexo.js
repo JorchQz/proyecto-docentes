@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var params = new URLSearchParams(location.search);
 	// "aula" = grado ("3") o combinación multigrado ("1-2"); acepta "g" por compatibilidad.
-	// "pedido" = número de un proyecto a la medida (PZ-0001), que no tiene aula ni pr.
+	// "pedido" = número de un proyecto personalizado (PZ-0001), que no tiene aula ni pr.
 	var aula = params.get("aula") || params.get("g");
 	var pr = params.get("pr"), a = params.get("a");
 	var pedido = params.get("pedido");
@@ -116,7 +116,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<span class="w-16 h-16 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="lock" class="w-8 h-8"></i></span>' +
 			'<p class="text-lg font-bold text-ink">Este material es de pago</p>' +
 			'<p class="text-sm text-mute max-w-sm">' + (pedido
-				? "Este anexo pertenece al proyecto a la medida " + esc(pedido) + ". Solo lo ve la cuenta que lo pidió, y una vez entregado."
+				? "Este anexo pertenece al proyecto personalizado " + esc(pedido) + ". Solo lo ve la cuenta que lo pidió, y una vez entregado."
 				: "Necesitas comprar el paquete de " + esc(aula.indexOf("-") !== -1 ? "multigrado " + aula.split("-").map(function (n) { return n + "°"; }).join("-") : aula + "° grado") + " · trimestre " + Math.ceil(Number(pr) / 4) + " para verlo.") + "</p>" +
 			'<a href="catalogo.html" class="mt-2 inline-flex items-center gap-2 text-white font-bold px-6 py-3 rounded-xl text-sm transition" style="background:#059669">Ver en el catálogo <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
 			"</div>";

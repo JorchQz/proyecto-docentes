@@ -588,7 +588,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		promoAplicaPersonalizadosEl.checked = d.aplica_personalizados === true;
 		var pp = d.previsualizacion_personalizados;
 		if (pp) {
-			promoPersonalizadosPreviewEl.textContent = "A la medida se cobra hoy: " + money(pp.promo_sin_anexos) + " sin anexos / " + money(pp.promo_con_anexos) + " con anexos" +
+			promoPersonalizadosPreviewEl.textContent = "Un proyecto personalizado se cobra hoy: " + money(pp.promo_sin_anexos) + " sin anexos / " + money(pp.promo_con_anexos) + " con anexos" +
 				(pp.aplica ? "" : " (precio de lista: el descuento no aplica a los pedidos)") + ".";
 		}
 
@@ -603,7 +603,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var donde = [];
 			if (d.aplica_paquetes !== false) { donde.push("paquetes"); }
 			if (d.aplica_proyectos !== false) { donde.push("proyectos individuales"); }
-			if (d.aplica_personalizados === true) { donde.push("a la medida"); }
+			if (d.aplica_personalizados === true) { donde.push("personalizados"); }
 			texto = "Vigente ahora · -" + d.porcentaje + "%" +
 				(hasta ? " · termina el " + hasta + " (hora del centro)" : " · sin fecha límite") +
 				" · aplica a: " + (donde.length ? donde.join(", ") : "nada (revisa los interruptores)");
@@ -1461,7 +1461,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		renderSueltos();
 	}
 
-	// ── Proyectos a la medida ──────────────────────────────────────────────────
+	// ── Proyectos personalizados ──────────────────────────────────────────────────
 	// Configuración (cupo, ventana, precios) por RPC; listado por RPC con el
 	// flag de vencido calculado en la base; "Entregar" pasa por la Edge Function
 	// completar-pedido, que verifica la carpeta en Drive, crea el producto,

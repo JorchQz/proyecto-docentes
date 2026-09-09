@@ -217,9 +217,9 @@ planeación** (actividades por grado en el docx y en `dosificacion_sesiones`), N
 nombres ni en la estructura de carpetas. Un paquete multigrado sigue siendo 12 proyectos
 en 3 trimestres, con sus anexos y examen — igual que un grado.
 
-### Proyectos personalizados (a la medida) — carpeta y link distintos
+### Proyectos personalizados — carpeta y link distintos
 
-Un pedido a la medida (número `PZ-0001`, `PZ-0002`…, lo asigna la tienda) NO pertenece a
+Un pedido personalizado (número `PZ-0001`, `PZ-0002`…, lo asigna la tienda) NO pertenece a
 ningún trimestre. Va en la carpeta hermana de T1/T2/T3 de su grado o combo:
 
 ```
@@ -233,7 +233,7 @@ ningún trimestre. Va en la carpeta hermana de T1/T2/T3 de su grado o combo:
 - El hipervínculo de cada anexo lleva el **número de pedido** en vez de `aula` y `pr`:
   `https://jissez.com/tienda/anexo.html?pedido=PZ-0001&a=<código>`.
 - El código del anexo puede ser `ANX-PZ0001-S03-01` (mismo formato, con el pedido en vez del proyecto).
-- El pedido se entrega desde el panel admin (Proyectos a la medida → Completar) pegando el ID
+- El pedido se entrega desde el panel admin (Personalizados → Completar) pegando el ID
   de esa carpeta; la tienda crea el producto, da el acceso al cliente y le avisa por correo.
 
 ### Nombre de archivo del anexo = SU CÓDIGO

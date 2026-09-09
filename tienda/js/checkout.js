@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var productoId = params.get("producto_id");
 	var tipo = params.get("tipo");
 
-	// Proyecto a la medida: llega de personalizado.html con el pedido guardado
+	// Proyecto personalizado: llega de personalizado.html con el pedido guardado
 	// como borrador en localStorage (checkout.html?personalizado=1). No hay
 	// producto: la Edge Function crea el pedido y la orden juntos.
 	var esPedido = params.get("personalizado") === "1";
@@ -96,7 +96,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Antes de pintar cualquier importe: así el precio no aparece a lista y
 	// cambia un instante después.
 	await Tienda.cargarPromo();
-	// Ámbito del descuento: pedido a la medida desde ya; producto o combo se
+	// Ámbito del descuento: pedido personalizado desde ya; producto o combo se
 	// fijan en cuanto se sabe qué es (antes de pintar cualquier importe).
 	if (esPedido) { Tienda.setAmbito("personalizado"); }
 
@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	pintarNotaPromo();
 
 	/**
-	 * Proyecto a la medida: precio, cupo y ventana salen de la RPC pública; el
+	 * Proyecto personalizado: precio, cupo y ventana salen de la RPC pública; el
 	 * resumen se pinta con lo que el maestro eligió en el formulario. El cobro
 	 * real lo vuelve a resolver la Edge Function contra la base.
 	 */
@@ -121,7 +121,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		var est = r.data;
 		if (!est.abierto || Number(est.cupos_disponibles) <= 0) {
-			estadoEl.innerHTML = (est.abierto ? "Por ahora no hay cupo para pedidos a la medida: en cuanto entreguemos uno se libera un lugar." : Tienda.esc(est.mensaje || "Por ahora no recibimos pedidos a la medida.")) +
+			estadoEl.innerHTML = (est.abierto ? "Por ahora no hay cupo para pedidos personalizados: en cuanto entreguemos uno se libera un lugar." : Tienda.esc(est.mensaje || "Por ahora no recibimos pedidos personalizados.")) +
 				' <a href="catalogo.html?vista=proyectos" class="font-semibold" style="color:#1e3a8a">Ver proyectos del catálogo</a>';
 			return false;
 		}
@@ -132,7 +132,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			? "Multigrado " + String(b.grados_combo || "").split("-").map(function (n) { return n + "°"; }).join("-")
 			: b.grado + "° de Primaria";
 
-		resumenTitulo.textContent = "Proyecto a la medida · " + aula;
+		resumenTitulo.textContent = "Proyecto personalizado · " + aula;
 		resumenTipo.textContent = conAnexos
 			? "Planeación en PDF y Word editable, con anexos imprimibles"
 			: "Planeación en PDF y Word editable, sin anexos";
@@ -587,10 +587,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 					setTimeout(function () { location.href = "mis-compras.html"; }, 1200);
 					return;
 				}
-				// Pedido a la medida: se acabó el cupo o se cerraron los pedidos
+				// Pedido personalizado: se acabó el cupo o se cerraron los pedidos
 				// entre que se armó y este clic.
 				if (data.cerrado || data.agotado) {
-					aviso(data.error || "Por ahora no hay cupo para pedidos a la medida.", "error");
+					aviso(data.error || "Por ahora no hay cupo para pedidos personalizados.", "error");
 					bloqueDatos.classList.remove("hidden");
 				}
 				throw new Error(data.error || "No se pudo iniciar el pago.");

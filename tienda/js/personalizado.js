@@ -1,4 +1,4 @@
-// Formulario del proyecto a la medida.
+// Formulario del proyecto personalizado.
 //
 // No cobra: arma el pedido, lo guarda como borrador en localStorage y manda al
 // checkout (checkout.html?personalizado=1), que es quien crea la cuenta si
@@ -10,7 +10,7 @@
 // contenido solo; al quitar un contenido se quitan sus PDAs.
 document.addEventListener("DOMContentLoaded", async function () {
 	// El descuento general solo aplica aquí si el admin lo activó para los
-	// pedidos a la medida (interruptor propio en el panel).
+	// pedidos personalizados (interruptor propio en el panel).
 	Tienda.setAmbito("personalizado");
 	if (!window.sb) { return; }
 
@@ -369,7 +369,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// pedido, no en una fecha fija.
 			estadoCupoEl.style.cssText = "background:#fffbeb;border:1px solid #fcd34d;color:#92400e";
 			estadoCupoEl.innerHTML = '<i data-lucide="clock" class="w-5 h-5 shrink-0 mt-0.5"></i><div>' +
-				"<p class=\"font-semibold\">" + (cerrado ? "Por ahora no recibimos pedidos a la medida" : "Por ahora no hay cupo: todos los lugares están ocupados") + "</p>" +
+				"<p class=\"font-semibold\">" + (cerrado ? "Por ahora no recibimos pedidos personalizados" : "Por ahora no hay cupo: todos los lugares están ocupados") + "</p>" +
 				"<p>" + esc(cerrado ? (estado.mensaje || "Vuelve a intentarlo en unos días.") : "En cuanto entreguemos un pedido se libera un lugar, normalmente en horas. Vuelve a intentarlo más tarde o revisa los proyectos del catálogo.") + "</p></div>";
 			continuarBtn.disabled = true;
 			continuarBtn.style.opacity = ".5";

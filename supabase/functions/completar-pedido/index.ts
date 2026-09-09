@@ -1,6 +1,6 @@
 // Edge Function: completar-pedido (solo administración)
 //
-// Entrega un proyecto a la medida. Jorge ya subió la carpeta a Drive
+// Entrega un proyecto personalizado. Jorge ya subió la carpeta a Drive
 // ({grado o combo}/Proyectos Personalizados/{PZ-0001}_{nombre}/ con PDF y DOCX
 // en la raíz y los anexos en subcarpetas S##) y pega aquí su ID. La función:
 //
@@ -123,7 +123,7 @@ Deno.serve(async (req: Request) => {
     }
     const aula = aulaDePedido(pedido);
     const titulo = String(body.titulo || "").trim() ||
-      (aula + " — " + (nombreProyecto || "Proyecto a la medida " + pedido.numero_pedido));
+      (aula + " — " + (nombreProyecto || "Proyecto personalizado " + pedido.numero_pedido));
     // Precio de catálogo del proyecto individual: del tarifario por modalidad
     // (renglón 'proyecto'), igual que los demás sueltos. Nunca del cliente.
     const { data: tarifa } = await admin
@@ -142,7 +142,7 @@ Deno.serve(async (req: Request) => {
       .from("marketplace_productos")
       .insert({
         titulo,
-        descripcion: "Proyecto elaborado a la medida (" + pedido.numero_pedido + ").",
+        descripcion: "Proyecto personalizado (" + pedido.numero_pedido + ").",
         grado: grados[0] || 1,
         fase: faseDeGrado(grados[0] || 1),
         campo_formativo: null,
