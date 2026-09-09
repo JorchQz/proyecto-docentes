@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var todos = [];       // paquetes (trimestre / ciclo)
 	var proyectos = [];   // proyectos individuales publicados, con sus PDAs
+	var catalogoCargado = false; // true cuando ya respondió la base (aunque venga vacía)
 	var vista = "paquetes";
 	var orgActiva = "completa";
 	var gradosActivos = new Set();
@@ -99,6 +100,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// colarían en la tarjeta del grado y el "desde" bajaría a $80.
 		todos = (res.data || []).filter(function (p) { return p.tipo_paquete !== "proyecto"; });
 		proyectos = normalizarProyectos(resultados[2].error ? [] : (resultados[2].data || []));
+		catalogoCargado = true;
 		indexarCurricular();
 		pdasIniciales.forEach(function (id) { agregarPda(id, true); });
 		contenidosIniciales.forEach(function (id) { agregarContenido(id, true); });
@@ -589,24 +591,41 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	// La tira "Pide uno personalizado" está SIEMPRE arriba del grid: mientras
+	// cargan los proyectos, cuando el filtro no encuentra nada y cuando aún no
+	// hay ninguno publicado. Debajo va lo que corresponda: "Cargando", el
+	// aviso de vacío o las tarjetas.
 	function renderProyectos() {
-		if (!proyectos.length) { mostrarVacioProyectos(true); return; }
-		var lista = filtrarProyectos();
-		if (contadorTextoEl) {
-			contadorTextoEl.textContent = lista.length
-				? lista.length + (lista.length === 1 ? " proyecto" : " proyectos")
-				: "";
-		}
-		if (!lista.length) { mostrarVacioProyectos(false); return; }
 		estadoEl.classList.add("hidden");
 		gridEl.classList.remove("hidden");
 		gridEl.innerHTML = "";
-		// La tarjeta "personalizado" va PRIMERO: con cien proyectos publicados, al
-		// final nadie la vería sin filtrar.
 		gridEl.appendChild(cardMedida());
-		lista.forEach(function (p) { gridEl.appendChild(cardProyecto(p)); });
+		var lista = catalogoCargado ? filtrarProyectos() : [];
+		if (contadorTextoEl) {
+			contadorTextoEl.textContent = catalogoCargado && lista.length
+				? lista.length + (lista.length === 1 ? " proyecto" : " proyectos")
+				: "";
+		}
+		if (!catalogoCargado) {
+			gridEl.appendChild(filaGrid('<p class="text-sm py-8 text-center" style="color:#5b6473">Cargando proyectos...</p>'));
+		} else if (!proyectos.length) {
+			gridEl.appendChild(mensajeVacioProyectos(true));
+		} else if (!lista.length) {
+			gridEl.appendChild(mensajeVacioProyectos(false));
+			registrarBusquedaVacia();
+		} else {
+			lista.forEach(function (p) { gridEl.appendChild(cardProyecto(p)); });
+		}
 		Tienda.iconos();
 		pintarPrecioMedida();
+	}
+
+	// Fila que ocupa todo el ancho del grid.
+	function filaGrid(html) {
+		var d = document.createElement("div");
+		d.className = "col-span-full";
+		d.innerHTML = html;
+		return d;
 	}
 
 	function cardProyecto(p) {
@@ -663,22 +682,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// Sin resultados en proyectos: puente al pedido personalizado con lo que ya
 	// se buscó, y registro silencioso de la búsqueda (señal de qué generar).
-	function mostrarVacioProyectos(catalogoVacio) {
-		estadoEl.classList.remove("hidden");
-		gridEl.classList.add("hidden");
-		if (contadorTextoEl) { contadorTextoEl.textContent = ""; }
+	function mensajeVacioProyectos(catalogoVacio) {
 		var href = hrefMedida();
-		estadoEl.innerHTML =
-			'<div class="flex flex-col items-center gap-3 max-w-md mx-auto">' +
+		return filaGrid(
+			'<div class="flex flex-col items-center gap-3 max-w-md mx-auto py-8 text-center">' +
 			'<i data-lucide="search-x" style="width:3rem;height:3rem;color:#5b6473"></i>' +
 			'<p class="font-semibold text-lg" style="color:#1c2434">' + (catalogoVacio ? "Todavía no hay proyectos individuales publicados" : "No hay un proyecto con esa combinación") + "</p>" +
 			'<p class="text-sm" style="color:#5b6473">' + (catalogoVacio
 				? "Estamos publicándolos. Mientras tanto puedes pedir uno personalizado."
 				: "Prueba con otro campo o contenido, o pide uno personalizado con lo que ya elegiste: lo generamos y te lo entregamos en unos días.") + "</p>" +
 			'<a href="' + esc(href) + '" class="mt-2 inline-flex items-center gap-2 text-white font-bold px-6 h-12 rounded-xl text-sm transition" style="background:#059669">Pedir un proyecto personalizado <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
-			"</div>";
-		Tienda.iconos();
-		if (!catalogoVacio) { registrarBusquedaVacia(); }
+			"</div>");
 	}
 
 	// Guarda la combinación de filtros que no encontró nada. La tabla llega
@@ -845,6 +859,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	function mostrarCargando() {
+		// En la vista de proyectos el "Cargando" va dentro del grid, debajo de
+		// la tira "personalizado", que se ve desde el primer momento.
+		if (vista === "proyectos") { renderProyectos(); return; }
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
 		estadoEl.innerHTML = '<p style="color:#5b6473">Cargando ' + (vista === "proyectos" ? "proyectos" : "paquetes") + "...</p>";

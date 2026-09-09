@@ -163,6 +163,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<p class="mt-3 text-[13px]" style="color:#047857">Entrega en tu biblioteca en un máximo de ' + Math.round(est.ventana_horas) + " horas después del pago. Te avisamos por correo.</p>" +
 			'<a href="personalizado.html" class="inline-block mt-2 text-[13px] font-semibold" style="color:#1e3a8a">Cambiar el pedido</a>';
 		resumenCombo.classList.remove("hidden");
+		// Un pedido no se entrega al instante: se elabora y llega a la
+		// biblioteca dentro de la ventana comprometida.
+		var ventajaAcceso = document.getElementById("ventajaAcceso");
+		if (ventajaAcceso) {
+			ventajaAcceso.innerHTML = '<i data-lucide="clock" class="w-3.5 h-3.5 text-action"></i> Entrega en tu biblioteca en un máximo de ' + Math.round(est.ventana_horas) + " horas después del pago";
+			Tienda.iconos();
+		}
 
 		cuerpoPago = {
 			pedido: {
