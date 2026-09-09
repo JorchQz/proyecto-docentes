@@ -35,6 +35,13 @@ export interface WalkedFile {
 
 export const FOLDER_MIME = "application/vnd.google-apps.folder";
 
+// Qué contiene la carpeta de un producto:
+//   trimestre → carpetas de proyecto (P01..) + examen del trimestre
+//   ciclo     → carpetas T1/T2/T3, cada una como un trimestre
+//   proyecto  → la carpeta de UN proyecto (planeación en la raíz, anexos en
+//               subcarpetas). Es la venta individual y el personalizado.
+export type TipoPaquete = "trimestre" | "ciclo" | "proyecto";
+
 // Regla única de entrega por tier, para que las tres funciones que sirven
 // archivos (ver-archivo, descargar-archivo, archivos-proyecto) no se
 // desincronicen: el DOCX es un add-on de TODO O NADA sobre el paquete.
@@ -48,6 +55,18 @@ export const FOLDER_MIME = "application/vnd.google-apps.folder";
 export function puedeEntregarArchivo(nombre: string, esEditable: boolean): boolean {
   const esDocx = /\.docx$/i.test(nombre);
   return !esDocx || esEditable;
+}
+
+// Segunda regla única, por UBICACIÓN: los anexos viven en subcarpetas del
+// proyecto (S01/, "Sesion 3/") y la planeación en la raíz. En los paquetes
+// los anexos van siempre; en el proyecto suelto se venden aparte, y quien lo
+// compró "sin anexos" no debe ver ni listar las subcarpetas.
+//
+// Quién decide `incluyeAnexos` está en _shared/entrega.ts (una consulta a
+// marketplace_accesos); aquí solo se aplica.
+export function puedeEntregarRuta(path: string, incluyeAnexos: boolean): boolean {
+  const enSubcarpeta = path.includes("/");
+  return !enSubcarpeta || incluyeAnexos;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -121,6 +140,18 @@ export async function downloadDriveFile(fileId: string): Promise<Uint8Array> {
   return new Uint8Array(await resp.arrayBuffer());
 }
 
+// Metadatos de UN archivo o carpeta por su id (nombre y tipo). Lo necesita el
+// producto de proyecto suelto: su carpeta de Drive es la del proyecto mismo y
+// el nombre ("P07 - Sonidos, fuerzas...") no está en ninguna lista de hijos.
+export async function getDriveFile(fileId: string): Promise<DriveFile> {
+  const token = await getDriveAccessToken();
+  const url = "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(fileId) +
+    "?fields=id,name,mimeType&supportsAllDrives=true";
+  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  if (!resp.ok) throw new Error("No se pudo leer el archivo de Drive (" + resp.status + "): " + await resp.text());
+  return await resp.json() as DriveFile;
+}
+
 // Lista los hijos directos de una carpeta.
 export async function listDriveFolder(folderId: string): Promise<DriveFile[]> {
   const token = await getDriveAccessToken();
@@ -152,6 +183,14 @@ function esCarpetaTrimestre(name: string): boolean {
 function esExamen(name: string): boolean {
   return /examen/i.test(name);
 }
+// Carpetas hermanas de T1/T2/T3 que NO son un trimestre y que los fallbacks
+// (cuando ninguna carpeta se llama "T#") jamás deben tomar por uno: la de
+// "Multigrado" en la raíz y la de "Proyectos Personalizados" en cada grado.
+// Si entraran, desplazarían el índice de trimestres y el anexo del T2 se
+// buscaría en la carpeta equivocada.
+function esCarpetaAjena(name: string): boolean {
+  return /multigrado|personalizad/i.test(name);
+}
 
 // Carpeta de trimestre número `t` (1-3) dentro de la carpeta de un grado.
 // Usado para resolver anexos del paquete CICLO por coordenadas.
@@ -161,7 +200,7 @@ export async function carpetaTrimestreDeGrado(
 ): Promise<DriveFile | null> {
   const nivel1 = soloCarpetas(await listDriveFolder(gradoFolderId));
   let tris = nivel1.filter((f) => esCarpetaTrimestre(f.name));
-  if (!tris.length) tris = nivel1.filter((f) => !/multigrado/i.test(f.name));
+  if (!tris.length) tris = nivel1.filter((f) => !esCarpetaAjena(f.name));
   // tris ya viene ordenado alfanumérico (T1, T2, T3) por listDriveFolder.
   return tris[t - 1] || null;
 }
@@ -213,10 +252,16 @@ function numeroDeTrimestre(name: string, posicion: number): number {
 // Ítems descargables de un paquete, en orden (proyectos + examen por trimestre).
 //  - trimestre: ítems dentro de la carpeta del trimestre.
 //  - ciclo: por cada trimestre (ordenado) sus ítems, concatenados.
+//  - proyecto: la carpeta misma, como único ítem (índice 0). Así la
+//    biblioteca, la descarga y la vista previa funcionan sin un caso aparte.
 export async function listProyectoFolders(
   bundleFolderId: string,
-  tipoPaquete: "trimestre" | "ciclo",
+  tipoPaquete: TipoPaquete,
 ): Promise<PaqueteItem[]> {
+  if (tipoPaquete === "proyecto") {
+    const f = await getDriveFile(bundleFolderId);
+    return [{ ...f, trimestre: null, codigo: codigoDeProyecto(f.name) }];
+  }
   if (tipoPaquete === "trimestre") {
     // El trimestre lo conoce quien llama (viene del producto), no la carpeta.
     return await itemsDeTrimestre(bundleFolderId, null);
@@ -225,7 +270,7 @@ export async function listProyectoFolders(
   const nivel1 = soloCarpetas(await listDriveFolder(bundleFolderId));
   let trimestres = nivel1.filter((f) => esCarpetaTrimestre(f.name));
   if (!trimestres.length) {
-    trimestres = nivel1.filter((f) => !/multigrado/i.test(f.name));
+    trimestres = nivel1.filter((f) => !esCarpetaAjena(f.name));
   }
 
   const items: PaqueteItem[] = [];
@@ -242,8 +287,11 @@ export async function listProyectoFolders(
 // Primera carpeta de PROYECTO del paquete (para la vista previa; nunca el examen).
 export async function primerProyectoFolder(
   bundleFolderId: string,
-  tipoPaquete: "trimestre" | "ciclo",
+  tipoPaquete: TipoPaquete,
 ): Promise<DriveFile | null> {
+  if (tipoPaquete === "proyecto") {
+    return await getDriveFile(bundleFolderId);
+  }
   if (tipoPaquete === "trimestre") {
     const p = await proyectosDeTrimestre(bundleFolderId);
     return p.length ? p[0] : null;
@@ -251,7 +299,7 @@ export async function primerProyectoFolder(
   const nivel1 = soloCarpetas(await listDriveFolder(bundleFolderId));
   let trimestres = nivel1.filter((f) => esCarpetaTrimestre(f.name));
   if (!trimestres.length) {
-    trimestres = nivel1.filter((f) => !/multigrado/i.test(f.name));
+    trimestres = nivel1.filter((f) => !esCarpetaAjena(f.name));
   }
   for (const tri of trimestres) {
     const p = await proyectosDeTrimestre(tri.id);

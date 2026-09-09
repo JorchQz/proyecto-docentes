@@ -257,7 +257,9 @@ function llenarPrecios(prods) {
 
 	setPrecio("precioTrim", trim, "por grado y trimestre", false);
 	setPrecio("precioCiclo", ciclo, "el ciclo completo", true);
-	setPrecio("precioMulti", minPrecio(prods, function (p) { return p.organizacion === "multigrado"; }), "2 o 3 grados", false);
+	// Solo paquetes de trimestre: un proyecto suelto multigrado ($80) haría
+	// que el "desde" del landing mintiera sobre el precio del paquete.
+	setPrecio("precioMulti", minPrecio(prods, function (p) { return p.organizacion === "multigrado" && p.tipo_paquete === "trimestre"; }), "2 o 3 grados", false);
 
 	// El ahorro en pesos, no la idea vaga de "ahorra": tres trimestres sueltos
 	// contra el ciclo. Sale de los precios reales, así que sigue siendo cierto

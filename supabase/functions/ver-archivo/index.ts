@@ -11,7 +11,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
-import { downloadDriveFile, listProyectoFolders, puedeEntregarArchivo, walkDriveFolder } from "../_shared/google-drive.ts";
+import { downloadDriveFile, listProyectoFolders, puedeEntregarArchivo, puedeEntregarRuta, walkDriveFolder } from "../_shared/google-drive.ts";
+import { compradorIncluyeAnexos, normalizarTipoPaquete } from "../_shared/entrega.ts";
 import { aplicarPieDocx, aplicarPiePdf, textoPie } from "../_shared/watermark.ts";
 
 const MIME: Record<string, string> = {
@@ -73,7 +74,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Paquete sin carpeta configurada" }, 404);
     }
 
-    const tipoPaquete = (producto.tipo_paquete || "trimestre") as "trimestre" | "ciclo";
+    const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
     const proyectos = await listProyectoFolders(producto.proyecto_folder_drive_id, tipoPaquete);
     if (proyectoIdx < 0 || proyectoIdx >= proyectos.length) {
       return jsonResponse({ error: "Índice de proyecto inválido" }, 400);
@@ -81,6 +82,7 @@ Deno.serve(async (req: Request) => {
     const proyectoFolder = proyectos[proyectoIdx];
     const esExamen = /examen/i.test(proyectoFolder.name);
     const esEditable = acceso.tipo === "editable";
+    const conAnexos = await compradorIncluyeAnexos(admin, user.id, acceso.producto_id, tipoPaquete);
 
     // Resolver el archivo por su ruta relativa (sin exponer Drive IDs).
     const walked = await walkDriveFolder(proyectoFolder.id);
@@ -94,6 +96,10 @@ Deno.serve(async (req: Request) => {
     // Tier: el DOCX es un add-on de todo o nada (ver puedeEntregarArchivo).
     if (!puedeEntregarArchivo(archivo.name, esEditable)) {
       return jsonResponse({ error: "Esta versión requiere la compra editable" }, 403);
+    }
+    // Proyecto suelto sin anexos: las subcarpetas no se entregan.
+    if (!puedeEntregarRuta(archivo.path, conAnexos)) {
+      return jsonResponse({ error: "Este proyecto se compró sin anexos", sin_anexos: true }, 403);
     }
 
     let bytes = await downloadDriveFile(archivo.id);

@@ -4,7 +4,9 @@
 	var SUPABASE_URL =
 		window.SUPABASE_URL || "https://cluvaxxqvhtxxiwctpnl.supabase.co";
 	var EDGE_BASE = SUPABASE_URL + "/functions/v1";
-	var ADMIN_EMAIL = "jorgequezadarm@gmail.com";
+	// Espejo de es_admin() en la base (supabase/admin_cuenta_jissez.sql). Aquí
+	// solo decide qué enlaces se muestran; la seguridad real es la RPC.
+	var ADMIN_EMAIL = "soporte.jissez@gmail.com";
 
 	// Colores por campo formativo (design tokens).
 	var CF_COLOR = {

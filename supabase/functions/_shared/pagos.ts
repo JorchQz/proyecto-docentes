@@ -213,12 +213,31 @@ async function recalcularPrecios(admin: Cliente): Promise<void> {
 }
 
 /**
- * Otorga los accesos que corresponden a los items de una orden.
+ * Filas de marketplace_accesos que corresponden a un item comprado.
  *
- * Regla de negocio (CONTEXTO: la versión editable incluye todo):
+ * Paquetes (trimestre / ciclo), la versión editable incluye todo:
  *   compró 'pdf'      → pdf + anexos
  *   compró 'editable' → editable + pdf + anexos
+ *
+ * Proyecto suelto (tipo_paquete = 'proyecto'): el Word va SIEMPRE incluido
+ * (fila 'editable' de regalo) y lo que se vende aparte son los anexos. La
+ * fila 'anexos' es la que leen las funciones de entrega para decidir si se
+ * muestran las subcarpetas del proyecto.
+ *   compró 'pdf'      → pdf + editable
+ *   compró 'anexos'   → pdf + editable + anexos
  */
+export function tiposDeAcceso(tipoItem: string, tipoPaquete: string | null): string[] {
+  if (tipoPaquete === "proyecto") {
+    return tipoItem === "anexos"
+      ? ["pdf", "editable", "anexos"]
+      : ["pdf", "editable"];
+  }
+  return tipoItem === "editable"
+    ? ["editable", "pdf", "anexos"]
+    : ["pdf", "anexos"];
+}
+
+/** Otorga los accesos que corresponden a los items de una orden. */
 export async function otorgarAccesosDeOrden(
   admin: Cliente,
   ordenId: string,
@@ -226,14 +245,16 @@ export async function otorgarAccesosDeOrden(
 ): Promise<number> {
   const { data: items } = await admin
     .from("marketplace_orden_items")
-    .select("producto_id, tipo")
+    .select("producto_id, tipo, marketplace_productos(tipo_paquete)")
     .eq("orden_id", ordenId);
 
   const accesos: Array<Record<string, unknown>> = [];
   for (const item of items || []) {
-    const tipos = item.tipo === "editable"
-      ? ["editable", "pdf", "anexos"]
-      : ["pdf", "anexos"];
+    // Items sin producto (pedidos personalizados) no otorgan acceso aquí: se
+    // entregan al completarse el pedido.
+    if (!item.producto_id) continue;
+    const tipoPaquete = (item as any).marketplace_productos?.tipo_paquete ?? null;
+    const tipos = tiposDeAcceso(item.tipo, tipoPaquete);
     for (const t of tipos) {
       accesos.push({
         user_id: userId,
@@ -259,6 +280,18 @@ export async function otorgarAccesosDeOrden(
   return accesos.length;
 }
 
+/** Texto de la versión comprada, para correos y resúmenes. */
+export function descripcionVersion(tipoItem: string, tipoPaquete: string | null): string {
+  if (tipoPaquete === "proyecto") {
+    return tipoItem === "anexos"
+      ? "Proyecto individual: PDF + Word editable + anexos"
+      : "Proyecto individual: PDF + Word editable (sin anexos)";
+  }
+  return tipoItem === "editable"
+    ? "Word editable + PDF + anexos"
+    : "PDF + anexos";
+}
+
 /**
  * Correo de confirmación al comprador.
  *
@@ -280,15 +313,13 @@ async function avisarCompraPorCorreo(
 
   const { data: items } = await admin
     .from("marketplace_orden_items")
-    .select("tipo, marketplace_productos(titulo)")
+    .select("tipo, marketplace_productos(titulo, tipo_paquete)")
     .eq("orden_id", ordenId);
 
   const lista = (items || [])
     .map((i: any) => {
       const titulo = i.marketplace_productos?.titulo || "Paquete";
-      const version = i.tipo === "editable"
-        ? "Word editable + PDF + anexos"
-        : "PDF + anexos";
+      const version = descripcionVersion(i.tipo, i.marketplace_productos?.tipo_paquete ?? null);
       return `<li style="margin-bottom:6px"><strong>${escaparHtml(titulo)}</strong><br><span style="color:#5b6473;font-size:14px">${version}</span></li>`;
     })
     .join("");

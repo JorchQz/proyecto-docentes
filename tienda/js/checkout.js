@@ -44,10 +44,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		(comboTipoPaquete === "ciclo" ||
 			(comboTipoPaquete === "trimestre" && [1, 2, 3].indexOf(comboTrimestre) !== -1));
 
-	if ((tipo !== "pdf" && tipo !== "editable") || (esCombo ? !comboValido : !productoId)) {
+	// 'anexos' es la versión "con anexos" del proyecto suelto; el combo unitario
+	// es de paquetes y no la tiene.
+	var tipoValido = tipo === "pdf" || tipo === "editable" || (!esCombo && tipo === "anexos");
+	if (!tipoValido || (esCombo ? !comboValido : !productoId)) {
 		estadoEl.textContent = "Compra inválida.";
 		return;
 	}
+	var aceptaTerminosEl = document.getElementById("aceptaTerminos");
 
 	// Lo que se manda a crear-preferencia-mp; lo llena prepararCombo o
 	// prepararIndividual. El precio NUNCA viaja aquí: lo calcula el servidor.
@@ -113,7 +117,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function prepararIndividual() {
 		var res = await window.sb
 			.from("marketplace_productos")
-			.select("id, titulo, precio_pdf, precio_editable, activo, organizacion, grado, grados_combo")
+			.select("id, titulo, precio_pdf, precio_editable, precio_pdf_con_anexos, tipo_paquete, activo, organizacion, grado, grados_combo")
 			.eq("id", productoId)
 			.eq("activo", true)
 			.maybeSingle();
@@ -123,7 +127,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return false;
 		}
 		var p = res.data;
-		var precio = tipo === "pdf" ? p.precio_pdf : p.precio_editable;
+		// Proyecto suelto: 'pdf' = sin anexos, 'anexos' = con anexos; el Word va
+		// incluido en los dos. Paquete: 'editable' es el add-on de Word.
+		var esProyecto = p.tipo_paquete === "proyecto";
+		if (esProyecto ? tipo === "editable" : tipo === "anexos") {
+			estadoEl.textContent = "Esta versión no existe para este producto.";
+			return false;
+		}
+		var precio = esProyecto
+			? (tipo === "pdf" ? p.precio_pdf : p.precio_pdf_con_anexos)
+			: (tipo === "pdf" ? p.precio_pdf : p.precio_editable);
 		if (precio == null) {
 			estadoEl.textContent = "Esta versión no tiene precio configurado.";
 			return false;
@@ -132,19 +145,30 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// "Volver" tiene que llevar a la ficha del paquete, y esa página se
 		// identifica por grado o por combinación multigrado, nunca por el id del
 		// producto: con `?id=` no encontraba nada y decía "no está disponible".
-		volverLink.href = p.organizacion === "multigrado"
-			? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
-			: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || "");
+		// La ficha del proyecto suelto sí va por id.
+		volverLink.href = esProyecto
+			? "proyecto.html?id=" + encodeURIComponent(p.id)
+			: (p.organizacion === "multigrado"
+				? "producto.html?org=multigrado&combo=" + encodeURIComponent(p.grados_combo || "")
+				: "producto.html?org=completa&g=" + encodeURIComponent(p.grado || ""));
 
 		// Resumen
 		resumenTitulo.textContent = p.titulo;
-		resumenTipo.textContent = tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word";
+		resumenTipo.textContent = esProyecto
+			? (tipo === "anexos"
+				? "Proyecto individual — planeación en PDF y Word editable, con anexos imprimibles"
+				: "Proyecto individual — planeación en PDF y Word editable, sin anexos")
+			: (tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word");
 		pintarTotal(precio);
 
-		// Con el add-on de Word mostramos de dónde sale el total: el PDF cuesta lo
-		// mismo que suelto y el resto es exactamente el precio del editable.
+		// Con el add-on mostramos de dónde sale el total: la base cuesta lo
+		// mismo que suelta y el resto es exactamente el precio del extra.
 		// Ambas partes salen de precios YA descontados, para que sumen el total.
-		if (tipo === "editable" && p.precio_pdf != null) {
+		if (esProyecto && tipo === "anexos" && p.precio_pdf != null) {
+			var baseFinal = Tienda.precioFinal(p.precio_pdf);
+			mostrarDesglose(baseFinal, Tienda.precioFinal(p.precio_pdf_con_anexos) - baseFinal,
+				"Proyecto en PDF + Word", "Anexos imprimibles");
+		} else if (tipo === "editable" && p.precio_pdf != null) {
 			var pdfFinal = Tienda.precioFinal(p.precio_pdf);
 			mostrarDesglose(pdfFinal, Tienda.precioFinal(p.precio_editable) - pdfFinal);
 		}
@@ -230,8 +254,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return true;
 	}
 
-	function mostrarDesglose(precioPdf, addon) {
+	function mostrarDesglose(precioPdf, addon, etiquetaBase, etiquetaAddon) {
 		if (addon <= 0) { return; }
+		// Las etiquetas por defecto son las del paquete (PDF + add-on de Word);
+		// el proyecto suelto manda las suyas (PDF + Word / anexos).
+		document.getElementById("desgloseBaseLabel").textContent = etiquetaBase || "Planeación en PDF";
+		document.getElementById("desgloseAddonLabel").textContent = etiquetaAddon || "Versión Word editable";
 		document.getElementById("desglosePdf").textContent = money(precioPdf);
 		document.getElementById("desgloseWord").textContent = "+ " + money(addon);
 		document.getElementById("resumenDesglose").classList.remove("hidden");
@@ -411,6 +439,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	pagarMpBtn.addEventListener("click", async function () {
 		limpiarAviso();
+		// Sin aceptar los Términos y el Aviso de Privacidad no se cobra. La
+		// casilla vive fuera del bloque de datos (que se oculta con sesión),
+		// así que se ve siempre.
+		if (aceptaTerminosEl && !aceptaTerminosEl.checked) {
+			Tienda.toast("Para continuar, acepta los Términos y Condiciones y el Aviso de Privacidad.", "error");
+			aceptaTerminosEl.focus();
+			return;
+		}
 		pagarMpBtn.disabled = true;
 		pagarMpBtn.textContent = "Preparando tu compra...";
 		try {
@@ -432,6 +468,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// se puede comprobar antes de que exista la cuenta).
 			var cuerpo = Object.assign({}, cuerpoPago);
 			if (cuponAplicado) { cuerpo.cupon = cuponAplicado; }
+			// La aceptación viaja con la compra y queda sellada en la orden.
+			cuerpo.acepta_terminos = true;
 			var resp = await fetch(Tienda.EDGE_BASE + "/crear-preferencia-mp", {
 				method: "POST",
 				headers: {

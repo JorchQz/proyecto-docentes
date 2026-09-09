@@ -5,13 +5,17 @@
 // expone Drive IDs: cada archivo se identifica por su ruta relativa (path).
 //
 // GET /functions/v1/archivos-proyecto?acceso_id=<uuid>&proyecto=<n>
-//   → { proyecto, codigo, trimestre, es_examen, tipo_acceso,
+//   → { proyecto, codigo, trimestre, es_examen, tipo_acceso, incluye_anexos,
 //       archivos: [{ path, nombre, grupo, ext, ver, descarga }] }
+//
+// En un proyecto suelto (tipo_paquete = 'proyecto') el índice es siempre 0 y
+// las subcarpetas (anexos) solo se listan si se compró la versión con anexos.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
-import { listProyectoFolders, puedeEntregarArchivo, walkDriveFolder } from "../_shared/google-drive.ts";
+import { listProyectoFolders, puedeEntregarArchivo, puedeEntregarRuta, walkDriveFolder } from "../_shared/google-drive.ts";
+import { compradorIncluyeAnexos, normalizarTipoPaquete } from "../_shared/entrega.ts";
 
 function ext(name: string): string {
   const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
@@ -60,7 +64,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Paquete sin carpeta configurada" }, 404);
     }
 
-    const tipoPaquete = (producto.tipo_paquete || "trimestre") as "trimestre" | "ciclo";
+    const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
     const proyectos = await listProyectoFolders(producto.proyecto_folder_drive_id, tipoPaquete);
     if (proyectoIdx < 0 || proyectoIdx >= proyectos.length) {
       return jsonResponse({ error: "Índice de proyecto inválido" }, 400);
@@ -68,6 +72,8 @@ Deno.serve(async (req: Request) => {
     const proyectoFolder = proyectos[proyectoIdx];
     const esExamen = /examen/i.test(proyectoFolder.name);
     const esEditable = acceso.tipo === "editable";
+    // Proyecto suelto sin anexos: las subcarpetas ni se listan.
+    const conAnexos = await compradorIncluyeAnexos(admin, user.id, acceso.producto_id, tipoPaquete);
 
     const walked = await walkDriveFolder(proyectoFolder.id);
 
@@ -79,6 +85,7 @@ Deno.serve(async (req: Request) => {
 
       // Tier: el DOCX es un add-on de todo o nada (ver puedeEntregarArchivo).
       if (!puedeEntregarArchivo(f.name, esEditable)) continue;
+      if (!puedeEntregarRuta(f.path, conAnexos)) continue;
 
       const grupo = enRaiz
         ? (esExamen ? "Examen" : "Planeación")
@@ -111,6 +118,7 @@ Deno.serve(async (req: Request) => {
       trimestre: trimestre,
       es_examen: esExamen,
       tipo_acceso: acceso.tipo,
+      incluye_anexos: conAnexos,
       archivos,
     });
   } catch (err) {

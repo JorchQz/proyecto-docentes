@@ -52,7 +52,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var res = resultados[0];
 
 		if (res.error) { mostrarError(); return; }
-		todos = res.data || [];
+		// Solo paquetes (trimestre / ciclo). Los proyectos sueltos (tipo
+		// 'proyecto', desde $80) tienen su propia vista: si entraran aquí se
+		// colarían en la tarjeta del grado y el "desde" bajaría a $80.
+		todos = (res.data || []).filter(function (p) { return p.tipo_paquete !== "proyecto"; });
 		pintarTiraPromo();
 		renderCombos();
 		aplicarFiltros();

@@ -218,6 +218,36 @@ un proyecto comprado al perfil de un maestro es una copia casi 1:1 (reasignar du
 traducir nombres metodología/escenario + `momento_metodologico`/`duracion_minutos` →
 `momento`/`duracion`).
 
+### 6.4 Mundo de la tienda (`marketplace_*`, `tienda/`)
+Tienda pública en `tienda/` (Jissez). Los documentos viven en Google Drive; la base guarda
+metadatos, órdenes y accesos. Migraciones en `supabase/marketplace_*.sql`; el DDL original
+de las cuatro tablas centrales se creó directo en la BD (manda la BD).
+
+- `marketplace_productos` — lo que se vende. `tipo_paquete` ∈ `trimestre` (4 proyectos) ·
+  `ciclo` (12) · **`proyecto`** (uno suelto, desde 2026-09). `organizacion`
+  (`completa`/`multigrado`), `grados_combo`, `modalidad`, `proyecto_folder_drive_id`
+  (carpeta del paquete o, en `proyecto`, la carpeta P0N del proyecto), `precio_pdf`,
+  `precio_editable` (add-on Word, solo paquetes), `precio_pdf_con_anexos` y
+  `numero_proyecto` 1-12 (solo `proyecto`), `dosificacion_proyecto_id` (solo `proyecto`:
+  llave del filtro por contenido/PDA), `activo`, `es_prueba`.
+- `marketplace_ordenes` / `marketplace_orden_items` — orden y líneas. `items.tipo` ∈
+  `pdf` · `editable` (Word, paquetes) · `anexos` (con anexos, proyecto suelto).
+  `ordenes.terminos_aceptados_en` sella la aceptación legal del checkout.
+- `marketplace_accesos` — una fila por (usuario, producto, `tipo`) con `tipo` ∈
+  `pdf`/`editable`/`anexos`. Regla única en `_shared/pagos.ts::tiposDeAcceso` y su espejo SQL
+  `_accesos_por_tipo`: paquete `pdf`→pdf+anexos, `editable`→editable+pdf+anexos;
+  proyecto `pdf`→pdf+editable (Word siempre), `anexos`→pdf+editable+anexos. La fila
+  `editable` habilita los .docx (`puedeEntregarArchivo`); la fila `anexos` habilita las
+  subcarpetas (`puedeEntregarRuta`), que en paquetes van siempre.
+- `marketplace_precios`, `marketplace_promocion`, `marketplace_cupones` — tarifario de
+  paquetes, promoción porcentual y cupones. Los proyectos sueltos no están en el tarifario:
+  su precio vive en la fila y se edita en el admin; la promoción y los cupones se aplican
+  encima igual que a los paquetes.
+- Admin: `es_admin()` (cuenta `soporte.jissez@gmail.com`) es la única fuente del rol.
+- Links de anexo impresos por el bot: `anexo.html?aula=<grado|combo>&pr=<1-12>&a=<código>`;
+  la Edge Function `anexo` los resuelve con el paquete o con el proyecto suelto (por
+  `numero_proyecto`) comprado con anexos.
+
 ---
 
 ## 7. Estado de los módulos
@@ -240,6 +270,10 @@ traducir nombres metodología/escenario + `momento_metodologico`/`duracion_minut
 | Evaluación Diagnóstica (cuaderno + lectura + matemáticas, semáforo) | ✅ Completo | `evaluacion_diagnostica.html` |
 | Exámenes (aplicar + calificar + auto-calificación por CF) | ✅ Completo | `examen.html` |
 | Marketplace (catálogo + filtros + preview + importar) | ✅ Completo | `marketplace.html` |
+| Tienda: paquetes (catálogo, ficha, checkout MP, biblioteca, anexos, promoción, cupones) | ✅ Completo | `tienda/*` |
+| Tienda: proyectos sueltos (venta con/sin anexos, entrega, admin "Proyectos sueltos") | ✅ Completo (2026-09, Bloque 1) | `tienda/admin.html`, Edge `admin-proyectos-drive` |
+| Tienda: filtro por campo/contenido/PDA + ficha `proyecto.html` + legal | ⏳ Bloque 2 | — |
+| Tienda: proyectos personalizados (pedidos, admin, correos) | ⏳ Bloque 3 | — |
 
 ### Pendientes / deuda técnica
 - El Marketplace muestra estado vacío hasta que el bot publique proyectos con `estado = 'publicado'`.

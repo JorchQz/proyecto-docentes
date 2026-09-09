@@ -21,7 +21,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { zipSync } from "https://esm.sh/fflate@0.8.2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
-import { downloadDriveFile, listProyectoFolders, puedeEntregarArchivo, walkDriveFolder } from "../_shared/google-drive.ts";
+import { downloadDriveFile, listProyectoFolders, puedeEntregarArchivo, puedeEntregarRuta, walkDriveFolder } from "../_shared/google-drive.ts";
+import { compradorIncluyeAnexos, normalizarTipoPaquete } from "../_shared/entrega.ts";
 import { aplicarPieDocx, aplicarPiePdf, textoPie } from "../_shared/watermark.ts";
 
 function esDocx(name: string): boolean {
@@ -84,7 +85,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Este paquete no tiene carpeta de Drive configurada" }, 404);
     }
 
-    const tipoPaquete = (producto.tipo_paquete || "trimestre") as "trimestre" | "ciclo";
+    const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
 
     // 3. Resolver la carpeta del proyecto N dentro del paquete.
     const proyectos = await listProyectoFolders(producto.proyecto_folder_drive_id, tipoPaquete);
@@ -103,6 +104,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const incluirDocx = acceso.tipo === "editable";
+    // Proyecto suelto sin anexos: las subcarpetas no van en el ZIP.
+    const incluirAnexos = await compradorIncluyeAnexos(admin, user.id, acceso.producto_id, tipoPaquete);
     const esItemExamen = /examen/i.test(proyectoFolder.name);
     const nombre =
       (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.nombre_docente)) ||
@@ -127,6 +130,7 @@ Deno.serve(async (req: Request) => {
       const pdf = esPdf(f.name);
       // Tier: el DOCX es un add-on de todo o nada (ver puedeEntregarArchivo).
       if (!puedeEntregarArchivo(f.name, incluirDocx)) continue;
+      if (!puedeEntregarRuta(f.path, incluirAnexos)) continue;
 
       let bytes = await downloadDriveFile(f.id);
 

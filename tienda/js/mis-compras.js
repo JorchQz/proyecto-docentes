@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function cargar() {
 		var accRes = await window.sb
 			.from("marketplace_accesos")
-			.select("id, tipo, producto_id, otorgado_en, marketplace_productos(titulo, grado, tipo_paquete, trimestre, num_proyectos)")
+			.select("id, tipo, producto_id, otorgado_en, marketplace_productos(titulo, grado, tipo_paquete, trimestre, num_proyectos, numero_proyecto)")
 			.eq("user_id", session.user.id)
 			.order("otorgado_en", { ascending: false });
 
@@ -152,10 +152,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var info = porProducto[pid];
 			var prod = info.producto || {};
 			var esCiclo = prod.tipo_paquete === "ciclo";
-			var etiquetaTipo = esCiclo ? "Ciclo completo" : "Trimestre " + (prod.trimestre || "");
+			var esProyecto = prod.tipo_paquete === "proyecto";
+			var etiquetaTipo = esCiclo
+				? "Ciclo completo"
+				: (esProyecto
+					? "Proyecto" + (prod.numero_proyecto ? " " + prod.numero_proyecto : "") + (prod.trimestre ? " · Trimestre " + prod.trimestre : "")
+					: "Trimestre " + (prod.trimestre || ""));
 			var esEditable = !!info.tipos.editable;
 			var accesoId = esEditable ? info.tipos.editable : info.tipos.pdf;
-			var versionTxt = esEditable ? "Word + PDF + anexos" : "PDF + anexos";
+			// Proyecto suelto: el Word va siempre; lo que cambia es si lleva anexos.
+			var versionTxt = esProyecto
+				? (info.tipos.anexos ? "PDF + Word + anexos" : "PDF + Word (sin anexos)")
+				: (esEditable ? "Word + PDF + anexos" : "PDF + anexos");
 
 			var avatar;
 			if (prod.grado) {

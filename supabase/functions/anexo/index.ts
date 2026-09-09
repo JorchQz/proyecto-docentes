@@ -2,12 +2,19 @@
 //
 // Resuelve un anexo por COORDENADAS (grado, trimestre, proyecto, código) — un link
 // genérico, igual para todos los compradores, que el bot incrusta en la planeación.
-// Valida que el usuario en sesión tenga acceso a un paquete que cubra ese grado/trimestre
-// (paquete trimestral o ciclo) y sirve el archivo (PDF o imagen) inline o descarga.
+// Valida que el usuario en sesión tenga acceso a un producto que cubra ese
+// grado/proyecto — paquete trimestral, ciclo, o el proyecto suelto comprado
+// CON anexos — y sirve el archivo (PDF o imagen) inline o descarga.
 //
-// GET /functions/v1/anexo?g=<grado>&pr=<proyecto 1-12>&a=<código>&modo=inline|download
+// GET /functions/v1/anexo?aula=<grado|combo>&pr=<proyecto 1-12>&a=<código>&modo=inline|download
 //   pr = número de proyecto CONTINUO del grado (1-12). El trimestre y la posición
 //   dentro del trimestre se derivan: t = ceil(pr/4), pos = pr - (t-1)*4.
+//   En un proyecto suelto, pr coincide con marketplace_productos.numero_proyecto
+//   y la carpeta del producto ya es la del proyecto: no hay nada que derivar.
+//
+// Respuestas 403: { sin_acceso: true } sin ningún producto que cubra el anexo;
+// { sin_anexos: true, producto_id } cuando tiene el proyecto suelto pero lo
+// compró en la versión sin anexos.
 //
 // Cabecera requerida: Authorization: Bearer <access_token del usuario>
 
@@ -82,15 +89,26 @@ Deno.serve(async (req: Request) => {
 
     const admin = createClient(supabaseUrl, serviceKey);
 
-    // ¿El usuario posee un paquete que cubra esta aula+trimestre?
-    // (trimestre exacto, o el ciclo). Tomamos cualquiera que tenga.
+    // ¿El usuario posee un producto que cubra esta aula+proyecto? Un paquete
+    // (trimestre exacto, o el ciclo) o el proyecto suelto con ese número.
+    // Tomamos cualquiera que tenga; los paquetes van primero porque siempre
+    // incluyen los anexos.
     const { data: accesos } = await admin
       .from("marketplace_accesos")
-      .select("producto_id, tipo, marketplace_productos(grado, trimestre, tipo_paquete, proyecto_folder_drive_id, organizacion, grados_combo)")
+      .select("producto_id, tipo, marketplace_productos(grado, trimestre, tipo_paquete, numero_proyecto, proyecto_folder_drive_id, organizacion, grados_combo)")
       .eq("user_id", user.id);
 
+    const tieneFila = (productoId: string, tipo: string) =>
+      (accesos || []).some((a: any) => a.producto_id === productoId && a.tipo === tipo);
+
     let folderTrimestre: string | null = null;
+    // Proyecto suelto: la carpeta del producto YA es la del proyecto.
+    let folderProyectoDirecto: string | null = null;
     let productoMatch: string | null = null;
+    // Tiene el proyecto suelto pero en la versión sin anexos: se recuerda para
+    // responder algo mejor que "no tienes acceso".
+    let sueltoSinAnexos: string | null = null;
+
     for (const ac of accesos || []) {
       const prod: any = ac.marketplace_productos;
       if (!prod || !prod.proyecto_folder_drive_id) continue;
@@ -99,6 +117,14 @@ Deno.serve(async (req: Request) => {
         if (prod.organizacion !== "multigrado" || prod.grados_combo !== aula) continue;
       } else {
         if (prod.organizacion === "multigrado" || prod.grado !== grado) continue;
+      }
+      if (prod.tipo_paquete === "proyecto") {
+        if (Number(prod.numero_proyecto) !== pr) continue;
+        // La fila 'anexos' es el interruptor de la versión con anexos.
+        if (!tieneFila(ac.producto_id, "anexos")) { sueltoSinAnexos = ac.producto_id; continue; }
+        folderProyectoDirecto = prod.proyecto_folder_drive_id;
+        productoMatch = ac.producto_id;
+        break;
       }
       if (prod.tipo_paquete === "trimestre" && prod.trimestre === t) {
         folderTrimestre = prod.proyecto_folder_drive_id;
@@ -111,25 +137,41 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (!folderTrimestre) {
+    if (!folderTrimestre && !folderProyectoDirecto) {
+      if (sueltoSinAnexos) {
+        return jsonResponse(
+          {
+            error: "Este proyecto se compró sin anexos",
+            sin_anexos: true,
+            producto_id: sueltoSinAnexos,
+          },
+          403,
+        );
+      }
       return jsonResponse({ error: "No tienes acceso a este material", sin_acceso: true }, 403);
     }
 
     // El DOCX es un add-on de todo o nada: solo si el usuario posee el tier
-    // 'editable' del mismo paquete que cubre este trimestre.
-    const esEditable = (accesos || []).some(
-      (a: any) => a.producto_id === productoMatch && a.tipo === "editable",
-    );
+    // 'editable' del mismo producto que cubre este anexo. (En el proyecto
+    // suelto la fila 'editable' se otorga siempre: el Word va incluido.)
+    const esEditable = tieneFila(productoMatch!, "editable");
 
-    // Carpeta del proyecto p (1-4) dentro del trimestre.
-    const proyectos = await proyectosDeTrimestre(folderTrimestre);
-    const proyectoFolder = proyectos[p - 1];
-    if (!proyectoFolder) return jsonResponse({ error: "Proyecto no encontrado" }, 404);
+    // Carpeta del proyecto: directa en el suelto; p (1-4) dentro del trimestre
+    // en los paquetes.
+    let proyectoFolderId: string;
+    if (folderProyectoDirecto) {
+      proyectoFolderId = folderProyectoDirecto;
+    } else {
+      const proyectos = await proyectosDeTrimestre(folderTrimestre!);
+      const proyectoFolder = proyectos[p - 1];
+      if (!proyectoFolder) return jsonResponse({ error: "Proyecto no encontrado" }, 404);
+      proyectoFolderId = proyectoFolder.id;
+    }
 
     // Buscar el archivo cuyo nombre corresponde EXACTAMENTE al código. Se eliminó
     // el fallback por substring: permitía que ?a=Planeacion/Examen resolviera la
     // planeación o el examen completos (fuga de material y del add-on de Word).
-    const walked = await walkDriveFolder(proyectoFolder.id);
+    const walked = await walkDriveFolder(proyectoFolderId);
     const codLow = codigo.toLowerCase();
     const archivo = walked.find((f) => base(f.name) === codLow);
     if (!archivo) return jsonResponse({ error: "Anexo no encontrado" }, 404);

@@ -8,11 +8,17 @@
 //
 // POST /functions/v1/crear-preferencia-mp
 //   body compra individual: { producto_id: uuid, tipo: 'pdf' | 'editable' }
+//     · paquete (trimestre/ciclo): 'pdf' o 'editable' (add-on de Word)
+//     · proyecto suelto (tipo_paquete = 'proyecto'): 'pdf' = sin anexos,
+//       'anexos' = con anexos. El Word va incluido en los dos.
 //   body paquete unitario:  { combo: 'unitaria',
 //                             agrupacion: 'tridocente' | 'bidocente',
 //                             tipo_paquete: 'trimestre' | 'ciclo',
 //                             trimestre: 1 | 2 | 3,   // solo si tipo_paquete = 'trimestre'
 //                             tipo: 'pdf' | 'editable' }
+//   en ambos, opcionales: cupon (código) y acepta_terminos (true cuando el
+//   comprador marcó la casilla de Términos y Aviso de Privacidad; se sella en
+//   marketplace_ordenes.terminos_aceptados_en).
 //   header: Authorization: Bearer <access_token del usuario>
 
 import {
@@ -40,6 +46,13 @@ const DIAS_CADUCIDAD_ORDEN = 8;
 // banco del comprador. El nombre anterior (MAX_MSI) hizo que la web lo
 // anunciara como "sin intereses", que era falso.
 const MAX_MENSUALIDADES = 12;
+// Rechazar la compra si el comprador no aceptó los Términos. Se despliega en
+// falso a propósito: esta función sale a producción ANTES que el checkout con
+// la casilla, y exigirla desde el primer momento dejaría sin poder pagar a
+// quien tenga cargada la página vieja. Cuando el sitio nuevo lleve un rato
+// servido se pone en true y se vuelve a desplegar. Mientras tanto la fecha se
+// sella igual cada vez que llega.
+const EXIGIR_TERMINOS = false;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -81,22 +94,34 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const tipo = body.tipo;
-    if (tipo !== "pdf" && tipo !== "editable") {
+    if (tipo !== "pdf" && tipo !== "editable" && tipo !== "anexos") {
       return jsonResponse({ error: "Parámetros inválidos" }, 400);
     }
     // Código de cupón opcional. Un código inválido NO tumba la compra: la base
     // lo ignora y se cobra el mejor precio disponible sin él.
     const cupon = normalizarCupon(body.cupon);
 
+    // Aceptación de Términos y Aviso de Privacidad (ver EXIGIR_TERMINOS).
+    const terminosEn = body.acepta_terminos === true ? new Date().toISOString() : null;
+    if (EXIGIR_TERMINOS && !terminosEn) {
+      return jsonResponse(
+        { error: "Para continuar debes aceptar los Términos y Condiciones y el Aviso de Privacidad.", terminos: true },
+        400,
+      );
+    }
+
     const admin = crearAdmin(supabaseUrl, serviceKey);
 
     // Paquete unitario (maestro con los 6 grados): una sola orden con todos
     // los combos multigrado de la agrupación elegida, a precio de combo.
     if (body.combo === "unitaria") {
+      // El combo es de paquetes: "con anexos" no existe ahí.
+      if (tipo === "anexos") return jsonResponse({ error: "Parámetros inválidos" }, 400);
       return await prepararCompraUnitaria(admin, user, body, {
         mpToken,
         siteUrl,
         supabaseUrl,
+        terminosEn,
       });
     }
 
@@ -108,7 +133,7 @@ Deno.serve(async (req: Request) => {
     const { data: producto, error: prodErr } = await admin
       .from("marketplace_productos")
       .select(
-        "id, titulo, precio_pdf, precio_editable, activo, es_prueba, tipo_paquete, proyecto_folder_drive_id, archivo_pdf_drive_id, archivo_docx_drive_id",
+        "id, titulo, precio_pdf, precio_editable, precio_pdf_con_anexos, activo, es_prueba, tipo_paquete, proyecto_folder_drive_id, archivo_pdf_drive_id, archivo_docx_drive_id",
       )
       .eq("id", productoId)
       .maybeSingle();
@@ -120,13 +145,21 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Producto no disponible" }, 404);
     }
 
+    // Las versiones dependen del producto: el paquete vende el Word como
+    // add-on ('editable'); el proyecto suelto lo incluye y vende los anexos
+    // aparte ('anexos'). Cruzarlas cobraría una versión que no existe.
+    const esProyecto = producto.tipo_paquete === "proyecto";
+    if (esProyecto ? tipo === "editable" : tipo === "anexos") {
+      return jsonResponse({ error: "Esta versión no existe para este producto" }, 400);
+    }
+
     // Nunca cobrar por un paquete que no tiene nada que entregar.
     //
     // No basta con mirar los campos: un producto puede tener
     // `proyecto_folder_drive_id` apuntando a una carpeta de Drive todavía
     // vacía. Los paquetes se publican en el catálogo antes de que su material
     // esté cargado, así que comprobamos contra Drive de verdad.
-    if (!(await puedeEntregarse(producto))) {
+    if (!(await puedeEntregarse(producto, tipo))) {
       return jsonResponse(
         {
           error:
@@ -137,9 +170,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const precioLista = tipo === "pdf"
-      ? producto.precio_pdf
-      : producto.precio_editable;
+    const precioLista = esProyecto
+      ? (tipo === "pdf" ? producto.precio_pdf : producto.precio_pdf_con_anexos)
+      : (tipo === "pdf" ? producto.precio_pdf : producto.precio_editable);
     if (precioLista == null) {
       return jsonResponse(
         { error: "Este producto no tiene precio para esa versión" },
@@ -188,9 +221,12 @@ Deno.serve(async (req: Request) => {
 
     // Archivar pendientes caducadas del usuario (limpieza oportunista).
     await archivarOrdenesCaducadas(admin, user.id, ordenId);
+    await sellarTerminos(admin, ordenId, terminosEn);
 
     // 2. Crear la preferencia en Mercado Pago.
-    const tipoLabel = tipo === "pdf" ? "PDF" : "Editable (Word) + PDF";
+    const tipoLabel = esProyecto
+      ? (tipo === "anexos" ? "PDF + Word + anexos" : "PDF + Word")
+      : (tipo === "pdf" ? "PDF" : "Editable (Word) + PDF");
     return await crearPreferenciaYResponder(admin, {
       mpToken,
       supabaseUrl,
@@ -427,7 +463,7 @@ async function prepararCompraUnitaria(
   admin: Cliente,
   user: { id: string; email?: string },
   body: Record<string, unknown>,
-  cfg: { mpToken: string; siteUrl: string; supabaseUrl: string },
+  cfg: { mpToken: string; siteUrl: string; supabaseUrl: string; terminosEn: string | null },
 ): Promise<Response> {
   const agrupacion = String(body.agrupacion || "");
   const tipoPaquete = String(body.tipo_paquete || "");
@@ -550,6 +586,7 @@ async function prepararCompraUnitaria(
     return jsonResponse({ error: "No se pudo crear la orden" }, 500);
   }
   await archivarOrdenesCaducadas(admin, user.id, ordenId);
+  await sellarTerminos(admin, ordenId, cfg.terminosEn);
 
   const etiquetaAgrupacion = agrupacion === "tridocente"
     ? "3 paquetes de 2 grados"
@@ -705,6 +742,24 @@ function repartirPrecio(total: number, n: number): number[] {
 }
 
 /**
+ * Sella en la orden el momento en que el comprador aceptó los Términos. Solo
+ * la primera vez: una orden reutilizada conserva la fecha original.
+ */
+async function sellarTerminos(
+  admin: Cliente,
+  ordenId: string,
+  terminosEn: string | null,
+): Promise<void> {
+  if (!terminosEn) return;
+  const { error } = await admin
+    .from("marketplace_ordenes")
+    .update({ terminos_aceptados_en: terminosEn })
+    .eq("id", ordenId)
+    .is("terminos_aceptados_en", null);
+  if (error) console.error("sellar términos falló (no bloquea la compra):", error);
+}
+
+/**
  * ¿Hay material real que entregar por este paquete?
  *
  * No basta con que exista la carpeta del proyecto: el bot generador crea la
@@ -712,12 +767,18 @@ function repartirPrecio(total: number, n: number): number[] {
  * carpeta de proyecto puede estar vacía. Exigimos un documento descargable
  * (PDF o DOCX) dentro del primer proyecto.
  *
+ * Proyecto suelto: la carpeta es la del proyecto y el Word va incluido, así
+ * que se exigen PDF y DOCX en la raíz; la versión con anexos exige además al
+ * menos una subcarpeta. Vender "con anexos" una carpeta sin anexos sería
+ * cobrar algo que no existe.
+ *
  * Si Drive no responde no bloqueamos la venta: un fallo transitorio de Google
  * no debe costar una compra, y el acceso queda otorgado igual — la descarga
  * funcionará cuando Drive vuelva.
  */
 async function puedeEntregarse(
   producto: Record<string, unknown>,
+  tipoCompra?: string,
 ): Promise<boolean> {
   if (producto.archivo_pdf_drive_id || producto.archivo_docx_drive_id) {
     return true;
@@ -728,7 +789,20 @@ async function puedeEntregarse(
   try {
     const tipoPaquete = (producto.tipo_paquete || "trimestre") as
       | "trimestre"
-      | "ciclo";
+      | "ciclo"
+      | "proyecto";
+
+    if (tipoPaquete === "proyecto") {
+      const hijos = await listDriveFolder(folderId);
+      const archivos = hijos.filter((f) => f.mimeType !== FOLDER_MIME);
+      const tienePdf = archivos.some((f) => /\.pdf$/i.test(f.name));
+      const tieneDocx = archivos.some((f) => /\.docx$/i.test(f.name));
+      if (!tienePdf || !tieneDocx) return false;
+      if (tipoCompra === "anexos") {
+        return hijos.some((f) => f.mimeType === FOLDER_MIME);
+      }
+      return true;
+    }
 
     if (tipoPaquete === "trimestre") {
       return await trimestreTieneMaterial(folderId);

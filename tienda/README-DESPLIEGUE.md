@@ -151,9 +151,11 @@ guárdala como `MP_WEBHOOK_SECRET`.
 
 ## 5. Activar tu cuenta de administrador
 
-El admin se identifica por email: **jorgequezadarm@gmail.com** (en `es_admin()` y
-en `tienda/js/tienda-common.js → ADMIN_EMAIL`). Si cambias de correo, actualiza
-ambos lugares.
+El admin se identifica por email: **soporte.jissez@gmail.com** (en `es_admin()`,
+ver `supabase/admin_cuenta_jissez.sql`, y en `tienda/js/tienda-common.js →
+ADMIN_EMAIL`). Si cambias de correo, actualiza ambos lugares. Los avisos
+automáticos al negocio (pedidos personalizados) van al secreto `MAIL_ADMIN`,
+que apunta a ese mismo buzón.
 
 1. Regístrate en la tienda con ese correo (`tienda/login.html`).
 2. Entra a `tienda/admin.html` → verás el panel completo.

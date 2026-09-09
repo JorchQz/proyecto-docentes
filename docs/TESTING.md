@@ -17,41 +17,44 @@ Marca cada punto:
 ## 1. AUTH — index.html
 
 ### Registro
-- [ ] Botón "Regístrate aquí" cambia el formulario al modo registro
-- [ ] Validación: correo inválido muestra error
-- [ ] Validación: contraseña corta muestra error
-- [ ] Registro exitoso muestra mensaje de éxito y redirige a `onboarding.html`
+- [✅] Botón "Regístrate aquí" cambia el formulario al modo registro
+- [✅] Validación: correo inválido muestra error
+- [✅ ] Validación: contraseña corta muestra error
+- [✅ ] Registro exitoso muestra mensaje de éxito y redirige a `onboarding.html` 
 
 ### Login
-- [ ] Login con credenciales correctas redirige a `dashboard.html` (usuario con grupo)
-- [ ] Login de usuario sin grupo redirige a `onboarding.html`
-- [ ] Login con contraseña incorrecta muestra error claro (no crash)
-- [ ] Olvidé contraseña: envía correo y muestra confirmación
+- [✅ ] Login con credenciales correctas redirige a `dashboard.html` (usuario con grupo)
+- [✅ ] Login de usuario sin grupo redirige a `onboarding.html`
+- [✅ ] Login con contraseña incorrecta muestra error claro (no crash)
+- [✅ ] Olvidé contraseña: envía correo y muestra confirmación
 
 **Edge cases:**
-- [ ] Ir a `dashboard.html` sin sesión → redirige a `index.html`
-- [ ] Ir a `asistencia.html` sin sesión → redirige a `index.html`
+- [✅ ] Ir a `dashboard.html` sin sesión → redirige a `index.html`
+- [✅ ] Ir a `asistencia.html` sin sesión → redirige a `index.html`
 
 ---
 
 ## 2. ONBOARDING — onboarding.html
 
 ### Paso 1: Crear grupo
-- [ ] Dropdown "Tipo de Organización" muestra las opciones correctas
-- [ ] El campo "Grados" acepta selección múltiple
-- [ ] Enviar formulario vacío muestra validación
-- [ ] Crear grupo con datos completos avanza al Paso 2
+- [✅ ] Dropdown "Tipo de Organización" muestra las opciones correctas
+- [✅ ] El campo "Grados" acepta selección múltiple
+- [✅ ] Enviar formulario vacío muestra validación
+- [✅ ] Crear grupo con datos completos avanza al Paso 2
+Cosas que corregir: 
+En el ciclo escolar pide año de inicio y fin, siempre los ciclos serán el año en curso y el siguiente, pero por si acaso llegaran a registrarse al siguiente año entonces solo deja editable el año de inicio y el final se calcula con un año más que el inicio.
+En el tipo de organización quita la explicación que hay entre parentesis e investiga si tetradocente y pentadocente son reales en la sep porque no lo creo
 
 ### Paso 2: Agregar alumnos
-- [ ] Se puede agregar alumno con solo nombre (campos opcionales vacíos)
-- [ ] Botón "Eliminar" en cada alumno funciona
+- [❌ ] Se puede agregar alumno con solo nombre (campos opcionales vacíos) Aquí debería aceptar solo datos completos o almenos un apellido
+- [✅] Botón "Eliminar" en cada alumno funciona en lugar de la palabra eliminar me gustaría un icono de basura de la misma bibliote lucide y la posibilidad de editar con un icono de lapiz o algo así en color azul
 - [ ] Contador de alumnos se actualiza
 - [ ] "Completar Configuración" deshabilitado con 0 alumnos
 - [ ] Con alumnos → guardar redirige a `dashboard.html`
 
 **Edge cases:**
 - [ ] Entrar a onboarding con grupo ya creado → redirige a `dashboard.html`
-
+quita lo de Agrega alumnos uno por uno. es repetitivo
 ---
 
 ## 3. DASHBOARD — dashboard.html
@@ -305,12 +308,40 @@ Abrir DevTools (F12 → Consola) durante toda la sesión de pruebas:
 - [ ] Crear proyecto propio con PDAs: al guardar se crean `sesiones_pda` y `productos_sesion` (`origen='maestro'`)
 - [ ] En crear_proyecto, elegir un PDA muestra los criterios sugeridos del banco (tocar uno lo copia al textarea)
 
+## 20. TIENDA — tienda/*.html (venta de proyectos sueltos, 2026-09)
+
+Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail.com` y con una cuenta de comprador. Existe un usuario de pruebas con un proyecto suelto ya comprado (con anexos): `pruebas.bloque1@jissez.com` / `PruebaBloque1-2026`.
+
+### Bloque 0 — cuenta admin
+- [ ] Entrar con `soporte.jissez@gmail.com` → `admin.html` carga y las pestañas Precios y Órdenes responden
+- [ ] Entrar con `jorgequezadarm@gmail.com` → "Acceso restringido"
+
+### Bloque 1 — proyectos sueltos (admin)
+- [ ] Admin → pestaña **Proyectos sueltos** → elegir "1° Primaria — Trimestre 1" → "Detectar proyectos en Drive" lista P01–P04 con PDF, Word y número de anexos, y el nombre del proyecto del bot
+- [ ] "Crear productos seleccionados" crea las filas ocultas; la tabla de abajo las muestra con $80 / $120
+- [ ] Cambiar precios y marcar "Publicado" → Guardar → se refleja al recargar
+- [ ] Catálogo de paquetes: la tarjeta de 1° sigue diciendo "desde $249" (los sueltos NO se cuelan)
+- [ ] Landing: los "desde $X" no bajan a $80
+
+### Bloque 1 — compra y entrega (comprador)
+- [ ] `checkout.html?producto_id=<suelto>&tipo=pdf` muestra "Proyecto individual … sin anexos" y el precio sin anexos
+- [ ] `…&tipo=anexos` muestra el desglose "Proyecto en PDF + Word" + "Anexos imprimibles"
+- [ ] `…&tipo=editable` en un suelto → "Esta versión no existe para este producto"
+- [ ] Sin marcar la casilla de Términos, "Continuar al pago" no avanza; marcada, redirige a Mercado Pago
+- [ ] En SQL: la orden tiene `terminos_aceptados_en` lleno y el ítem `tipo='anexos'`
+- [ ] Pagar (sandbox) la versión **con anexos** → Mis compras muestra "Proyecto N · Trimestre T" y "PDF + Word + anexos" → Abrir biblioteca lista planeación PDF, Word y subcarpetas S0X
+- [ ] Abrir el link impreso en la planeación `anexo.html?aula=1&pr=1&a=ANX-2627-T1-1G-P01-S02-01` → se ve el anexo
+- [ ] Pagar la versión **sin anexos** con otra cuenta → biblioteca sin subcarpetas; el link de anexo muestra "Este proyecto lo compraste sin anexos"
+- [ ] Regresión: un comprador de paquete trimestral sigue viendo proyectos, examen y anexos igual que antes
+- [ ] Admin → Acceso manual → versión "Con anexos" sobre un suelto crea pdf+editable+anexos; "Editable" sobre un suelto da error
+
 ---
 
 ## RESUMEN
 
 | Módulo | Estado | Problemas encontrados |
 |--------|--------|-----------------------|
+| Tienda (proyectos sueltos) | | |
 | Auth | | |
 | Onboarding | | |
 | Dashboard | | |

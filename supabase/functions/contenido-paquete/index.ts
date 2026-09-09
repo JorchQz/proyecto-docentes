@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
 import { listProyectoFolders } from "../_shared/google-drive.ts";
+import { normalizarTipoPaquete } from "../_shared/entrega.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -62,11 +63,13 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Paquete sin carpeta configurada" }, 404);
     }
 
-    const tipoPaquete = (producto.tipo_paquete || "trimestre") as "trimestre" | "ciclo";
+    // 'proyecto' (venta individual): un solo ítem, la carpeta del producto.
+    const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
     const folders = await listProyectoFolders(producto.proyecto_folder_drive_id, tipoPaquete);
 
-    // En un paquete de trimestre el número lo lleva el producto; en el ciclo lo
-    // trae cada ítem según la carpeta T1/T2/T3 de la que salió.
+    // En un paquete de trimestre (y en un proyecto suelto) el número lo lleva
+    // el producto; en el ciclo lo trae cada ítem según la carpeta T1/T2/T3 de
+    // la que salió.
     const trimestreProducto = producto.trimestre != null ? Number(producto.trimestre) : null;
 
     const proyectos = folders.map((f, i) => {

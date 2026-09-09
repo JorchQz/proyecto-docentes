@@ -39,6 +39,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!resp.ok) {
 			var data = {};
 			try { data = await resp.json(); } catch (_) {}
+			if (data.sin_anexos) {
+				mostrarSinAnexos(data.producto_id);
+				return;
+			}
 			if (resp.status === 403 || data.sin_acceso) {
 				mostrarSinAcceso();
 				return;
@@ -84,6 +88,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 			btnDescargar.disabled = false;
 		}
 	});
+
+	// Tiene el proyecto suelto, pero lo compró en la versión sin anexos.
+	function mostrarSinAnexos(productoId) {
+		estadoEl.classList.remove("hidden");
+		visor.classList.add("hidden");
+		var destino = productoId ? "proyecto.html?id=" + encodeURIComponent(productoId) : "catalogo.html";
+		estadoEl.innerHTML =
+			'<div class="flex flex-col items-center gap-3">' +
+			'<span class="w-16 h-16 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="paperclip" class="w-8 h-8"></i></span>' +
+			'<p class="text-lg font-bold text-ink">Este proyecto lo compraste sin anexos</p>' +
+			'<p class="text-sm text-mute max-w-sm">Los anexos imprimibles son parte de la versión con anexos del proyecto. Puedes agregarla cuando quieras.</p>' +
+			'<a href="' + destino + '" class="mt-2 inline-flex items-center gap-2 text-white font-bold px-6 py-3 rounded-xl text-sm transition" style="background:#059669">Ver la versión con anexos <i data-lucide="arrow-right" class="w-4 h-4"></i></a>' +
+			"</div>";
+		Tienda.iconos();
+	}
 
 	function mostrarSinAcceso() {
 		estadoEl.classList.remove("hidden");

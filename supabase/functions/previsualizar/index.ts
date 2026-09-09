@@ -10,6 +10,7 @@ import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { mensajeError } from "../_shared/db.ts";
 import { downloadDriveFile, listDriveFolder, primerProyectoFolder } from "../_shared/google-drive.ts";
+import { normalizarTipoPaquete } from "../_shared/entrega.ts";
 
 const PAGINAS_MUESTRA = 3;
 
@@ -37,7 +38,8 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Producto no disponible" }, 404);
     }
 
-    const tipoPaquete = (producto.tipo_paquete || "trimestre") as "trimestre" | "ciclo";
+    // En un proyecto suelto la carpeta del producto ya es la del proyecto.
+    const tipoPaquete = normalizarTipoPaquete(producto.tipo_paquete);
 
     // Primer proyecto del paquete.
     const proyecto = await primerProyectoFolder(producto.proyecto_folder_drive_id, tipoPaquete);

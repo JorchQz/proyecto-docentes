@@ -62,6 +62,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tabs = document.querySelectorAll(".tab-btn");
 	var paneles = {
 		productos: document.getElementById("panelProductos"),
+		sueltos: document.getElementById("panelSueltos"),
 		precios: document.getElementById("panelPrecios"),
 		ordenes: document.getElementById("panelOrdenes"),
 		acceso: document.getElementById("panelAcceso"),
@@ -77,6 +78,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 			if (tab === "ordenes") { cargarOrdenes(); }
 			if (tab === "precios") { cargarPrecios(); }
+			if (tab === "sueltos") { renderSueltos(); }
 		});
 	});
 
@@ -85,13 +87,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.from("marketplace_productos")
 			// Los *_drive_id ya no son legibles desde el cliente (seguridad): la
 			// carpeta de Drive se carga al abrir el editor vía RPC admin_producto_drive.
-			.select("id, titulo, descripcion, grado, fase, campo_formativo, metodologia, escenario, trimestre, num_sesiones, precio_pdf, precio_editable, portada_url, activo, dosificacion_proyecto_id, created_at, updated_at, tipo_paquete, num_proyectos, organizacion, grados_combo, modalidad, es_prueba")
+			.select("id, titulo, descripcion, grado, fase, campo_formativo, metodologia, escenario, trimestre, num_sesiones, precio_pdf, precio_editable, precio_pdf_con_anexos, numero_proyecto, portada_url, activo, dosificacion_proyecto_id, created_at, updated_at, tipo_paquete, num_proyectos, organizacion, grados_combo, modalidad, es_prueba")
 			.order("grado", { ascending: true });
 		productos = res.data || [];
 		porClave = {};
-		productos.forEach(function (p) { porClave[clave(p)] = p; });
+		// La grilla es de paquetes; los proyectos sueltos tienen su pestaña.
+		productos.forEach(function (p) { if (p.tipo_paquete !== "proyecto") { porClave[clave(p)] = p; } });
 		renderGrid();
 		poblarSelectProductos();
+		poblarSelectSueltos();
 	}
 
 	// ── Grilla ────────────────────────────────────────────────────────────────
@@ -813,6 +817,232 @@ document.addEventListener("DOMContentLoaded", async function () {
 		guardarCuponBtn.disabled = false;
 		guardarCuponBtn.textContent = "Guardar cupón";
 	});
+
+	// ── Proyectos sueltos ──────────────────────────────────────────────────────
+	// Un proyecto suelto es una fila de marketplace_productos con
+	// tipo_paquete = 'proyecto' y la carpeta P0N del proyecto en Drive. Se crean
+	// en lote a partir de un paquete trimestral: la Edge Function
+	// admin-proyectos-drive lee las carpetas, las empareja con
+	// dosificacion_proyectos y dice qué contiene cada una. Aquí solo se elige
+	// y se inserta.
+	var PRECIO_SUELTO = { sin_anexos: 80, con_anexos: 120 };
+	var sueltosPaqueteSel = document.getElementById("sueltosPaquete");
+	var detectarSueltosBtn = document.getElementById("detectarSueltosBtn");
+	var sueltosDeteccionEl = document.getElementById("sueltosDeteccion");
+	var listaSueltosEl = document.getElementById("listaSueltos");
+	var deteccion = null;
+
+	function poblarSelectSueltos() {
+		var trimestres = productos.filter(function (p) {
+			return p.tipo_paquete === "trimestre" && !p.es_prueba;
+		});
+		trimestres.sort(function (a, b) {
+			if (a.organizacion !== b.organizacion) { return a.organizacion === "completa" ? -1 : 1; }
+			if (a.grado !== b.grado) { return a.grado - b.grado; }
+			var la = (a.grados_combo || "").length, lb = (b.grados_combo || "").length;
+			if (la !== lb) { return la - lb; }
+			return (a.trimestre || 0) - (b.trimestre || 0);
+		});
+		var opts = '<option value="">Selecciona un trimestre</option>';
+		trimestres.forEach(function (p) {
+			opts += '<option value="' + esc(p.id) + '">' + esc(p.titulo) + "</option>";
+		});
+		sueltosPaqueteSel.innerHTML = opts;
+	}
+
+	function tituloSuelto(org, grado, combo, numero, nombre) {
+		var base = org === "multigrado" ? "Multigrado " + comboDisplay(combo) : grado + "° Primaria";
+		return base + " — Proyecto " + numero + (nombre ? " · " + nombre : "");
+	}
+
+	function chipSi(ok, textoSi, textoNo) {
+		return ok
+			? '<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full" style="background:#ecfdf5;color:#047a55;border:1px solid #a7f3d0">' + textoSi + "</span>"
+			: '<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full" style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5">' + textoNo + "</span>";
+	}
+
+	detectarSueltosBtn.addEventListener("click", async function () {
+		var paqueteId = sueltosPaqueteSel.value;
+		if (!paqueteId) { Tienda.toast("Elige un paquete de trimestre.", "error"); return; }
+		detectarSueltosBtn.disabled = true;
+		sueltosDeteccionEl.classList.remove("hidden");
+		sueltosDeteccionEl.innerHTML = '<p class="text-sm text-mute">Leyendo Drive y la base...</p>';
+		try {
+			var resp = await fetch(Tienda.EDGE_BASE + "/admin-proyectos-drive", {
+				method: "POST",
+				headers: {
+					Authorization: "Bearer " + Tienda.getAccessToken(session),
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ producto_id: paqueteId }),
+			});
+			var data = await resp.json();
+			if (!resp.ok) { throw new Error(data.error || "No se pudo leer la carpeta."); }
+			deteccion = data;
+			renderDeteccion();
+		} catch (err) {
+			sueltosDeteccionEl.innerHTML = '<p class="text-sm" style="color:#b91c1c">' + esc(err.message || "Error al detectar.") + "</p>";
+		} finally {
+			detectarSueltosBtn.disabled = false;
+		}
+	});
+
+	function renderDeteccion() {
+		var d = deteccion;
+		if (!d || !d.proyectos.length) {
+			sueltosDeteccionEl.innerHTML = '<p class="text-sm text-mute">No se encontraron carpetas de proyecto (P01, P02...) en ese trimestre.</p>';
+			return;
+		}
+		var filas = d.proyectos.map(function (p, i) {
+			var listo = !!p.dosificacion && p.tiene_pdf && p.tiene_docx;
+			var yaExiste = !!p.producto;
+			var estado;
+			if (yaExiste) {
+				estado = p.producto.activo
+					? '<span class="text-[11px] font-semibold" style="color:#047a55">Ya publicado</span>'
+					: '<span class="text-[11px] font-semibold" style="color:#b45309">Ya creado (oculto)</span>';
+			} else if (!listo) {
+				estado = '<span class="text-[11px] font-semibold" style="color:#b91c1c">Incompleto</span>';
+			} else {
+				estado = '<span class="text-[11px] font-semibold" style="color:#1e3a8a">Listo para crear</span>';
+			}
+			return (
+				'<tr style="border-bottom:1px solid #e7e6df">' +
+				'<td class="py-2 pr-3"><input type="checkbox" data-idx="' + i + '" class="w-4 h-4 rounded" style="accent-color:#059669"' +
+				(listo && !yaExiste ? " checked" : " disabled") + "></td>" +
+				'<td class="py-2 pr-3 text-sm font-semibold" style="color:#1c2434">' + esc(p.codigo || "P?") + ' <span class="text-xs font-normal" style="color:#5b6473">(n.º ' + p.numero_proyecto + ")</span></td>" +
+				'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' +
+				(p.dosificacion
+					? esc(p.dosificacion.nombre_proyecto) + '<br><span class="text-xs" style="color:#5b6473">' + esc(p.dosificacion.num_sesiones_estimadas ? p.dosificacion.num_sesiones_estimadas + " sesiones" : "") + "</span>"
+					: '<span class="text-xs" style="color:#b91c1c">Sin proyecto en la base para este número</span><br><span class="text-xs" style="color:#5b6473">Carpeta: ' + esc(p.nombre_carpeta) + "</span>") +
+				"</td>" +
+				'<td class="py-2 pr-3 text-xs"><div class="flex flex-wrap gap-1">' +
+				chipSi(p.tiene_pdf, "PDF", "Sin PDF") + chipSi(p.tiene_docx, "Word", "Sin Word") +
+				chipSi(p.num_anexos > 0, p.num_anexos + " anexos", "Sin anexos") +
+				"</div></td>" +
+				"<td class='py-2'>" + estado + "</td></tr>"
+			);
+		}).join("");
+
+		sueltosDeteccionEl.innerHTML =
+			'<div class="rounded-2xl border border-line p-4 flex flex-col gap-3" style="background:#faf9f4">' +
+			'<p class="text-sm font-semibold text-ink">Trimestre ' + d.trimestre + " · " + d.proyectos.length + " carpetas de proyecto</p>" +
+			'<div class="overflow-x-auto"><table class="w-full text-left min-w-[720px]">' +
+			'<thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
+			"<th class='py-2 pr-3'></th><th class='py-2 pr-3 font-semibold'>Carpeta</th><th class='py-2 pr-3 font-semibold'>Proyecto del bot</th>" +
+			"<th class='py-2 pr-3 font-semibold'>Contenido</th><th class='py-2 font-semibold'>Estado</th></tr></thead>" +
+			"<tbody>" + filas + "</tbody></table></div>" +
+			'<div class="flex flex-wrap items-center gap-3">' +
+			'<button id="crearSueltosBtn" class="h-11 px-5 rounded-xl font-bold text-white text-sm" style="background:#059669">Crear productos seleccionados</button>' +
+			'<span class="text-xs text-mute">Se crean OCULTOS a $' + PRECIO_SUELTO.sin_anexos + " / $" + PRECIO_SUELTO.con_anexos + " (sin / con anexos). Los publicas abajo.</span>" +
+			"</div></div>";
+
+		document.getElementById("crearSueltosBtn").addEventListener("click", crearSueltos);
+		Tienda.iconos();
+	}
+
+	async function crearSueltos() {
+		var d = deteccion;
+		var marcados = Array.prototype.slice.call(sueltosDeteccionEl.querySelectorAll("input[data-idx]:checked"));
+		if (!marcados.length) { Tienda.toast("No hay proyectos seleccionados.", "error"); return; }
+		var btn = document.getElementById("crearSueltosBtn");
+		btn.disabled = true; btn.textContent = "Creando...";
+
+		var filas = marcados.map(function (cb) {
+			var p = d.proyectos[Number(cb.getAttribute("data-idx"))];
+			return {
+				titulo: tituloSuelto(d.organizacion, d.grado, d.grados_combo, p.numero_proyecto, p.dosificacion ? p.dosificacion.nombre_proyecto : null),
+				descripcion: null,
+				grado: d.grado,
+				fase: d.fase || faseDeGrado(d.grado),
+				campo_formativo: null,
+				trimestre: d.trimestre,
+				tipo_paquete: "proyecto",
+				num_proyectos: 1,
+				numero_proyecto: p.numero_proyecto,
+				organizacion: d.organizacion,
+				grados_combo: d.grados_combo || null,
+				modalidad: d.modalidad || null,
+				metodologia: p.dosificacion ? p.dosificacion.metodologia || null : null,
+				num_sesiones: p.dosificacion ? p.dosificacion.num_sesiones_estimadas || null : null,
+				dosificacion_proyecto_id: p.dosificacion ? p.dosificacion.id : null,
+				proyecto_folder_drive_id: p.folder_id,
+				precio_pdf: PRECIO_SUELTO.sin_anexos,
+				precio_pdf_con_anexos: PRECIO_SUELTO.con_anexos,
+				precio_editable: null,
+				activo: false,
+			};
+		});
+
+		var res = await window.sb.from("marketplace_productos").insert(filas);
+		btn.disabled = false; btn.textContent = "Crear productos seleccionados";
+		if (res.error) { Tienda.toast("No se pudo crear: " + res.error.message, "error"); return; }
+		Tienda.toast(filas.length + " proyecto(s) creado(s), ocultos.", "ok");
+		await cargarProductos();
+		// Repetir la detección para que la tabla marque "Ya creado".
+		detectarSueltosBtn.click();
+		renderSueltos();
+	}
+
+	function renderSueltos() {
+		var sueltos = productos.filter(function (p) { return p.tipo_paquete === "proyecto"; });
+		if (!sueltos.length) {
+			listaSueltosEl.innerHTML = '<p class="text-sm text-mute">Todavía no hay proyectos sueltos. Detecta los de un trimestre arriba.</p>';
+			return;
+		}
+		sueltos.sort(function (a, b) {
+			if (a.organizacion !== b.organizacion) { return a.organizacion === "completa" ? -1 : 1; }
+			if (a.grado !== b.grado) { return a.grado - b.grado; }
+			var la = (a.grados_combo || "").length, lb = (b.grados_combo || "").length;
+			if (la !== lb) { return la - lb; }
+			return (a.numero_proyecto || 0) - (b.numero_proyecto || 0);
+		});
+		var rows = sueltos.map(function (p) {
+			var borde = p.es_prueba ? "#fcd34d" : "#e7e6df";
+			return (
+				'<tr data-suelto="' + esc(p.id) + '" style="border-bottom:1px solid ' + borde + '">' +
+				'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(p.titulo) +
+				(p.es_prueba ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef3c7;color:#b45309">PRUEBA</span>' : "") +
+				(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") +
+				"</td>" +
+				'<td class="py-2 pr-3"><input data-campo="precio_pdf" type="number" min="0" step="1" value="' + esc(p.precio_pdf != null ? p.precio_pdf : "") + '" class="w-24 h-10 px-2 border border-line rounded-lg text-sm" style="color:#1c2434;background:#fff"></td>' +
+				'<td class="py-2 pr-3"><input data-campo="precio_pdf_con_anexos" type="number" min="0" step="1" value="' + esc(p.precio_pdf_con_anexos != null ? p.precio_pdf_con_anexos : "") + '" class="w-24 h-10 px-2 border border-line rounded-lg text-sm" style="color:#1c2434;background:#fff"></td>' +
+				'<td class="py-2 pr-3"><label class="inline-flex items-center gap-2 text-sm text-ink cursor-pointer"><input data-campo="activo" type="checkbox" class="w-4 h-4 rounded" style="accent-color:#059669"' + (p.activo ? " checked" : "") + "> Publicado</label></td>" +
+				'<td class="py-2"><button data-guardar-suelto="' + esc(p.id) + '" class="text-xs font-semibold px-3 h-10 rounded-lg text-white" style="background:#1e3a8a">Guardar</button></td></tr>'
+			);
+		}).join("");
+		listaSueltosEl.innerHTML =
+			'<table class="w-full text-left min-w-[760px]">' +
+			'<thead><tr class="text-xs uppercase tracking-wide" style="color:#5b6473;border-bottom:1px solid #e7e6df">' +
+			"<th class='py-2 pr-3 font-semibold'>Proyecto</th><th class='py-2 pr-3 font-semibold'>Sin anexos</th>" +
+			"<th class='py-2 pr-3 font-semibold'>Con anexos</th><th class='py-2 pr-3 font-semibold'>Catálogo</th><th class='py-2'></th></tr></thead>" +
+			"<tbody>" + rows + "</tbody></table>";
+		listaSueltosEl.querySelectorAll("[data-guardar-suelto]").forEach(function (b) {
+			b.addEventListener("click", function () { guardarSuelto(b); });
+		});
+	}
+
+	async function guardarSuelto(btn) {
+		var id = btn.getAttribute("data-guardar-suelto");
+		var tr = listaSueltosEl.querySelector('tr[data-suelto="' + id + '"]');
+		var pdf = tr.querySelector('[data-campo="precio_pdf"]').value;
+		var conAnexos = tr.querySelector('[data-campo="precio_pdf_con_anexos"]').value;
+		var activo = tr.querySelector('[data-campo="activo"]').checked;
+		if (pdf === "" || conAnexos === "") { Tienda.toast("Los dos precios son obligatorios.", "error"); return; }
+		if (Number(conAnexos) < Number(pdf)) { Tienda.toast("El precio con anexos no puede ser menor que el precio sin anexos.", "error"); return; }
+		btn.disabled = true; btn.textContent = "Guardando...";
+		var res = await window.sb.from("marketplace_productos").update({
+			precio_pdf: Number(pdf),
+			precio_pdf_con_anexos: Number(conAnexos),
+			activo: activo,
+			updated_at: new Date().toISOString(),
+		}).eq("id", id);
+		btn.disabled = false; btn.textContent = "Guardar";
+		if (res.error) { Tienda.toast("No se pudo guardar: " + res.error.message, "error"); return; }
+		Tienda.toast("Proyecto guardado.", "ok");
+		await cargarProductos();
+		renderSueltos();
+	}
 
 	// Carga inicial: al final, cuando gridEl y accesoProductoSel ya están referenciados.
 	await cargarProductos();

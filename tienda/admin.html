@@ -69,6 +69,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 		<div class="bg-white rounded-2xl border border-line shadow-sm overflow-hidden">
 			<div class="flex border-b border-line">
 				<button data-tab="productos" class="tab-btn active flex-1 py-4 text-sm font-semibold border-b-2 transition">Paquetes</button>
+				<button data-tab="sueltos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Proyectos sueltos</button>
 				<button data-tab="precios" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Precios</button>
 				<button data-tab="ordenes" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Órdenes</button>
 				<button data-tab="acceso" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Acceso manual</button>
@@ -232,6 +233,36 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 			</div>
 
+			<!-- Tab Proyectos sueltos -->
+			<div id="panelSueltos" class="hidden p-5 flex flex-col gap-5">
+				<div class="rounded-xl p-3 text-xs" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af">
+					Un <strong>proyecto suelto</strong> se vende aparte del paquete: PDF + Word incluidos,
+					con o sin anexos, sin el examen. Elige un paquete de <strong>trimestre</strong> ya configurado:
+					se leen sus carpetas P01–P12 en Drive, se emparejan con los proyectos del bot y se crean
+					como productos ocultos. Después los publicas y ajustas precios aquí abajo.
+				</div>
+
+				<div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+					<div class="flex-1">
+						<label for="sueltosPaquete" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Paquete de trimestre</label>
+						<select id="sueltosPaquete" class="w-full h-12 px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff"></select>
+					</div>
+					<button id="detectarSueltosBtn" class="h-12 px-5 rounded-xl font-semibold text-white transition inline-flex items-center justify-center gap-2" style="background:#1e3a8a">
+						<i data-lucide="folder-search" class="w-4 h-4"></i> Detectar proyectos en Drive
+					</button>
+				</div>
+
+				<div id="sueltosDeteccion" class="hidden flex flex-col gap-3"></div>
+
+				<div>
+					<h3 class="font-bold text-ink mb-1">Proyectos sueltos configurados</h3>
+					<p class="text-xs text-mute mb-3">Precio sin anexos y con anexos por proyecto. El tarifario no los toca: lo que pongas aquí es lo que se cobra (la promoción se aplica encima).</p>
+					<div id="listaSueltos" class="overflow-x-auto">
+						<p class="text-sm text-mute">Cargando...</p>
+					</div>
+				</div>
+			</div>
+
 			<!-- Tab Órdenes -->
 			<div id="panelOrdenes" class="hidden p-5 flex flex-col gap-4">
 				<p class="text-sm text-mute">Confirma transferencias y revisa el estado de los pagos.</p>
@@ -255,8 +286,9 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				<div>
 					<label class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Versión</label>
 					<select id="accesoTipo" class="w-full px-3 py-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
-						<option value="pdf">PDF</option>
-						<option value="editable">Editable (incluye PDF)</option>
+						<option value="pdf">PDF (paquete) · sin anexos (proyecto suelto)</option>
+						<option value="editable">Editable con Word (solo paquetes)</option>
+						<option value="anexos">Con anexos (solo proyectos sueltos)</option>
 					</select>
 				</div>
 				<button id="otorgarBtn" class="h-12 rounded-xl font-semibold text-white transition" style="background:#059669">Otorgar acceso</button>
