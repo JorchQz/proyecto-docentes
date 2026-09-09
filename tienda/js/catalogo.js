@@ -139,6 +139,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				precio_pdf: p.precio_pdf,
 				precio_pdf_con_anexos: p.precio_pdf_con_anexos,
 				tiene_anexos: p.tiene_anexos,
+				portada_url: p.portada_url || null,
 				metodologia: p.metodologia,
 				sesiones: p.num_sesiones_estimadas,
 				pdas: pdas,
@@ -619,7 +620,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<span class="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white" style="background:#059669">Ver <i data-lucide="arrow-right" class="w-4 h-4"></i></span>' +
 			"</div></div>";
 
-		Tienda.pintarPortada(a.querySelector("[data-portada]"), Tienda.slugPreview(p.organizacion, p.grado, p.grados_combo), p.nombre);
+		// Portada propia (primera página de la muestra, generada en el admin);
+		// si aún no la tiene, la del grado.
+		if (p.portada_url) {
+			Tienda.pintarPortadaUrl(a.querySelector("[data-portada]"), p.portada_url, p.nombre);
+		} else {
+			Tienda.pintarPortada(a.querySelector("[data-portada]"), Tienda.slugPreview(p.organizacion, p.grado, p.grados_combo), p.nombre);
+		}
 		return a;
 	}
 

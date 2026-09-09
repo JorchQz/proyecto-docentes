@@ -73,8 +73,29 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 						<i data-lucide="file-x" class="w-6 h-6" style="color:#9ba3af"></i>
 						La vista previa estará disponible pronto.
 					</div>
+					<!-- Galería de imágenes (vía preferida; las genera el admin) -->
+					<div id="galeria" class="hidden absolute inset-0 flex items-center justify-center bg-paper">
+						<img id="galeriaImg" alt="Página de muestra del proyecto" title="Clic para ampliar"
+							class="max-w-full max-h-full object-contain select-none cursor-zoom-in" draggable="false">
+						<button id="galeriaPrev" type="button" aria-label="Anterior"
+							class="absolute left-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center transition-opacity duration-300 hover:opacity-80" style="color:#1e3a8a;filter:drop-shadow(0 0 5px rgba(255,255,255,.95)) drop-shadow(0 1px 2px rgba(255,255,255,.8))">
+							<i data-lucide="chevron-left" class="w-9 h-9"></i>
+						</button>
+						<button id="galeriaNext" type="button" aria-label="Siguiente"
+							class="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center transition-opacity duration-300 hover:opacity-80" style="color:#1e3a8a;filter:drop-shadow(0 0 5px rgba(255,255,255,.95)) drop-shadow(0 1px 2px rgba(255,255,255,.8))">
+							<i data-lucide="chevron-right" class="w-9 h-9"></i>
+						</button>
+						<span id="galeriaEtiqueta" class="absolute top-3 left-3 text-[11px] font-bold px-2.5 py-1 rounded-full" style="background:rgba(30,58,138,.9);color:#fff"></span>
+						<span id="galeriaContador" class="absolute bottom-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full" style="background:rgba(28,36,52,.75);color:#fff"></span>
+						<button id="galeriaAmpliar" type="button" aria-label="Ampliar vista previa"
+							class="absolute bottom-3 left-3 w-10 h-10 flex items-center justify-center transition hover:opacity-80" style="color:#1e3a8a;filter:drop-shadow(0 0 4px rgba(255,255,255,.95))">
+							<i data-lucide="maximize-2" class="w-5 h-5"></i>
+						</button>
+					</div>
+					<!-- Respaldo: PDF recortado, si aún no hay imágenes -->
 					<iframe id="previewFrame" class="hidden w-full h-full" title="Vista previa del proyecto"></iframe>
 				</div>
+				<div id="galeriaTiras" class="hidden border-t border-line p-3 gap-2 overflow-x-auto"></div>
 			</div>
 			<p class="order-4 lg:order-none text-center text-[12px] text-mute">Esta es una muestra. El proyecto completo se entrega al comprar.</p>
 

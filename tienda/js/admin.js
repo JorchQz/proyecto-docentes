@@ -876,6 +876,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Verificación masiva de anexos contra Drive (por tandas; repite hasta que
 	// no queden pendientes). Los proyectos sin anexos dejan de ofrecer esa
 	// versión en la ficha, y el cobro también la rechaza.
+	// ── Vistas previas por imagen ─────────────────────────────────────────────
+	// Convierte la muestra en PDF de cada proyecto individual (sin imágenes
+	// todavía) en JPG y la sube a previews/proyecto-<id>/; la primera queda
+	// como portada. Uno por uno, con avance en el botón: ~5 s por proyecto.
+	var generarPreviewsBtn = document.getElementById("generarPreviewsBtn");
+	generarPreviewsBtn.addEventListener("click", async function () {
+		var pendientes = productos.filter(function (p) { return p.tipo_paquete === "proyecto" && !p.portada_url; });
+		if (!pendientes.length) { Tienda.toast("Todos los proyectos individuales ya tienen imágenes.", "ok"); return; }
+		if (!window.VistaPrevia) { Tienda.toast("No cargó el generador de vistas previas; recarga la página.", "error"); return; }
+		generarPreviewsBtn.disabled = true;
+		var texto = generarPreviewsBtn.innerHTML;
+		var hechos = 0, fallos = [];
+		try {
+			for (var i = 0; i < pendientes.length; i++) {
+				generarPreviewsBtn.textContent = "Generando " + (i + 1) + " de " + pendientes.length + "...";
+				try {
+					await window.VistaPrevia.generarProyecto(window.sb, Tienda.EDGE_BASE, pendientes[i].id);
+					hechos++;
+				} catch (err) {
+					fallos.push(pendientes[i].titulo + ": " + (err.message || "error"));
+				}
+			}
+			Tienda.toast("Vistas previas generadas: " + hechos + (fallos.length ? ". Con error: " + fallos.length + " (" + fallos.slice(0, 2).join("; ") + (fallos.length > 2 ? "…" : "") + ")" : "."), fallos.length ? "info" : "ok");
+			await cargarProductos();
+			renderSueltos();
+		} finally {
+			generarPreviewsBtn.disabled = false;
+			generarPreviewsBtn.innerHTML = texto;
+			Tienda.iconos();
+		}
+	});
+
 	var verificarAnexosBtn = document.getElementById("verificarAnexosBtn");
 	verificarAnexosBtn.addEventListener("click", async function () {
 		verificarAnexosBtn.disabled = true;
@@ -1137,7 +1169,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 					'<td class="py-2 pr-3 text-sm" style="color:#1c2434">' + esc(nombre) +
 					(p.es_prueba ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef3c7;color:#b45309">PRUEBA</span>' : "") +
 					(!p.dosificacion_proyecto_id ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fef2f2;color:#b91c1c">sin proyecto del bot</span>' : "") +
-					(p.tiene_anexos === false ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#f3f4f6;color:#5b6473">sin anexos</span>' : (p.tiene_anexos == null ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fffbeb;color:#b45309">anexos sin verificar</span>' : "")) + "</td>" +
+					(p.tiene_anexos === false ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#f3f4f6;color:#5b6473">sin anexos</span>' : (p.tiene_anexos == null ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fffbeb;color:#b45309">anexos sin verificar</span>' : "")) +
+					(p.portada_url ? "" : ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#fffbeb;color:#b45309">sin imágenes</span>') + "</td>" +
 					'<td class="py-2 pr-3 text-xs whitespace-nowrap" style="color:#5b6473">' + (p.trimestre ? "T" + p.trimestre : "—") + "</td>" +
 					'<td class="py-2 pr-3 text-sm whitespace-nowrap" style="color:#1c2434">' + money(p.precio_pdf) + ' <span class="text-mute">/</span> ' + money(p.precio_pdf_con_anexos) + "</td>" +
 					'<td class="py-2"><div class="flex items-center gap-3">' +

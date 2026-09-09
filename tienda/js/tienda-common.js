@@ -613,17 +613,18 @@
 	// Cambia el marcador rayado por la portada real, si la hay. Se llama después
 	// de pintar la tarjeta: así el grid aparece de inmediato y las imágenes van
 	// entrando sin bloquear el render.
+	function pintarPortadaUrl(contenedor, url, alt) {
+		if (!url || !contenedor) { return; }
+		contenedor.classList.remove("ph");
+		contenedor.textContent = "";
+		contenedor.style.background = "#f1f0ea";
+		// Un 10% baja el encuadre apenas por debajo del borde: se ve el
+		// encabezado de la hoja sin el margen blanco superior.
+		contenedor.innerHTML = '<img src="' + esc(url) + '" alt="' + esc(alt || "") +
+			'" class="w-full h-full object-cover" style="object-position:center 10%" loading="lazy">';
+	}
 	function pintarPortada(contenedor, slug, alt) {
-		portadaPreview(slug).then(function (url) {
-			if (!url || !contenedor) { return; }
-			contenedor.classList.remove("ph");
-			contenedor.textContent = "";
-			contenedor.style.background = "#f1f0ea";
-			// Un 10% baja el encuadre apenas por debajo del borde: se ve el
-			// encabezado de la hoja sin el margen blanco superior.
-			contenedor.innerHTML = '<img src="' + esc(url) + '" alt="' + esc(alt || "") +
-				'" class="w-full h-full object-cover" style="object-position:center 10%" loading="lazy">';
-		});
+		portadaPreview(slug).then(function (url) { pintarPortadaUrl(contenedor, url, alt); });
 	}
 
 	// ── Flechas fugaces ───────────────────────────────────────────────────────
@@ -865,6 +866,7 @@
 		slugPreview: slugPreview,
 		portadaPreview: portadaPreview,
 		pintarPortada: pintarPortada,
+		pintarPortadaUrl: pintarPortadaUrl,
 		visorAbrir: visorAbrir,
 		visorCerrar: visorCerrar,
 		visorAbierto: visorAbierto,
