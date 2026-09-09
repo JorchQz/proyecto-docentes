@@ -430,11 +430,61 @@ document.addEventListener("DOMContentLoaded", async function () {
 	colocarResumen();
 	if (mqEscritorio.addEventListener) { mqEscritorio.addEventListener("change", colocarResumen); } else { mqEscritorio.addListener(colocarResumen); }
 
+	// ── Pasos ─────────────────────────────────────────────────────────────────
+	// Una pregunta a la vez: grupo → qué enseñar → detalles → versión y
+	// confirmación. Solo el primer paso es obligatorio para avanzar.
+	var TOTAL_PASOS = 4;
+	var NOMBRES_PASO = ["Tu grupo", "Qué quieres que enseñe", "Detalles", "Versión y confirmación"];
+	var pasoActual = 1;
+	var pasoAtrasBtn = document.getElementById("pasoAtras");
+	var pasoSiguienteBtn = document.getElementById("pasoSiguiente");
+	var formEl = document.getElementById("formPedido");
+
+	function grupoElegido() {
+		return pedido.organizacion === "multigrado" ? !!pedido.grados_combo : !!pedido.grado;
+	}
+	function validarPaso(n) {
+		if (n === 1 && !grupoElegido()) {
+			aviso(pedido.organizacion === "multigrado" ? "Elige los grados que atiendes." : "Elige el grado.");
+			return false;
+		}
+		return true;
+	}
+	function irPaso(n, sinScroll) {
+		pasoActual = Math.max(1, Math.min(TOTAL_PASOS, n));
+		formEl.querySelectorAll("[data-paso]").forEach(function (s) {
+			s.classList.toggle("hidden", Number(s.getAttribute("data-paso")) !== pasoActual);
+		});
+		document.getElementById("pasoTexto").textContent = "Paso " + pasoActual + " de " + TOTAL_PASOS;
+		document.getElementById("pasoNombre").textContent = NOMBRES_PASO[pasoActual - 1];
+		Array.prototype.forEach.call(document.getElementById("pasoBarra").children, function (seg, i) {
+			seg.style.background = i < pasoActual ? "#1e3a8a" : "#e7e6df";
+		});
+		pasoAtrasBtn.classList.toggle("hidden", pasoActual === 1);
+		pasoSiguienteBtn.classList.toggle("hidden", pasoActual === TOTAL_PASOS);
+		continuarBtn.classList.toggle("hidden", pasoActual !== TOTAL_PASOS);
+		continuarBtn.classList.toggle("flex", pasoActual === TOTAL_PASOS);
+		mensajeForm.classList.add("hidden");
+		if (!sinScroll) { formEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+		Tienda.iconos();
+	}
+	pasoSiguienteBtn.addEventListener("click", function () {
+		if (validarPaso(pasoActual)) { irPaso(pasoActual + 1); }
+	});
+	pasoAtrasBtn.addEventListener("click", function () { irPaso(pasoActual - 1); });
+	irPaso(1, true);
+
 	// ── Continuar ─────────────────────────────────────────────────────────────
 	document.getElementById("formPedido").addEventListener("submit", function (e) {
 		e.preventDefault();
+		// Enter en un campo de los pasos previos avanza, no envía.
+		if (pasoActual !== TOTAL_PASOS) {
+			if (validarPaso(pasoActual)) { irPaso(pasoActual + 1); }
+			return;
+		}
 		var esMulti = pedido.organizacion === "multigrado";
-		if (esMulti ? !pedido.grados_combo : !pedido.grado) {
+		if (!grupoElegido()) {
+			irPaso(1);
 			aviso(esMulti ? "Elige los grados que atiendes." : "Elige el grado.");
 			return;
 		}

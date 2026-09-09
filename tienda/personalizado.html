@@ -56,10 +56,25 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 	<div id="contenido" class="hidden grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 lg:gap-10 items-start">
 
 		<!-- Formulario -->
-		<form id="formPedido" class="bg-white rounded-3xl border border-line p-5 sm:p-7 shadow-sm flex flex-col gap-7" novalidate>
+		<form id="formPedido" class="bg-white rounded-3xl border border-line p-5 sm:p-7 shadow-sm flex flex-col gap-6" novalidate>
 
-			<section class="flex flex-col gap-3">
-				<h2 class="font-bold text-ink text-lg">1. Tu grupo <span class="text-[12px] font-semibold text-mute ml-1">obligatorio</span></h2>
+			<!-- Por pasos: una pregunta a la vez con "Siguiente" y "Atrás".
+			     personalizado.js muestra la sección [data-paso] activa. -->
+			<div id="pasoIndicador" class="flex flex-col gap-2">
+				<div class="flex items-center justify-between gap-3">
+					<p id="pasoTexto" class="text-[12px] font-bold uppercase tracking-[0.1em] text-mute">Paso 1 de 4</p>
+					<p id="pasoNombre" class="text-[13px] font-semibold text-ink"></p>
+				</div>
+				<div id="pasoBarra" class="grid grid-cols-4 gap-1.5">
+					<span class="h-1.5 rounded-full" style="background:#e7e6df"></span>
+					<span class="h-1.5 rounded-full" style="background:#e7e6df"></span>
+					<span class="h-1.5 rounded-full" style="background:#e7e6df"></span>
+					<span class="h-1.5 rounded-full" style="background:#e7e6df"></span>
+				</div>
+			</div>
+
+			<section data-paso="1" class="flex flex-col gap-3">
+				<h2 class="font-bold text-ink text-lg">Tu grupo <span class="text-[12px] font-semibold text-mute ml-1">obligatorio</span></h2>
 				<div>
 					<p class="text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Organización</p>
 					<div id="chipsOrg" class="flex flex-wrap gap-2">
@@ -90,15 +105,9 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 			</section>
 
-			<section class="flex flex-col gap-3">
-				<h2 class="font-bold text-ink text-lg">2. Versión <span class="text-[12px] font-semibold text-mute ml-1">obligatorio</span></h2>
-				<div id="opcionesNivel" class="flex flex-col gap-2"></div>
-				<p class="text-xs text-mute">Las dos versiones incluyen la planeación en PDF y en Word editable. No incluyen examen.</p>
-			</section>
-
-			<section class="flex flex-col gap-4">
+			<section data-paso="2" class="hidden flex flex-col gap-4">
 				<div>
-					<h2 class="font-bold text-ink text-lg">3. Qué quieres que enseñe <span class="text-[12px] font-semibold text-mute ml-1">opcional</span></h2>
+					<h2 class="font-bold text-ink text-lg">Qué quieres que enseñe <span class="text-[12px] font-semibold text-mute ml-1">opcional</span></h2>
 					<p class="text-sm text-mute mt-1">Lo que dejes vacío lo elegimos nosotros con criterio pedagógico para ese grado.</p>
 				</div>
 				<div>
@@ -136,6 +145,15 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 						</div>
 						<p id="ayudaPda" class="text-xs text-mute mt-1">Con contenidos elegidos verás sus PDAs; escribe para buscar cualquier otro del grado.</p>
 					</div>
+				</div>
+			</section>
+
+			<section data-paso="3" class="hidden flex flex-col gap-4">
+				<div>
+					<h2 class="font-bold text-ink text-lg">Detalles <span class="text-[12px] font-semibold text-mute ml-1">opcional</span></h2>
+					<p class="text-sm text-mute mt-1">Metodología, fecha y cualquier indicación para quien lo elabora.</p>
+				</div>
+				<div class="grid gap-4 sm:grid-cols-2">
 					<div>
 						<label for="selMetodologia" class="block text-[11px] font-bold uppercase tracking-[0.12em] text-mute mb-2">Metodología</label>
 						<select id="selMetodologia" class="w-full h-12 px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
@@ -158,16 +176,32 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				</div>
 			</section>
 
-			<!-- En el celular, "Tu pedido" y la garantía se mueven aquí (antes del
-			     botón) desde el lateral: personalizado.js los recoloca según el
-			     ancho. Así se ve qué se va a pedir antes de continuar. -->
-			<div id="resumenMovil" class="contents"></div>
+			<section data-paso="4" class="hidden flex flex-col gap-4">
+				<div>
+					<h2 class="font-bold text-ink text-lg">Versión y confirmación <span class="text-[12px] font-semibold text-mute ml-1">obligatorio</span></h2>
+					<p class="text-sm text-mute mt-1">Elige si lo quieres con anexos imprimibles y revisa tu pedido.</p>
+				</div>
+				<div id="opcionesNivel" class="flex flex-col gap-2"></div>
+				<p class="text-xs text-mute">Las dos versiones incluyen la planeación en PDF y en Word editable. No incluyen examen.</p>
+				<!-- En el celular, "Tu pedido" y la garantía se mueven aquí (antes del
+				     botón) desde el lateral: personalizado.js los recoloca según el
+				     ancho. Así se ve qué se va a pedir antes de continuar. -->
+				<div id="resumenMovil" class="contents"></div>
+			</section>
 
 			<div id="mensajeForm" class="hidden rounded-xl px-3.5 py-2.5 text-sm font-medium"></div>
 
-			<button id="continuarBtn" type="submit" class="w-full h-14 rounded-2xl font-bold text-white text-base transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.8)] flex items-center justify-center gap-2" style="background:#059669">
-				Continuar al pago <i data-lucide="arrow-right" class="w-5 h-5"></i>
-			</button>
+			<div class="flex flex-col-reverse sm:flex-row gap-3 sm:items-center sm:justify-between">
+				<button id="pasoAtras" type="button" class="hidden h-12 px-5 rounded-2xl border border-line font-bold text-ink inline-flex items-center justify-center gap-2" style="background:#fff">
+					<i data-lucide="arrow-left" class="w-4 h-4"></i> Atrás
+				</button>
+				<button id="pasoSiguiente" type="button" class="h-14 sm:flex-1 px-6 rounded-2xl font-bold text-white text-base transition inline-flex items-center justify-center gap-2" style="background:#1e3a8a">
+					Siguiente <i data-lucide="arrow-right" class="w-5 h-5"></i>
+				</button>
+				<button id="continuarBtn" type="submit" class="hidden h-14 sm:flex-1 rounded-2xl font-bold text-white text-base transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.8)] items-center justify-center gap-2" style="background:#059669">
+					Continuar al pago <i data-lucide="arrow-right" class="w-5 h-5"></i>
+				</button>
+			</div>
 		</form>
 
 		<!-- Resumen lateral -->

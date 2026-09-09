@@ -69,8 +69,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
-	var productos = res.data.slice().sort(function (a, b) { return ordenOpcion(a) - ordenOpcion(b); });
+	// El grado también tiene proyectos individuales (tipo_paquete = 'proyecto')
+	// y llegan en la misma consulta: NO son opciones del paquete (contaminaban
+	// el "desde" y el modal). Se apartan para ofrecerlos como enlace.
+	var sueltosGrado = res.data.filter(function (p) { return p.tipo_paquete === "proyecto"; });
+	var productos = res.data
+		.filter(function (p) { return p.tipo_paquete === "trimestre" || p.tipo_paquete === "ciclo"; })
+		.sort(function (a, b) { return ordenOpcion(a) - ordenOpcion(b); });
+	if (!productos.length) {
+		estadoEl.textContent = "Este paquete no está disponible.";
+		return;
+	}
 	var info = productos[0];
+
+	// Enlace a los proyectos individuales de este grado: en la ficha y en el
+	// modal. No se compran aquí (tienen su propio flujo: con o sin anexos),
+	// pero quien solo necesita uno debe encontrarlos sin salir a buscar.
+	var hrefSueltos = esMulti
+		? "catalogo.html?vista=proyectos&org=multigrado" + (info.modalidad ? "&mod=" + encodeURIComponent(info.modalidad) : "")
+		: "catalogo.html?vista=proyectos&g=" + encodeURIComponent(info.grado);
+	var precioSueltoMin = sueltosGrado.length
+		? Math.min.apply(null, sueltosGrado.map(function (p) { return Number(p.precio_pdf); }).filter(isFinite))
+		: null;
+	function textoSueltos() {
+		return "¿Solo necesitas un proyecto? " + (sueltosGrado.length === 1 ? "Hay 1 proyecto individual" : "Hay " + sueltosGrado.length + " proyectos individuales") +
+			(precioSueltoMin != null ? " desde " + montoCorto(Tienda.precioFinal(precioSueltoMin, "proyecto")) : "") + ".";
+	}
+	var enlaceSueltosEl = document.getElementById("enlaceSueltos");
+	if (enlaceSueltosEl && sueltosGrado.length) {
+		enlaceSueltosEl.innerHTML = '<i data-lucide="file-text" class="w-4 h-4 shrink-0"></i><span>' + esc(textoSueltos()) +
+			' <a href="' + esc(hrefSueltos) + '" class="font-semibold underline" style="color:#1e3a8a">Verlos</a></span>';
+		enlaceSueltosEl.classList.remove("hidden");
+	}
 	var gradoNum = info.grado;
 	var comboArr = esMulti ? (info.grados_combo || "").split("-") : [String(gradoNum)];
 
@@ -672,6 +702,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 				actualizarPie();
 			});
 		});
+
+		// Al final, la salida a los proyectos individuales (no es una opción del
+		// paquete: es otro producto con su propia ficha).
+		if (sueltosGrado.length) {
+			paso1.insertAdjacentHTML("beforeend",
+				'<a href="' + esc(hrefSueltos) + '" class="w-full rounded-2xl p-4 flex items-center gap-3 text-sm transition hover:bg-paper" style="border:2px dashed rgba(30,58,138,.35);color:#1c2434">' +
+				'<span class="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center" style="background:rgba(30,58,138,.1);color:#1e3a8a"><i data-lucide="file-text" class="w-4 h-4"></i></span>' +
+				'<span class="flex-1 min-w-0">' + esc(textoSueltos()) + '</span>' +
+				'<i data-lucide="arrow-right" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i></a>');
+		}
 
 		// El ciclo viene marcado de entrada: es el recomendado y así el botón
 		// nunca aparece inerte.
