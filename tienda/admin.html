@@ -318,7 +318,11 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 									<label for="cupComision" class="block text-[11px] font-bold text-mute mb-1">Comisión al creador (%)</label>
 									<input id="cupComision" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="20" class="w-full h-11 rounded-xl border border-line px-3 text-ink">
 								</div>
-								<p class="sm:col-span-3 text-xs text-mute">La comisión se calcula sobre lo cobrado en cada venta pagada con este cupón. Con el botón "Cuentas" de la tabla ves el estado de cuenta por periodo, descargas el CSV para el creador y registras los pagos que le hagas.</p>
+								<div>
+									<label for="cupMaxComision" class="block text-[11px] font-bold text-mute mb-1">Tope de comisión (MXN, vacío = sin tope)</label>
+									<input id="cupMaxComision" type="number" min="1" step="1" inputmode="numeric" placeholder="2000" class="w-full h-11 rounded-xl border border-line px-3 text-ink">
+								</div>
+								<p class="sm:col-span-3 text-xs text-mute">La comisión se calcula sobre lo cobrado en cada venta pagada con este cupón. Tres formas de limitarlo: por fecha, por número de usos y por tope de comisión: en cuanto la comisión acumulada llega o rebasa el tope, el cupón deja de aceptarse (la última venta puede pasarse un poco, porque cada comisión depende de lo cobrado). Con el botón "Cuentas" de la tabla ves el estado de cuenta por periodo, descargas el CSV para el creador y registras los pagos que le hagas.</p>
 							</div>
 						</div>
 						<div class="flex gap-2 flex-wrap">

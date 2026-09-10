@@ -440,6 +440,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var cupCreadorNombreEl = document.getElementById("cupCreadorNombre");
 	var cupCreadorContactoEl = document.getElementById("cupCreadorContacto");
 	var cupComisionEl = document.getElementById("cupComision");
+	var cupMaxComisionEl = document.getElementById("cupMaxComision");
 	var cancelarCuponBtn = document.getElementById("cancelarCuponBtn");
 
 	// Última respuesta de admin_estado_promocion(): la comparten la tabla de
@@ -679,6 +680,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var estado, color;
 			if (!c.activo) { estado = "Apagado"; color = "#9ba3af"; }
 			else if (c.vencido) { estado = "Vencido"; color = "#b45309"; }
+			else if (c.agotado_comision) { estado = "Agotado (tope de comisión)"; color = "#b45309"; }
 			else if (c.agotado) { estado = "Agotado"; color = "#b45309"; }
 			else { estado = "Activo"; color = "#047857"; }
 
@@ -700,6 +702,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 					? '<span class="font-semibold text-ink">' + esc(c.creador_nombre || "Sin nombre") + "</span>" +
 						(c.comision_porcentaje != null ? '<br><span class="text-xs text-mute">Comisión ' + esc(Number(c.comision_porcentaje)) + "%" +
 							(Number(c.pendiente) > 0 ? ' · <span class="font-semibold" style="color:#b45309">pendiente ' + esc(money(c.pendiente)) + "</span>" : " · al corriente") + "</span>" : "") +
+						// Tope por monto: acumulado / tope, en rojo si ya se alcanzó.
+						(c.max_comision != null ? '<br><span class="text-xs' + (c.agotado_comision ? ' font-bold" style="color:#b91c1c"' : ' text-mute"') + '>Generado ' + esc(money(c.comision_generada)) + " de " + esc(money(c.max_comision)) + " de tope</span>" : "") +
 						'<br><button type="button" data-cupon-cuentas="' + esc(c.codigo) + '" class="text-sm font-semibold underline" style="color:#1e3a8a">Cuentas</button>'
 					: '<span class="text-xs text-mute">Propio</span><br><button type="button" data-cupon-cuentas="' + esc(c.codigo) + '" class="text-xs font-semibold underline text-mute">Ver usos</button>') + "</td>" +
 				'<td class="py-2 pr-3' + (excedido ? ' font-bold" style="color:#b91c1c"' : '"') + ">" + esc(usos) +
@@ -772,6 +776,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cupCreadorNombreEl.value = "";
 		cupCreadorContactoEl.value = "";
 		cupComisionEl.value = "";
+		cupMaxComisionEl.value = "";
 		cancelarCuponBtn.classList.add("hidden");
 		sincronizarEtiquetaValor();
 	}
@@ -793,6 +798,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cupCreadorNombreEl.value = c.creador_nombre || "";
 		cupCreadorContactoEl.value = c.creador_contacto || "";
 		cupComisionEl.value = c.comision_porcentaje != null ? String(Number(c.comision_porcentaje)) : "";
+		cupMaxComisionEl.value = c.max_comision != null ? String(Number(c.max_comision)) : "";
 		cancelarCuponBtn.classList.remove("hidden");
 		sincronizarEtiquetaValor();
 		tituloFormCuponEl.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -817,6 +823,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			p_creador_nombre: c.creador_nombre || null,
 			p_creador_contacto: c.creador_contacto || null,
 			p_comision_porcentaje: c.comision_porcentaje != null ? c.comision_porcentaje : null,
+			p_max_comision: c.max_comision != null ? c.max_comision : null,
 		});
 		if (res.error) { Tienda.toast("Error: " + res.error.message, "error"); return false; }
 		cupones = res.data || [];
@@ -856,6 +863,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			Tienda.toast("La comisión debe estar entre 0 y 100, o dejarse vacía.", "error");
 			return;
 		}
+		var topeTxt = (cupMaxComisionEl.value || "").trim();
+		var maxComision = topeTxt === "" ? null : Number(topeTxt);
+		if (maxComision != null && (!isFinite(maxComision) || maxComision <= 0)) {
+			Tienda.toast("El tope de comisión debe ser mayor que cero, o dejarse vacío.", "error");
+			return;
+		}
+		if (maxComision != null && !(comision > 0)) {
+			Tienda.toast("Para poner un tope de comisión primero define el porcentaje de comisión del creador.", "error");
+			return;
+		}
 
 		guardarCuponBtn.disabled = true;
 		guardarCuponBtn.textContent = "Guardando...";
@@ -871,6 +888,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			creador_nombre: (cupCreadorNombreEl.value || "").trim() || null,
 			creador_contacto: (cupCreadorContactoEl.value || "").trim() || null,
 			comision_porcentaje: comision,
+			max_comision: maxComision,
 		});
 		guardarCuponBtn.disabled = false;
 		guardarCuponBtn.textContent = "Guardar cupón";
@@ -968,9 +986,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"</tr>";
 		}).join("") : '<tr><td colspan="8" class="py-4 px-3 text-sm text-mute">Sin movimientos en este periodo.</td></tr>';
 
+		var cupLista = cupones.find(function (x) { return x.codigo === c.codigo; }) || {};
+		var tope = cupLista.max_comision != null ? Number(cupLista.max_comision) : null;
 		document.getElementById("cuentasSaldo").innerHTML =
 			"<div>Ventas pagadas con el cupón: <strong>" + esc(h.ventas_pagadas) + "</strong> · " + esc(money(h.monto_vendido)) + " cobrados</div>" +
-			"<div>Comisión generada: <strong>" + esc(money(h.comision_generada)) + "</strong></div>" +
+			"<div>Comisión generada: <strong>" + esc(money(h.comision_generada)) + "</strong>" +
+				(tope != null ? " de un tope de " + esc(money(tope)) + (Number(h.comision_generada) >= tope
+					? ' · <span class="font-semibold" style="color:#b91c1c">tope alcanzado, el cupón ya no se acepta</span>'
+					: " · restan " + esc(money(tope - Number(h.comision_generada)))) : "") + "</div>" +
 			"<div>Ya pagado al creador: <strong>" + esc(money(h.liquidado)) + "</strong></div>" +
 			'<div class="text-base">Pendiente por pagar: <strong style="color:' + (Number(h.pendiente) > 0 ? "#b45309" : "#047857") + '">' + esc(money(h.pendiente)) + "</strong></div>";
 
