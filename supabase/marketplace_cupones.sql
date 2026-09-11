@@ -5,7 +5,12 @@
 -- Jorge inventa el codigo, el comprador lo escribe en el checkout. Un cupon es
 -- de porcentaje O de monto fijo, nunca de los dos.
 --
--- REGLA CENTRAL: el cupon NO se acumula con la promocion general. Gana el
+-- OBSOLETO (2026-09-11): la regla central de abajo YA NO RIGE. El cupon ahora
+-- SE SUMA a la promocion general; la definicion vigente de
+-- marketplace_cupon_evaluar esta en marketplace_cupon_acumulable.sql y hay que
+-- reaplicarla si este archivo se vuelve a ejecutar.
+--
+-- REGLA ORIGINAL (historica): el cupon NO se acumula con la promocion general. Gana el
 -- descuento MAYOR. Si el cupon no mejora lo que el comprador ya tiene delante,
 -- no es un error: se le dice que ya tiene el mejor precio y no se le quema el
 -- cupon (no se estampa en la orden, asi que no consume un uso).

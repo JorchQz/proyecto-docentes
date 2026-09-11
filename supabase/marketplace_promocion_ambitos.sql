@@ -2,6 +2,11 @@
 -- Ambitos de la promocion: a que se aplica el descuento (2026-09-09)
 -- =============================================================================
 --
+-- NOTA (2026-09-11): la version de marketplace_cupon_evaluar que trae este
+-- archivo compara el cupon contra la promocion (gana el mayor). Esa regla fue
+-- sustituida: hoy el cupon SE SUMA a la oferta. Si reaplicas este archivo,
+-- reaplica despues marketplace_cupon_acumulable.sql.
+--
 -- La oferta general ya no es "todo o nada": desde el admin se elige si aplica
 -- a los paquetes (trimestre y ciclo, incluida la unitaria), a los proyectos
 -- individuales y a los proyectos a la medida. Por defecto aplica a paquetes y

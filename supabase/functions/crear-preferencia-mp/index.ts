@@ -100,7 +100,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Parámetros inválidos" }, 400);
     }
     // Código de cupón opcional. Un código inválido NO tumba la compra: la base
-    // lo ignora y se cobra el mejor precio disponible sin él.
+    // lo ignora y se cobra el precio que corresponda sin él.
     const cupon = normalizarCupon(body.cupon);
 
     // Aceptación de Términos y Aviso de Privacidad (ver EXIGIR_TERMINOS).
@@ -398,32 +398,34 @@ async function crearPreferenciaYResponder(
 
 /** Lo que se cobra y de dónde salió el descuento. */
 interface PrecioResuelto {
-  /** Importe final, ya con promoción o cupón (el mayor de los dos). */
+  /** Importe final: lista, menos la oferta del ámbito, menos el cupón. */
   precio: number;
-  /** Cupón que GANÓ, ya normalizado. null si mandó la promoción o la lista. */
+  /** Cupón aplicado, ya normalizado. null si no se aplicó ninguno. */
   cuponCodigo: string | null;
-  /** Pesos entre el precio de lista y lo que se cobra. */
+  /** Pesos entre el precio de lista y lo que se cobra (oferta + cupón). */
   descuento: number;
   /** Por qué un cupón enviado no se aplicó, para decírselo al comprador. */
   cuponMotivo: string | null;
   /**
-   * Cupón VÁLIDO que escribió el comprador aunque no ganara (la promoción
-   * general era mejor). Se sella en la orden como cupon_referido: el creador
-   * trajo la venta y aparece en su estado de cuenta, sin contar como uso.
+   * Cupón VÁLIDO que escribió el comprador aunque no bajara el precio (solo
+   * queda esa posibilidad si el importe ya está en el piso). Se sella como
+   * cupon_referido: el creador trajo la venta y aparece en su estado de
+   * cuenta, sin contar como uso.
    */
   cuponReferido: string | null;
 }
 
 /**
- * Precio que se cobra = precio de lista con el mejor descuento disponible.
+ * Precio que se cobra = lista, menos la oferta del ámbito, menos el cupón.
  *
- * La decisión vive SOLO en SQL (marketplace_cupon_evaluar, en
- * supabase/marketplace_cupones.sql), que es el mismo núcleo que consulta el
- * checkout al validar un cupón. No se replica aquí a propósito: si la regla
- * existiera en dos sitios, lo mostrado y lo cobrado podrían separarse.
+ * La decisión vive SOLO en SQL (marketplace_cupon_evaluar, hoy en
+ * supabase/marketplace_cupon_acumulable.sql), que es el mismo núcleo que
+ * consulta el checkout al validar un cupón. No se replica aquí a propósito: si
+ * la regla existiera en dos sitios, lo mostrado y lo cobrado podrían separarse.
  *
- * El cupón NO se acumula con la promoción: gana el descuento mayor. Si el
- * cupón no mejora, no se estampa en la orden y por tanto no consume un uso.
+ * El cupón SE SUMA a la promoción: descuenta sobre el precio que ya trae la
+ * oferta, en cualquier ámbito (paquetes, proyectos y personalizados), así que
+ * un cupón válido siempre se estampa en la orden y siempre genera comisión.
  *
  * Falla CERRADO (devuelve null): si la RPC no responde no se cobra el precio
  * de lista, porque durante una promoción eso sería cobrar MÁS de lo que el
@@ -455,7 +457,8 @@ async function precioConPromo(
     return null;
   }
 
-  // Solo se sella el cupón cuando de verdad ganó: es lo que cuenta los usos.
+  // Solo se sella el cupón cuando de verdad descontó: es lo que cuenta los
+  // usos y lo que genera la comisión del creador.
   const aplicado = data?.aplicado === true;
   return {
     precio,

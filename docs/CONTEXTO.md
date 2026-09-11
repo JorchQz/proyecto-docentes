@@ -242,7 +242,11 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - `marketplace_precios`, `marketplace_promocion`, `marketplace_cupones` — tarifario de
   paquetes, promoción porcentual y cupones. Los proyectos individuales no están en el tarifario:
   su precio vive en la fila y se edita en el admin; la promoción y los cupones se aplican
-  encima igual que a los paquetes.
+  encima igual que a los paquetes. Cadena de descuentos (autoridad única:
+  `marketplace_cupon_evaluar`, hoy en `supabase/marketplace_cupon_acumulable.sql`):
+  **lista → oferta general del ámbito → cupón sobre ese precio**. La oferta tiene ámbitos
+  (`aplica_paquetes` / `aplica_proyectos` / `aplica_personalizados`); el cupón aplica siempre
+  en los tres, así que un cupón válido siempre consume uso y genera comisión.
 - Admin: `es_admin()` (cuenta `soporte.jissez@gmail.com`) es la única fuente del rol. Los
   IDs de Drive (`*_drive_id`, `pedidos.drive_folder_id`) no son legibles desde el navegador:
   el permiso de tabla se sustituyó por columnas explícitas (`marketplace_personalizados.sql` §8).

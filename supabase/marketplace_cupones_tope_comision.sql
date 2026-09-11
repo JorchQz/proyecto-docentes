@@ -2,6 +2,11 @@
 -- Cupones: tope por monto de comision (2026-09-10)
 -- =============================================================================
 --
+-- NOTA (2026-09-11): la version de marketplace_cupon_evaluar que trae este
+-- archivo compara el cupon contra la promocion (gana el mayor). Esa regla fue
+-- sustituida: hoy el cupon SE SUMA a la oferta. Si reaplicas este archivo,
+-- reaplica despues marketplace_cupon_acumulable.sql.
+--
 -- Tercera forma de limitar un cupon de creador, junto a la fecha y al numero
 -- de usos: un MONTO maximo de comision. En cuanto la comision acumulada (sobre
 -- las ventas pagadas con el cupon aplicado) llega o rebasa ese monto, el cupon

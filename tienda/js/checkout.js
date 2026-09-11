@@ -448,8 +448,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			cuponAplicado = r.codigo;
 			pintarTotal(precioLista, Number(r.precio_final));
 			desgloseVisible(false);
+			// El cupón se encadena con la oferta: si ya había descuento se dice
+			// cuánto suma el cupón encima, no solo el ahorro total.
+			var hayOferta = Number(r.precio_promo) < Number(r.precio_lista);
 			mensajeCupon(
-				"Cupón " + r.codigo + " aplicado: ahorras " + money(r.descuento) + "." +
+				"Cupón " + r.codigo + " aplicado" +
+				(hayOferta
+					? ": " + money(r.descuento_cupon) + " menos sobre el precio de oferta. En total ahorras " + money(r.descuento) + "."
+					: ": ahorras " + money(r.descuento) + ".") +
 				(r.requiere_sesion
 					? " Se confirma al crear tu cuenta aquí abajo (es de un uso por persona)."
 					: ""),
@@ -461,8 +467,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cuponAplicado = null;
 		pintarTotal(precioLista);
 		desgloseVisible(true);
-		// "No mejora" no es un error del comprador: su cupón sigue intacto y se
-		// le deja el precio más barato. Va en azul, nunca en rojo.
+		// "No mejora" (el precio ya está en el piso) no es un error del
+		// comprador: su cupón sigue intacto. Va en azul, nunca en rojo.
 		mensajeCupon(r.mensaje || "Ese cupón no está disponible.",
 			r.motivo === "no_mejora" ? "info" : "error");
 	});
@@ -632,7 +638,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				} else if (data.cupon_motivo === "inexistente") {
 					mensajeCupon("Ese cupón ya no está disponible.", "error");
 				} else if (data.cupon_motivo === "no_mejora") {
-					mensajeCupon("Ya tienes el mejor precio: la oferta actual supera a tu cupón, y tu cupón sigue disponible.", "info");
+					mensajeCupon("Tu cupón no puede bajar más este precio, así que sigue disponible para otra compra.", "info");
 				}
 				Tienda.toast(
 					subio
