@@ -84,14 +84,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Precio de lista del pedido (sin ningún descuento). Es lo que se manda a
 	// validar el cupón, y la base de todo lo que se repinta.
 	var precioLista = null;
-	// Cupón que el comprador aplicó y GANÓ. null si no puso ninguno o si el
-	// suyo no mejora la oferta vigente.
+	// Cupón que el comprador aplicó y que descontó de verdad. null si no puso
+	// ninguno o si el suyo no llegó a bajar el precio. pintarTotal() lo lee para
+	// saber qué parte del descuento es de la oferta y qué parte del cupón, así
+	// que SIEMPRE se asigna antes de repintar.
 	var cuponAplicado = null;
-	// Si el pedido lleva add-on de Word hay desglose, y se puede ocultar y
-	// volver a mostrar según haya cupón o no. Se declara aquí arriba porque
-	// mostrarDesglose() corre dentro de prepararIndividual/prepararCombo, antes
-	// que el resto del cuerpo del archivo.
-	var hayDesglose = false;
 
 	// Antes de pintar cualquier importe: así el precio no aparece a lista y
 	// cambia un instante después.
@@ -194,16 +191,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var el = document.getElementById("notaPrecioCheckout");
 		if (!el || !Tienda.promoActiva()) { return; }
 		var hasta = Tienda.promoFechaLimite();
-		// Rojo: la línea anuncia un descuento, y el descuento siempre va en rojo.
+		// El importe del descuento ya está arriba, en su renglón de la cuenta;
+		// aquí solo se recuerda hasta cuándo dura. Rojo, como todo lo que habla
+		// de la oferta.
 		el.style.color = Tienda.COLOR_DESCUENTO.texto;
-		el.innerHTML = '<i data-lucide="tag" class="w-3.5 h-3.5"></i> <span class="font-semibold">Descuento de -' +
-			Tienda.promoInfo().porcentaje + "% aplicado</span>" +
-			(hasta ? " · termina el " + Tienda.esc(hasta) : "");
+		el.innerHTML = '<i data-lucide="tag" class="w-3.5 h-3.5"></i> ' +
+			(hasta
+				? '<span class="font-semibold">La oferta termina el ' + Tienda.esc(hasta) + "</span>"
+				: '<span class="font-semibold">Oferta por tiempo limitado</span>');
 		Tienda.iconos();
 	}
 
 	/**
-	 * Pinta el total del resumen: con descuento, lista tachado + final.
+	 * Pinta la cuenta completa del resumen: subtotal a precio de lista, una
+	 * línea en negativo por cada descuento y el total a pagar.
+	 *
+	 * Las dos líneas se leen en cascada, igual que las calcula la base: la
+	 * oferta baja el precio de lista y el cupón descuenta sobre ESE precio
+	 * (marketplace_cupon_evaluar). Por eso nunca se solapan y las cifras de
+	 * arriba siempre suman el total de abajo.
 	 *
 	 * `final` sobreescribe el cálculo de la promoción cuando manda un cupón.
 	 * `precioMostrado` queda siempre sincronizado con lo que hay en pantalla,
@@ -214,14 +220,65 @@ document.addEventListener("DOMContentLoaded", async function () {
 		precioLista = Number(lista);
 		precioMostrado = final != null ? Number(final) : Tienda.precioFinal(lista);
 
-		if (precioMostrado < precioLista) {
-			resumenPrecio.innerHTML =
-				'<s class="text-mute text-base font-bold mr-1">' + money(precioLista) + "</s> " +
-				'<span class="font-black text-ink text-2xl">' + money(precioMostrado) + "</span>";
-		} else {
-			resumenPrecio.innerHTML =
-				'<span class="font-black text-ink text-2xl">' + money(precioMostrado) + "</span>";
+		// Sin cupón aplicado, todo lo que falta hasta el total es la oferta.
+		// El segundo caso es la red de seguridad: si el servidor devolviera un
+		// importe por encima del precio con oferta (la promo caducó entre que
+		// se pintó el resumen y el clic), no se inventa un descuento de cupón.
+		var conOferta = Tienda.precioFinal(lista);
+		if (!cuponAplicado || precioMostrado > conOferta) { conOferta = precioMostrado; }
+
+		var dctoOferta = precioLista - conOferta;
+		var dctoCupon = conOferta - precioMostrado;
+		var ahorro = precioLista - precioMostrado;
+
+		fila("filaSubtotal", ahorro > 0);
+		document.getElementById("subtotalMonto").innerHTML = ahorro > 0
+			? '<s class="text-mute font-semibold">' + money(precioLista) + "</s>"
+			: money(precioLista);
+
+		fila("filaOferta", dctoOferta > 0);
+		if (dctoOferta > 0) {
+			var promo = Tienda.promoActiva() ? Tienda.promoInfo() : null;
+			document.getElementById("ofertaLabel").textContent =
+				promo ? "Oferta -" + promo.porcentaje + "%" : "Descuento";
+			pintarResta("ofertaMonto", dctoOferta);
 		}
+
+		fila("filaCuponPrecio", dctoCupon > 0);
+		if (dctoCupon > 0) {
+			document.getElementById("cuponPrecioLabel").textContent = "Cupón " + cuponAplicado;
+			pintarResta("cuponPrecioMonto", dctoCupon);
+		}
+
+		resumenPrecio.innerHTML =
+			'<span class="font-black text-ink text-2xl">' + money(precioMostrado) + "</span>";
+
+		// La cuenta solo aparece cuando tiene algo que contar: con precio de
+		// lista y sin add-on, el resumen se queda en una línea de Total.
+		var conDesglose = !document.getElementById("resumenDesglose").classList.contains("hidden");
+		fila("bloqueCuenta", ahorro > 0 || conDesglose);
+
+		var ahorroEl = document.getElementById("filaAhorro");
+		ahorroEl.classList.toggle("hidden", !(ahorro > 0));
+		if (ahorro > 0) {
+			ahorroEl.style.color = Tienda.COLOR_DESCUENTO.texto;
+			ahorroEl.textContent = "Ahorras " + money(ahorro) +
+				" (" + Math.round((ahorro / precioLista) * 100) + "%)";
+		}
+	}
+
+	/** Muestra u oculta una fila de la cuenta sin perder su `display:flex`. */
+	function fila(id, visible) {
+		var el = document.getElementById(id);
+		el.classList.toggle("hidden", !visible);
+		el.classList.toggle("flex", visible);
+	}
+
+	/** Un descuento siempre se pinta en rojo y con el signo menos delante. */
+	function pintarResta(id, monto) {
+		var el = document.getElementById(id);
+		el.style.color = Tienda.COLOR_DESCUENTO.texto;
+		el.textContent = "- " + money(monto);
 	}
 
 	/** Compra normal de un solo paquete: resumen y cuerpo del pago. */
@@ -277,16 +334,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: (tipo === "pdf" ? "Versión PDF" : "Versión editable — planeación, anexos y examen en PDF y Word");
 		pintarTotal(precio);
 
-		// Con el add-on mostramos de dónde sale el total: la base cuesta lo
+		// Con el add-on mostramos de dónde sale el subtotal: la base cuesta lo
 		// mismo que suelta y el resto es exactamente el precio del extra.
-		// Ambas partes salen de precios YA descontados, para que sumen el total.
 		if (esProyecto && tipo === "anexos" && p.precio_pdf != null) {
-			var baseFinal = Tienda.precioFinal(p.precio_pdf);
-			mostrarDesglose(baseFinal, Tienda.precioFinal(p.precio_pdf_con_anexos) - baseFinal,
+			mostrarDesglose(Number(p.precio_pdf), Number(p.precio_pdf_con_anexos) - Number(p.precio_pdf),
 				"Proyecto en PDF + Word", "Anexos imprimibles");
 		} else if (tipo === "editable" && p.precio_pdf != null) {
-			var pdfFinal = Tienda.precioFinal(p.precio_pdf);
-			mostrarDesglose(pdfFinal, Tienda.precioFinal(p.precio_editable) - pdfFinal);
+			mostrarDesglose(Number(p.precio_pdf), Number(p.precio_editable) - Number(p.precio_pdf));
 		}
 
 		cuerpoPago = { producto_id: productoId, tipo: tipo };
@@ -356,8 +410,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: '');
 		resumenCombo.classList.remove("hidden");
 
-		if (tipo === "editable" && total > precioPdf) {
-			mostrarDesglose(precioPdf, total - precioPdf);
+		// El desglose va a precio de lista, como el subtotal que reparte.
+		var listaPdf = Number(tarifaRes.data.precio_pdf);
+		if (tipo === "editable" && listaTotal > listaPdf) {
+			mostrarDesglose(listaPdf, listaTotal - listaPdf);
 		}
 
 		cuerpoPago = {
@@ -370,6 +426,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return true;
 	}
 
+	/**
+	 * Reparte el subtotal entre la base y el add-on. Los dos importes son de
+	 * LISTA, nunca descontados: así suman exactamente el subtotal y los
+	 * descuentos quedan abajo, en sus propias líneas. (Con precios ya
+	 * descontados no cuadraría: el redondeo hacia abajo no es aditivo.)
+	 */
 	function mostrarDesglose(precioPdf, addon, etiquetaBase, etiquetaAddon) {
 		if (addon <= 0) { return; }
 		// Las etiquetas por defecto son las del paquete (PDF + add-on de Word);
@@ -378,20 +440,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		document.getElementById("desgloseAddonLabel").textContent = etiquetaAddon || "Versión Word editable";
 		document.getElementById("desglosePdf").textContent = money(precioPdf);
 		document.getElementById("desgloseWord").textContent = "+ " + money(addon);
-		document.getElementById("resumenDesglose").classList.remove("hidden");
-		document.getElementById("filaTotal").style.borderTop = "1px solid #e7e6df";
-		document.getElementById("filaTotal").style.marginTop = "0.5rem";
-		hayDesglose = true;
-	}
-
-	/**
-	 * El desglose reparte el total entre PDF y Word. Un cupón descuenta sobre el
-	 * TOTAL, así que las dos partes dejarían de sumarlo: mejor esconderlo que
-	 * enseñar una cuenta que no cuadra.
-	 */
-	function desgloseVisible(visible) {
-		if (!hayDesglose) { return; }
-		document.getElementById("resumenDesglose").classList.toggle("hidden", !visible);
+		fila("resumenDesglose", true);
+		// Puede correr después del primer pintarTotal(), así que abre la cuenta
+		// por su cuenta: si no, el desglose quedaría dentro de un bloque oculto.
+		fila("bloqueCuenta", true);
 	}
 
 	// ── Cupones ──────────────────────────────────────────────────────────────
@@ -428,7 +480,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// Campo vacío = quitar el cupón y volver al precio de la oferta.
 			cuponAplicado = null;
 			pintarTotal(precioLista);
-			desgloseVisible(true);
 			mensajeCupon("", null);
 			return;
 		}
@@ -447,15 +498,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (r.aplicado) {
 			cuponAplicado = r.codigo;
 			pintarTotal(precioLista, Number(r.precio_final));
-			desgloseVisible(false);
-			// El cupón se encadena con la oferta: si ya había descuento se dice
-			// cuánto suma el cupón encima, no solo el ahorro total.
-			var hayOferta = Number(r.precio_promo) < Number(r.precio_lista);
+			// El importe del cupón ya aparece en su renglón de la cuenta: aquí
+			// basta confirmar que entró y, si hace falta, avisar de la cuenta.
 			mensajeCupon(
-				"Cupón " + r.codigo + " aplicado" +
-				(hayOferta
-					? ": " + money(r.descuento_cupon) + " menos sobre el precio de oferta. En total ahorras " + money(r.descuento) + "."
-					: ": ahorras " + money(r.descuento) + ".") +
+				"Cupón " + r.codigo + " aplicado." +
 				(r.requiere_sesion
 					? " Se confirma al crear tu cuenta aquí abajo (es de un uso por persona)."
 					: ""),
@@ -466,7 +512,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// No se aplicó. Se vuelve al precio sin cupón en todos los casos.
 		cuponAplicado = null;
 		pintarTotal(precioLista);
-		desgloseVisible(true);
 		// "No mejora" (el precio ya está en el piso) no es un error del
 		// comprador: su cupón sigue intacto. Va en azul, nunca en rojo.
 		mensajeCupon(r.mensaje || "Ese cupón no está disponible.",
@@ -630,7 +675,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 				// se agotó, o resultó que este comprador ya lo había usado).
 				cuponAplicado = data.cupon || null;
 				pintarTotal(precioLista, Number(data.precio));
-				desgloseVisible(!cuponAplicado);
 				if (data.cupon_motivo === "ya_usado") {
 					mensajeCupon("Ya usaste este cupón en una compra anterior.", "error");
 				} else if (data.cupon_motivo === "agotado") {

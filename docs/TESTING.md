@@ -363,6 +363,13 @@ Probar en `jissez.com` (o Live Server) con la cuenta admin `soporte.jissez@gmail
 - [x] Móvil: en el checkout el resumen y el cupón van antes del botón de pago; en escritorio sigue a la derecha
 - [x] Descuentos en rojo en toda la tienda; botones y estados siguen en verde
 
+### Cupones acumulables y cuenta del checkout (2026-09-11)
+- [x] `marketplace_cupon_evaluar` encadena los descuentos: 599 → 479 (oferta 20%) → 431 (ADAMARY10 10%); en personalizados, 160 → 144 (ahí la oferta no aplica y el cupón sí). Probado por SQL y por la RPC pública `marketplace_validar_cupon` con la anon key
+- [x] Piso de $10: con lista $10 el cupón responde `no_mejora` y no se consume
+- [x] Resumen del checkout (jsdom, `checkout.html` + `checkout.js` reales): desglose a precio de lista → Subtotal tachado → "Oferta -20%" → "Cupón CÓDIGO" → Total → "Ahorras $X (Y%)". Las cifras suman en paquete con add-on (499+99=598 → −120 −48 = 430), en proyecto con anexos (80+20=100 → −20 = 80), en el paquete unitario (1299+200=1499 → −300 −120 = 1079) y en el personalizado (160 → −16 = 144)
+- [x] Sin descuentos ni add-on, el bloque de la cuenta no se pinta: el resumen se queda en una sola línea de Total
+- [ ] **Pendiente:** compra real con cupón en Mercado Pago para ver la comisión en el estado de cuenta del creador
+
 ### Bloque 4 — mejoras (probado el 2026-09-09)
 - [x] `avisos-pedidos`: 403 sin secreto; con un pedido vencido manda el correo a `soporte.jissez@gmail.com`; el job `avisos-pedidos-diario` (8:00 hora del centro) disparó la función vía pg_net + Vault y registró 200
 - [x] `practicantes.html` carga sin errores ni desborde en escritorio y móvil, con enlaces al catálogo de proyectos y al pedido personalizado
