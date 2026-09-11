@@ -262,8 +262,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		ahorroEl.classList.toggle("hidden", !(ahorro > 0));
 		if (ahorro > 0) {
 			ahorroEl.style.color = Tienda.COLOR_DESCUENTO.texto;
-			ahorroEl.textContent = "Ahorras " + money(ahorro) +
-				" (" + Math.round((ahorro / precioLista) * 100) + "%)";
+			// Solo el monto, nunca el porcentaje total. Encadenar 20% y 10% da
+			// 28%, no 30%, y ese número compuesto además se mueve con el
+			// redondeo a pesos: prometería algo distinto en cada paquete. Lo que
+			// sí se anuncia por su porcentaje es la oferta, y ahí el número
+			// cuadra exacto contra el subtotal que está justo encima.
+			ahorroEl.textContent = "Ahorras " + money(ahorro);
 		}
 	}
 
