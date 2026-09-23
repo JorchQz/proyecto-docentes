@@ -26,7 +26,7 @@ seguir desde el último bloque con PASS.
 | 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → revisor 310g | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → FAIL #7 310g (borrar y reinsertar lo cerrado: misma causa, 2.º seguido) → revisor 310h | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -579,6 +579,27 @@ y GEN), 22 suites, humo, cierre-boleta, 310d, 310f, 310g (dos veces), 37i y 37c 
 advisors de seguridad sin avisos nuevos. Anotados para Jorge: si la maestra ACEPTA salir con
 la cola pendiente se pierde lo que no llegó (el navegador sí avisa); "Hoy" no muestra el
 segundo proyecto activo hasta terminar el primero.
+
+**Séptimo ensayo de 3.10: FAIL #7** (revisor 310g, `.qa/revisor-310g/`). Todo el criterio pasa por
+la interfaz: cierre de todo o nada (sin red, con 3 campos, con la respuesta perdida), cinco
+pestañas viejas, cuadros de texto, "Guardar ajustes", IA y UPDATE directo contra una boleta
+cerrada, Diagnóstico y "Hoy" con red lenta (6 de 6 y 8 de 8), Crear proyecto, números a
+mano, boletas cerradas idénticas por md5, T2, aislamiento, Fase 4. Bloqueante: con la
+sesión del maestro (supabase-js, sin SQL) una boleta cerrada se podía **borrar y volver a
+insertar** con otra calificación y `cerrada=true` (el trigger solo cubría UPDATE; la política
+era FOR ALL). **Misma causa que el FAIL #6** (la base no protegía del todo lo cerrado): son
+dos seguidos; un tercero detendría 3.10.
+Corrección (migración aditiva `b8_cierre_boleta_sin_borrar_ni_cerrar_por_fuera`): política
+RESTRICTIVA de borrado (no se borra una fila cerrada ni la GEN de una boleta cerrada; RLS y
+no trigger para que borrar un alumno y la semilla de QA sigan funcionando) y trigger
+`boleta_trimestral_cierre_solo_por_funcion` (una fila solo queda cerrada dentro de
+`cerrar_boleta`, con una marca local de su transacción). Menores: si se pierde la respuesta
+del cierre, el aviso ya no dice "Nada cambió" sino que muestra cómo quedó; una pestaña vieja
+que choca con una boleta cerrada lo dice y se vuelve a dibujar. Verificado con
+`.qa/verificar-310h.js` ampliado (borrar fila cerrada o GEN: 0 filas; insertar ya cerrada o
+cerrar por UPDATE: rechazado; una fila abierta sí se borra; borrar un alumno con boleta
+cerrada funciona y no deja huérfanas), 22 suites, humo, cierre-boleta, 310g, 37i y 310d en
+verde; todas las funciones nuevas son `security invoker` con `search_path` fijo.
 
 ## 3.9 Documentación
 

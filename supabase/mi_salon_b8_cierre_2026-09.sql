@@ -81,3 +81,97 @@ drop trigger if exists boleta_trimestral_cerrada_inmutable on public.boleta_trim
 create trigger boleta_trimestral_cerrada_inmutable
   before update on public.boleta_trimestral
   for each row execute function public.boleta_trimestral_cerrada_inmutable();
+
+-- ── Segunda parte (ensayo 3.10 FAIL #7): tampoco se borra ni se "cierra" por fuera ──────────
+-- Con la sesión del maestro se podía BORRAR una fila cerrada (o la GEN con la foto) y volver
+-- a insertarla con otra calificación y cerrada=true: el trigger de arriba solo cubre UPDATE.
+--  a) Política RESTRICTIVA de borrado: no se borra una fila cerrada ni la GEN de una boleta
+--     cerrada. Es RLS (no trigger) para que el borrado en cascada de un alumno y la semilla de
+--     QA (dueño de la tabla) sigan funcionando: esas acciones no pasan por RLS.
+--  b) Una fila solo queda cerrada=true dentro de cerrar_boleta (marca local de la
+--     transacción): ni un INSERT ni un UPDATE directos pueden dejarla cerrada.
+
+create or replace function public.boleta_esta_cerrada(p_alumno uuid, p_ciclo text, p_trimestre smallint)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select count(*) = 4 from public.boleta_trimestral b
+  where b.maestro_id = auth.uid() and b.alumno_id = p_alumno and b.ciclo = p_ciclo
+    and b.trimestre = p_trimestre and b.campo in ('LEN', 'SAB', 'ETI', 'DHL') and b.cerrada
+$$;
+revoke all on function public.boleta_esta_cerrada(uuid, text, smallint) from public, anon;
+grant execute on function public.boleta_esta_cerrada(uuid, text, smallint) to authenticated;
+
+drop policy if exists boleta_trimestral_no_borrar_cerrada on public.boleta_trimestral;
+create policy boleta_trimestral_no_borrar_cerrada on public.boleta_trimestral
+  as restrictive for delete to authenticated
+  using (not cerrada and not (campo = 'GEN' and public.boleta_esta_cerrada(alumno_id, ciclo, trimestre)));
+
+create or replace function public.boleta_trimestral_cierre_solo_por_funcion()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.cerrada and (tg_op = 'INSERT' or not old.cerrada)
+     and coalesce(current_setting('mi_salon.cerrando_boleta', true), '') <> 'si' then
+    raise exception 'La boleta solo se cierra con «Cerrar boleta»' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists boleta_trimestral_cierre_solo_por_funcion on public.boleta_trimestral;
+create trigger boleta_trimestral_cierre_solo_por_funcion
+  before insert or update on public.boleta_trimestral
+  for each row execute function public.boleta_trimestral_cierre_solo_por_funcion();
+
+-- cerrar_boleta levanta la marca solo dentro de su transacción
+create or replace function public.cerrar_boleta(
+  p_alumno uuid, p_ciclo text, p_trimestre smallint, p_calificaciones jsonb, p_foto jsonb
+) returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_maestro uuid := auth.uid();
+  c record;
+  n int := 0;
+begin
+  if v_maestro is null then
+    raise exception 'Sin sesión' using errcode = 'insufficient_privilege';
+  end if;
+  if jsonb_typeof(p_calificaciones) <> 'array' then
+    raise exception 'Calificaciones inválidas' using errcode = 'check_violation';
+  end if;
+  perform set_config('mi_salon.cerrando_boleta', 'si', true);
+
+  insert into public.boleta_trimestral (maestro_id, alumno_id, ciclo, trimestre, campo, texto_autogenerado)
+  values (v_maestro, p_alumno, p_ciclo, p_trimestre, 'GEN', jsonb_build_object('cierre', p_foto))
+  on conflict (maestro_id, alumno_id, ciclo, trimestre, campo) do update
+    set texto_autogenerado = coalesce(public.boleta_trimestral.texto_autogenerado, '{}'::jsonb)
+                             || jsonb_build_object('cierre', p_foto);
+
+  for c in
+    select x.campo, x.calificacion
+    from jsonb_to_recordset(p_calificaciones) as x(campo text, calificacion smallint)
+  loop
+    if c.campo not in ('LEN', 'SAB', 'ETI', 'DHL') or c.calificacion is null then
+      raise exception 'Calificación inválida para %', c.campo using errcode = 'check_violation';
+    end if;
+    insert into public.boleta_trimestral
+      (maestro_id, alumno_id, ciclo, trimestre, campo, calificacion, calificacion_confirmada, cerrada)
+    values (v_maestro, p_alumno, p_ciclo, p_trimestre, c.campo, c.calificacion, true, true)
+    on conflict (maestro_id, alumno_id, ciclo, trimestre, campo) do update
+      set calificacion = excluded.calificacion, calificacion_confirmada = true, cerrada = true;
+    n := n + 1;
+  end loop;
+
+  if n <> 4 then
+    raise exception 'Para cerrar se necesitan los cuatro campos (llegaron %)', n using errcode = 'check_violation';
+  end if;
+  perform set_config('mi_salon.cerrando_boleta', '', true);
+end $$;

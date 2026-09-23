@@ -146,8 +146,8 @@ la fórmula: se reporta aparte como referencia.
   cerrar, aunque después cambien
   las capturas o el diagnóstico. La junta no es la boleta: grafica
   el logro del grupo con los datos de hoy. No se puede reabrir desde la interfaz. El cierre
-  es de todo o nada (una sola transacción en la base) y la base no deja modificar una
-  boleta cerrada, ni desde otra pestaña.
+  es de todo o nada (una sola transacción en la base) y la base no deja modificar, borrar
+  ni volver a crear una boleta cerrada, ni desde otra pestaña ni con la sesión del maestro.
 
 *Diferencias:* no hay vista `v_resumen_trimestral`; la regla B.10 permitía "una vista SQL o
 un solo módulo" y se eligió el módulo, con la conversión en SQL. La escala de conversión no

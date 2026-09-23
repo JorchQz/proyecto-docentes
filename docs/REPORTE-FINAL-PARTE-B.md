@@ -98,7 +98,7 @@ especificación) y `docs/CONTEXTO.md` §3, §5.1, §6 y §7.
 **Migraciones aplicadas en producción (todas aditivas o sobre tablas vacías):** B.0, B.3,
 B.5 (ya reportadas antes), y en esta fase `b7_plantillas_sugerencia`,
 `b8_calificaciones_boleta_por_lote`, `qa_funcion_resembrar` y
-`b7_plantillas_calidad_y_descripciones`, `b5c_evidencia_pda_con_todos_los_productos` y `b8_cierre_boleta_atomico_inmutable` (cierre de boleta en una transacción y boleta cerrada inmutable). Copia en `supabase/*.sql`.
+`b7_plantillas_calidad_y_descripciones`, `b5c_evidencia_pda_con_todos_los_productos` `b8_cierre_boleta_atomico_inmutable` y `b8_cierre_boleta_sin_borrar_ni_cerrar_por_fuera` (cierre de boleta en una transacción; una boleta cerrada no se modifica, no se borra y solo se cierra con «Cerrar boleta»). Copia en `supabase/*.sql`.
 
 **Edge Function nueva desplegada:** `redactar-boleta` (v3). Sin el secreto no hace nada:
 responde "no configurada".

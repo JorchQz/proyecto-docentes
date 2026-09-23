@@ -1002,7 +1002,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 					if (error) throw error;
 				} catch (e) {
 					console.error("cerrar_boleta:", e);
-					window.alert("No se cerró la boleta: " + ((e && e.message) || "error desconocido") + ". Nada cambió; inténtalo de nuevo.");
+					// Si falló la red, pudo haberse cerrado sin que llegara la respuesta: el cierre
+					// es de todo o nada, y la pantalla se vuelve a dibujar con lo que hay en la base
+					window.alert("No se pudo confirmar el cierre de la boleta (" + ((e && e.message) || "error desconocido") +
+						"). Enseguida ves cómo quedó: cerrada completa o sin cambios; si sigue abierta, inténtalo de nuevo.");
 					cerrarBtn.disabled = false;
 					cerrarBtn.textContent = original;
 				}
@@ -1321,6 +1324,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} catch (err) {
 				// Se deshace la marca de guardado para que el siguiente intento lo vuelva a mandar
 				console.error("boleta_trimestral (texto):", err);
+				// La boleta se cerró (en otra pestaña): la base lo rechaza; se muestra como quedó
+				if (/cerrada|Cerrar boleta/i.test((err && err.message) || "")) {
+					window.alert("Esta boleta ya se cerró (quizá en otra pestaña): el cambio no se guardó. Se muestra como quedó.");
+					await generarBoleta();
+					return false;
+				}
 				ta.dataset.inicial = inicialAntes;
 				avisoGuardado("No se pudo guardar un cuadro de texto: " + ((err && err.message) || "error desconocido") +
 					". Lo escrito sigue en pantalla; se volverá a intentar al salir del cuadro.");
