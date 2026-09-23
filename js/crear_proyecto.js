@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   let gradosUsuario = [];
   let grupoId = null;
+  let trimestreGrupo = null; // grupos.trimestre_actual del grupo destino: default del selector
 
   // Intentar obtener grupoId desde localStorage (varios formatos posibles)
   try {
@@ -42,12 +43,14 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (session) {
         const { data: grupos } = await window.sb
           .from('grupos')
-          .select('id, grados')
-          .eq('maestro_id', session.user.id)
-          .limit(1);
+          .select('id, grados, trimestre_actual')
+          .eq('maestro_id', session.user.id);
         if (grupos && grupos.length > 0) {
-          if (!grupoId) grupoId = grupos[0].id;
-          const rawGrados = grupos[0].grados;
+          // Grados y trimestre salen del MISMO grupo donde se inserta el proyecto
+          const grupo = grupos.find(g => g.id === grupoId) || grupos[0];
+          grupoId = grupo.id;
+          trimestreGrupo = grupo.trimestre_actual || null;
+          const rawGrados = grupo.grados;
           if (Array.isArray(rawGrados)) {
             gradosUsuario = rawGrados.map(g => parseInt(g, 10)).filter(Boolean);
           } else if (typeof rawGrados === 'string') {
@@ -184,6 +187,10 @@ document.addEventListener("DOMContentLoaded", async function () {
   const step2 = document.getElementById('step2-sesiones');
   const formPaso1 = document.getElementById('formPaso1');
 
+  // Trimestre: default = trimestre actual del grupo; borrador y edición lo sobreescriben
+  const trimestreSelect = document.getElementById('trimestreProyecto');
+  if (trimestreSelect && trimestreGrupo) trimestreSelect.value = String(trimestreGrupo);
+
   // Mapa campo formativo → metodología sugerida
   const campoMetodologiaMap = {
     'Lenguajes': 'ABPC',
@@ -217,6 +224,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const fd = new FormData(formPaso1);
       paso1Data = {
         titulo:             fd.get('titulo'),
+        trimestre:          parseInt(fd.get('trimestre'), 10) || null,
         fase:               Array.from(formPaso1.querySelectorAll('input[name="fase"]')).map(el => el.value),
         grados:             Array.from(formPaso1.querySelectorAll('input[name="grados"]:checked')).map(el => el.value),
         metodologia:        fd.get('metodologia'),
@@ -1788,6 +1796,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       const tituloInput = formPaso1.querySelector('[name="titulo"]');
       if (tituloInput && d.titulo) tituloInput.value = d.titulo;
 
+      if (trimestreSelect && d.trimestre) trimestreSelect.value = String(d.trimestre);
+
       if (d.grados && gradosCheckboxes) {
         gradosCheckboxes.querySelectorAll('input[name="grados"]').forEach(function (cb) {
           cb.checked = d.grados.includes(cb.value);
@@ -1840,6 +1850,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (!formPaso1 || !data) return;
     const tituloInput = formPaso1.querySelector('[name="titulo"]');
     if (tituloInput && data.titulo) tituloInput.value = data.titulo;
+    if (trimestreSelect && data.trimestre) trimestreSelect.value = String(data.trimestre);
 
     if (data.grados && gradosCheckboxes) {
       gradosCheckboxes.querySelectorAll('input[name="grados"]').forEach(function (cb) {
@@ -1897,6 +1908,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       paso1Data = {
         titulo:              proyecto.titulo || '',
+        // Proyecto viejo sin trimestre: se propone el actual del grupo y se guarda al editar
+        trimestre:           proyecto.trimestre || trimestreGrupo,
         fase:                toArr(proyecto.fase),
         grados:              toArr(proyecto.grados).map(String),
         metodologia:         proyecto.metodologia || '',
@@ -2198,6 +2211,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       // Datos del proyecto
       const proyectoPayload = {
         titulo:              paso1Data.titulo,
+        trimestre:           paso1Data.trimestre,
         fase:                paso1Data.fase,
         grados:              paso1Data.grados,
         metodologia:         paso1Data.metodologia,

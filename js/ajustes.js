@@ -191,7 +191,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Ponderación de calificaciones
 	var pesoTareasInput = document.getElementById("pesoTareas");
 	var pesoTrabajosInput = document.getElementById("pesoTrabajos");
-	var pesoAsistenciaInput = document.getElementById("pesoAsistencia");
 	var pesoParticipacionInput = document.getElementById("pesoParticipacion");
 	var pesoConductaInput = document.getElementById("pesoConducata");
 	var pesoExamenInput = document.getElementById("pesoExamen");
@@ -199,15 +198,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var savePonderacionBtn = document.getElementById("savePonderacionBtn");
 	var resetPonderacionBtn = document.getElementById("resetPonderacionBtn");
 
-	// Valores por defecto
+	// Valores por defecto (mismos que los DEFAULT de maestro_ajustes). La asistencia
+	// no pondera: Acuerdo 10/09/23, art. 7 — se muestra aparte en la boleta.
 	var defaultValues = {
-		tareas: 25,
-		trabajos: 25,
-		asistencia: 10,
-		participacion: 5,
+		tareas: 28,
+		trabajos: 28,
+		participacion: 6,
 		conducta: 5,
-		examen: 30
+		examen: 33
 	};
+
+	// 0 es un peso válido (p. ej. conducta en 0): solo null/undefined cae al default
+	function pesoGuardado(valor, porDefecto) {
+		return valor !== null && valor !== undefined ? valor : porDefecto;
+	}
 
 	// Cargar ponderación al iniciar
 	async function loadPonderacion() {
@@ -224,17 +228,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 
 			if (result.data) {
-				pesoTareasInput.value = result.data.peso_tareas || defaultValues.tareas;
-				pesoTrabajosInput.value = result.data.peso_trabajos || defaultValues.trabajos;
-				pesoAsistenciaInput.value = result.data.peso_asistencia || defaultValues.asistencia;
-				pesoParticipacionInput.value = result.data.peso_participacion || defaultValues.participacion;
-				pesoConductaInput.value = result.data.peso_conducta || defaultValues.conducta;
-				pesoExamenInput.value = result.data.peso_examen || defaultValues.examen;
+				pesoTareasInput.value = pesoGuardado(result.data.peso_tareas, defaultValues.tareas);
+				pesoTrabajosInput.value = pesoGuardado(result.data.peso_trabajos, defaultValues.trabajos);
+				pesoParticipacionInput.value = pesoGuardado(result.data.peso_participacion, defaultValues.participacion);
+				pesoConductaInput.value = pesoGuardado(result.data.peso_conducta, defaultValues.conducta);
+				pesoExamenInput.value = pesoGuardado(result.data.peso_examen, defaultValues.examen);
 			} else {
 				// Si no hay datos, usar valores por defecto
 				pesoTareasInput.value = defaultValues.tareas;
 				pesoTrabajosInput.value = defaultValues.trabajos;
-				pesoAsistenciaInput.value = defaultValues.asistencia;
 				pesoParticipacionInput.value = defaultValues.participacion;
 				pesoConductaInput.value = defaultValues.conducta;
 				pesoExamenInput.value = defaultValues.examen;
@@ -250,7 +252,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var suma =
 			Number(pesoTareasInput.value || 0) +
 			Number(pesoTrabajosInput.value || 0) +
-			Number(pesoAsistenciaInput.value || 0) +
 			Number(pesoParticipacionInput.value || 0) +
 			Number(pesoConductaInput.value || 0) +
 			Number(pesoExamenInput.value || 0);
@@ -271,7 +272,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Event listeners para los inputs
 	pesoTareasInput.addEventListener("input", calcularSuma);
 	pesoTrabajosInput.addEventListener("input", calcularSuma);
-	pesoAsistenciaInput.addEventListener("input", calcularSuma);
 	pesoParticipacionInput.addEventListener("input", calcularSuma);
 	pesoConductaInput.addEventListener("input", calcularSuma);
 	pesoExamenInput.addEventListener("input", calcularSuma);
@@ -287,7 +287,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 					maestro_id: currentUser.id,
 					peso_tareas: Number(pesoTareasInput.value),
 					peso_trabajos: Number(pesoTrabajosInput.value),
-					peso_asistencia: Number(pesoAsistenciaInput.value),
 					peso_participacion: Number(pesoParticipacionInput.value),
 					peso_conducta: Number(pesoConductaInput.value),
 					peso_examen: Number(pesoExamenInput.value),
@@ -321,7 +320,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	resetPonderacionBtn.addEventListener("click", function () {
 		pesoTareasInput.value = defaultValues.tareas;
 		pesoTrabajosInput.value = defaultValues.trabajos;
-		pesoAsistenciaInput.value = defaultValues.asistencia;
 		pesoParticipacionInput.value = defaultValues.participacion;
 		pesoConductaInput.value = defaultValues.conducta;
 		pesoExamenInput.value = defaultValues.examen;

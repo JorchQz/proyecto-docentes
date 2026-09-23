@@ -4,30 +4,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
-	// ── criterios fijos ──────────────────────────────────────────────────────
-	var CRITERIOS_CUADERNO = [
-		"Orden y limpieza",
-		"Escribe fecha completa",
-		"Escribe título de actividad",
-		"Letra legible",
-		"Uso correcto de mayúsculas/minúsculas",
-		"Signos de puntuación",
-		"Acentuación",
-		"Buen estado de la libreta",
-		"Orden por proyecto",
-		"Respeta margen"
-	];
-
-	var HABILIDADES_MATES = [
-		"Suma",
-		"Resta",
-		"Multiplicación",
-		"División",
-		"Fracciones",
-		"Tablas de multiplicar",
-		"Lectura y escritura de cantidades",
-		"Problemas matemáticos"
-	];
+	// ── criterios: claves estables del catálogo único (js/catalogo-habilidades.js)
+	var CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
+	var HABILIDADES_MATES  = window.CatalogoHabilidades.MATEMATICAS;
 
 	var LABEL_MOMENTO = {
 		inicio_ciclo: "Inicio de ciclo",
@@ -64,8 +43,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var momentoActual = "inicio_ciclo";
 
 	// Datos del alumno actual en pantalla:
-	var estadoCuaderno = [];  // [{criterio, semaforo}]
-	var estadoMates    = [];  // [{habilidad, semaforo}]
+	var estadoCuaderno = [];  // [{clave, nivel}]
+	var estadoMates    = [];  // [{clave, nivel}]
 	var comprension    = null;
 	var ppm            = null;
 	var observaciones  = "";
@@ -113,10 +92,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Inicializa arrays de estado vacíos para el alumno actual
 	function resetEstado() {
 		estadoCuaderno = CRITERIOS_CUADERNO.map(function (c) {
-			return { criterio: c, semaforo: null };
+			return { clave: c.clave, nivel: null };
 		});
 		estadoMates = HABILIDADES_MATES.map(function (h) {
-			return { habilidad: h, semaforo: null };
+			return { clave: h.clave, nivel: null };
 		});
 		comprension = null;
 		ppm         = null;
@@ -126,20 +105,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Aplica datos de una fila de BD al estado local
 	function aplicarFila(fila) {
 		if (!fila) return;
-		// Cuaderno
-		if (Array.isArray(fila.cuaderno)) {
-			fila.cuaderno.forEach(function (item) {
-				var found = estadoCuaderno.find(function (e) { return e.criterio === item.criterio; });
-				if (found) found.semaforo = item.semaforo || null;
-			});
-		}
-		// Matemáticas
-		if (Array.isArray(fila.matematicas)) {
-			fila.matematicas.forEach(function (item) {
-				var found = estadoMates.find(function (e) { return e.habilidad === item.habilidad; });
-				if (found) found.semaforo = item.semaforo || null;
-			});
-		}
+		var mapaCuaderno = window.CatalogoHabilidades.aMapa(fila.cuaderno);
+		var mapaMates    = window.CatalogoHabilidades.aMapa(fila.matematicas);
+		estadoCuaderno.forEach(function (e) { e.nivel = mapaCuaderno[e.clave] || null; });
+		estadoMates.forEach(function (e) { e.nivel = mapaMates[e.clave] || null; });
 		comprension   = fila.lectura_comprension || null;
 		ppm           = fila.lectura_ppm != null ? fila.lectura_ppm : null;
 		observaciones = fila.observaciones || "";
@@ -275,8 +244,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!alumno) return;
 
 		// Solo guardar si hay al menos 1 dato
-		var tieneAlgo = estadoCuaderno.some(function (e) { return e.semaforo; }) ||
-			estadoMates.some(function (e) { return e.semaforo; }) ||
+		var tieneAlgo = estadoCuaderno.some(function (e) { return e.nivel; }) ||
+			estadoMates.some(function (e) { return e.nivel; }) ||
 			comprension || ppm != null || observaciones.trim();
 		if (!tieneAlgo) return;
 
@@ -388,7 +357,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// ── Sección Cuaderno ────────────────────────
 		var cuadernoFilas = estadoCuaderno.map(function (item, idx) {
-			return buildFilaSemaforo("cuaderno", idx, item.criterio, item.semaforo);
+			return buildFilaSemaforo("cuaderno", idx, CRITERIOS_CUADERNO[idx].etiqueta, item.nivel);
 		}).join("");
 
 		var cuadernoHtml =
@@ -421,7 +390,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// ── Sección Matemáticas ─────────────────────
 		var matesFilas = estadoMates.map(function (item, idx) {
-			return buildFilaSemaforo("mates", idx, item.habilidad, item.semaforo);
+			return buildFilaSemaforo("mates", idx, HABILIDADES_MATES[idx].etiqueta, item.nivel);
 		}).join("");
 
 		var matesHtml =
@@ -500,8 +469,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var idx = parseInt(item, 10);
 			if (isNaN(idx) || idx < 0 || idx >= estadoCuaderno.length) return;
 			// Toggle
-			estadoCuaderno[idx].semaforo = (estadoCuaderno[idx].semaforo === valor) ? null : valor;
-			actualizarBotonesSemaforo("cuaderno", item, estadoCuaderno[idx].semaforo);
+			estadoCuaderno[idx].nivel = (estadoCuaderno[idx].nivel === valor) ? null : valor;
+			actualizarBotonesSemaforo("cuaderno", item, estadoCuaderno[idx].nivel);
 		} else if (tipo === "lectura") {
 			// item === 'comprension'
 			comprension = (comprension === valor) ? null : valor;
@@ -509,8 +478,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} else if (tipo === "mates") {
 			var midx = parseInt(item, 10);
 			if (isNaN(midx) || midx < 0 || midx >= estadoMates.length) return;
-			estadoMates[midx].semaforo = (estadoMates[midx].semaforo === valor) ? null : valor;
-			actualizarBotonesSemaforo("mates", item, estadoMates[midx].semaforo);
+			estadoMates[midx].nivel = (estadoMates[midx].nivel === valor) ? null : valor;
+			actualizarBotonesSemaforo("mates", item, estadoMates[midx].nivel);
 		}
 
 		// Autosave inmediato al tocar semáforo

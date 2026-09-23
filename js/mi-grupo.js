@@ -326,6 +326,12 @@
 				? selectedGrade
 				: currentGroupGrades[0] || null;
 
+			// alumnos.grado es obligatorio (lo necesitan boleta, fase y multigrado)
+			if (!studentGrade) {
+				showStudentsMessage("error", "Configura primero los grados del grupo para poder asignar el grado del alumno.");
+				return;
+			}
+
 			var normalizedCandidate = normalizeName(studentName) + "|" + String(studentGrade || "");
 			var duplicated = students.some(function (student) {
 				return (

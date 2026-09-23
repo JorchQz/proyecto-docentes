@@ -142,10 +142,13 @@ oficiales de la base de datos (`ltg_metodologias_estructuras`); la fuente de ver
 No se llena en el proyecto, pero conviene saberlo al diseñarlo:
 
 - El proyecto se crea como **borrador** → se **inicia** desde el Dashboard (pasa a *activo*).
-- Al **cerrar cada sesión** la app genera, por alumno, calificaciones de
-  **participación**, **conducta** y **tarea** (escala 5–10), registra **asistencia**
-  y crea las **tareas de casa** para revisar.
-- **Reportes** combina calificaciones + asistencia para mostrar el avance por alumno.
+- Al **cerrar cada sesión** la app crea las **tareas de casa** para revisar. Cada
+  producto de la sesión (trabajo o tarea) se valora con **semáforo**
+  (logrado / en proceso / requiere apoyo) y retroalimentación; la **participación** y la
+  **conducta** se registran una vez al día por alumno (0 · 1 · 2), y la **asistencia**
+  es solo referencia (no pondera).
+- **Reportes** combina esas evidencias en la calificación de boleta por campo formativo
+  (enteros 6–10 en 1°–2°, 5–10 en 3°–6°). Detalle en `docs/CONTEXTO.md` §3.
 
 Por eso un proyecto "completo" debe traer, sí o sí: **grados, metodología, contenidos,
 PDA por grado con criterio de evaluación, sesiones numeradas con actividades, y tareas

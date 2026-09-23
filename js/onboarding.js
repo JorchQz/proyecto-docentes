@@ -311,15 +311,10 @@
 				throw insertResult.error;
 			}
 
-			// Crear ajustes con ponderación por defecto (silencioso, no bloquea si falla)
+			// Crear ajustes con la ponderación por defecto de la BD (DEFAULT de cada
+			// peso_*; la asistencia no pondera). Silencioso, no bloquea si falla.
 			await window.sb.from("maestro_ajustes").upsert({
 				maestro_id: userId,
-				peso_tareas: 25,
-				peso_trabajos: 25,
-				peso_asistencia: 10,
-				peso_participacion: 5,
-				peso_conducta: 5,
-				peso_examen: 30,
 			}, { onConflict: "maestro_id", ignoreDuplicates: true });
 
 			showMessage(

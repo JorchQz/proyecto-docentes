@@ -139,7 +139,7 @@ async function cargarGrupoYAlumnos() {
 		.from("alumnos")
 		.select("id, nombre_completo, grado, num_lista")
 		.eq("grupo_id", grupoId)
-		.eq("estatus", "Activo")
+		.eq("estatus", "activo")
 		.order("grado")
 		.order("num_lista");
 
