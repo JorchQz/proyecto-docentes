@@ -28,12 +28,25 @@ está en `docs/PROGRESO-PARTE-B.md` y los scripts y capturas de cada revisor en
 | 3.4 Reporte detallado por alumno | **PASS** | a la primera |
 | 3.5 Presentación para la junta de padres | **PASS** | a la primera |
 | 3.6 Exportación CSV / XLSX | **PASS** | a la primera |
-| 3.7 Coherencia y deuda conocida | <!-- VEREDICTO-37 --> | FAIL (Tareas: justificados) → re-revisión |
+| 3.7 Coherencia y deuda conocida | **DETENIDO** | 8 revisiones; las tres últimas fallaron por la misma causa (lecturas cuyo error se ignora), y la misión manda detener el bloque. Detalle abajo |
 | 3.8 Redacción con IA (Capa 2) | **PASS** (apagada hasta que exista la llave) | a la primera |
-| 3.9 Documentación | hecha (sin revisor propio: la leen los demás) | — |
+| 3.9 Documentación | **PASS** | FAIL → FAIL → PASS (44 afirmaciones verificadas, ninguna falsa) |
 | 3.10 Ensayo final de punta a punta | <!-- VEREDICTO-310-TABLA --> | — |
 
-**Bloques detenidos:** ninguno.
+**Bloques detenidos: 3.7.** La regla de la misión es detener un bloque que falla tres veces
+seguidas por la misma causa, y eso pasó: los FAIL #6, #7 y #8 fueron lecturas de Supabase
+cuyo error la pantalla ignora (si la lectura falla, la pantalla cree que no hay nada y lo
+dice, o guarda encima). Cada ronda se corrigió y la siguiente encontró la capa de abajo. Lo
+que sí quedó probado: en ~190 casos de lectura fallida en 21 pantallas, las pantallas que
+capturan (Hoy, Tareas, Asistencia, Diagnóstico, Formativa, Exámenes, Ajustes, Reportes y
+los cuatro reportes) avisan y ninguna intentó escribir. Lo que queda abierto: la lectura
+del grupo activo en error (varias pantallas no la atrapan), Mi grupo ("Eliminar grupo" dice
+0 alumnos si falla el conteo), Inicio si falla el proyecto activo, una regresión en
+Diagnóstico al desmarcar, una carrera en Asistencia al cambiar de fecha, y algunos guardados
+fallidos o salidas con pendientes sin aviso. La lista completa y la propuesta de
+solución de fondo (una sola capa de lectura para todas las páginas) están en
+`docs/PROGRESO-PARTE-B.md`, sección "Bloques detenidos". **Es una decisión tuya** si se
+hace ese cambio transversal antes del merge.
 
 ### Lo más importante que encontraron los revisores (y se corrigió)
 

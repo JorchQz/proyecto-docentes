@@ -23,7 +23,7 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa: 2.º seguido) → revisor 37i | — |
+| 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
 | 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → revisor 310e | — |
@@ -610,4 +610,60 @@ de Mi salón; el catálogo global `plantillas_sugerencia` se lee pero no se pued
 
 ## Bloques detenidos
 
-(ninguno)
+### 3.7 Coherencia y deuda — DETENIDO (2026-09-23)
+
+**Por qué.** Regla de la misión: tres FAIL seguidos por la misma causa detienen el bloque.
+FAIL #6 (revisor 37g), #7 (37h) y #8 (37i) tienen la misma causa: **lecturas cuyo error se
+ignora antes de afirmar algo en pantalla o de guardar**. No se lanzó otra revisión de 3.7.
+
+**Lo que sí quedó demostrado** (37i, con ~190 casos de lectura en error en 21 pantallas y
+todas las escrituras bloqueadas): Hoy, Tareas, Asistencia, Diagnóstico, Formativa,
+Exámenes, Ajustes, todo Reportes, boleta imprimible, reporte, junta y exportación avisan
+ante cada lectura fallida salvo la del grupo activo, y ningún caso con lectura fallida
+intentó escribir. FAIL #1-#5 no volvieron (Hoy, Inicio y Tareas coinciden; lecturas que
+crecen paginadas). Red lenta en Hoy sin pérdidas; carrera de Diagnóstico al cambiar de
+alumno corregida; aislamiento entre cuentas.
+
+**Defectos abiertos que dejó el FAIL #8** (todos reproducidos por 37i en
+`.qa/revisor-37i/`, ninguno llegó a la base porque bloqueó las escrituras):
+Misma causa (lectura con error ignorada):
+1. Mi grupo, "Eliminar grupo" con el conteo de alumnos en error: el aviso dice "0 alumnos"
+   (`js/mi-grupo.js` `countStudentsByGroupId`).
+2. Inicio con la lectura del proyecto activo en error: dice "No tienes ningún proyecto
+   activo" (el aviso de `showError` se borra al vaciar `#flowContainer`).
+3. Mi grupo con la lista de alumnos en error: "Aún no hay alumnos" y deja dar de alta
+   (numeraría desde 1, duplicando números de lista).
+4. La lectura del grupo activo (`GrupoActivo.cargar`) en error: Hoy y Reportes lanzan una
+   excepción sin atrapar; Proyectos, Exámenes y Actividades muestran los proyectos o
+   exámenes de todos los grupos; Crear proyecto y Marketplace dicen "no hay grados" o
+   "crea tu grupo".
+5. Con la lectura de `perfiles.activo_saas` en error, el candado muestra su aviso pero el
+   script de la página sigue y lanza excepciones (Hoy, Crear proyecto, Reportes).
+Otras causas:
+6. Regresión del FAIL #7 en Diagnóstico: marcar y luego desmarcar un semáforo deja la
+   pantalla sin poder avanzar y lo quitado no se guarda (`guardarAlumno` devuelve
+   `undefined` cuando no queda nada que guardar).
+7. Asistencia: cambiar de fecha con un autoguardado pendiente puede mandar la lista del día
+   nuevo con todos en "ausente" (el cambio de fecha no cancela el guardado pendiente).
+8. Guardados fallidos sin aviso: propuesta de número y de textos de la boleta; en
+   Evaluación formativa quitar un semáforo no se borra en la base; el retiro del cierre en
+   Asistencia.
+9. Salir con capturas pendientes sin aviso en Diagnóstico (debounce de 800 ms) y en
+   Evaluación formativa (solo "Hoy" pregunta).
+Menores: "Clonar" en Proyectos nunca funciona (`grupo_id` no viene en el select);
+"Iniciar proyecto" con la lectura en error dice "no tiene sesiones"; Formativa y Examen
+dicen "no encontrado" cuando falló la lectura.
+
+**Diagnóstico honesto.** La causa no es una pantalla sino un patrón: cada página hace sus
+propias lecturas a mano y decide qué hacer con el error. Se corrigió por barridos (primero
+Hoy/Inicio, luego las pantallas que capturan, luego las 91 lecturas con una prueba), y cada
+revisión encontró la siguiente capa: la prueba `lecturas-revisan-error` solo exige que el
+error se mencione después, no que se maneje bien, y no ve a quien llama a
+`GrupoActivo.cargar`. **Lo que haría falta** (decisión de diseño para Jorge): una sola
+capa de lectura para todas las páginas (como `js/leer-todo.js`, pero para toda lectura) que
+lance el error, y un arranque común de página que lo atrape y muestre "no se pudo cargar;
+recarga" sin dibujar ni guardar nada; con eso cada pantalla deja de decidir por su cuenta.
+Es un cambio transversal a ~20 archivos que no conviene hacer sin revisión.
+
+**Qué depende de 3.7:** nada de los demás bloques en su criterio. 3.10 (ensayo) sigue; lo
+que ese ensayo encuentre en el recorrido de la maestra se corrige dentro de 3.10.
