@@ -277,8 +277,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 					sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
 					semaforo:      semaforo,
 					observacion:   obs,
-					fecha:         getLocalDateISO()
-				}, { onConflict: "maestro_id,sesion_id,alumno_id,criterio" });
+					fecha:         getLocalDateISO(),
+					// Lo que el maestro ajusta aquí deja de ser automático: el motor
+					// de propagación (B.5) ya no lo vuelve a pisar.
+					origen:        "maestro"
+				}, { onConflict: "sesion_id,alumno_id,criterio" });
 
 			if (res.error) {
 				console.error("Error guardando semáforo:", res.error);
@@ -303,8 +306,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 					sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
 					semaforo:      semaforo,
 					observacion:   observacion,
-					fecha:         getLocalDateISO()
-				}, { onConflict: "maestro_id,sesion_id,alumno_id,criterio" });
+					fecha:         getLocalDateISO(),
+					origen:        "maestro"
+				}, { onConflict: "sesion_id,alumno_id,criterio" });
 		} catch (e) {
 			console.error("Error guardando observación:", e);
 		}

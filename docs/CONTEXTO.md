@@ -132,9 +132,21 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `node pruebas/aviso-propuesta.test.js` — el aviso "propuesta: N" de la boleta.
 > - `node pruebas/hoy-filtros.test.js` — filtros de multigrado de la pantalla "Hoy".
 > - `node pruebas/hoy-render.test.js` — render de un producto multigrado.
+> - `node pruebas/avance-pda.test.js` — tablas de la pestaña "Avance por PDA".
 > - `node pruebas/hoy-arranque.test.js` — **ejecuta `hoy.js` completo** contra un DOM y un
 >   Supabase falsos; es la única que ve los errores de ejecución (acepta la ruta de otra
 >   versión del archivo como argumento, para comprobar que detecta una regresión).
+- **Trazabilidad por PDA (B.5, 2026-09-23):** el maestro califica el producto una vez y
+  el trigger `propagar_calificacion_a_pda` deja la evidencia en cada PDA que ese producto
+  evalúa (`producto_sesion_pda` → `sesiones_pda`), **solo los del grado del alumno**.
+  El semáforo sale de `nivel_desde_calificacion`: el nivel capturado; si no hay, el puntaje
+  (≥8 logrado, ≥6 en proceso); `no_entregado` cuenta como `requiere_apoyo`; `justificado`
+  y `no_aplica` retiran la evidencia. Borrar la calificación también la retira.
+  Lo que el maestro ajusta en la pantalla de evaluación formativa queda con
+  `origen = 'maestro'` y ya no se vuelve a pisar.
+  La vista **`v_avance_pda`** resume por alumno y PDA: evidencias, nivel predominante,
+  conteo por nivel y **tendencia** (primera mitad del trimestre contra la segunda).
+  Se ve en Reportes → pestaña "Avance por PDA", por alumno o de todo el grupo.
 - **El maestro confirma el número antes de cerrar** (art. 4 XI): la boleta muestra la
   calificación propuesta en un selector acotado al piso de la fase; `boleta_trimestral`
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
@@ -206,8 +218,8 @@ común).
 | `sesiones` | `proyecto_id`, `maestro_id`, `numero_sesion`, `duracion` (text, ej. `"90 min"`), `fecha`, `campo_formativo`, `momento`, `inicio_todos`/`desarrollo_todos`/`cierre_todos` (text), `inicio_actividades`/`desarrollo_actividades`/`cierre_actividades`/`cierre_tareas` (jsonb), `inicio_diferenciado`/`desarrollo_diferenciado`/`cierre_diferenciado` (jsonb), `pda_sesion` (jsonb), `recursos` (jsonb), `criterios_evaluacion`, `estado_sesion` (`pendiente`/`activa`/`completada`/`recorrida`), `notas_cierre`, `observaciones` |
 | `tareas` | `sesion_id`, `proyecto_id`, `grupo_id`, `maestro_id`, `descripcion`, `grado` (smallint, nullable), `fecha_asignada`, `fecha_revision`, `revisada` (bool) |
 | `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (mismo vocabulario que `productos_sesion.tipo` — `tarea`/`trabajo`/`producto_final`/`examen`/`otro` — más `participacion`/`conducta` legacy y `actividad` legacy sin escritores; **con `producto_sesion_id` el trigger `calificaciones_tipo_desde_producto` copia el tipo del producto**), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` (nombre largo). **Nuevo grano (2026-09):** `producto_sesion_id` (FK a `productos_sesion`), `estado_entrega` (`entregado`/`incompleto`/`no_entregado`/`justificado`/`no_aplica`), `nivel` (semáforo), `puntaje` (0–10), `retroalimentacion` (visible a padres), `nota_privada`, `evaluado_en`; índice único parcial `(maestro_id, alumno_id, producto_sesion_id)`. Los tipos `participacion`/`conducta` ya **no se escriben** aquí (ver `registro_diario`) |
-| `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
-| `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, nullable si el criterio es libre), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
+| `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`origen`** (`automatico` = la dejó el trigger al calificar un producto · `maestro` = la ajustó a mano; el trigger nunca pisa las del maestro), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
+| `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, **nullable** desde B.5 — antes era NOT NULL y un criterio libre reventaba la materialización), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)` y, para el criterio libre, UNIQUE `(sesion_id, grado, criterio_aplicado)` cuando `pda_id IS NULL`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
 | `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas) |
 | `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
 | `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. La captura llega con la pantalla "Hoy" (Parte B); el reparto a campos está definido en `docs/PRODUCTO-MI-SALON.md` §B.4 |
@@ -358,7 +370,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Reportes (Asistencia · Vista Recrea · Concentrado · Boleta PDF/WhatsApp) | ✅ Completo; boleta sobre el motor de B.3 (2026-09) | `reportes.html`, `js/motor-calificacion.js` |
 | Mi Cuenta | ✅ Completo | `mi-cuenta.html` |
 | Ajustes (notificaciones + ponderación de calificaciones) | ✅ Completo | `ajustes.html` |
-| Evaluación Formativa (semáforo por alumno/sesión, autosave) | ✅ Completo | `evaluacion_formativa.html` |
+| Evaluación Formativa (semáforo por alumno/sesión, autosave) | ✅ Completo; ahora **afina** lo que ya propuso la propagación por PDA | `evaluacion_formativa.html` |
 | Evaluación Diagnóstica (cuaderno + lectura + matemáticas, semáforo) | ✅ Completo | `evaluacion_diagnostica.html` |
 | Exámenes (aplicar + calificar + auto-calificación por CF) | ✅ Completo | `examen.html` |
 | Marketplace (catálogo + filtros + preview + importar) | ✅ Completo | `marketplace.html` |

@@ -52,8 +52,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			btn.classList.add("text-blue-700", "border-blue-600", "bg-blue-50");
 			btn.classList.remove("text-gray-500", "border-transparent");
 
-			["panelAsistencia", "panelCalificaciones", "panelConcentrado"].forEach(function (id) {
-				document.getElementById(id).classList.add("hidden");
+			// Se ocultan TODOS los paneles: la lista sale de las pestañas, para que
+			// agregar una nueva no deje dos paneles encima del otro.
+			document.querySelectorAll(".tab-btn").forEach(function (b) {
+				var panel = document.getElementById("panel" + b.dataset.tab.charAt(0).toUpperCase() + b.dataset.tab.slice(1));
+				if (panel) panel.classList.add("hidden");
 			});
 			document.getElementById("panel" + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove("hidden");
 		});
@@ -911,6 +914,150 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const sel = e.target.closest ? e.target.closest("select[data-cal-campo]") : null;
 			if (sel) sincronizarAvisoPropuesta(sel, boletaSelectsEl);
 		});
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// TAB 5 — AVANCE POR PDA (B.5)
+	// Lee la vista v_avance_pda: una fila por alumno y PDA del trimestre, con las
+	// evidencias que dejó cada producto calificado. El maestro no captura nada aquí.
+	// ═══════════════════════════════════════════════════════════════
+	(function poblarAlumnosPda() {
+		const sel = document.getElementById("selectAlumnoPda");
+		if (!sel) return;
+		alumnos.forEach(function (al) {
+			const opt = document.createElement("option");
+			opt.value = al.id;
+			opt.textContent = (al.num_lista ? al.num_lista + ". " : "") + (al.nombre_completo || "Sin nombre") +
+				(al.grado ? " (" + al.grado + "°)" : "");
+			sel.appendChild(opt);
+		});
+	})();
+
+	const ETIQUETA_NIVEL = { logrado: "Logrado", en_proceso: "En proceso", requiere_apoyo: "Requiere apoyo" };
+	const ETIQUETA_TENDENCIA = { mejora: "Va mejorando", baja: "Va bajando", estable: "Estable", sin_datos: "Falta evidencia" };
+	const CLASE_TENDENCIA = {
+		mejora: "text-emerald-600", baja: "text-red-500",
+		estable: "text-gray-500", sin_datos: "text-gray-400",
+	};
+
+	function etiquetaNivel(nivel) {
+		return "<span class='inline-flex items-center gap-2 text-sm'>" + semCirculo(nivel) +
+			"<span>" + (ETIQUETA_NIVEL[nivel] || "—") + "</span></span>";
+	}
+
+	function campoCorto(campoLargo) {
+		const codigo = window.CamposFormativos ? window.CamposFormativos.corto(campoLargo) : null;
+		return codigo || "—";
+	}
+
+	const pdaBtn = document.getElementById("generarPdaBtn");
+	if (pdaBtn) {
+		pdaBtn.addEventListener("click", async function () {
+			const cont = document.getElementById("pdaContainer");
+			const alumnoId = document.getElementById("selectAlumnoPda").value;
+			const trimestre = parseInt(document.getElementById("selectTrimPda").value, 10);
+			cont.innerHTML = "<p class='text-gray-400 text-sm'>Cargando avance...</p>";
+
+			let query = window.sb.from("v_avance_pda").select("*")
+				.eq("maestro_id", userId).eq("grupo_id", grupoId).eq("trimestre", trimestre);
+			if (alumnoId) query = query.eq("alumno_id", alumnoId);
+			const { data, error } = await query;
+
+			if (error) {
+				console.error("v_avance_pda:", error);
+				cont.innerHTML = "<p class='text-red-500 text-sm'>No se pudo cargar el avance: " + esc(error.message) + "</p>";
+				return;
+			}
+			if (!data || !data.length) {
+				cont.innerHTML = "<div class='py-8 text-center'>" +
+					"<p class='text-gray-400 text-lg mb-2'>Todavía no hay evidencias</p>" +
+					"<p class='text-sm text-gray-400'>Las evidencias aparecen aquí conforme califiques los productos de cada sesión en la pantalla Hoy.</p></div>";
+				return;
+			}
+			cont.innerHTML = alumnoId ? tablaPdaAlumno(data) : tablaPdaGrupo(data);
+		});
+	}
+
+	// Vista por alumno: en qué va cada PDA que se le ha trabajado
+	function tablaPdaAlumno(filas) {
+		filas.sort(function (a, b) {
+			const orden = { requiere_apoyo: 0, en_proceso: 1, logrado: 2 };
+			return orden[a.nivel_predominante] - orden[b.nivel_predominante] || (b.evidencias - a.evidencias);
+		});
+		let html = "<div class='overflow-x-auto'><table class='min-w-full text-sm border-collapse'>" +
+			"<thead><tr class='bg-gray-50 text-xs text-gray-500 uppercase'>" +
+			"<th class='px-3 py-3 text-left'>PDA</th>" +
+			"<th class='px-3 py-3 text-center'>Campo</th>" +
+			"<th class='px-3 py-3 text-center'>Evidencias</th>" +
+			"<th class='px-3 py-3 text-left'>Nivel</th>" +
+			"<th class='px-3 py-3 text-left'>Tendencia</th>" +
+			"</tr></thead><tbody class='divide-y divide-gray-100'>";
+		filas.forEach(function (f) {
+			const ajustes = f.ajustadas_por_el_maestro > 0
+				? "<span class='block text-xs text-gray-400'>" + f.ajustadas_por_el_maestro + " ajustada(s) por ti</span>" : "";
+			html += "<tr class='hover:bg-gray-50 align-top'>" +
+				"<td class='px-3 py-3'><span class='text-gray-800'>" + esc(f.pda || "—") + "</span>" +
+				(f.contenido ? "<span class='block text-xs text-gray-400'>" + esc(f.contenido) + "</span>" : "") + ajustes + "</td>" +
+				"<td class='px-3 py-3 text-center text-gray-600'>" + campoCorto(f.campo_formativo) + "</td>" +
+				"<td class='px-3 py-3 text-center'>" + f.evidencias +
+				"<span class='block text-xs text-gray-400'>" + f.logrados + " · " + f.en_proceso + " · " + f.requiere_apoyo + "</span></td>" +
+				"<td class='px-3 py-3'>" + etiquetaNivel(f.nivel_predominante) + "</td>" +
+				"<td class='px-3 py-3 " + (CLASE_TENDENCIA[f.tendencia] || "") + "'>" +
+				(ETIQUETA_TENDENCIA[f.tendencia] || "—") + "</td>" +
+				"</tr>";
+		});
+		return html + "</tbody></table></div>" +
+			"<p class='text-xs text-gray-400 mt-3'>Evidencias: total y, debajo, cuántas fueron logrado · en proceso · requiere apoyo.</p>";
+	}
+
+	// Vista de grupo: qué PDA hay que reforzar, con los alumnos que lo necesitan
+	function tablaPdaGrupo(filas) {
+		const porPda = {};
+		filas.forEach(function (f) {
+			const clave = f.grado + "||" + f.clave_pda;
+			if (!porPda[clave]) {
+				porPda[clave] = {
+					pda: f.pda, contenido: f.contenido, campo: f.campo_formativo, grado: f.grado,
+					logrado: 0, en_proceso: 0, requiere_apoyo: 0, alumnos: 0,
+				};
+			}
+			const p = porPda[clave];
+			p.alumnos++;
+			p[f.nivel_predominante]++;
+		});
+		const lista = Object.keys(porPda).map(function (k) { return porPda[k]; })
+			.sort(function (a, b) { return b.requiere_apoyo - a.requiere_apoyo || b.en_proceso - a.en_proceso; });
+
+		let html = "<div class='overflow-x-auto'><table class='min-w-full text-sm border-collapse'>" +
+			"<thead><tr class='bg-gray-50 text-xs text-gray-500 uppercase'>" +
+			"<th class='px-3 py-3 text-left'>PDA</th>" +
+			"<th class='px-3 py-3 text-center'>Grado</th>" +
+			"<th class='px-3 py-3 text-center'>Campo</th>" +
+			"<th class='px-3 py-3 text-center'>Alumnos</th>" +
+			"<th class='px-3 py-3 text-left'>Cómo va el grupo</th>" +
+			"</tr></thead><tbody class='divide-y divide-gray-100'>";
+		lista.forEach(function (p) {
+			const barra = function (n, clase) {
+				if (!n) return "";
+				return "<span class='" + clase + " h-2 rounded-sm' style='width:" +
+					Math.round((n / p.alumnos) * 100) + "%'></span>";
+			};
+			html += "<tr class='hover:bg-gray-50 align-top'>" +
+				"<td class='px-3 py-3'><span class='text-gray-800'>" + esc(p.pda || "—") + "</span>" +
+				(p.contenido ? "<span class='block text-xs text-gray-400'>" + esc(p.contenido) + "</span>" : "") + "</td>" +
+				"<td class='px-3 py-3 text-center text-gray-600'>" + (p.grado ? p.grado + "°" : "—") + "</td>" +
+				"<td class='px-3 py-3 text-center text-gray-600'>" + campoCorto(p.campo) + "</td>" +
+				"<td class='px-3 py-3 text-center text-gray-600'>" + p.alumnos + "</td>" +
+				"<td class='px-3 py-3'>" +
+				"<span class='flex w-40 gap-0.5 mb-1'>" +
+				barra(p.logrado, "bg-emerald-500") + barra(p.en_proceso, "bg-amber-400") + barra(p.requiere_apoyo, "bg-red-500") +
+				"</span>" +
+				"<span class='text-xs text-gray-500'>" + p.logrado + " logrado · " + p.en_proceso +
+				" en proceso · " + p.requiere_apoyo + " requiere apoyo</span></td>" +
+				"</tr>";
+		});
+		return html + "</tbody></table></div>" +
+			"<p class='text-xs text-gray-400 mt-3'>Ordenado por lo que más hay que reforzar. Cada alumno cuenta con su nivel predominante en ese PDA.</p>";
 	}
 
 	// ── Autosave de observaciones de boleta (on-blur, upsert por campo) ──
