@@ -123,6 +123,7 @@ async function crearCardHoy() {
 	const esperadosCierre = alumnos.filter((a) => !faltaron.has(a.id));
 	const conRegistro = new Set((regRes.data || []).map((r) => r.alumno_id));
 	const conCierre = esperadosCierre.filter((a) => conRegistro.has(a.id)).length;
+	const cierre = window.AlcanceHoy.resumenCierre(alumnos.length, esperadosCierre.length, conCierre);
 
 	// Lo mismo que muestra "Hoy", con el mismo alcance de proyectos (js/alcance-hoy.js):
 	// productos de las sesiones de hoy sin calificar y tareas vencidas con alumnos sin revisar
@@ -132,42 +133,52 @@ async function crearCardHoy() {
 	const { data: proys } = await window.sb.from("proyectos").select("id")
 		.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy));
 	const proyIds = (proys || []).map((p) => p.id);
-	if (proyIds.length) {
-		const { data: ses } = await window.sb.from("sesiones").select("id, fecha").in("proyecto_id", proyIds);
-		const fechaSesion = {};
-		(ses || []).forEach((s) => { fechaSesion[s.id] = s.fecha; });
-		const idsHoy = (ses || []).filter((s) => s.fecha === hoy).map((s) => s.id);
-		sesionesHoy = idsHoy.length;
-		// Las mismas sesiones que carga "Hoy": una tarea puede tener fecha de entrega aunque
-		// su sesión aún no tenga fecha
-		const idsSesiones = (ses || []).map((s) => s.id);
-		if (idsSesiones.length) {
-			const { data: prods } = await window.sb.from("productos_sesion").select("id, tipo, grados, sesion_id, fecha_entrega")
-				.in("sesion_id", idsSesiones).eq("activo", true);
-			const trabajos = (prods || []).filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
-			const tareas = (prods || []).filter((p) => {
-				const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id]) : null;
-				return vence && vence <= hoy;
-			});
-			const revisar = trabajos.concat(tareas);
-			if (revisar.length) {
-				const { data: cals } = await window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje")
-					.eq("maestro_id", user.id).in("producto_sesion_id", revisar.map((p) => p.id));
-				// Calificado = semáforo, estado de entrega o puntaje (misma regla que "Hoy")
-				const hechas = new Set((cals || []).filter((c) => c.nivel || c.estado_entrega || (c.puntaje !== null && c.puntaje !== undefined))
-					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
-				const conTareaRevisada = new Set((cals || []).filter((c) => c.estado_entrega)
-					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
-				const alumnosDe = (p) => {
-					const grados = (p.grados || []).map(Number);
-					return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1);
-				};
-				trabajos.forEach((p) => {
-					alumnosDe(p).forEach((a) => { if (!hechas.has(a.id + "|" + p.id)) sinCalificar++; });
+	// Si una lectura falla, Inicio sigue en pie: esos conteos dicen que no se pudieron leer
+	let sinLeer = false;
+	try {
+		if (proyIds.length) {
+			// Lecturas sin el tope de 1000 filas de Supabase, igual que "Hoy" (js/alcance-hoy.js)
+			const leer = window.AlcanceHoy.leerPorLotes;
+			const ses = await leer(proyIds, (lote) => window.sb.from("sesiones").select("id, fecha").in("proyecto_id", lote).order("id"));
+			const fechaSesion = {};
+			ses.forEach((s) => { fechaSesion[s.id] = s.fecha; });
+			const idsHoy = ses.filter((s) => s.fecha === hoy).map((s) => s.id);
+			sesionesHoy = idsHoy.length;
+			// Las mismas sesiones que carga "Hoy": una tarea puede tener fecha de entrega aunque
+			// su sesión aún no tenga fecha
+			const idsSesiones = ses.map((s) => s.id);
+			if (idsSesiones.length) {
+				const prods = await leer(idsSesiones, (lote) => window.sb.from("productos_sesion")
+					.select("id, tipo, grados, sesion_id, fecha_entrega").in("sesion_id", lote).eq("activo", true).order("id"));
+				const trabajos = prods.filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
+				const tareas = prods.filter((p) => {
+					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id]) : null;
+					return vence && vence <= hoy;
 				});
-				tareasPorRevisar = tareas.filter((p) => alumnosDe(p).some((a) => !conTareaRevisada.has(a.id + "|" + p.id))).length;
+				const revisar = trabajos.concat(tareas);
+				if (revisar.length) {
+					const cals = await leer(revisar.map((p) => p.id), (lote) => window.sb.from("calificaciones")
+						.select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje")
+						.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id"));
+					// Calificado = semáforo, estado de entrega o puntaje (misma regla que "Hoy")
+					const hechas = new Set(cals.filter((c) => c.nivel || c.estado_entrega || (c.puntaje !== null && c.puntaje !== undefined))
+						.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
+					const conTareaRevisada = new Set(cals.filter((c) => c.estado_entrega)
+						.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
+					const alumnosDe = (p) => {
+						const grados = (p.grados || []).map(Number);
+						return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1);
+					};
+					trabajos.forEach((p) => {
+						alumnosDe(p).forEach((a) => { if (!hechas.has(a.id + "|" + p.id)) sinCalificar++; });
+					});
+					tareasPorRevisar = tareas.filter((p) => alumnosDe(p).some((a) => !conTareaRevisada.has(a.id + "|" + p.id))).length;
+				}
 			}
 		}
+	} catch (e) {
+		console.error("inicio: conteos de Tu día", e);
+		sinLeer = true;
 	}
 
 	const fila = (etiqueta, valor, listo) =>
@@ -182,12 +193,12 @@ async function crearCardHoy() {
 		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
 		"</div>" +
 		fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length) +
-		fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
-		fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
-		fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0) +
-		fila("Cierre del día", conCierre + " de " + esperadosCierre.length +
-			(faltaron.size ? " (sin contar " + faltaron.size + (faltaron.size === 1 ? " que faltó)" : " que faltaron)") : ""),
-			esperadosCierre.length > 0 && conCierre >= esperadosCierre.length);
+		(sinLeer
+			? fila("Tareas y productos", "no se pudieron leer; ábrelos en Hoy", false)
+			: fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
+			fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
+			fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0)) +
+		fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo);
 	return card;
 }
 

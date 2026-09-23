@@ -23,7 +23,7 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas: Hoy ≠ Inicio) → revisor 37e | — |
+| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas: Hoy ≠ Inicio) → FAIL #4 37e (lecturas sin paginar; todo el grupo ausente) → revisor 37f | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | pendiente | — | — |
 | 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA con trabajo y tarea, cierre del día, boleta sin evidencias, diagnóstico, Inicio) | — |
@@ -261,6 +261,37 @@ Verificado con `.qa/verificar-cierre-inicio.js`, `.qa/verificar-37b.js`, humo y 
 suites. Menores anotados: terminar una sesión solo se puede desde Inicio y solo la de hoy
 del proyecto activo más reciente; con dos proyectos activos, "Trabajar hoy" de Hoy e Inicio
 no ordenan igual.
+
+**Revisión #4 de 3.7: FAIL #4** (revisor 37e, `.qa/revisor-37e/`). Lo de los FAIL #1-#3
+quedó corregido. Dos defectos:
+1. (bloqueante, causa nueva) Hoy, Tareas e Inicio leían las calificaciones con una sola
+   consulta. Supabase corta a 1000 filas en silencio y un trimestre real (decenas de
+   productos por 18 alumnos) pasa de 1000: la maestra vería en blanco lo ya calificado.
+2. (misma familia que el FAIL #3) Si falta todo el grupo, "Hoy" daba el cierre por
+   guardado ("0 de 0", botón deshabilitado) e Inicio lo dejaba en ámbar.
+Conteo honesto para la regla de los 3 FAIL: las causas técnicas fueron cuatro distintas
+(justificados, alcance, cierre con faltas, paginación), pero el defecto 2 es la variante
+extrema del FAIL #3 y los cuatro tienen la misma raíz: tres pantallas que calculaban lo
+mismo por separado. Por eso la corrección no parcha cada pantalla, junta las reglas en
+`js/alcance-hoy.js`, un solo lugar que usan las tres:
+- `leerPorLotes(ids, construir)`: parte los ids en lotes de 150 y lee cada lote en
+  páginas de 1000. Hoy (productos y calificaciones), Tareas (sesiones, tareas y
+  calificaciones) e Inicio (sesiones, productos y calificaciones) leen así. Si una
+  lectura falla, "Hoy" lo dice (antes se quedaba en blanco en silencio) e Inicio muestra
+  "no se pudieron leer; ábrelos en Hoy" sin tirar el resto de la pantalla.
+- `resumenCierre(total, esperados, guardados)`: la misma cuenta y la misma frase en las
+  dos pantallas. Si faltó todo el grupo, "Nadie asistió hoy: no hay cierre que guardar" en
+  Hoy y "nadie asistió hoy" en verde en Inicio. Un grupo sin alumnos no se da por cerrado.
+Menores del revisor que también se corrigieron: "Hoy" ya no cambia `calificaciones.fecha`
+al editar una calificación vieja (la fecha es la del día de captura; `evaluado_en` guarda
+el último cambio), y el grupo inicial tiene desempate estable (nombre, id) cuando dos
+grupos tienen el mismo `created_at`. Quedan anotados sin cambio: `pisoFase` repetido en JS
+(el SQL manda) y el camino legacy del motor (solo para datos anteriores a Parte B).
+Pruebas: `pruebas/alcance-hoy.test.js` (1080 y 7200 calificaciones, lotes ≤150, sin
+duplicados, error no silencioso, las seis variantes del cierre); `.qa/verificar-37c.js`
+en navegador (las tres pantallas piden offset/limit=1000 y lotes ≤150; con todo el grupo
+ausente Hoy e Inicio dicen lo mismo y no se guarda cierre; datos restaurados);
+verificar-37, verificar-37b, verificar-cierre-inicio, humo y las 18 suites en verde.
 
 **Revisión de 3.8: PASS** (revisor 37b). Llave ausente del frontend, de git y de
 `.env.local`; función desplegada v2 idéntica al repo; sin llave el botón no aparece (7

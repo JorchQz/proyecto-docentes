@@ -209,11 +209,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 
 		if (!sesiones.length) return;
-		var prodRes = await window.sb.from("productos_sesion")
-			.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden")
-			.in("sesion_id", sesiones.map(function (s) { return s.id; })).eq("activo", true)
-			.order("orden");
-		var productos = prodRes.data || [];
+		var productos = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
+			return window.sb.from("productos_sesion")
+				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden")
+				.in("sesion_id", lote).eq("activo", true)
+				.order("orden").order("id");
+		});
+		productos.sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
 
 		productos.forEach(function (p) {
 			p.sesion = sesionPorId[p.sesion_id];
@@ -235,14 +237,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Calificaciones ya capturadas de esos productos
 		var idsRelevantes = productos.map(function (p) { return p.id; });
-		if (idsRelevantes.length) {
-			var califRes = await window.sb.from("calificaciones")
+		var califs = await window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
+			return window.sb.from("calificaciones")
 				.select("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion")
-				.eq("maestro_id", user.id).in("producto_sesion_id", idsRelevantes);
-			(califRes.data || []).forEach(function (c) {
-				calificaciones[c.alumno_id + "|" + c.producto_sesion_id] = c;
-			});
-		}
+				.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
+		});
+		califs.forEach(function (c) {
+			calificaciones[c.alumno_id + "|" + c.producto_sesion_id] = c;
+		});
 
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
 		// revisar: una tarea de hace dos semanas ya revisada no es trabajo pendiente.
@@ -350,15 +352,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 				nivel: actual.nivel || null,
 				puntaje: actual.puntaje === undefined ? null : actual.puntaje,
 				retroalimentacion: actual.retroalimentacion || null,
-				fecha: hoy,
 				evaluado_en: new Date().toISOString(),
 			};
+			// La fecha es la del día en que se capturó por primera vez: revisar hoy una
+			// tarea de la semana pasada no la mueve (evaluado_en guarda el último cambio)
 			if (actual.id) {
 				var upd = await window.sb.from("calificaciones").update(fila).eq("id", actual.id);
 				if (upd.error) throw upd.error;
 				return;
 			}
-			var ins = await window.sb.from("calificaciones").insert(fila).select("id").single();
+			var ins = await window.sb.from("calificaciones").insert(Object.assign({ fecha: hoy }, fila)).select("id").single();
 			if (ins.error) {
 				// 23505: ya existía (otro dispositivo, o esta pantalla abierta dos veces).
 				// Se adopta la fila existente en vez de fallar.
@@ -764,15 +767,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}).join("");
 		var esperados = alumnos.filter(function (a) { return !faltoHoy(a.id); });
 		var guardados = esperados.filter(function (a) { return registroGuardado[a.id]; }).length;
-		document.getElementById("cierreResumen").textContent = guardados + " de " + esperados.length + " guardados" +
-			(esperados.length < alumnos.length
-				? " (sin contar " + (alumnos.length - esperados.length) + ((alumnos.length - esperados.length) === 1 ? " que faltó)" : " que faltaron)")
-				: "");
+		// La misma cuenta que Inicio (js/alcance-hoy.js)
+		var r = window.AlcanceHoy.resumenCierre(alumnos.length, esperados.length, guardados);
+		document.getElementById("cierreResumen").textContent = r.nadieAsistio
+			? "Nadie asistió hoy: no hay cierre que guardar"
+			: r.conteo + " guardados" + r.sinContar;
 		var boton = document.getElementById("cierreGuardarBtn");
 		if (boton) {
-			var completo = guardados >= esperados.length;
-			boton.disabled = completo;
-			boton.textContent = completo ? "Cierre de hoy guardado" : "Guardar el cierre de hoy";
+			boton.disabled = r.completo || !esperados.length;
+			boton.textContent = r.nadieAsistio ? "Nadie asistió hoy" : r.completo ? "Cierre de hoy guardado" : "Guardar el cierre de hoy";
 		}
 	}
 

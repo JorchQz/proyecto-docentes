@@ -58,7 +58,9 @@
 	async function consultar(sb, maestroId) {
 		var res = await sb.from("grupos").select("*")
 			.eq("maestro_id", maestroId)
-			.order("created_at", { ascending: true });
+			.order("created_at", { ascending: true })
+			// Desempate estable: dos grupos creados en el mismo instante no cambian de orden
+			.order("nombre", { ascending: true }).order("id", { ascending: true });
 		if (res.error) throw res.error;
 		var grupos = res.data || [];
 		var guardado = leerGuardado();

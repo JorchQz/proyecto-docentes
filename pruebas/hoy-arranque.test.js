@@ -111,6 +111,8 @@ function consulta(tabla) {
 		not: function () { return this; },
 		order: function () { return this; },
 		limit: function () { return this; },
+		// Como PostgREST: devuelve solo la página pedida
+		range: function (desde, hasta) { this._rango = [desde, hasta]; return this; },
 		single: function () { this._single = true; return this; },
 		maybeSingle: function () { this._single = true; return this; },
 		insert: function (fila) { this._insertado = fila; return this; },
@@ -120,7 +122,7 @@ function consulta(tabla) {
 			const filas = DATOS[tabla] || [];
 			const data = this._insertado
 				? Object.assign({ id: "nuevo" }, this._insertado)
-				: (this._single ? (filas[0] || null) : filas);
+				: (this._single ? (filas[0] || null) : this._rango ? filas.slice(this._rango[0], this._rango[1] + 1) : filas);
 			return Promise.resolve(resolver({ data: data, error: null }));
 		},
 	};

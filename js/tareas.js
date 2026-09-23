@@ -74,20 +74,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var proyPorId = {};
 		proyectos.forEach(function (p) { proyPorId[p.id] = p; });
 
-		var sesRes = await window.sb.from("sesiones").select("id, numero_sesion, fecha, proyecto_id")
-			.in("proyecto_id", proyectos.map(function (p) { return p.id; }));
-		if (sesRes.error) throw sesRes.error;
-		var sesiones = sesRes.data || [];
+		// Lecturas sin el tope de 1000 filas de Supabase (js/alcance-hoy.js): Tareas mira
+		// todos los proyectos del grupo, no solo los del alcance de "Hoy"
+		var sesiones = await window.AlcanceHoy.leerPorLotes(proyectos.map(function (p) { return p.id; }), function (lote) {
+			return window.sb.from("sesiones").select("id, numero_sesion, fecha, proyecto_id")
+				.in("proyecto_id", lote).order("id");
+		});
 		if (!sesiones.length) return true;
 		var sesPorId = {};
 		sesiones.forEach(function (s) { sesPorId[s.id] = s; });
 
-		var prodRes = await window.sb.from("productos_sesion")
-			.select("id, sesion_id, nombre, descripcion, grados, campo, fecha_entrega")
-			.eq("tipo", "tarea").eq("activo", true)
-			.in("sesion_id", sesiones.map(function (s) { return s.id; }));
-		if (prodRes.error) throw prodRes.error;
-		tareas = (prodRes.data || []).map(function (t) {
+		var prods = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
+			return window.sb.from("productos_sesion")
+				.select("id, sesion_id, nombre, descripcion, grados, campo, fecha_entrega")
+				.eq("tipo", "tarea").eq("activo", true)
+				.in("sesion_id", lote).order("id");
+		});
+		tareas = prods.map(function (t) {
 			var s = sesPorId[t.sesion_id] || {};
 			return Object.assign({}, t, {
 				sesion: s,
@@ -96,15 +99,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		});
 
-		if (tareas.length) {
-			var calRes = await window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, estado_entrega")
-				.eq("maestro_id", maestroId).in("producto_sesion_id", tareas.map(function (t) { return t.id; }));
-			if (calRes.error) throw calRes.error;
-			(calRes.data || []).forEach(function (c) {
-				if (!c.estado_entrega) return;
-				(revisiones[c.producto_sesion_id] = revisiones[c.producto_sesion_id] || {})[c.alumno_id] = c.estado_entrega;
-			});
-		}
+		var cals = await window.AlcanceHoy.leerPorLotes(tareas.map(function (t) { return t.id; }), function (lote) {
+			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, estado_entrega")
+				.eq("maestro_id", maestroId).in("producto_sesion_id", lote).order("id");
+		});
+		cals.forEach(function (c) {
+			if (!c.estado_entrega) return;
+			(revisiones[c.producto_sesion_id] = revisiones[c.producto_sesion_id] || {})[c.alumno_id] = c.estado_entrega;
+		});
 
 		// Lo más reciente arriba (como en "Hoy"); las que no tienen fecha, al final
 		tareas.sort(function (a, b) {

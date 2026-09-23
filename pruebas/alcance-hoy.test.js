@@ -31,5 +31,60 @@ ok("completado viejo de otro trimestre no entra", A.incluye({ estado: "completad
 ok("completado sin fecha_final de otro trimestre no entra", A.incluye({ estado: "completado", trimestre: 2 }, grupo, HOY), false);
 ok("límite: justo 30 días atrás entra", A.incluye({ estado: "completado", trimestre: 2, fecha_final: "2026-08-24" }, grupo, HOY), true);
 
-console.log(fallos ? fallos + " FALLAS" : "TODO OK");
-process.exit(fallos ? 1 : 0);
+// ── Cierre del día: la misma cuenta en "Hoy" e Inicio ────────────────────────
+ok("nadie ha guardado", A.resumenCierre(18, 18, 0), { nadieAsistio: false, completo: false, conteo: "0 de 18", sinContar: "" });
+ok("completo sin faltas", A.resumenCierre(18, 18, 18).completo, true);
+ok("con una falta: completo al guardar a los 17", A.resumenCierre(18, 17, 17), { nadieAsistio: false, completo: true, conteo: "17 de 17", sinContar: " (sin contar 1 que faltó)" });
+ok("con varias faltas, en plural", A.resumenCierre(18, 15, 3).sinContar, " (sin contar 3 que faltaron)");
+ok("faltó todo el grupo: no hay nada que cerrar y cuenta como cerrado",
+	A.resumenCierre(18, 0, 0), { nadieAsistio: true, completo: true, conteo: "0 de 0", sinContar: " (sin contar 18 que faltaron)" });
+ok("grupo sin alumnos: no se da por cerrado", A.resumenCierre(0, 0, 0).completo, false);
+
+// ── Lecturas sin el tope de 1000 filas de Supabase ───────────────────────────
+// Consulta falsa con el comportamiento de PostgREST: .in() filtra y .range() corta a
+// lo pedido, nunca más de 1000 filas por respuesta.
+function tablaFalsa(filas, registro) {
+	return function (lote) {
+		const q = {
+			range(desde, hasta) {
+				registro.push({ lote: lote.length, desde, hasta });
+				const de = filas.filter((f) => lote.indexOf(f.producto) !== -1);
+				return Promise.resolve({ data: de.slice(desde, Math.min(hasta + 1, desde + 1000)), error: null });
+			},
+		};
+		return q;
+	};
+}
+
+(async () => {
+	// 60 productos × 18 alumnos = 1080 calificaciones: sin paginar se perdían 80
+	const productos = Array.from({ length: 60 }, (_, i) => "p" + i);
+	const filas = [];
+	productos.forEach((p) => { for (let a = 0; a < 18; a++) filas.push({ producto: p, alumno: a }); });
+	let registro = [];
+	let leidas = await A.leerPorLotes(productos, tablaFalsa(filas, registro));
+	ok("un trimestre con 1080 calificaciones: se leen todas", leidas.length, 1080);
+	ok("en dos páginas", registro.map((r) => r.desde), [0, 1000]);
+
+	// 400 productos: los ids se parten en lotes (la lista viaja en la URL)
+	const muchos = Array.from({ length: 400 }, (_, i) => "q" + i);
+	const filas2 = [];
+	muchos.forEach((p) => { for (let a = 0; a < 18; a++) filas2.push({ producto: p, alumno: a }); });
+	registro = [];
+	leidas = await A.leerPorLotes(muchos, tablaFalsa(filas2, registro));
+	ok("400 productos × 18: se leen las 7200", leidas.length, 7200);
+	ok("ningún lote pasa de " + A.LOTE + " ids", registro.every((r) => r.lote <= A.LOTE), true);
+	ok("sin duplicados", new Set(leidas.map((f) => f.producto + "|" + f.alumno)).size, 7200);
+
+	registro = [];
+	ok("sin ids no consulta", (await A.leerPorLotes([], tablaFalsa(filas, registro))).length + registro.length, 0);
+
+	let error = null;
+	try {
+		await A.leerPorLotes(["p1"], () => ({ range: () => Promise.resolve({ data: null, error: { message: "sin red" } }) }));
+	} catch (e) { error = e.message; }
+	ok("un error de Supabase no se traga en silencio", error, "sin red");
+
+	console.log(fallos ? fallos + " FALLAS" : "TODO OK");
+	process.exit(fallos ? 1 : 0);
+})();
