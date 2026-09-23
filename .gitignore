@@ -19,3 +19,6 @@ supabase/.temp/
 # Se ignora todo .env*; solo la plantilla vacía queda versionada.
 .env*
 !.env.ejemplo
+
+# Herramientas locales de QA (Playwright, servidor, credenciales) — nunca subir
+.qa/

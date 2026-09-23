@@ -124,14 +124,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── cargar grupo del maestro ──────────────────────────────────────────────
 	try {
-		var grupoRes = await window.sb
-			.from("grupos")
-			.select("id, trimestre_actual")
-			.eq("maestro_id", user.id)
-			.limit(1)
-			.single();
+		var grupoActivo = (await window.GrupoActivo.cargar(window.sb, user.id)).grupo;
+		var grupoRes = { data: grupoActivo, error: null };
 
-		if (grupoRes.error || !grupoRes.data) {
+		if (!grupoRes.data) {
 			diagCuerpoEl.innerHTML =
 				'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' +
 				'No tienes un grupo configurado. <a href="onboarding.html" class="text-blue-600 underline font-medium">Crear grupo</a>' +

@@ -18,7 +18,7 @@ function ok(nombre, real, esperado) {
 	console.log((bien ? "OK   " : "FALLA ") + nombre + " → " + real + (bien ? "" : " (esperado " + esperado + ")"));
 }
 
-const fuente = fs.readFileSync(path.join(__dirname, "..", "js", "reportes.js"), "utf8");
+const fuente = fs.readFileSync((process.env.REPORTES_JS || path.join(__dirname, "..", "js", "reportes.js")), "utf8");
 
 // La función real, extraída del archivo que se sirve al navegador
 const extraida = fuente.match(/function sincronizarAvisoPropuesta[\s\S]*?\n\t\}/);

@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var registro = {};        // alumno_id -> {participacion, conducta}
 	var calificaciones = {};  // alumno_id|producto_id -> fila de calificaciones
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
+	var siguientes = [];       // próximas sesiones sin fecha del proyecto activo (para "Trabajar hoy")
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
 
 	var NIVELES = [
@@ -134,10 +135,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (authRes.error || !authRes.data.user) { window.location.href = "index.html"; return; }
 	user = authRes.data.user;
 
-	var grupoRes = await window.sb.from("grupos")
-		.select("id, nombre, grados, es_multigrado, trimestre_actual")
-		.eq("maestro_id", user.id).order("created_at", { ascending: true }).limit(1);
-	grupo = (grupoRes.data || [])[0];
+	grupo = (await window.GrupoActivo.cargar(window.sb, user.id)).grupo;
 	if (!grupo) { window.location.href = "onboarding.html"; return; }
 
 	var alumnosRes = await window.sb.from("alumnos")
@@ -181,13 +179,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!proyIds.length) return;
 
 		var sesRes = await window.sb.from("sesiones")
-			.select("id, numero_sesion, fecha, campo_formativo, momento, proyecto_id")
+			.select("id, numero_sesion, fecha, campo_formativo, momento, proyecto_id, estado_sesion")
 			.in("proyecto_id", proyIds);
 		var sesiones = sesRes.data || [];
 		var sesionPorId = {};
 		sesiones.forEach(function (s) { sesionPorId[s.id] = s; });
 		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; })
 			.sort(function (a, b) { return (a.numero_sesion || 0) - (b.numero_sesion || 0); });
+
+		/*
+			Las sesiones de una planeación no traen fecha: el maestro decide qué trabaja
+			cada día (y a veces son dos en un día, o una en dos). Estas son las siguientes
+			pendientes del proyecto activo; "Trabajar hoy" les pone la fecha de hoy y así
+			entran a la captura, al reparto de participación y a la asistencia del trimestre.
+		*/
+		var proyectoPorId = {};
+		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
+		siguientes = sesiones.filter(function (s) {
+			var p = proyectoPorId[s.proyecto_id];
+			return !s.fecha && s.estado_sesion !== "completada" && p && p.estado === "activo";
+		}).sort(function (a, b) {
+			if (a.proyecto_id !== b.proyecto_id) return a.proyecto_id < b.proyecto_id ? -1 : 1;
+			return (a.numero_sesion || 0) - (b.numero_sesion || 0);
+		}).slice(0, 4).map(function (s) {
+			return Object.assign({}, s, { proyectoTitulo: proyectoPorId[s.proyecto_id].titulo });
+		});
 
 		if (!sesiones.length) return;
 		var prodRes = await window.sb.from("productos_sesion")
@@ -224,6 +240,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 				calificaciones[c.alumno_id + "|" + c.producto_sesion_id] = c;
 			});
 		}
+
+		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
+		// revisar: una tarea de hace dos semanas ya revisada no es trabajo pendiente.
+		tareas = tareas.filter(function (t) {
+			var vence = t.fecha_entrega || (t.sesion && t.sesion.fecha);
+			if (vence === hoy) return true;
+			return alumnosDeProducto(t).some(function (al) {
+				return !(calificaciones[al.id + "|" + t.id] || {}).estado_entrega;
+			});
+		});
 	}
 
 	// ── Guardado ──────────────────────────────────────────────────────────────
@@ -272,6 +298,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				grado: alumno.grado,
 				campo_formativo: window.CamposFormativos ? window.CamposFormativos.largo(producto.campo) : null,
 				estado_entrega: actual.estado_entrega || null,
+				// entrego (columna vieja) debe decir lo mismo que el estado; su default era true
+				entrego: actual.estado_entrega === "entregado" || actual.estado_entrega === "incompleto",
 				nivel: actual.nivel || null,
 				puntaje: actual.puntaje === undefined ? null : actual.puntaje,
 				retroalimentacion: actual.retroalimentacion || null,
@@ -410,10 +438,39 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 
 	// ── 3. Sesiones de hoy ────────────────────────────────────────────────────
+	// Bloque "Trabajar hoy": las siguientes sesiones pendientes del proyecto activo
+	function bloqueSiguientes() {
+		if (!siguientes.length) {
+			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en el proyecto activo. Inicia un proyecto desde Proyectos.");
+		}
+		return "<div class='rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
+			"<p class='text-sm font-semibold text-gray-800 mb-1'>" +
+			(sesionesHoy.length ? "¿Trabajarás otra sesión hoy?" : "¿Qué sesión trabajas hoy?") + "</p>" +
+			"<p class='text-xs text-gray-500 mb-2'>Las sesiones de tu planeación no traen fecha: elige la que vas a trabajar y sus productos aparecen aquí para calificarlos.</p>" +
+			"<div class='flex flex-col gap-2'>" +
+			siguientes.map(function (s) {
+				return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg bg-white border border-gray-200 px-3 py-2'>" +
+					"<span class='text-sm text-gray-700'>Sesión " + (s.numero_sesion || "") + " · " + esc(s.campo_formativo || "") +
+					"<span class='block text-xs text-gray-400'>" + esc(s.proyectoTitulo || "") + "</span></span>" +
+					"<button type='button' data-trabajar-hoy='" + s.id + "' class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shrink-0'>Trabajar hoy</button>" +
+					"</div>";
+			}).join("") +
+			"</div></div>";
+	}
+
+	function sesionTieneCalificaciones(sesionId) {
+		return (productosPorSesion[sesionId] || []).some(function (p) {
+			return alumnos.some(function (al) {
+				var c = calificaciones[al.id + "|" + p.id];
+				return c && (c.nivel || c.estado_entrega || c.puntaje !== null && c.puntaje !== undefined);
+			});
+		});
+	}
+
 	function renderSesiones() {
 		var cont = document.getElementById("sesionesLista");
 		if (!sesionesHoy.length) {
-			cont.innerHTML = vacio("No hay sesiones programadas para hoy. Puedes fechar una sesión desde Proyectos.");
+			cont.innerHTML = bloqueSiguientes();
 			document.getElementById("sesionesResumen").textContent = "";
 			return;
 		}
@@ -426,10 +483,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"<div class='flex items-center justify-between gap-2 mb-2'>" +
 				"<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
 				" · " + esc(ses.campo_formativo || "") + "</p>" +
+				"<span class='flex gap-2 shrink-0'>" +
+				(sesionTieneCalificaciones(ses.id) ? "" :
+					"<button type='button' data-quitar-hoy='" + ses.id + "' " +
+					"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-500 hover:bg-gray-50'>Quitar de hoy</button>") +
 				"<button type='button' data-agregar-producto='" + ses.id + "' " +
 				"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50'>Agregar producto</button>" +
+				"</span>" +
 				"</div>" + cuerpo + "</div>";
-		}).join("");
+		}).join("") + bloqueSiguientes();
 		var sinCalificar = 0;
 		sesionesHoy.forEach(function (ses) {
 			(productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea"; }).forEach(function (p) {
@@ -500,6 +562,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var sesionesCont = document.getElementById("sesionesLista");
 
 	sesionesCont.addEventListener("click", async function (e) {
+		var btnHoy = e.target.closest("button[data-trabajar-hoy], button[data-quitar-hoy]");
+		if (btnHoy) { await fecharSesion(btnHoy); return; }
+
 		var btnAgregar = e.target.closest("button[data-agregar-producto]");
 		if (btnAgregar) { await agregarProducto(btnAgregar.dataset.agregarProducto); return; }
 
@@ -565,6 +630,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 			productosPorSesion[sid].forEach(function (p) { if (p.id === id) encontrado = p; });
 		});
 		return encontrado;
+	}
+
+	/*
+		"Trabajar hoy" pone la fecha de hoy a una sesión pendiente (y la marca activa);
+		"Quitar de hoy" la regresa a sin fecha, solo si todavía no tiene calificaciones.
+		Se recarga la pantalla para que todo (productos, tareas, conteos) salga de la base.
+	*/
+	async function fecharSesion(btn) {
+		var poner = !!btn.dataset.trabajarHoy;
+		var sesionId = poner ? btn.dataset.trabajarHoy : btn.dataset.quitarHoy;
+		btn.disabled = true;
+		btn.textContent = poner ? "Agregando..." : "Quitando...";
+		try {
+			var cambios = poner ? { fecha: hoy, estado_sesion: "activa" } : { fecha: null };
+			var res = await window.sb.from("sesiones").update(cambios).eq("id", sesionId).eq("maestro_id", user.id);
+			if (res.error) throw res.error;
+			window.location.reload();
+		} catch (err) {
+			btn.disabled = false;
+			btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
+			mensaje("error", "No se pudo actualizar la sesión: " + (err.message || "error desconocido"));
+		}
 	}
 
 	/*

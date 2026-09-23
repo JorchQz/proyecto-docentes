@@ -96,23 +96,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	async function loadCurrentGroup() {
-		var groupResult = await window.sb
-			.from("grupos")
-			.select("id, nombre")
-			.eq("maestro_id", currentUserId)
-			.order("id", { ascending: true })
-			.limit(1);
-
-		if (groupResult.error) {
-			throw groupResult.error;
-		}
-
-		if (!groupResult.data || groupResult.data.length === 0) {
+		var activo = await window.GrupoActivo.cargar(window.sb, currentUserId);
+		if (!activo.grupo) {
 			window.location.href = "onboarding.html";
 			return;
 		}
-
-		currentGroup = groupResult.data[0];
+		currentGroup = activo.grupo;
 	}
 
 	async function loadStudents() {

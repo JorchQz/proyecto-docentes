@@ -55,6 +55,7 @@ global.window = { location: { href: "" }, confirm: function () { return true; },
 global.Event = function () {};
 
 require("../js/campos-formativos.js");
+require("../js/grupo-activo.js");
 require("../js/catalogo-habilidades.js");
 require("../js/motor-calificacion.js");
 require("../js/textos-boleta.js");
@@ -78,12 +79,13 @@ const DATOS = {
 	productos_sesion: PRODUCTOS,
 	calificaciones: [
 		// Tarea no entregada y trabajo flojo en Lenguajes; todo logrado en Saberes
-		{ producto_sesion_id: "pr1", estado_entrega: "no_entregado", nivel: null, puntaje: null },
-		{ producto_sesion_id: "pr2", estado_entrega: "entregado", nivel: "requiere_apoyo", puntaje: null },
-		{ producto_sesion_id: "pr3", estado_entrega: "entregado", nivel: "logrado", puntaje: null },
+		// El motor reparte las filas por alumno (lee a todo el grupo de una vez): llevan alumno_id
+		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr1", estado_entrega: "no_entregado", nivel: null, puntaje: null },
+		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr2", estado_entrega: "entregado", nivel: "requiere_apoyo", puntaje: null },
+		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr3", estado_entrega: "entregado", nivel: "logrado", puntaje: null },
 	],
-	registro_diario: [{ fecha: "2026-09-21", participacion: 2, conducta: 2 }, { fecha: "2026-09-22", participacion: 2, conducta: 2 }],
-	asistencias: [{ asistencia_estado: "presente" }, { asistencia_estado: "presente" }, { asistencia_estado: "ausente" }],
+	registro_diario: [{ alumno_id: "al-2", fecha: "2026-09-21", participacion: 2, conducta: 2 }, { alumno_id: "al-2", fecha: "2026-09-22", participacion: 2, conducta: 2 }],
+	asistencias: [{ alumno_id: "al-2", asistencia_estado: "presente" }, { alumno_id: "al-2", asistencia_estado: "presente" }, { alumno_id: "al-2", asistencia_estado: "ausente" }],
 	examenes: [],
 	respuestas_examen: [],
 	banco_preguntas: [],
@@ -108,6 +110,7 @@ function consulta(tabla) {
 		gte: function () { return this; }, lte: function () { return this; },
 		not: function () { return this; }, order: function () { return this; },
 		limit: function () { return this; },
+		range: function () { return this; },
 		single: function () { this._single = true; return this; },
 		maybeSingle: function () { this._single = true; return this; },
 		insert: function () { return this; },
@@ -128,15 +131,21 @@ global.window.sb = {
 	from: function (t) { return consulta(t); },
 	rpc: function (nombre, args) {
 		// Misma regla que la función SQL: piso 6 en 1°-2°, 5 en 3°-6°
-		const p = args.p_porcentaje, grado = args.p_grado;
-		const piso = grado <= 2 ? 6 : 5;
-		const v = p >= 90 ? 10 : p >= 80 ? 9 : p >= 70 ? 8 : p >= 60 ? 7 : p >= 50 ? 6 : 5;
-		return Promise.resolve({ data: Math.max(v, piso), error: null });
+		function convertir(p, grado) {
+			if (p === null || p === undefined) return null;
+			const piso = grado <= 2 ? 6 : 5;
+			const v = p >= 90 ? 10 : p >= 80 ? 9 : p >= 70 ? 8 : p >= 60 ? 7 : p >= 50 ? 6 : 5;
+			return Math.max(v, piso);
+		}
+		if (nombre === "calcular_calificaciones_boleta") {
+			return Promise.resolve({ data: args.p_porcentajes.map(function (p, i) { return convertir(p, args.p_grados[i]); }), error: null });
+		}
+		return Promise.resolve({ data: convertir(args.p_porcentaje, args.p_grado), error: null });
 	},
 };
 
 // ── Ejecutar ─────────────────────────────────────────────────────────────────
-const codigo = fs.readFileSync(path.join(__dirname, "..", "js", "reportes.js"), "utf8");
+const codigo = fs.readFileSync((process.env.REPORTES_JS || path.join(__dirname, "..", "js", "reportes.js")), "utf8");
 const consolaOriginal = console.error;
 console.error = function () { errores.push(Array.prototype.slice.call(arguments).join(" ")); };
 new Function(codigo)();
@@ -187,7 +196,9 @@ new Function(codigo)();
 	contiene("el trabajo diario se redacta solo", html, "no siempre trae la tarea");
 
 	const textosGuardados = (guardado.boleta_trimestral || []).filter(function (f) { return f.texto_autogenerado; });
-	ok("se guarda la propuesta de los 5 bloques", textosGuardados.length, 5);
+	// Solo se guardan los bloques con algo que proponer: LEN, SAB y la fila general.
+	// ETI y DHL no tienen evidencias y no deben dejar filas vacías en la boleta.
+	ok("se guarda la propuesta solo donde hay texto", textosGuardados.map(function (f) { return f.campo; }).sort().join(","), "GEN,LEN,SAB");
 	ok("y también se escribe en los campos visibles",
 		textosGuardados.every(function (f) { return f.fortalezas !== undefined; }), true);
 

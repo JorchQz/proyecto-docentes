@@ -431,12 +431,14 @@
 	}
 
 	async function loadCurrentGroup() {
-		var groupResult = await window.sb
-			.from("grupos")
-			.select("id, nombre, tipo_organizacion, grados, escuela, descripcion")
-			.eq("maestro_id", userId)
-			.order("id", { ascending: true })
-			.limit(1);
+		// Grupo activo (con 2+ grupos se edita el que el maestro eligió en la barra)
+		var groupResult;
+		try {
+			var activo = await window.GrupoActivo.cargar(window.sb, userId);
+			groupResult = { data: activo.grupo ? [activo.grupo] : [], error: null };
+		} catch (err) {
+			groupResult = { data: null, error: err };
+		}
 
 		if (groupResult.error) {
 			showMessage(

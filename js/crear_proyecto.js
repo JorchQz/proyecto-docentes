@@ -27,27 +27,14 @@ document.addEventListener("DOMContentLoaded", async function () {
   let grupoId = null;
   let trimestreGrupo = null; // grupos.trimestre_actual del grupo destino: default del selector
 
-  // Intentar obtener grupoId desde localStorage (varios formatos posibles)
-  try {
-    const raw = localStorage.getItem('grupoActivo') || localStorage.getItem('grupo_activo');
-    if (raw) {
-      const ga = JSON.parse(raw);
-      grupoId = ga.id || ga.grupo_id || null;
-    }
-  } catch (_) {}
-
-  // Cargar grados del grupo del maestro desde Supabase
+  // Cargar el grupo activo (js/grupo-activo.js): grados y trimestre salen del MISMO
+  // grupo donde se inserta el proyecto
   try {
     if (window.sb) {
       const { data: { session } } = await window.sb.auth.getSession();
       if (session) {
-        const { data: grupos } = await window.sb
-          .from('grupos')
-          .select('id, grados, trimestre_actual')
-          .eq('maestro_id', session.user.id);
-        if (grupos && grupos.length > 0) {
-          // Grados y trimestre salen del MISMO grupo donde se inserta el proyecto
-          const grupo = grupos.find(g => g.id === grupoId) || grupos[0];
+        const { grupo } = await window.GrupoActivo.cargar(window.sb, session.user.id);
+        if (grupo) {
           grupoId = grupo.id;
           trimestreGrupo = grupo.trimestre_actual || null;
           const rawGrados = grupo.grados;
@@ -1027,7 +1014,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     div.innerHTML = `
       <button type="button" class="session-toggle w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition text-left">
         <span class="session-label font-semibold text-gray-700">Sesión ${num} — — </span>
-        <span class="toggle-icon text-gray-400 transition-transform duration-200 inline-block">▼</span>
+        <span class="toggle-icon text-gray-400 transition-transform duration-200 inline-block"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
       </button>
       <div class="session-body p-5 flex flex-col gap-5">
 
@@ -1187,7 +1174,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const etiqueta = truncarTexto(archivo.nombre || '', 30);
         return `
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${escapeHtml(archivo.path || '')}">
-            <span>📎</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span>
             <span title="${escapeHtml(archivo.nombre || '')}">${escapeHtml(etiqueta)}</span>
             <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
@@ -1203,7 +1190,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const titulo = link.titulo && String(link.titulo).trim() ? String(link.titulo).trim() : truncarTexto(link.url || '', 30);
         return `
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
-            <span>🔗</span>
+            <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
             <span title="${escapeHtml(link.url || '')}">${escapeHtml(titulo)}</span>
             <button type="button" class="resource-remove-link inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
@@ -1221,7 +1208,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const pendingChip = document.createElement('span');
       pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800';
       pendingChip.dataset.pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      pendingChip.innerHTML = `<span>📎</span><span title="${escapeHtml(file.name)}">${escapeHtml(truncarTexto(file.name, 30))} · Subiendo...</span>`;
+      pendingChip.innerHTML = `<span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span><span title="${escapeHtml(file.name)}">${escapeHtml(truncarTexto(file.name, 30))} · Subiendo...</span>`;
       recursosFilesList?.appendChild(pendingChip);
 
       const { error: uploadError } = await window.sb.storage.from('recursos').upload(ruta, file, { upsert: false });
@@ -1238,7 +1225,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       pendingChip.outerHTML = `
         <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${String(ruta)}">
-          <span>📎</span>
+          <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span>
           <span title="${String(file.name)}">${String(truncarTexto(file.name, 30))}</span>
           <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${String(ruta)}" aria-label="Eliminar archivo">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
@@ -2135,11 +2122,11 @@ document.addEventListener("DOMContentLoaded", async function () {
             // textContent (no innerHTML) para no ejecutar datos guardados: el
             // título/URL del recurso podría contener HTML malicioso.
             const txtLink = document.createElement('span');
-            txtLink.textContent = '🔗 ' + (link.titulo || link.url || '');
+            txtLink.textContent = (link.titulo || link.url || '');
             const btnLink = document.createElement('button');
             btnLink.type = 'button';
             btnLink.className = 'remove-link-btn text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold';
-            btnLink.textContent = '✕';
+            btnLink.textContent = '×';
             chip.appendChild(txtLink);
             chip.appendChild(document.createTextNode(' '));
             chip.appendChild(btnLink);
@@ -2165,11 +2152,11 @@ document.addEventListener("DOMContentLoaded", async function () {
             // textContent (no innerHTML): el nombre del archivo lo controla quien
             // lo sube y podría contener HTML malicioso.
             const txtArch = document.createElement('span');
-            txtArch.textContent = '📎 ' + (archivo.nombre || '');
+            txtArch.textContent = (archivo.nombre || '');
             const btnArch = document.createElement('button');
             btnArch.type = 'button';
             btnArch.className = 'remove-archivo-btn text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold';
-            btnArch.textContent = '✕';
+            btnArch.textContent = '×';
             chip.appendChild(txtArch);
             chip.appendChild(document.createTextNode(' '));
             chip.appendChild(btnArch);
@@ -2368,7 +2355,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       msgEl.className = 'mt-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm';
-      msgEl.textContent = '✅ Proyecto guardado correctamente. Redirigiendo...';
+      msgEl.textContent = 'Proyecto guardado correctamente. Redirigiendo...';
       msgEl.classList.remove('hidden');
       clearDraft();
       setTimeout(() => { window.location.href = 'planeacion.html'; }, 1800);
@@ -2376,7 +2363,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     } catch (err) {
       console.error('Error al guardar:', err);
       msgEl.className = 'mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm';
-      msgEl.textContent = '❌ Error al guardar: ' + (err.message || 'Intenta de nuevo.');
+      msgEl.textContent = 'Error al guardar: ' + (err.message || 'Intenta de nuevo.');
       msgEl.classList.remove('hidden');
       btn.disabled = false;
       btn.textContent = 'Guardar proyecto';

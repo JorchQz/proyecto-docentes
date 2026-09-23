@@ -19,10 +19,12 @@
 	  - Porcentaje → calificación SOLO con la función SQL calcular_calificacion_boleta
 	    (piso por fase: 6 en 1°-2°, 5 en 3°-6°). El motor nunca redondea por su cuenta.
 
-	Transición: mientras la pantalla "Hoy" (B.1) no exista, la revisión de tareas del
-	Dashboard sigue escribiendo filas viejas en `calificaciones` (escala 5-10, sin
-	producto). Se toman en cuenta en su rubro (calificacion/10) para no perder trabajo
-	ya capturado, y el resultado avisa con `usaLegacy` para que el reporte lo advierta.
+	Filas viejas: antes de la pantalla "Hoy", la revisión de tareas del Dashboard
+	escribía `calificaciones` sin producto (escala 5-10). Si quedan, se toman en su
+	rubro (calificacion/10) para no perder trabajo capturado, y el resultado avisa con
+	`usaLegacy` para que el reporte lo advierta.
+
+	Un solo camino: cargarYCalcular (un alumno) es cargarYCalcularGrupo con un alumno.
 */
 
 (function () {
@@ -152,30 +154,62 @@
 	}
 
 	// ── Carga desde Supabase ──────────────────────────────────────────────────
-	// ctx = {maestroId, grupoId, alumnoId, grado, trimestre, campos}
-	async function cargarYCalcular(sb, ctx) {
-		var campos = ctx.campos || ["LEN", "SAB", "ETI", "DHL"];
-		var grado = Number(ctx.grado);
 
-		var ajustesRes = await sb.from("maestro_ajustes").select("*").eq("maestro_id", ctx.maestroId).maybeSingle();
+	// Supabase devuelve como máximo 1000 filas por consulta: se lee por páginas para
+	// que un grupo grande no pierda calificaciones en silencio.
+	var PAGINA = 1000;
+	async function todas(construir) {
+		var filas = [], desde = 0;
+		for (;;) {
+			var res = await construir().range(desde, desde + PAGINA - 1);
+			if (res.error) throw res.error;
+			var lote = res.data || [];
+			filas = filas.concat(lote);
+			if (lote.length < PAGINA) return filas;
+			desde += PAGINA;
+		}
+	}
+
+	async function cargarPesos(sb, maestroId) {
+		var ajustesRes = await sb.from("maestro_ajustes").select("*").eq("maestro_id", maestroId).maybeSingle();
 		var aj = ajustesRes.data;
-		var pesos = {
+		return {
 			tareas:        Number(aj && aj.peso_tareas        != null ? aj.peso_tareas        : 28),
 			trabajos:      Number(aj && aj.peso_trabajos      != null ? aj.peso_trabajos      : 28),
 			participacion: Number(aj && aj.peso_participacion != null ? aj.peso_participacion : 6),
 			conducta:      Number(aj && aj.peso_conducta      != null ? aj.peso_conducta      : 5),
 			examen:        Number(aj && aj.peso_examen        != null ? aj.peso_examen        : 33),
 		};
+	}
+
+	/*
+		cargarYCalcularGrupo(sb, ctx) — el motor para varios alumnos a la vez (junta,
+		exportación, concentrado). Lee cada tabla UNA vez para todo el grupo y aplica a
+		cada alumno exactamente la misma fórmula (calcularPorcentajes) y la misma
+		conversión SQL que la boleta individual: cargarYCalcular es este mismo camino con
+		un solo alumno, así que no hay dos maneras de calcular.
+
+		ctx = {maestroId, grupoId, trimestre, alumnos: [{id, grado}], campos}
+		→ { porAlumno: {id: {porCampo, asistencia, usaLegacy, examenAproximado}},
+		    pesos, sinProyectos }
+	*/
+	async function cargarYCalcularGrupo(sb, ctx) {
+		var campos = ctx.campos || ["LEN", "SAB", "ETI", "DHL"];
+		var alumnos = (ctx.alumnos || []).map(function (a) { return { id: a.id, grado: Number(a.grado) }; });
+		var ids = alumnos.map(function (a) { return a.id; });
+		var pesos = await cargarPesos(sb, ctx.maestroId);
 
 		// Proyectos del trimestre (proyectos.trimestre es la fuente única) y sus sesiones
 		var proyRes = await sb.from("proyectos").select("id")
 			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre);
+		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
 
 		var sesiones = [];
 		if (proyIds.length) {
-			var sesRes = await sb.from("sesiones").select("id, fecha, campo_formativo").in("proyecto_id", proyIds);
-			sesiones = sesRes.data || [];
+			sesiones = await todas(function () {
+				return sb.from("sesiones").select("id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
+			});
 		}
 		var sesionIds = sesiones.map(function (s) { return s.id; });
 
@@ -188,137 +222,186 @@
 			if (!camposPorFecha[s.fecha]) camposPorFecha[s.fecha] = [];
 			if (camposPorFecha[s.fecha].indexOf(codigo) === -1) camposPorFecha[s.fecha].push(codigo);
 		});
+		var fechas = sesiones.map(function (s) { return s.fecha; }).filter(Boolean).sort();
 
-		// Productos activos que le tocan al grado del alumno
 		var productos = [];
 		if (sesionIds.length) {
-			var prodRes = await sb.from("productos_sesion")
-				.select("id, tipo, campo, grados, activo")
-				.in("sesion_id", sesionIds).eq("activo", true);
-			productos = (prodRes.data || []).filter(function (p) {
-				return (p.grados || []).map(Number).indexOf(grado) !== -1;
+			productos = await todas(function () {
+				return sb.from("productos_sesion").select("id, tipo, campo, grados, activo")
+					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
 
-		// Calificaciones del alumno sobre esos productos + filas legacy sin producto
-		var calificaciones = {}, legacy = [], usaLegacy = false;
-		var califRes = await sb.from("calificaciones")
-			.select("producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id")
-			.eq("maestro_id", ctx.maestroId).eq("alumno_id", ctx.alumnoId);
-		(califRes.data || []).forEach(function (c) {
-			if (c.producto_sesion_id) { calificaciones[c.producto_sesion_id] = c; return; }
-			// Legacy: solo del trimestre, con calificación numérica y campo reconocible
-			if (!proyIds.length || proyIds.indexOf(c.proyecto_id) === -1) return;
-			if (c.calificacion === null || c.calificacion === undefined) return;
-			var rubro = c.tipo === "tarea" ? "tareas" : (c.tipo === "actividad" || c.tipo === "trabajo" ? "trabajos" : null);
-			if (!rubro) return;
-			var codigo = window.CamposFormativos ? window.CamposFormativos.corto(c.campo_formativo) : null;
-			if (!codigo) return;
-			usaLegacy = true;
-			legacy.push({ rubro: rubro, campo: codigo, calificacion: c.calificacion });
-		});
-
-		// Participación y conducta del trimestre (rango = fechas de las sesiones)
-		var fechas = sesiones.map(function (s) { return s.fecha; }).filter(Boolean).sort();
-		var registros = [];
-		if (fechas.length) {
-			var regRes = await sb.from("registro_diario")
-				.select("fecha, participacion, conducta")
-				.eq("maestro_id", ctx.maestroId).eq("alumno_id", ctx.alumnoId)
-				.gte("fecha", fechas[0]).lte("fecha", fechas[fechas.length - 1]);
-			registros = regRes.data || [];
+		// Calificaciones de los alumnos en los proyectos del trimestre (nuevas y legacy)
+		var califs = [];
+		if (ids.length && proyIds.length) {
+			califs = await todas(function () {
+				return sb.from("calificaciones")
+					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id")
+					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids).in("proyecto_id", proyIds).order("id");
+			});
 		}
 
-		var examen = await examenPorCampo(sb, ctx, grado, campos);
+		var registros = [], asistencias = [];
+		if (ids.length && fechas.length) {
+			registros = await todas(function () {
+				return sb.from("registro_diario").select("alumno_id, fecha, participacion, conducta")
+					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids)
+					.gte("fecha", fechas[0]).lte("fecha", fechas[fechas.length - 1]).order("id");
+			});
+			asistencias = await todas(function () {
+				return sb.from("asistencias").select("alumno_id, asistencia_estado")
+					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids)
+					.gte("fecha", fechas[0]).lte("fecha", fechas[fechas.length - 1]).order("id");
+			});
+		}
 
-		var porCampo = calcularPorcentajes({
-			campos: campos, productos: productos, calificaciones: calificaciones,
-			registros: registros, camposPorFecha: camposPorFecha,
-			examenPorCampo: examen.porCampo, legacy: legacy, pesos: pesos,
+		var examenes = await examenesPorGrado(sb, ctx, alumnos, ids, campos);
+
+		// Por alumno: mismas entradas que la boleta individual
+		var porAlumno = {};
+		var pendientes = []; // [alumnoId, campo, porcentaje, grado] para convertir en lote
+		alumnos.forEach(function (a) {
+			var misProductos = productos.filter(function (p) {
+				return (p.grados || []).map(Number).indexOf(a.grado) !== -1;
+			});
+			var calificaciones = {}, legacy = [], usaLegacy = false;
+			califs.forEach(function (c) {
+				if (c.alumno_id !== a.id) return;
+				if (c.producto_sesion_id) { calificaciones[c.producto_sesion_id] = c; return; }
+				// Legacy (revisión de tareas vieja del Dashboard): escala 5-10, sin producto
+				if (c.calificacion === null || c.calificacion === undefined) return;
+				var rubro = c.tipo === "tarea" ? "tareas" : (c.tipo === "actividad" || c.tipo === "trabajo" ? "trabajos" : null);
+				if (!rubro) return;
+				var codigo = window.CamposFormativos ? window.CamposFormativos.corto(c.campo_formativo) : null;
+				if (!codigo) return;
+				usaLegacy = true;
+				legacy.push({ rubro: rubro, campo: codigo, calificacion: c.calificacion });
+			});
+			var misRegistros = registros.filter(function (r) { return r.alumno_id === a.id; });
+			var examen = examenes[a.id] || { porCampo: {}, aproximado: false };
+
+			var porCampo = calcularPorcentajes({
+				campos: campos, productos: misProductos, calificaciones: calificaciones,
+				registros: misRegistros, camposPorFecha: camposPorFecha,
+				examenPorCampo: examen.porCampo, legacy: legacy, pesos: pesos,
+			});
+			campos.forEach(function (campo) {
+				var pct = porCampo[campo].porcentaje;
+				porCampo[campo].calificacionPropuesta = null;
+				if (pct === null) return;
+				porCampo[campo].nivel = pct >= 80 ? "logrado" : (pct >= 60 ? "en_proceso" : "requiere_apoyo");
+				pendientes.push([a.id, campo, Math.round(pct * 100) / 100, a.grado]);
+			});
+
+			// Asistencia: SOLO referencia, nunca entra a la fórmula (art. 7 I d)
+			var presentes = 0, total = 0;
+			asistencias.forEach(function (x) {
+				if (x.alumno_id !== a.id) return;
+				total++;
+				if (x.asistencia_estado === "presente" || x.asistencia_estado === "justificada") presentes++;
+			});
+
+			porAlumno[a.id] = {
+				porCampo: porCampo,
+				asistencia: { presentes: presentes, total: total, porcentaje: total ? presentes / total : null },
+				usaLegacy: usaLegacy,
+				examenAproximado: examen.aproximado,
+			};
 		});
 
-		// Calificación propuesta: SIEMPRE por la función SQL (piso por fase)
-		for (var i = 0; i < campos.length; i++) {
-			var campo = campos[i];
-			var pct = porCampo[campo].porcentaje;
-			porCampo[campo].calificacionPropuesta = null;
-			if (pct === null) continue;
-			var rpc = await sb.rpc("calcular_calificacion_boleta", {
-				p_porcentaje: Math.round(pct * 100) / 100, p_grado: grado,
+		// Calificación propuesta: SIEMPRE la función SQL (piso por fase), en un solo viaje
+		if (pendientes.length) {
+			var rpc = await sb.rpc("calcular_calificaciones_boleta", {
+				p_porcentajes: pendientes.map(function (p) { return p[2]; }),
+				p_grados: pendientes.map(function (p) { return p[3]; }),
 			});
 			if (rpc.error) throw rpc.error;
-			porCampo[campo].calificacionPropuesta = rpc.data;
-			porCampo[campo].nivel = pct >= 80 ? "logrado" : (pct >= 60 ? "en_proceso" : "requiere_apoyo");
+			(rpc.data || []).forEach(function (cal, i) {
+				porAlumno[pendientes[i][0]].porCampo[pendientes[i][1]].calificacionPropuesta = cal;
+			});
 		}
 
-		var asistencia = await calcularAsistencia(sb, ctx, fechas);
+		return { porAlumno: porAlumno, pesos: pesos, sinProyectos: proyIds.length === 0 };
+	}
 
+	// ctx = {maestroId, grupoId, alumnoId, grado, trimestre, campos} — un alumno
+	async function cargarYCalcular(sb, ctx) {
+		var r = await cargarYCalcularGrupo(sb, {
+			maestroId: ctx.maestroId, grupoId: ctx.grupoId, trimestre: ctx.trimestre,
+			campos: ctx.campos, alumnos: [{ id: ctx.alumnoId, grado: ctx.grado }],
+		});
+		var a = r.porAlumno[ctx.alumnoId];
 		return {
-			porCampo: porCampo, pesos: pesos, asistencia: asistencia,
-			usaLegacy: usaLegacy, examenAproximado: examen.aproximado,
-			sinProyectos: proyIds.length === 0,
+			porCampo: a.porCampo, pesos: r.pesos, asistencia: a.asistencia,
+			usaLegacy: a.usaLegacy, examenAproximado: a.examenAproximado,
+			sinProyectos: r.sinProyectos,
 		};
 	}
 
 	/*
-		Examen del trimestre DEL GRADO DEL ALUMNO (en multigrado hay un examen por
-		grado; tomar cualquiera mezclaba grados). Limitación conocida: banco_preguntas
-		no guarda el valor de cada pregunta, así que el máximo por campo se aproxima
-		como valor_total / total_preguntas.
+		Examen del trimestre DEL GRADO DE CADA ALUMNO (en multigrado hay un examen por
+		grado; tomar cualquiera mezclaba grados). Si hay varios del mismo grado, manda el
+		más reciente. Limitación conocida: banco_preguntas no guarda el valor de cada
+		pregunta, así que el máximo por campo se aproxima como valor_total / total_preguntas.
+		→ { alumnoId: { porCampo: {LEN: 0..1}, aproximado } }
 	*/
-	async function examenPorCampo(sb, ctx, grado, campos) {
-		var porCampo = {}, aproximado = false;
+	async function examenesPorGrado(sb, ctx, alumnos, ids, campos) {
+		var salida = {};
+		var grados = [];
+		alumnos.forEach(function (a) { if (grados.indexOf(a.grado) === -1) grados.push(a.grado); });
+		if (!grados.length) return salida;
+
 		var exRes = await sb.from("examenes")
-			.select("id, preguntas_ids, valor_total, total_preguntas, grado")
-			.eq("maestro_id", ctx.maestroId).eq("trimestre", ctx.trimestre).eq("grado", grado)
-			.order("created_at", { ascending: false }).limit(1).maybeSingle();
-		var examen = exRes.data;
-		if (!examen || !examen.id) return { porCampo: porCampo, aproximado: aproximado };
+			.select("id, preguntas_ids, valor_total, total_preguntas, grado, created_at")
+			.eq("maestro_id", ctx.maestroId).eq("trimestre", ctx.trimestre).in("grado", grados)
+			.order("created_at", { ascending: false });
+		if (exRes.error) throw exRes.error;
+		var porGrado = {};
+		(exRes.data || []).forEach(function (ex) { if (!porGrado[ex.grado]) porGrado[ex.grado] = ex; });
+		var examenes = Object.keys(porGrado).map(function (g) { return porGrado[g]; });
+		if (!examenes.length) return salida;
 
-		var respRes = await sb.from("respuestas_examen")
-			.select("pregunta_id, puntos_obtenidos")
-			.eq("examen_id", examen.id).eq("alumno_id", ctx.alumnoId);
-		var pregIds = examen.preguntas_ids || [];
-		if (!pregIds.length) return { porCampo: porCampo, aproximado: aproximado };
-
-		var pregRes = await sb.from("banco_preguntas").select("id, campo_formativo").in("id", pregIds);
-		var preguntas = pregRes.data || [];
+		var pregIds = [];
+		examenes.forEach(function (ex) {
+			(ex.preguntas_ids || []).forEach(function (id) { if (pregIds.indexOf(id) === -1) pregIds.push(id); });
+		});
 		var cfPorPregunta = {};
-		var valorPorPregunta = (examen.valor_total && examen.total_preguntas)
-			? Number(examen.valor_total) / Number(examen.total_preguntas) : 1;
-		aproximado = true;
+		if (pregIds.length) {
+			var preguntas = await todas(function () {
+				return sb.from("banco_preguntas").select("id, campo_formativo").in("id", pregIds).order("id");
+			});
+			preguntas.forEach(function (p) {
+				var codigo = window.CamposFormativos ? window.CamposFormativos.corto(p.campo_formativo) : null;
+				if (codigo) cfPorPregunta[p.id] = codigo;
+			});
+		}
+		var respuestas = await todas(function () {
+			return sb.from("respuestas_examen").select("examen_id, alumno_id, pregunta_id, puntos_obtenidos")
+				.in("examen_id", examenes.map(function (e) { return e.id; })).in("alumno_id", ids).order("id");
+		});
 
-		var obt = {}, max = {};
-		preguntas.forEach(function (p) {
-			var codigo = window.CamposFormativos ? window.CamposFormativos.corto(p.campo_formativo) : null;
-			if (!codigo) return;
-			cfPorPregunta[p.id] = codigo;
-			max[codigo] = (max[codigo] || 0) + valorPorPregunta;
+		alumnos.forEach(function (a) {
+			var ex = porGrado[a.grado];
+			if (!ex || !(ex.preguntas_ids || []).length) return;
+			var valor = (ex.valor_total && ex.total_preguntas) ? Number(ex.valor_total) / Number(ex.total_preguntas) : 1;
+			var max = {}, obt = {};
+			ex.preguntas_ids.forEach(function (id) {
+				var c = cfPorPregunta[id];
+				if (c) max[c] = (max[c] || 0) + valor;
+			});
+			respuestas.forEach(function (r) {
+				if (r.alumno_id !== a.id || r.examen_id !== ex.id) return;
+				var c = cfPorPregunta[r.pregunta_id];
+				if (c) obt[c] = (obt[c] || 0) + Number(r.puntos_obtenidos || 0);
+			});
+			var porCampo = {};
+			campos.forEach(function (campo) {
+				if (max[campo] > 0) porCampo[campo] = Math.min(1, (obt[campo] || 0) / max[campo]);
+			});
+			salida[a.id] = { porCampo: porCampo, aproximado: true };
 		});
-		(respRes.data || []).forEach(function (r) {
-			var codigo = cfPorPregunta[r.pregunta_id];
-			if (!codigo) return;
-			obt[codigo] = (obt[codigo] || 0) + Number(r.puntos_obtenidos || 0);
-		});
-		campos.forEach(function (campo) {
-			if (max[campo] > 0) porCampo[campo] = Math.min(1, (obt[campo] || 0) / max[campo]);
-		});
-		return { porCampo: porCampo, aproximado: aproximado };
-	}
-
-	// Asistencia: SOLO referencia, nunca entra a la fórmula (art. 7 I d)
-	async function calcularAsistencia(sb, ctx, fechas) {
-		var vacio = { presentes: 0, total: 0, porcentaje: null };
-		if (!fechas.length) return vacio;
-		var res = await sb.from("asistencias").select("asistencia_estado")
-			.eq("maestro_id", ctx.maestroId).eq("alumno_id", ctx.alumnoId)
-			.gte("fecha", fechas[0]).lte("fecha", fechas[fechas.length - 1]);
-		var presentes = 0, total = 0;
-		(res.data || []).forEach(function (a) {
-			total++;
-			if (a.asistencia_estado === "presente" || a.asistencia_estado === "justificada") presentes++;
-		});
-		return { presentes: presentes, total: total, porcentaje: total ? presentes / total : null };
+		return salida;
 	}
 
 	var api = {
@@ -332,6 +415,7 @@
 		puntajeProducto: puntajeProducto,
 		calcularPorcentajes: calcularPorcentajes,
 		cargarYCalcular: cargarYCalcular,
+		cargarYCalcularGrupo: cargarYCalcularGrupo,
 	};
 
 	if (typeof window !== "undefined") window.MotorCalificacion = api;

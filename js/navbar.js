@@ -96,14 +96,17 @@
 			'<div class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">' +
 			navLinksHtml +
 			"</div>" +
-			'<div class="relative shrink-0 ml-2">' +
+			'<div class="relative shrink-0 ml-2 flex items-center gap-2">' +
+			// Nombre del grupo activo (solo aparece con 2+ grupos; lo llena js/grupo-activo.js)
+			'<span id="navGrupoActivo" class="hidden max-w-[9rem] truncate rounded-lg bg-blue-900/60 px-2 py-1 text-xs font-medium text-blue-100"></span>' +
 			'<button id="navbarMenuBtn" type="button" aria-label="Abrir menú" ' +
 			'class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-blue-600 bg-blue-700 text-white hover:bg-blue-600 transition-colors">' +
 			'<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
 			'<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>' +
 			"</svg>" +
 			"</button>" +
-			'<div id="navbarMenuPanel" class="hidden absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-200 bg-white shadow-md p-1 z-40">' +
+			'<div id="navbarMenuPanel" class="hidden absolute right-0 top-full mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-md p-1 z-40">' +
+			'<div id="navGrupoSlot" class="hidden"></div>' +
 			menuItemsHtml +
 			'<button id="navbarLogoutBtn" type="button" class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-red-700 hover:bg-red-50 transition-colors">Cerrar sesión</button>' +
 			"</div>" +

@@ -17,12 +17,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
+	// Solo las del grupo activo
+	let grupoActivoId = null;
+	try {
+		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
+		grupoActivoId = activo.grupo ? activo.grupo.id : null;
+	} catch (e) {
+		console.error("grupo activo:", e);
+	}
+
 	// tareas se materializan en esta tabla cuando dashboard.js cierra una sesión
-	const { data: tareas, error } = await window.sb
+	let consultaTareas = window.sb
 		.from("tareas")
 		.select("id, descripcion, grado, fecha_asignada, fecha_revision, revisada, proyecto_id, sesion_id, proyectos(id, titulo)")
-		.eq("maestro_id", user.id)
-		.order("fecha_asignada", { ascending: false });
+		.eq("maestro_id", user.id);
+	if (grupoActivoId) consultaTareas = consultaTareas.eq("grupo_id", grupoActivoId);
+	const { data: tareas, error } = await consultaTareas.order("fecha_asignada", { ascending: false });
 
 	if (error) {
 		estadoEl.textContent = "No se pudieron cargar las tareas. Intenta de nuevo.";
@@ -87,7 +97,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: '<span class="inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">Todos los grados</span>';
 
 			const revisadaBadge = tarea.revisada
-				? '<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-semibold">✓ Revisada</span>'
+				? '<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-semibold"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Revisada</span>'
 				: '<span class="inline-flex items-center bg-amber-50 text-amber-700 border border-amber-200 text-xs px-2 py-1 rounded-full font-semibold">Pendiente</span>';
 
 			const fechaTexto = tarea.fecha_asignada
@@ -107,15 +117,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 				'</div>' +
 				'<div class="flex flex-wrap items-center gap-2 mb-4">' +
 					gradoBadge +
-					(fechaTexto ? '<span class="text-xs text-gray-500">📅 Asignada ' + fechaTexto + '</span>' : '') +
-					(tarea.fecha_revision ? '<span class="text-xs text-gray-500">🔍 Revisar ' + formatFecha(tarea.fecha_revision) + '</span>' : '') +
+					(fechaTexto ? '<span class="text-xs text-gray-500 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>Asignada ' + fechaTexto + '</span>' : '') +
+					(tarea.fecha_revision ? '<span class="text-xs text-gray-500 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Revisar ' + formatFecha(tarea.fecha_revision) + '</span>' : '') +
 				'</div>' +
 				'<button data-id="' + esc(tarea.id) + '" data-revisada="' + (tarea.revisada ? 'true' : 'false') + '" ' +
 					'class="btn-toggle-revisada w-full py-3 rounded-xl text-sm font-bold border transition ' +
 					(tarea.revisada
 						? 'border-gray-300 text-gray-600 hover:bg-gray-50'
 						: 'border-green-500 text-green-700 hover:bg-green-50') + '">' +
-					(tarea.revisada ? 'Marcar como pendiente' : '✓ Marcar como revisada') +
+					(tarea.revisada ? 'Marcar como pendiente' : 'Marcar como revisada') +
 				'</button>';
 
 			listaEl.appendChild(card);
@@ -142,7 +152,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		if (error) {
 			btn.disabled = false;
-			btn.textContent = esActual ? "Marcar como pendiente" : "✓ Marcar como revisada";
+			btn.textContent = esActual ? "Marcar como pendiente" : "Marcar como revisada";
 			_toast("No se pudo actualizar la tarea.", "error");
 			return;
 		}

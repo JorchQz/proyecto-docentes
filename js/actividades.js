@@ -17,11 +17,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
-	const { data: sesiones, error } = await window.sb
+	// Solo las sesiones de proyectos del grupo activo
+	let grupoActivoId = null;
+	try {
+		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
+		grupoActivoId = activo.grupo ? activo.grupo.id : null;
+	} catch (e) {
+		console.error("grupo activo:", e);
+	}
+
+	let consultaSesiones = window.sb
 		.from("sesiones")
-		.select("id, proyecto_id, numero_sesion, campo_formativo, momento, duracion, inicio_actividades, desarrollo_actividades, cierre_actividades, proyectos(id, titulo, estado)")
-		.eq("maestro_id", user.id)
-		.order("numero_sesion", { ascending: true });
+		.select("id, proyecto_id, numero_sesion, campo_formativo, momento, duracion, inicio_actividades, desarrollo_actividades, cierre_actividades, proyectos!inner(id, titulo, estado, grupo_id)")
+		.eq("maestro_id", user.id);
+	if (grupoActivoId) consultaSesiones = consultaSesiones.eq("proyectos.grupo_id", grupoActivoId);
+	const { data: sesiones, error } = await consultaSesiones.order("numero_sesion", { ascending: true });
 
 	if (error) {
 		estadoEl.textContent = "No se pudieron cargar las actividades. Intenta de nuevo.";
@@ -107,7 +117,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				(sesion.campo_formativo
 					? '<span class="inline-block bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full mb-3">' + esc(sesion.campo_formativo) + '</span> '
 					: '') +
-				(sesion.duracion ? '<span class="inline-block text-xs text-gray-500 mb-3">⏱ ' + esc(sesion.duracion) + '</span>' : '') +
+				(sesion.duracion ? '<span class="inline-flex items-center gap-1 text-xs text-gray-500 mb-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>' + esc(sesion.duracion) + '</span>' : '') +
 				bloqueActividades("INICIO", actInicio) +
 				bloqueActividades("DESARROLLO", actDes) +
 				bloqueActividades("CIERRE", actCierre) +

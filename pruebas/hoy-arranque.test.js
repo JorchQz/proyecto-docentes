@@ -64,6 +64,7 @@ global.Event = function () {};
 
 // El módulo real de campos formativos (el motor y la pantalla lo usan)
 require("../js/campos-formativos.js");
+require("../js/grupo-activo.js");
 
 // ── Supabase falso ───────────────────────────────────────────────────────────
 const HOY = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
@@ -82,6 +83,10 @@ const DATOS = {
 	sesiones: [
 		{ id: "s1", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1" },
 		{ id: "s2", numero_sesion: 2, fecha: HOY, campo_formativo: "Saberes y Pensamiento Científico", momento: "Desarrollo", proyecto_id: "p1" },
+		// Pendiente y sin fecha: debe ofrecerse con "Trabajar hoy"
+		{ id: "s3", numero_sesion: 3, fecha: null, campo_formativo: "Ética, Naturaleza y Sociedades", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "pendiente" },
+		// Ya completada y sin fecha: no se ofrece
+		{ id: "s0", numero_sesion: 0, fecha: null, campo_formativo: "Lenguajes", momento: "Cierre", proyecto_id: "p1", estado_sesion: "completada" },
 	],
 	productos_sesion: [
 		{ id: "pr1", sesion_id: "s1", tipo: "trabajo", nombre: "Cartel del cuento", grados: ["2", "3"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1 },
@@ -172,6 +177,12 @@ new Function(codigo)();
 	ok("3. la tarea no se repite dentro de la sesión", sesiones.indexOf("Leer en casa"), -1);
 
 	// Y esto es lo que se caía en cadena: la sección 4
+	// Planeación → Hoy: las sesiones no traen fecha; el maestro elige cuál trabaja hoy
+	ok("3. ofrece la siguiente sesión pendiente con \"Trabajar hoy\"", sesiones.indexOf("data-trabajar-hoy='s3'") !== -1, true);
+	ok("3. no ofrece sesiones ya completadas", sesiones.indexOf("data-trabajar-hoy='s0'") === -1, true);
+	ok("3. una sesión con calificaciones no se puede quitar de hoy", sesiones.indexOf("data-quitar-hoy='s1'") === -1, true);
+	ok("3. una sesión sin calificaciones sí se puede quitar", sesiones.indexOf("data-quitar-hoy='s2'") !== -1, true);
+
 	ok("4. cierre NO está vacía", cierre.length > 0, true);
 	ok("4. cierre dibuja a los dos alumnos",
 		cierre.indexOf("ALUMNO DE SEGUNDO") !== -1 && cierre.indexOf("ALUMNO DE TERCERO") !== -1, true);

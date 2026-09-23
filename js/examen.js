@@ -110,15 +110,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── grupo del maestro ──────────────────────────────────────────────────────
 	try {
-		var grupoRes = await window.sb
-			.from("grupos")
-			.select("id, nombre, grados, ciclo_escolar")
-			.eq("maestro_id", userId)
-			.order("id", { ascending: true })
-			.limit(1);
-		if (!grupoRes.error && grupoRes.data && grupoRes.data.length) {
-			grupo = grupoRes.data[0];
-		}
+		grupo = (await window.GrupoActivo.cargar(window.sb, userId)).grupo;
 	} catch (e) { /* sin grupo: la vista lista lo maneja */ }
 
 	// ── enrutar ─────────────────────────────────────────────────────────────────
@@ -468,7 +460,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				alumnos.map(function (a) {
 					return '<option value="' + escAttr(a.id) + '"' + (a.id === alumnoActualId ? " selected" : "") + '>' +
 						escapeHtml(a.nombre_completo) + (a.grado ? " (" + a.grado + "°)" : "") +
-						(alumnoCalificado(a.id) ? " ✓" : "") + '</option>';
+						(alumnoCalificado(a.id) ? " (calificado)" : "") + '</option>';
 				}).join("") +
 			'</select>' +
 			'<div class="hidden sm:flex flex-wrap gap-2 mb-3">' + chips + '</div>' +

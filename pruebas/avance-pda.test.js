@@ -20,7 +20,7 @@ function ok(nombre, real, esperado) {
 global.window = {};
 require("../js/campos-formativos.js");
 
-const fuente = fs.readFileSync(path.join(__dirname, "..", "js", "reportes.js"), "utf8");
+const fuente = fs.readFileSync((process.env.REPORTES_JS || path.join(__dirname, "..", "js", "reportes.js")), "utf8");
 function extraer(patron, nombre) {
 	const m = fuente.match(patron);
 	if (!m) { console.log("FALLA no se encontró " + nombre + " en js/reportes.js"); process.exit(1); }

@@ -103,31 +103,13 @@ async function inicializarEncabezado() {
 }
 
 async function cargarGrupoYAlumnos() {
-	const rawGrupo = localStorage.getItem("grupoActivo") || localStorage.getItem("grupo_activo");
-	if (rawGrupo) {
-		try {
-			grupoId = JSON.parse(rawGrupo).id || null;
-		} catch (_) {
-			grupoId = null;
-		}
-	}
-
-	if (!grupoId) {
-		const { data: g, error: grupoError } = await window.sb
-			.from("grupos")
-			.select("id")
-			.eq("maestro_id", user.id)
-			.limit(1)
-			.single();
-
-		if (grupoError && grupoError.code !== "PGRST116") {
-			showError("No se pudo cargar el grupo activo: " + grupoError.message);
-			return;
-		}
-
-		if (g) {
-			grupoId = g.id;
-		}
+	// Grupo activo: único lugar que lo decide (valida que el guardado sea de este maestro)
+	try {
+		const { grupo } = await window.GrupoActivo.cargar(window.sb, user.id);
+		grupoId = grupo ? grupo.id : null;
+	} catch (grupoError) {
+		showError("No se pudo cargar el grupo activo: " + (grupoError.message || "error desconocido"));
+		return;
 	}
 
 	if (!grupoId) {
@@ -178,7 +160,7 @@ async function iniciarFlujo() {
 }
 
 async function crearCardAsistencia() {
-	const card = crearCardBase("card-asistencia", "border-l-blue-500", "📋 Asistencia", formatFechaCorta(new Date()));
+	const card = crearCardBase("card-asistencia", "border-l-blue-500", "Asistencia", formatFechaCorta(new Date()));
 	const body = card.querySelector(".card-flow-body");
 	const hoy = getLocalDateISO();
 
@@ -200,7 +182,7 @@ async function crearCardAsistencia() {
 		flujoEstado.asistenciaGuardada = true;
 		resumenDia.presentes = resumen.presentes;
 		resumenDia.totalAlumnos = alumnos.length;
-		colapsar("card-asistencia", "✅ " + resumen.presentes + " presentes, " + resumen.ausentes + " ausentes");
+		colapsar("card-asistencia", resumen.presentes + " presentes, " + resumen.ausentes + " ausentes");
 		body.innerHTML = "<p class='text-sm text-gray-500'>La asistencia de hoy ya fue registrada.</p>";
 		return card;
 	}
@@ -249,7 +231,7 @@ async function crearCardAsistencia() {
 			flujoEstado.asistenciaGuardada = true;
 			resumenDia.presentes = resumen.presentes;
 			resumenDia.totalAlumnos = alumnos.length;
-			colapsar("card-asistencia", "✅ " + resumen.presentes + " presentes, " + resumen.ausentes + " ausentes");
+			colapsar("card-asistencia", resumen.presentes + " presentes, " + resumen.ausentes + " ausentes");
 			expandirCard("card-tareas");
 		} catch (errorGuardar) {
 			showError("No se pudo guardar la asistencia: " + errorGuardar.message);
@@ -280,7 +262,7 @@ async function crearCardTareas() {
 	const card = crearCardBase(
 		"card-tareas",
 		"border-l-emerald-500",
-		"📝 Revision de Tareas",
+		"Revisión de tareas",
 		tareas.length ? tareas.length + " pendientes" : "Sin pendientes"
 	);
 	const body = card.querySelector(".card-flow-body");
@@ -420,7 +402,7 @@ async function crearCardTareas() {
 
 			flujoEstado.tareasRevisadas = true;
 			resumenDia.tareasRevisadas = [...new Set(tareas.map((t) => t.descripcion))];
-			colapsar("card-tareas", "✅ " + ids.length + " tareas revisadas");
+			colapsar("card-tareas", ids.length + " tareas revisadas");
 			expandirCard("card-sesion");
 		} catch (e) {
 			showError("No se pudo guardar la revision de tareas: " + e.message);
@@ -435,8 +417,8 @@ async function crearCardTareas() {
 
 async function crearCardSesion() {
 	const tituloSesion = sesionActiva
-		? "📖 Sesion " + (sesionActiva.numero_sesion || "-") + " - " + (sesionActiva.momento || "Dia")
-		: "📖 Sesion del dia";
+		? "Sesión " + (sesionActiva.numero_sesion || "-") + " - " + (sesionActiva.momento || "Dia")
+		: "Sesión del día";
 	const card = crearCardBase(
 		"card-sesion",
 		"border-l-violet-500",
@@ -522,7 +504,7 @@ async function crearCardSesion() {
 	const btnCompletar = document.createElement("button");
 	btnCompletar.type = "button";
 	btnCompletar.className = "bg-green-600 text-white text-lg font-semibold px-5 py-2.5 rounded-xl hover:bg-green-700";
-	btnCompletar.textContent = "✓ Sesion completada";
+	btnCompletar.textContent = "Sesión completada";
 	btnCompletar.addEventListener("click", function () {
 		abrirModalCierre(async function (notas) {
 			await completarSesionDelDia(notas);
@@ -593,7 +575,7 @@ async function completarSesionDelDia(notasCierre) {
 		);
 
 		cerrarModalCierre();
-		colapsar("card-sesion", "✅ Sesion marcada como completada");
+		colapsar("card-sesion", "Sesión marcada como completada");
 		crearCardResumen();
 		crearCardEvaluacion(sesionCompletadaId);
 	} catch (error) {
@@ -619,7 +601,7 @@ function crearCardResumen() {
 		: "<p class='text-sm text-gray-500'>No se dejaron tareas nuevas.</p>";
 
 	card.innerHTML =
-		"<h3 class='text-xl font-bold text-gray-800 mb-4'>✅ Jornada completada</h3>" +
+		"<h3 class='text-xl font-bold text-gray-800 mb-4'>Jornada completada</h3>" +
 		"<div class='space-y-3'>" +
 		"<p class='text-sm text-gray-700'><span class='font-semibold'>Resumen asistencia:</span> " +
 		resumenDia.presentes + " de " + resumenDia.totalAlumnos + " alumnos presentes</p>" +
@@ -635,7 +617,7 @@ function crearCardResumen() {
 	const btnPrint = document.createElement("button");
 	btnPrint.type = "button";
 	btnPrint.className = "border border-gray-300 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50";
-	btnPrint.textContent = "🖨 Imprimir resumen";
+	btnPrint.textContent = "Imprimir resumen";
 	btnPrint.onclick = function () {
 		window.print();
 	};
@@ -657,7 +639,7 @@ function crearCardResumen() {
 		const aProyecto = document.createElement("a");
 		aProyecto.href = "planeacion.html";
 		aProyecto.className = "bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700";
-		aProyecto.textContent = "🎉 Proyecto completado - Ver en Proyectos";
+		aProyecto.textContent = "Proyecto completado: ver en Proyectos";
 		acciones.appendChild(aProyecto);
 	}
 
@@ -679,7 +661,7 @@ function crearCardEvaluacion(sesionId) {
 
 	card.innerHTML =
 		"<div class='flex items-start gap-3 mb-4'>" +
-		"<span class='text-3xl'>🚦</span>" +
+		"<svg xmlns='http://www.w3.org/2000/svg' class='h-8 w-8 text-blue-600' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='8' y='2' width='8' height='20' rx='3'/><circle cx='12' cy='7' r='1.5'/><circle cx='12' cy='12' r='1.5'/><circle cx='12' cy='17' r='1.5'/></svg>" +
 		"<div>" +
 		"<h3 class='text-xl font-bold text-gray-800'>Evalua el progreso</h3>" +
 		"<p class='text-sm text-gray-600 mt-1'>" + escapeHtml(mensaje) + "</p>" +
@@ -776,8 +758,8 @@ function renderAlumnosAsistencia(listaAlumnos, estadoPorAlumno) {
 				row.innerHTML =
 					"<span class='text-sm font-medium text-gray-700'>" + escapeHtml(getNombreAlumno(a)) + "</span>" +
 					"<div class='flex flex-wrap gap-2'>" +
-					crearPillAsistencia(groupName, "presente", "✓ Presente", true) +
-					crearPillAsistencia(groupName, "ausente", "✗ Ausente", false) +
+					crearPillAsistencia(groupName, "presente", "Presente", true) +
+					crearPillAsistencia(groupName, "ausente", "Falta", false) +
 					crearPillAsistencia(groupName, "justificada", "~ Justificada", false) +
 					"</div>";
 

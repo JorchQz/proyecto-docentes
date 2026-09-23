@@ -26,8 +26,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (sessErr || !session) { window.location.href = "index.html"; return; }
 	userId = session.user.id;
 
-	const { data: grupo } = await window.sb
-		.from("grupos").select("id, nombre").eq("maestro_id", userId).single();
+	// Grupo activo (con 2+ grupos, el maestro lo elige en el menú de la barra)
+	const { grupo } = await window.GrupoActivo.cargar(window.sb, userId);
 	if (!grupo) { window.location.href = "onboarding.html"; return; }
 	grupoId   = grupo.id;
 	grupNombre = grupo.nombre || "Grupo";
@@ -432,6 +432,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 	const CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
 	const HABILIDADES_MATES  = window.CatalogoHabilidades.MATEMATICAS;
 
+	// Catálogo editable de sugerencias (plantillas_sugerencia), clave → texto. Si no carga,
+	// js/textos-boleta.js usa su copia por defecto con los mismos textos.
+	let plantillasSugerencia = null;
+	async function cargarPlantillas() {
+		if (plantillasSugerencia) return plantillasSugerencia;
+		const { data, error } = await window.sb.from("plantillas_sugerencia").select("clave, texto").eq("activo", true);
+		if (error) { console.error("plantillas_sugerencia:", error); return {}; }
+		plantillasSugerencia = {};
+		(data || []).forEach(function (p) { plantillasSugerencia[p.clave] = p.texto; });
+		return plantillasSugerencia;
+	}
+
 	// Bandas de fluidez lectora por grado: tabla bandas_ppm (se cargan una vez)
 	let bandasPPM = null;
 	async function cargarBandasPPM() {
@@ -500,9 +512,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return (grado >= 1 && grado <= 2) ? 6 : 5;
 	}
 
+	// Un decimal: redondear a entero mostraba "50 %" junto a un 5 cuando el valor real
+	// era 49.86 % (la escala pone el 6 a partir de 50). Con un decimal el número cuadra.
 	function fmtPct(v) {
 		if (v === null || v === undefined) return "—";
-		return Math.round(v) + " %";
+		return (Math.round(v * 10) / 10).toFixed(1) + " %";
 	}
 
 	function fmtRubro(rubro) {
@@ -633,6 +647,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			asistencia: motor.asistencia,
 			catalogo: window.CatalogoHabilidades,
 			corto: window.CamposFormativos ? window.CamposFormativos.corto : null,
+			plantillas: await cargarPlantillas(),
 		});
 		await guardarTextosPropuestos(textos, boletaPorCampo, {
 			alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
@@ -734,7 +749,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"<p class='text-sm text-gray-600'>" +
 				(todoConfirmado
 					? "Calificaciones confirmadas por el docente. Puedes cerrar la boleta."
-					: "El sistema propone estas calificaciones. Revísalas, ajústalas si hace falta y confírmalas: la calificación es tu juicio docente.") +
+					: (hayPropuesta
+					? "El sistema propone estas calificaciones. Revísalas, ajústalas si hace falta y confírmalas: la calificación es tu juicio docente."
+					: "Todavía no hay evidencias en este trimestre para proponer calificaciones.")) +
 				"</p>" +
 				"<div class='flex gap-2 shrink-0'>" +
 				"<button id='boletaConfirmarBtn' type='button' " + (hayPropuesta ? "" : "disabled ") +
@@ -1009,6 +1026,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (!generado) return;
 			const fila = boletaPorCampo[codigo] || {};
 			if (fila.cerrada) return; // boleta cerrada: no se toca
+			// Sin nada que proponer y sin fila previa: no se crea una fila vacía
+			const hayTexto = generado.fortalezas.length || generado.areas.length || generado.sugerencias.length;
+			if (!hayTexto && !fila.id) return;
 			const propuesta = {
 				fortalezas: window.TextosBoleta.comoParrafo(generado.fortalezas),
 				areas_oportunidad: window.TextosBoleta.comoParrafo(generado.areas),

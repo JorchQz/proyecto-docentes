@@ -52,15 +52,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// =========================================================================
 
 	async function cargarGrupo() {
-		const { data, error } = await window.sb
-			.from("grupos")
-			.select("id")
-			.eq("maestro_id", user.id)
-			.order("created_at", { ascending: true })
-			.limit(1);
-
-		if (!error && data && data.length) {
-			grupoId = data[0].id;
+		// Se importa al grupo activo (el que el maestro eligió en la barra)
+		try {
+			const { grupo } = await window.GrupoActivo.cargar(window.sb, user.id);
+			if (grupo) grupoId = grupo.id;
+		} catch (e) {
+			console.error("grupo activo:", e);
 		}
 	}
 
@@ -230,11 +227,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		campos.forEach(function (c) {
 			badgesHtml += '<span class="inline-flex items-center bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">' + esc(c) + "</span>";
 		});
-		badgesHtml += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">👥 ' + gradosTexto + "</span>";
+		badgesHtml += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 11a3 3 0 1 0 0-6"/><path d="M21 20a6 6 0 0 0-4-5.7"/></svg>' + gradosTexto + "</span>";
 		if (trimestre) {
-			badgesHtml += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">📅 ' + esc(trimestre) + "</span>";
+			badgesHtml += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>' + esc(trimestre) + "</span>";
 		}
-		badgesHtml += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">📄 ' + numSesiones + " " + (numSesiones === 1 ? "sesión" : "sesiones") + "</span>";
+		badgesHtml += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>' + numSesiones + " " + (numSesiones === 1 ? "sesión" : "sesiones") + "</span>";
 		badges.innerHTML = badgesHtml;
 
 		// Descripción (truncada a 2 líneas)
@@ -251,8 +248,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		acciones.className = "border-t border-gray-100 pt-3 mt-auto flex flex-wrap gap-2";
 		const btnBase = "inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-xl transition min-h-[44px]";
 		acciones.innerHTML =
-			'<button data-action="preview" data-id="' + esc(proyecto.id) + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">👁 Vista previa</button>' +
-			'<button data-action="importar" data-id="' + esc(proyecto.id) + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white">⬇ Importar a mi cuenta</button>';
+			'<button data-action="preview" data-id="' + esc(proyecto.id) + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>Vista previa</button>' +
+			'<button data-action="importar" data-id="' + esc(proyecto.id) + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>Importar a mi cuenta</button>';
 
 		card.appendChild(tituloEl);
 		card.appendChild(badges);
@@ -340,8 +337,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Meta
 		html += '<div class="flex flex-wrap gap-1.5">';
 		if (metodo)  { html += '<span class="inline-flex items-center bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-full">' + esc(metodo) + "</span>"; }
-		if (grados)  { html += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">👥 ' + esc(grados) + "</span>"; }
-		if (proyecto.trimestre) { html += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">📅 ' + esc(proyecto.trimestre) + "° Trim.</span>"; }
+		if (grados)  { html += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 11a3 3 0 1 0 0-6"/><path d="M21 20a6 6 0 0 0-4-5.7"/></svg>' + esc(grados) + "</span>"; }
+		if (proyecto.trimestre) { html += '<span class="inline-flex items-center bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>' + esc(proyecto.trimestre) + "° Trim.</span>"; }
 		normalizarLista(proyecto.campos_formativos).forEach(function (c) {
 			html += '<span class="inline-flex items-center bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">' + esc(c) + "</span>";
 		});
@@ -371,7 +368,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					'<p class="text-sm font-medium text-gray-700 truncate">' + esc(s.momento_metodologico || "Sesión") + "</p>" +
 					(s.campo_formativo ? '<p class="text-xs text-gray-400 truncate">' + esc(s.campo_formativo) + "</p>" : "") +
 					"</div>" +
-					(dur ? '<span class="shrink-0 text-xs text-gray-400">⏱ ' + esc(dur) + "</span>" : "") +
+					(dur ? '<span class="shrink-0 text-xs text-gray-400 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>' + esc(dur) + "</span>" : "") +
 					"</li>";
 			});
 			html += "</ul>";
@@ -546,7 +543,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		toastEl = document.createElement("div");
 		toastEl.className = "fixed bottom-5 right-5 z-50 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-xs flex flex-col gap-1";
 		toastEl.innerHTML =
-			'<span class="font-semibold">✅ Proyecto importado.</span>' +
+			'<span class="font-semibold">Proyecto importado.</span>' +
 			'<a href="planeacion.html" class="underline font-bold hover:text-emerald-100">Ya aparece en Mis Proyectos →</a>';
 		document.body.appendChild(toastEl);
 		const ref = toastEl;
