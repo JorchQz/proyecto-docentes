@@ -13,7 +13,8 @@
 //
 // Qué guarda (con la sesión del maestro, así que RLS aplica):
 //   - Siempre: texto_autogenerado.ia = { fortalezas, areas_oportunidad, sugerencias,
-//     generado_en, modelo } en cada fila del trimestre que no esté cerrada.
+//     generado_en, modelo } en cada fila del trimestre que no esté cerrada. Con la
+//     boleta cerrada (los cuatro campos) no toca nada: responde 409.
 //   - Copia esos textos solo a los cuadros que el maestro no escribió (por cuadro,
 //     texto_autogenerado.editados) y marca visible = "ia". Lo del maestro nunca se pisa.
 //
@@ -178,6 +179,15 @@ Deno.serve(async (req: Request) => {
       .eq("maestro_id", maestroId).eq("alumno_id", alumnoId)
       .eq("ciclo", ciclo).eq("trimestre", trimestre);
     if (filasErr) throw filasErr;
+
+    // Boleta cerrada (los cuatro campos): lo entregado queda fijo, también la fila GEN,
+    // que no lleva calificación y por eso no se marca cerrada
+    const cerrada = ["LEN", "SAB", "ETI", "DHL"].every((c) =>
+      (filas || []).some((f: Record<string, unknown>) => f.campo === c && f.cerrada)
+    );
+    if (cerrada) {
+      return jsonResponse({ error: "La boleta está cerrada: sus textos ya no se cambian." }, 409);
+    }
 
     const abiertas = (filas || []).filter((f: Record<string, unknown>) =>
       !f.cerrada && (CAMPOS as readonly string[]).includes(String(f.campo)) &&

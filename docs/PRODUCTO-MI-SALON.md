@@ -91,7 +91,8 @@ revisa en la próxima clase, no el mismo día).
 **Trabajar hoy / Quitar de hoy.** Las sesiones de una planeación no traen fecha; "Hoy"
 ofrece las siguientes pendientes del proyecto activo y "Trabajar hoy" les pone la fecha de
 hoy (así entran a la captura, al reparto de participación y al rango de asistencia).
-"Quitar de hoy" las regresa sin fecha y pendientes mientras no tengan calificaciones.
+"Quitar de hoy" las regresa sin fecha y pendientes mientras no tengan calificaciones ni
+estén completadas.
 
 Todo se guarda al tocar (cola en memoria con reintento), sin botón de guardar.
 
@@ -114,7 +115,8 @@ la fórmula: se reporta aparte como referencia.
   en proceso 0.7, requiere apoyo 0.4); incompleto sin nivel 0.5; no entregado 0;
   justificado / no aplica fuera del máximo.
 - El examen por campo es **aproximado** (el banco no guarda el valor de cada pregunta) y
-  así se rotula en todos los reportes.
+  así se rotula en los reportes que lo muestran (boleta en pantalla, reporte detallado,
+  junta y exportación).
 - Conversión a calificación: **una sola función SQL** `calcular_calificacion_boleta`
   (≥90→10, ≥80→9, ≥70→8, ≥60→7, ≥50→6, si no 5; y nunca por debajo del piso de la fase).
   Para grupos, `calcular_calificaciones_boleta` hace lo mismo por lote.
@@ -123,7 +125,10 @@ la fórmula: se reporta aparte como referencia.
 - Un solo camino de carga para un alumno y para todo el grupo (lectura paginada).
 - Un campo **sin evidencias** en el trimestre no tiene propuesta: en la boleta se elige su
   calificación a mano (juicio docente, dentro de la escala) para poder confirmar y cerrar.
-  Una boleta cerrada deja sus textos de solo lectura.
+  Una boleta cerrada queda fija en todos los reportes: calificación y porcentaje del
+  cierre, los textos guardados (también los generales) y el trabajo diario tal como se
+  entregó, aunque después cambien las capturas o el diagnóstico. No se puede reabrir desde
+  la interfaz.
 
 *Diferencias:* no hay vista `v_resumen_trimestral`; la regla B.10 permitía "una vista SQL o
 un solo módulo" y se eligió el módulo, con la conversión en SQL. La escala de conversión no
@@ -205,8 +210,9 @@ la confirmada, textos del maestro o propuesta, diagnóstico y bandas. Colores NE
 3. **Junta de padres** (`junta.html`): portada, panorama, barras por grado, fluidez contra
    la banda, promedio por campo y grado, áreas de atención y cierre. Con un solo
    trimestre no hay deltas. **Privacidad:** en pantalla los alumnos aparecen por número de
-   lista y grado; los nombres solo con un interruptor (apagado por defecto) y las áreas de
-   atención siempre agregadas.
+   lista y grado (en la lámina de fluidez, sin nombres, ni siquiera el número de lista); los
+   nombres solo con un interruptor (apagado por defecto) y las áreas de atención siempre
+   agregadas.
 4. **Avance por PDA** (Reportes → "Avance por PDA").
 5. **Exportación** (`exportar.html`): CSV y XLSX con las columnas de `BD_Alumnos` (DHL),
    la calificación confirmada por campo y la asistencia como referencia. El XLSX trae las
@@ -232,9 +238,10 @@ máximos por grado. Con dos o más grupos, el maestro elige el grupo en el menú
   cuántos alumnos faltan); la revisión se captura en "Hoy". La tabla vieja `tareas` ya no
   se escribe. Un alumno cuenta como revisado con cualquier estado de entrega (también
   justificado o no aplica), igual que en "Hoy" y en el motor.
-- **Mismo alcance en Hoy, Inicio y Tareas** (`js/alcance-hoy.js`): proyectos activos, en
-  borrador o pausados, los del trimestre actual del grupo y los terminados en los últimos
-  30 días. Así la tarea de la última sesión de un proyecto recién terminado sigue en "Hoy"
+- **Mismo alcance en Hoy, Inicio y Tareas** (`js/alcance-hoy.js`): "Hoy" e Inicio miran los
+  proyectos activos, en borrador o pausados, los del trimestre actual del grupo y los que
+  tienen `fecha_final` en los últimos 30 días (o futura); Tareas lista todas las tareas del
+  grupo y marca "Quedó sin revisar" las que "Hoy" ya no muestra. Así la tarea de la última sesión de un proyecto recién terminado sigue en "Hoy"
   hasta revisarse, y las tres pantallas coinciden en qué falta. En el mismo archivo viven
   la cuenta del cierre del día (igual en Hoy e Inicio) y la lectura por lotes y páginas que
   evita perder calificaciones cuando un trimestre pasa de 1000 filas.

@@ -1,11 +1,14 @@
 /*
-	Arranque completo de la boleta sin navegador (B.3 + B.5 + B.7).
+	Boleta cerrada (re-ensayo 3.10): lo entregado queda fijo.
 
-	Ejecuta js/reportes.js de verdad contra un DOM mínimo y un Supabase falso, genera
-	la boleta de un alumno de 2° y revisa lo que quedó en pantalla y lo que se guardó.
-	Caza errores de ejecución, que es lo que ninguna prueba de funciones sueltas ve.
+	Ejecuta js/reportes.js de verdad con una boleta ya CERRADA (los cuatro campos) y
+	capturas posteriores que la bajarían. Nada se vuelve a guardar ni a proponer: el
+	porcentaje y la calificación son los del cierre, los textos los guardados (también
+	los de la fila GEN, que la base no marca cerrada) y el trabajo diario el de la foto
+	del cierre. Revisa también las reglas compartidas de ReporteDatos que usan la boleta
+	imprimible, el reporte detallado y la exportación.
 
-	node pruebas/boleta-arranque.test.js
+	node pruebas/boleta-cerrada.test.js
 */
 
 const fs = require("fs");
@@ -99,7 +102,19 @@ const DATOS = {
 		cuaderno: [{ clave: "cuaderno.letra_legible", nivel: "logrado" }],
 	}],
 	bandas_ppm: [{ grado: 2, requiere_apoyo_max: 34, cercano_max: 59, estandar_max: 84 }],
-	boleta_trimestral: [],
+	boleta_trimestral: ["LEN", "SAB", "ETI", "DHL"].map(function (c) {
+		return {
+			id: "b-" + c, alumno_id: "al-2", ciclo: "2025-2026", trimestre: 1, campo: c,
+			calificacion: 10, porcentaje: 93.28, calificacion_confirmada: true, cerrada: true,
+			fortalezas: "Texto entregado " + c, areas_oportunidad: null, sugerencias: null,
+			texto_autogenerado: { visible: "reglas", editados: [] },
+		};
+	}).concat([{
+		id: "b-GEN", alumno_id: "al-2", ciclo: "2025-2026", trimestre: 1, campo: "GEN",
+		cerrada: false, calificacion_confirmada: false,
+		fortalezas: "General entregado", areas_oportunidad: null, sugerencias: null,
+		texto_autogenerado: { visible: "reglas", editados: [], cierre: { trabajo_diario: "Trabajo diario entregado al cierre", trabajo_diario_del_maestro: false } },
+	}]),
 	v_avance_pda: [
 		{ campo_formativo: "Lenguajes", pda: "Escribe su nombre y apellidos", nivel_predominante: "requiere_apoyo", evidencias: 3, tendencia: "mejora" },
 		{ campo_formativo: "Saberes y Pensamiento Científico", pda: "Mide longitudes con distintas unidades", nivel_predominante: "logrado", evidencias: 2, tendencia: "estable" },
@@ -176,35 +191,36 @@ new Function(codigo)();
 	ok("el arranque no dejó errores en consola", errores.length === 0 ? "sin errores" : errores[0], "sin errores");
 	ok("la boleta no quedó vacía", html.length > 0, true);
 
-	// B.3 — el motor y el piso por fase
-	contiene("hay tabla de rubros", html, "Tareas");
-	contiene("la asistencia sale como referencia", html, "no forma parte de la calificación");
-	contiene("pide confirmar antes de cerrar", html, "Confirmar calificaciones");
-	const filaLen = (guardado.boleta_trimestral || []).filter(function (f) { return f.campo === "LEN" && f.calificacion; })[0];
-	ok("Lenguajes bajo 50% se guarda con el piso de 2°: 6", filaLen ? filaLen.calificacion : null, 6);
-	const filaSab = (guardado.boleta_trimestral || []).filter(function (f) { return f.campo === "SAB" && f.calificacion; })[0];
-	ok("Saberes al 100% da 10", filaSab ? filaSab.calificacion : null, 10);
+	// Nada se vuelve a escribir en la boleta cerrada
+	ok("no se guarda nada en boleta_trimestral", (guardado.boleta_trimestral || []).length, 0);
+	contiene("dice que está cerrada", html, "Boleta cerrada");
+	contiene("el porcentaje es el del cierre (93.28)", html, "93.2 %");
+	contiene("avisa que hubo capturas después del cierre", html, "Hubo capturas después del cierre");
+	contiene("la calificación es la del cierre", html, ">10<");
+	contiene("los textos son los entregados", html, "Texto entregado LEN");
+	contiene("también los de la fila GEN", html, "General entregado");
+	contiene("el trabajo diario es el de la foto del cierre", html, "Trabajo diario entregado al cierre");
+	ok("no aparece la propuesta nueva de trabajo diario", html.indexOf("no siempre trae la tarea") === -1, true);
+	ok("no aparece la propuesta nueva de textos", html.indexOf("No entrega todas sus tareas") === -1, true);
+	ok("no marca nada como propuesto", html.indexOf("(propuesto)") === -1, true);
+	ok("no ofrece volver a proponer", html.indexOf("Volver a proponer") === -1, true);
+	ok("los cuadros son de solo lectura", html.indexOf("readonly") !== -1, true);
 
-	// B.7 — los textos propuestos
-	contiene("marca los textos como propuestos", html, "(propuesto)");
-	contiene("ofrece volver a proponer", html, "Volver a proponer");
-	contiene("propone fortalezas", html, "Fortalezas");
-	contiene("propone sugerencias", html, "Sugerencias");
-	contiene("la tarea no entregada se refleja", html, "No entrega todas sus tareas");
-	contiene("el PDA en apoyo se cita textual", html, "Necesita apoyo para lograr");
-	contiene("el PDA logrado es fortaleza en su campo", html, "Mide longitudes");
-	contiene("la lectura lenta se señala", html, "velocidad de lectura está por debajo");
-	contiene("con su sugerencia de leer en casa", html, "10 minutos diarios");
-	contiene("las matemáticas flojas van a Saberes", html, "Necesita apoyo en: resta");
-	// No trae tareas (0 de 2) pero termina sus trabajos (2 de 2): la frase mixta, por entrega
-	contiene("el trabajo diario se redacta solo", html, "no siempre trae la tarea");
-
-	const textosGuardados = (guardado.boleta_trimestral || []).filter(function (f) { return f.texto_autogenerado; });
-	// Solo se guardan los bloques con algo que proponer: LEN, SAB y la fila general.
-	// ETI y DHL no tienen evidencias y no deben dejar filas vacías en la boleta.
-	ok("se guarda la propuesta solo donde hay texto", textosGuardados.map(function (f) { return f.campo; }).sort().join(","), "GEN,LEN,SAB");
-	ok("y también se escribe en los campos visibles",
-		textosGuardados.every(function (f) { return f.fortalezas !== undefined; }), true);
+	// Reglas compartidas (boleta imprimible, reporte detallado, exportación)
+	const RD = window.ReporteDatos;
+	const filasT = {};
+	DATOS.boleta_trimestral.forEach(function (f) { filasT[f.campo] = f; });
+	ok("boletaCerrada: los cuatro campos cerrados", RD.boletaCerrada(filasT), true);
+	ok("boletaCerrada: con uno abierto no", RD.boletaCerrada(Object.assign({}, filasT, { DHL: { cerrada: false } })), false);
+	ok("boletaCerrada: sin filas no", RD.boletaCerrada({}), false);
+	ok("textoSeccion cerrada: lo guardado, no la propuesta", RD.textoSeccion(filasT.LEN, "fortalezas", "propuesta nueva", true).texto, "Texto entregado LEN");
+	ok("textoSeccion cerrada: cuadro vacío queda vacío", RD.textoSeccion(filasT.LEN, "sugerencias", "propuesta nueva", true).texto, "");
+	ok("textoSeccion abierta: la propuesta de hoy", RD.textoSeccion(filasT.LEN, "sugerencias", "propuesta nueva", false).texto, "propuesta nueva");
+	ok("trabajoDiario cerrada: la foto aunque el maestro escriba después",
+		RD.trabajoDiario({ observaciones: "escrito después" }, "propuesta", filasT.GEN, true).texto, "Trabajo diario entregado al cierre");
+	ok("trabajoDiario abierta: lo del maestro", RD.trabajoDiario({ observaciones: "escrito" }, "propuesta", filasT.GEN, false).texto, "escrito");
+	ok("trabajoDiario cerrada sin foto (boletas cerradas antes): regla de siempre",
+		RD.trabajoDiario({ observaciones: null }, "propuesta", {}, true).texto, "propuesta");
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

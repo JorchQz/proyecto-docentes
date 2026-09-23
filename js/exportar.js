@@ -105,6 +105,8 @@
 			generar: w.TextosBoleta && w.TextosBoleta.generar,
 			comoParrafo: w.TextosBoleta && w.TextosBoleta.comoParrafo,
 			textoSeccion: w.ReporteDatos && w.ReporteDatos.textoSeccion,
+			trabajoDiario: w.ReporteDatos && w.ReporteDatos.trabajoDiario,
+			boletaCerrada: w.ReporteDatos && w.ReporteDatos.boletaCerrada,
 			calificacionOficial: w.ReporteDatos && w.ReporteDatos.calificacionOficial,
 			catalogo: w.CatalogoHabilidades,
 			corto: w.CamposFormativos && w.CamposFormativos.corto,
@@ -190,15 +192,18 @@
 
 			// Trabajo diario: el del maestro (evaluacion_diagnostica.observaciones) o la propuesta
 			// null = no lo ha escrito (propuesta); "" = lo vació a propósito (se respeta)
-			var trabajoDiario = diag && diag.observaciones !== null && diag.observaciones !== undefined
-				? diag.observaciones : generado.trabajoDiario;
+			// Boleta cerrada: textos y trabajo diario como se entregaron
+			var cerrada = deps.boletaCerrada ? deps.boletaCerrada(boletaT) : false;
+			var trabajoDiario = deps.trabajoDiario
+				? deps.trabajoDiario(diag, generado.trabajoDiario, boletaT[GENERAL] || null, cerrada).texto
+				: (diag && diag.observaciones !== null && diag.observaciones !== undefined ? diag.observaciones : generado.trabajoDiario);
 			fila.push(unaLinea(trabajoDiario) || null);
 
 			function combinados(tipo, lista) {
 				var partes = [];
 				CAMPOS.concat([GENERAL]).forEach(function (c) {
 					var propuesto = deps.comoParrafo ? deps.comoParrafo((generado[c] || {})[lista] || []) : "";
-					var t = unaLinea(deps.textoSeccion(boletaT[c] || null, tipo, propuesto).texto);
+					var t = unaLinea(deps.textoSeccion(boletaT[c] || null, tipo, propuesto, cerrada).texto);
 					if (t) partes.push((c === GENERAL ? "General" : c) + ": " + t);
 				});
 				return partes.length ? partes.join(SEPARADOR_TEXTOS) : null;

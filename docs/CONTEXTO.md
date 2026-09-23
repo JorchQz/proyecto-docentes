@@ -128,7 +128,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (18 suites).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (20 suites).
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad.
 > - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
 > - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
@@ -150,6 +150,11 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 >   cuatro reportes de B.8 con datos de ejemplo (confirmada vs "pendiente", pisos,
 >   privacidad de la junta, columnas y CSV).
 > - `sin-emojis` — ningún emoji ni símbolo tipo emoji en el SaaS (rangos completos).
+> - `boleta-cerrada` — **ejecuta `reportes.js` completo** con una boleta cerrada y capturas
+>   posteriores: nada se vuelve a guardar ni a proponer (porcentaje, textos, fila GEN y
+>   trabajo diario del cierre), más las reglas compartidas de `ReporteDatos`.
+> - `lecturas-sin-tope` — revisa el código de `js/`: ninguna lectura de una tabla que crece
+>   sin paginar, fuera de una lista de lecturas acotadas con su razón; y `js/leer-todo.js`.
 > Variables para probar otra copia: `REPORTES_JS=ruta` (pruebas que leen `reportes.js`).
 - **Trazabilidad por PDA (B.5, 2026-09-23):** el maestro califica el producto una vez y
   el trigger `propagar_calificacion_a_pda` deja la evidencia en cada PDA que ese producto
@@ -196,27 +201,41 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
   `boleta_trimestral_confirmacion` impide `cerrada = true` sin confirmación. Una vez
   confirmada, el motor solo refresca `porcentaje`: no pisa el número del maestro.
+- **Boleta cerrada** ("Cerrar boleta" cierra los cuatro campos juntos;
+  `ReporteDatos.boletaCerrada`): lo entregado queda fijo en la pantalla de Reportes, la
+  boleta imprimible, el reporte detallado, la exportación y la función de IA. Se ve el
+  `porcentaje` y la calificación guardados (si hubo capturas después, un aviso lo dice y
+  el desglose por criterio muestra los datos de hoy); los textos guardados, también los de
+  la fila GEN, que no lleva calificación y por eso no se marca `cerrada`; y el trabajo
+  diario de la foto del cierre (`texto_autogenerado.cierre` de la fila GEN), aunque
+  después se edite en Diagnóstico. No hay forma de reabrirla desde la interfaz.
 - **Dónde se captura:** `hoy.html` (§B.1) — asistencia, tareas vencidas, los productos de
   las sesiones del día y el cierre (participación y conducta). Todo se guarda al toque,
   con cola y reintento; la unidad es el producto, no la actividad. En multigrado cada
   alumno solo ve los productos cuyos `grados` incluyen el suyo, agrupados por grado.
   Las sesiones de una planeación no traen fecha: "Trabajar hoy" les pone la de hoy (y las
   activa) y "Quitar de hoy" las regresa sin fecha y pendientes mientras no tengan
-  calificaciones. Inicio (`dashboard.html`) resume el día y lleva a "Hoy"; ya no captura.
-  **Alcance:** "Hoy", Inicio y Tareas miran los mismos proyectos (`js/alcance-hoy.js`):
-  activos, en borrador o pausados, del trimestre actual del grupo, o terminados en los
-  últimos 30 días; "Trabajar hoy" solo ofrece sesiones de proyectos activos. Una tarea sin
+  calificaciones ni estén completadas. Inicio (`dashboard.html`) resume el día y lleva a "Hoy"; ya no captura.
+  **Alcance:** "Hoy" e Inicio miran los mismos proyectos (`js/alcance-hoy.js`):
+  activos, en borrador o pausados, del trimestre actual del grupo, o con `fecha_final` en
+  los últimos 30 días (o futura). Tareas lista las tareas de todos los proyectos del grupo
+  y, con la misma regla (`AlcanceHoy.incluye`), marca "Quedó sin revisar" las que "Hoy" ya
+  no muestra; lo "Por revisar" coincide en las tres. "Trabajar hoy" solo ofrece sesiones
+  de proyectos activos. Una tarea sin
   `fecha_entrega` vence el siguiente día hábil después de su sesión (`venceTarea`).
   **Cierre del día:** la primera excepción guarda el día de todo el grupo (1 y 1, sin los
   que faltaron); botón "Guardar el cierre de hoy" para días sin excepciones. Hoy e Inicio
   lo cuentan con `AlcanceHoy.resumenCierre`; si faltó todo el grupo, "Nadie asistió hoy".
   **Lecturas sin tope:** Supabase devuelve como máximo 1000 filas por consulta y corta en
-  silencio. Toda lectura que pueda crecer con el trimestre va paginada: el motor con
-  `todas()` y Hoy, Tareas e Inicio con `AlcanceHoy.leerPorLotes` (lotes de 150 ids,
-  páginas de 1000). Una consulta nueva de calificaciones, productos o sesiones debe usar uno
-  de los dos.
+  silencio. Toda lectura que pueda crecer con el trimestre va paginada: el motor y
+  `js/reporte-datos.js` con su `todas()`, y Hoy, Tareas e Inicio con
+  `AlcanceHoy.leerPorLotes` (lotes de 150 ids, páginas de 1000), y las demás pantallas
+  (Reportes, Crear proyecto, Exámenes, Actividades) con `js/leer-todo.js`
+  (`LeerTodo.paginas` / `porLotes`). La prueba `pruebas/lecturas-sin-tope.test.js` falla si
+  aparece una lectura nueva sin tope; las acotadas por naturaleza (un día, una sesión, un
+  alumno) están listadas ahí con su razón.
 - **Campo sin evidencias:** sin propuesta; en la boleta se elige a mano (juicio docente)
-  para poder confirmar y cerrar. Boleta cerrada: textos de solo lectura.
+  para poder confirmar y cerrar. Boleta cerrada: todo de solo lectura (ver arriba).
 - **Evidencia por PDA** (`recalcular_evidencia_pda`): con todas las calificaciones del
   alumno ligadas a ese PDA en la sesión; manda el trabajo (la más baja si hay varias), la
   tarea solo si no hay otra; lo del maestro no se toca.
@@ -273,8 +292,9 @@ común).
   por grado con perfiles a propósito (sobresaliente, en riesgo, irregular con
   justificados, PPM bajo; todos con prefijo "QA"). Trimestre 1 con datos; trimestre 2
   vacío a propósito.
-- **Segunda cuenta:** `qa.aislamiento@jissez.com`, con un grupo vacío, solo para probar que
-  un maestro no ve datos de otro.
+- **Segunda cuenta:** `qa.aislamiento@jissez.com`, con un grupo "QA Aislamiento (vacío)",
+  para probar que un maestro no ve datos de otro. Los ensayos de punta a punta (3.10) crean
+  ahí alumnos y proyectos de prueba y los borran al terminar; `qa.resembrar()` no la toca.
 - Las contraseñas **no** están en el repo: viven en `.env.local` (ignorado por git:
   `QA_EMAIL`, `QA_PASSWORD`, `QA2_EMAIL`, `QA2_PASSWORD`).
 - **Semilla:** `select qa.resembrar();` (función en el esquema `qa`, no expuesto por el API;
@@ -441,34 +461,34 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 
 | Módulo | Estado | Archivo |
 |---|---|---|
-| Auth (login/registro) | ✅ Completo | `index.html` |
-| Onboarding (crear grupo + alumnos + ciclo + trimestre) | ✅ Completo | `onboarding.html` |
-| Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | ✅ Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
-| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy) | ✅ Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
-| Asistencia (con autosave) | ✅ Completo | `asistencia.html` |
-| Mi Grupo (CRUD grupo y alumnos) | ✅ Completo | `mi-grupo.html` |
-| Crear Proyecto / Planeación (3 pasos con catálogo SEP) | ✅ Completo | `crear_proyecto.html` |
-| Planeación (lista de proyectos con filtros + acciones completas) | ✅ Completo | `planeacion.html` |
-| Actividades | ✅ Completo | `actividades.html` |
-| Tareas (seguimiento de los productos tipo tarea; la revisión es en "Hoy") | ✅ Completo (rehecho 2026-09-23, 3.7) | `tareas.html` |
-| Reportes (Asistencia · Vista Recrea · Concentrado · Boleta · Avance por PDA), todo sobre el motor y la calificación confirmada | ✅ Completo (2026-09) | `reportes.html`, `js/reportes.js`, `js/reportes-grupo.js` |
-| Boleta imprimible por alumno (B.8.1) | ✅ Completo (2026-09-23) | `boleta.html`, `js/boleta.js` |
-| Reporte detallado por alumno (B.8.2) | ✅ Completo (2026-09-23) | `reporte-alumno.html`, `js/reporte-alumno.js` |
-| Presentación para la junta de padres (B.8.3) | ✅ Completo (2026-09-23) | `junta.html`, `js/junta.js` |
-| Exportación CSV/XLSX del concentrado (B.8.5) | ✅ Completo (2026-09-23) | `exportar.html`, `js/exportar.js` |
+| Auth (login/registro) | Completo | `index.html` |
+| Onboarding (crear grupo + alumnos + ciclo + trimestre) | Completo | `onboarding.html` |
+| Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
+| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy) | Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
+| Asistencia (con autosave) | Completo | `asistencia.html` |
+| Mi Grupo (CRUD grupo y alumnos) | Completo | `mi-grupo.html` |
+| Crear Proyecto / Planeación (3 pasos con catálogo SEP) | Completo | `crear_proyecto.html` |
+| Planeación (lista de proyectos con filtros + acciones completas) | Completo | `planeacion.html` |
+| Actividades | Completo | `actividades.html` |
+| Tareas (seguimiento de los productos tipo tarea; la revisión es en "Hoy") | Completo (rehecho 2026-09-23, 3.7) | `tareas.html` |
+| Reportes (Asistencia · Vista Recrea · Concentrado · Boleta · Avance por PDA), todo sobre el motor y la calificación confirmada | Completo (2026-09) | `reportes.html`, `js/reportes.js`, `js/reportes-grupo.js` |
+| Boleta imprimible por alumno (B.8.1) | Completo (2026-09-23) | `boleta.html`, `js/boleta.js` |
+| Reporte detallado por alumno (B.8.2) | Completo (2026-09-23) | `reporte-alumno.html`, `js/reporte-alumno.js` |
+| Presentación para la junta de padres (B.8.3) | Completo (2026-09-23) | `junta.html`, `js/junta.js` |
+| Exportación CSV/XLSX del concentrado (B.8.5) | Completo (2026-09-23) | `exportar.html`, `js/exportar.js` |
 | Redacción de textos con IA (B.7 Capa 2) | Construido, **apagado** hasta que exista el secreto `ANTHROPIC_API_KEY` | Edge `redactar-boleta` |
-| Grupo activo (selector en la barra, toda la app) | ✅ Completo (2026-09-23) | `js/grupo-activo.js` |
-| Mi Cuenta | ✅ Completo | `mi-cuenta.html` |
-| Ajustes (notificaciones + ponderación de calificaciones) | ✅ Completo | `ajustes.html` |
-| Evaluación Formativa (semáforo por alumno/sesión, autosave) | ✅ Completo; ahora **afina** lo que ya propuso la propagación por PDA | `evaluacion_formativa.html` |
-| Evaluación Diagnóstica (cuaderno + lectura + matemáticas, semáforo) | ✅ Completo | `evaluacion_diagnostica.html` |
-| Exámenes (aplicar + calificar + auto-calificación por CF) | ✅ Completo | `examen.html` |
-| Marketplace (catálogo + filtros + preview + importar) | ✅ Completo | `marketplace.html` |
-| Tienda: paquetes (catálogo, ficha, checkout MP, biblioteca, anexos, promoción, cupones) | ✅ Completo | `tienda/*` |
-| Tienda: proyectos individuales (venta con/sin anexos, entrega, admin "Proyectos individuales") | ✅ Completo (2026-09, Bloque 1) | `tienda/admin.html`, Edge `admin-proyectos-drive` |
-| Tienda: filtro por campo/contenido/PDA + ficha `proyecto.html` + legal | ✅ Completo (2026-09, Bloque 2) | `tienda/catalogo.html`, `tienda/proyecto.html`, `tienda/terminos.html`, `tienda/privacidad.html` |
-| Tienda: proyectos personalizados (pedidos, cobro, admin, entrega, correos) | ✅ Completo (2026-09, Bloque 3) | `tienda/personalizado.html`, Edge `completar-pedido` |
-| Tienda: búsquedas sin resultado, aviso diario de vencidos, landing normalistas | ✅ Completo (2026-09, Bloque 4) | Edge `avisos-pedidos`, `tienda/practicantes.html` |
+| Grupo activo (selector en la barra, toda la app) | Completo (2026-09-23) | `js/grupo-activo.js` |
+| Mi Cuenta | Completo | `mi-cuenta.html` |
+| Ajustes (notificaciones + ponderación de calificaciones) | Completo | `ajustes.html` |
+| Evaluación Formativa (semáforo por alumno/sesión, autosave) | Completo; ahora **afina** lo que ya propuso la propagación por PDA | `evaluacion_formativa.html` |
+| Evaluación Diagnóstica (cuaderno + lectura + matemáticas, semáforo) | Completo | `evaluacion_diagnostica.html` |
+| Exámenes (aplicar + calificar + auto-calificación por CF) | Completo | `examen.html` |
+| Marketplace (catálogo + filtros + preview + importar) | Completo | `marketplace.html` |
+| Tienda: paquetes (catálogo, ficha, checkout MP, biblioteca, anexos, promoción, cupones) | Completo | `tienda/*` |
+| Tienda: proyectos individuales (venta con/sin anexos, entrega, admin "Proyectos individuales") | Completo (2026-09, Bloque 1) | `tienda/admin.html`, Edge `admin-proyectos-drive` |
+| Tienda: filtro por campo/contenido/PDA + ficha `proyecto.html` + legal | Completo (2026-09, Bloque 2) | `tienda/catalogo.html`, `tienda/proyecto.html`, `tienda/terminos.html`, `tienda/privacidad.html` |
+| Tienda: proyectos personalizados (pedidos, cobro, admin, entrega, correos) | Completo (2026-09, Bloque 3) | `tienda/personalizado.html`, Edge `completar-pedido` |
+| Tienda: búsquedas sin resultado, aviso diario de vencidos, landing normalistas | Completo (2026-09, Bloque 4) | Edge `avisos-pedidos`, `tienda/practicantes.html` |
 
 ### Pendientes / deuda técnica
 - El Marketplace muestra estado vacío hasta que el bot publique proyectos con `estado = 'publicado'`.

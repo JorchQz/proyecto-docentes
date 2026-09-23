@@ -51,6 +51,14 @@ está en `docs/PROGRESO-PARTE-B.md` y los scripts y capturas de cada revisor en
 - **Reportes con dos grupos** mandaban al onboarding (`.single()`). Ahora hay un solo
   "grupo activo" con selector en la barra, que usa toda la app.
 - **Tareas con alumnos justificados** se quedaban "Por revisar" para siempre.
+- **Calificaciones perdidas en silencio con volumen real.** Supabase devuelve como máximo
+  1000 filas por consulta. "Hoy", Tareas e Inicio leían las calificaciones de una vez, y
+  un trimestre real (unas 50 sesiones con 2 a 4 productos y 18 alumnos) pasa de 1000: la
+  maestra habría visto en blanco lo que ya calificó. Ahora las tres pantallas leen por
+  lotes y páginas, igual que el motor, y una prueba lo comprueba con 1080 y 7200 filas.
+- **"Hoy", Inicio y Tareas no decían lo mismo** sobre lo pendiente (proyecto recién
+  terminado, cierre del día con faltas o con todo el grupo ausente). Las reglas que
+  comparten quedaron en un solo archivo, `js/alcance-hoy.js`.
 
 ---
 
@@ -77,7 +85,7 @@ especificación) y `docs/CONTEXTO.md` §3, §5.1, §6 y §7.
 **Migraciones aplicadas en producción (todas aditivas o sobre tablas vacías):** B.0, B.3,
 B.5 (ya reportadas antes), y en esta fase `b7_plantillas_sugerencia`,
 `b8_calificaciones_boleta_por_lote`, `qa_funcion_resembrar` y
-`b7_plantillas_calidad_y_descripciones`. Copia en `supabase/*.sql`.
+`b7_plantillas_calidad_y_descripciones` y `b5c_evidencia_pda_con_todos_los_productos`. Copia en `supabase/*.sql`.
 
 **Edge Function nueva desplegada:** `redactar-boleta` (v2). Sin el secreto no hace nada:
 responde "no configurada".
@@ -86,7 +94,7 @@ responde "no configurada".
 
 ## 3. Pruebas
 
-- **18 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
+- **20 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
   todas pasan. Cubren motor, textos, boleta de punta a punta, IA y Capa 1, los cuatro
   reportes, Vista Recrea y Concentrado, Tareas, Hoy y ausencia de emojis.
 - **Verificaciones en navegador** (en `.qa/`, locales): recorrido de humo por las 18
@@ -126,8 +134,16 @@ En cada caso se eligió lo más conservador y el sistema funciona así mientras 
 8. **Criterios propios** de cuaderno y habilidades por maestro: no existen todavía.
 9. **Productos con nombre genérico** (`origen='backfill'`) del importador: sigue pendiente
    el trabajo de enriquecerlos (ya estaba anotado desde la Parte A).
-10. **`CLAUDE.md`** todavía dice que la Parte B no se construye sin tu permiso; ya no es
-    cierto. No lo cambié porque es tu regla: actualízalo cuando hagas el merge.
+10. **`CLAUDE.md`** decía que la Parte B no se construye sin tu permiso. Lo actualicé
+    en la rama (solo llega a `main` si haces el merge): dice que la Parte B está construida
+    en `mi-salon-parte-b`, que el merge lo decides tú y que las decisiones nuevas de
+    producto o legales siguen necesitando tu visto bueno. Revísalo antes del merge.
+    Un revisor encontró además una frase desactualizada en su tabla de datos: dice que
+    `tareas`, `calificaciones` y `evaluacion_formativa` se materializan al cerrar
+    sesiones. Hoy `tareas` está en desuso (0 filas, nadie la escribe), `calificaciones`
+    se escribe en "Hoy" al tocar cada producto y `evaluacion_formativa` la llena un
+    trigger al calificar (más el ajuste del maestro). No la cambié porque `CLAUDE.md` es
+    tuyo; sugiero ese texto.
 
 ---
 

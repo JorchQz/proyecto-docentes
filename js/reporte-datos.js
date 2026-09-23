@@ -101,6 +101,24 @@
 		return { valor: Number(filaBoleta.calificacion), confirmada: true, cerrada: !!filaBoleta.cerrada, pendiente: false };
 	}
 
+	/*
+		Boleta cerrada = los cuatro campos del trimestre cerrados (el botón "Cerrar boleta"
+		los cierra juntos). Desde ahí lo entregado queda fijo en todos los reportes:
+		calificación y porcentaje guardados, los textos guardados (también los de la fila
+		GEN, que no lleva calificación y por eso la base no la marca cerrada) y el trabajo
+		diario de la foto del cierre. filasTrimestre = {LEN: fila, SAB: fila, ...}.
+	*/
+	function boletaCerrada(filasTrimestre) {
+		if (!filasTrimestre) return false;
+		return CAMPOS.every(function (c) { return !!(filasTrimestre[c] && filasTrimestre[c].cerrada); });
+	}
+
+	// Lo que se congeló al cerrar: texto_autogenerado.cierre de la fila GEN
+	function fotoCierre(filaGeneral) {
+		var t = filaGeneral && filaGeneral.texto_autogenerado;
+		return t && t.cierre && typeof t.cierre === "object" ? t.cierre : null;
+	}
+
 	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal
 	function promedio(valores) {
 		var nums = valores.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
@@ -138,9 +156,11 @@
 		    podría ser de antes de las últimas capturas. Solo si no se calculó propuesta
 		    se usa lo guardado.
 	*/
-	function textoSeccion(filaBoleta, tipo, propuesto) {
+	function textoSeccion(filaBoleta, tipo, propuesto, cerrada) {
 		var guardado = filaBoleta ? filaBoleta[tipo] : null;
 		if (window.TextosBoleta.esEditado(filaBoleta, tipo)) return { texto: guardado || "", delMaestro: true };
+		// Boleta cerrada: lo que se entregó, nunca una propuesta calculada después
+		if (cerrada) return { texto: guardado || "", delMaestro: false };
 		var conIa = filaBoleta && filaBoleta.texto_autogenerado && filaBoleta.texto_autogenerado.visible === "ia";
 		if (conIa && guardado && String(guardado).trim()) return { texto: guardado, delMaestro: false };
 		if (propuesto !== null && propuesto !== undefined) return { texto: propuesto, delMaestro: false };
@@ -152,7 +172,12 @@
 		null = el maestro no lo ha escrito → la propuesta de la Capa 1;
 		"" = lo vació a propósito → se respeta vacío.
 	*/
-	function trabajoDiario(diagnostica, propuesto) {
+	function trabajoDiario(diagnostica, propuesto, filaGeneral, cerrada) {
+		// Boleta cerrada: el texto que tenía al cerrarse (foto en la fila GEN)
+		var foto = cerrada ? fotoCierre(filaGeneral) : null;
+		if (foto && typeof foto.trabajo_diario === "string") {
+			return { texto: foto.trabajo_diario, delMaestro: !!foto.trabajo_diario_del_maestro };
+		}
 		var obs = diagnostica ? diagnostica.observaciones : null;
 		if (obs !== null && obs !== undefined) return { texto: String(obs).trim(), delMaestro: true };
 		return { texto: propuesto || "", delMaestro: false };
@@ -260,6 +285,8 @@
 		calificacionOficial: calificacionOficial,
 		promedio: promedio,
 		boletasCiclo: boletasCiclo,
+		boletaCerrada: boletaCerrada,
+		fotoCierre: fotoCierre,
 		textoSeccion: textoSeccion,
 		trabajoDiario: trabajoDiario,
 		alumnoTrimestre: alumnoTrimestre,

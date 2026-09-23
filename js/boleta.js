@@ -173,17 +173,17 @@
 
 	// ── Observaciones y sugerencias del trimestre elegido ─────────────────────
 
-	function textoDe(filaBoleta, tipo, generado) {
+	function textoDe(filaBoleta, tipo, generado, cerrada) {
 		var propuesto = window.TextosBoleta.comoParrafo(generado ? (generado[tipo.clave] || []) : []);
-		var t = RD().textoSeccion(filaBoleta, tipo.columna, propuesto);
+		var t = RD().textoSeccion(filaBoleta, tipo.columna, propuesto, cerrada);
 		// Lo que ya está guardado y marcado como del maestro, o lo que él escribió
 		return { texto: t.texto ? String(t.texto).trim() : "", delMaestro: t.delMaestro };
 	}
 
-	function bloqueObservaciones(campo, titulo, color, filaBoleta, generado) {
+	function bloqueObservaciones(campo, titulo, color, filaBoleta, generado, cerrada) {
 		var partes = TIPOS_TEXTO.map(function (tipo) {
-			var t = textoDe(filaBoleta, tipo, generado);
-			var marca = (t.texto && !t.delMaestro)
+			var t = textoDe(filaBoleta, tipo, generado, cerrada);
+			var marca = (t.texto && !t.delMaestro && !cerrada)
 				? "<span class='bol-propuesta no-print'>propuesta del sistema</span>" : "";
 			return "<div><dt>" + tipo.titulo + marca + "</dt>" +
 				(t.texto
@@ -200,9 +200,10 @@
 		var boletaT = (d.boletaCiclo && d.boletaCiclo[d.trimestre]) || {};
 		var textos = d.textos || {};
 		var diag = d.diagnostica;
+		// Boleta cerrada: todo como se entregó (ReporteDatos.boletaCerrada)
+		var cerrada = R.boletaCerrada(boletaT);
 		// null = el maestro no lo ha escrito (propuesta); "" = lo vació a propósito
-		var trabajo = (diag && diag.observaciones !== null && diag.observaciones !== undefined)
-			? String(diag.observaciones).trim() : (textos.trabajoDiario || "");
+		var trabajo = R.trabajoDiario(diag, textos.trabajoDiario || "", boletaT[GENERAL], cerrada).texto;
 
 		var html = "<div class='bol-obs bol-bloque' data-obs='trabajo' style='border-left-color:#1e3a8a'>" +
 			"<h3>Trabajo diario</h3>" +
@@ -210,9 +211,9 @@
 				: "<p class='vacio' style='color:#9ca3af' aria-label='Sin texto'>—</p>") +
 			"</div>";
 		R.CAMPOS.forEach(function (c) {
-			html += bloqueObservaciones(c, R.NOMBRE_CAMPO[c], R.COLOR_CAMPO[c], boletaT[c], textos[c]);
+			html += bloqueObservaciones(c, R.NOMBRE_CAMPO[c], R.COLOR_CAMPO[c], boletaT[c], textos[c], cerrada);
 		});
-		html += bloqueObservaciones(GENERAL, "Observaciones generales", "#6b7280", boletaT[GENERAL], textos[GENERAL]);
+		html += bloqueObservaciones(GENERAL, "Observaciones generales", "#6b7280", boletaT[GENERAL], textos[GENERAL], cerrada);
 		return html;
 	}
 
@@ -329,6 +330,16 @@
 			banda: fila de bandas_ppm|null, asistencia: {presentes, total, porcentaje}
 		}
 	*/
+	// Nota solo en pantalla: qué significa la marca de propuesta, o que la boleta ya se cerró
+	function notaObservaciones(d) {
+		var estilo = "<p class='no-print bol-nota' style='margin:-2px 0 8px'>";
+		if (RD().boletaCerrada((d.boletaCiclo || {})[d.trimestre])) {
+			return estilo + "La boleta de este trimestre está cerrada: los textos quedan como se entregaron.</p>";
+		}
+		return estilo + "Lo marcado como <span class='bol-propuesta' style='margin:0'>propuesta del sistema</span> " +
+			"sale de lo que capturaste y todavía no lo editas; puedes ajustarlo en Reportes, pestaña Boleta. La marca no se imprime.</p>";
+	}
+
 	function renderBoleta(d) {
 		var grado = d.alumno ? d.alumno.grado : null;
 		return encabezado(d) +
@@ -336,8 +347,7 @@
 			"<div class='bol-bloque'>" + tablaCalificaciones(d.boletaCiclo || {}, d.trimestre) + "</div>" +
 			bloqueAsistencia(d.asistencia, d.trimestre) + "</section>" +
 			"<section class='bol-seccion'><h2>2. Observaciones y sugerencias del trimestre " + d.trimestre + "</h2>" +
-			"<p class='no-print bol-nota' style='margin:-2px 0 8px'>Lo marcado como <span class='bol-propuesta' style='margin:0'>propuesta del sistema</span> " +
-			"sale de lo que capturaste y todavía no lo editas; puedes ajustarlo en Reportes, pestaña Boleta. La marca no se imprime.</p>" +
+			notaObservaciones(d) +
 			seccionObservaciones(d) + "</section>" +
 			"<section class='bol-seccion'><h2>3. Cuaderno y habilidades básicas del trimestre " + d.trimestre + "</h2>" +
 			"<div class='bol-dos-col'>" + cajaCuaderno(d.diagnostica) + cajaHabilidades(d.diagnostica, d.banda, grado) + "</div>" +

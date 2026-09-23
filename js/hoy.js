@@ -181,10 +181,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
 		if (!proyIds.length) return;
 
-		var sesRes = await window.sb.from("sesiones")
-			.select("id, numero_sesion, fecha, campo_formativo, momento, proyecto_id, estado_sesion")
-			.in("proyecto_id", proyIds);
-		var sesiones = sesRes.data || [];
+		// Sin el tope de 1000 filas de Supabase (js/alcance-hoy.js)
+		var sesiones = await window.AlcanceHoy.leerPorLotes(proyIds, function (lote) {
+			return window.sb.from("sesiones")
+				.select("id, numero_sesion, fecha, campo_formativo, momento, proyecto_id, estado_sesion")
+				.in("proyecto_id", lote).order("id");
+		});
 		var sesionPorId = {};
 		sesiones.forEach(function (s) { sesionPorId[s.id] = s; });
 		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; })
@@ -807,7 +809,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		await cargarDatosDelDia();
 	} catch (e) {
 		console.error("hoy: carga de datos", e);
-		mensaje("error", "No se pudieron cargar los datos del día: " + (e.message || "error desconocido"));
+		// Sin los datos completos no se dibuja nada: una sección a medias parecería "sin
+		// calificar" y el maestro capturaría encima de lo que ya había guardado
+		mensaje("error", "No se pudieron cargar los datos del día: " + (e.message || "error desconocido") +
+			". Recarga la página para intentarlo de nuevo.");
+		return;
 	}
 	[
 		["asistencia", renderAsistencia],

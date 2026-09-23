@@ -12,6 +12,17 @@ document.addEventListener("DOMContentLoaded", async function () {
     setTimeout(function () { el.remove(); }, 3500);
   }
 
+  // Escapar texto para innerHTML. Vive aquí, al alcance de toda la página: los
+  // "Criterios sugeridos" del paso 3 la usaban sin tenerla a la vista (ReferenceError).
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   const DRAFT_KEY = 'borradorProyectoActivo';
 
   // Detección de modo edición (URL ?id=xxx)
@@ -251,21 +262,22 @@ document.addEventListener("DOMContentLoaded", async function () {
         const fasesActuales = paso1Data ? paso1Data.fase : [];
         const gradosActuales = paso1Data ? paso1Data.grados.map(Number) : [];
 
-        const { data: contenidos, error: errorContenidos } = await window.sb
-          .from('catalogo_contenidos')
-          .select('id, fase, campo_formativo, contenido, orden')
-          .in('fase', fasesActuales)
-          .order('orden');
+        const contenidos = await window.LeerTodo.paginas(function () {
+          return window.sb
+            .from('catalogo_contenidos')
+            .select('id, fase, campo_formativo, contenido, orden')
+            .in('fase', fasesActuales)
+            .order('orden').order('id');
+        });
 
-        if (errorContenidos) throw errorContenidos;
-
-        const { data: pdasCatalogo, error: errorPda } = await window.sb
-          .from('catalogo_pda')
-          .select('id, contenido_id, grado, pda, criterio_valoracion, orden')
-          .in('grado', gradosActuales)
-          .order('orden');
-
-        if (errorPda) throw errorPda;
+        // Una escuela unitaria (1° a 6°) pide 1329 PDA: se leen por páginas (js/leer-todo.js)
+        const pdasCatalogo = await window.LeerTodo.paginas(function () {
+          return window.sb
+            .from('catalogo_pda')
+            .select('id, contenido_id, grado, pda, criterio_valoracion, orden')
+            .in('grado', gradosActuales)
+            .order('orden').order('id');
+        });
 
         catalogoContenidos = Array.isArray(contenidos) ? contenidos : [];
         catalogoPDA = Array.isArray(pdasCatalogo) ? pdasCatalogo : [];

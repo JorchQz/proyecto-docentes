@@ -23,10 +23,10 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas: Hoy ≠ Inicio) → FAIL #4 37e (lecturas sin paginar; todo el grupo ausente) → revisor 37f | — |
+| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → revisor 37g | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
-| 3.9 Documentación | pendiente | — | — |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA con trabajo y tarea, cierre del día, boleta sin evidencias, diagnóstico, Inicio) | — |
+| 3.9 Documentación | corregido, en re-revisión | FAIL #1 revisor 39 (CLAUDE.md, segunda cuenta, sesiones de Hoy) → revisor 39b | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → revisor 310c | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -293,6 +293,35 @@ en navegador (las tres pantallas piden offset/limit=1000 y lotes ≤150; con tod
 ausente Hoy e Inicio dicen lo mismo y no se guarda cierre; datos restaurados);
 verificar-37, verificar-37b, verificar-cierre-inicio, humo y las 18 suites en verde.
 
+**Revisión #5 de 3.7: FAIL #5** (revisor 37f, `.qa/revisor-37f/`; lo cortó el límite de
+la API y se reanudó con su contexto). Los cuatro FAIL anteriores quedaron corregidos: con
+un PostgREST simulado con tope de 1000 y relleno (2600 calificaciones, 1300 productos),
+Hoy, Inicio y Tareas dan lo mismo con y sin relleno, piden `offset` 0/1000/2000 y ningún
+lote pasa de 150 ids; por la interfaz, siete pasos (tarea sin revisar, proyecto recién
+terminado, faltas, todo el grupo ausente, cierre) dicen lo mismo en las tres pantallas.
+Bloqueante, **misma causa que el FAIL #4** (lectura sin paginar) en otras pantallas:
+Reportes → Asistencia (1080 asistencias simuladas: la tabla sumaba 1000) y Avance por PDA
+del grupo (1120 filas: 120 renglones con un alumno de menos).
+Conteo para la regla de los 3 FAIL: son **dos seguidos por la misma causa** (#4 y #5). Por
+eso esta vez no corregí solo lo señalado: audité todas las lecturas de `js/` (67 sin tope
+explícito), medí el volumen real de las dudosas y encontré tres más que se cortan con uso
+real: el catálogo de PDA en Crear proyecto para una escuela unitaria de 1° a 6° (1329
+filas; medido contra el Supabase real: sin paginar llegan 1000), las respuestas de un
+examen (alumnos × preguntas) y las sesiones de Actividades (crecen ciclo con ciclo).
+Corrección: `js/leer-todo.js` (`LeerTodo.paginas` / `porLotes`) en Reportes (asistencia y
+avance del grupo), Crear proyecto (catálogo de PDA y contenidos), Exámenes (respuestas) y
+Actividades; la prueba `pruebas/lecturas-sin-tope.test.js` revisa el código y falla con
+cualquier lectura nueva de una tabla que crece que no vaya paginada ni esté en la lista de
+acotadas con su razón (con el código anterior detecta las 7). Evidencia: la simulación
+del revisor (`.qa/constructor-37/reportes-tope.js`) da 1080 de 1080 y 1120 de 1120, sin
+errores; `.qa/verificar-leer-todo.js` contra el Supabase real, 1329 de 1329.
+Menores corregidos: "Hoy" ya no dibuja las secciones si falla la carga (mensaje y
+recargar); Inicio cuenta la asistencia solo de alumnos activos.
+**Falla mía de partición:** durante esta revisión corrí `.qa/verificar-cierre-boleta.js`,
+que escribió sobre un alumno del grupo 1°-2° asignado al revisor (cerró su boleta y cambió
+sus tareas por unos segundos antes de restaurarlas). El revisor lo detectó y lo aisló de
+su veredicto. Desde aquí, mientras haya un revisor trabajando, no escribo en su partición.
+
 **Revisión de 3.8: PASS** (revisor 37b). Llave ausente del frontend, de git y de
 `.env.local`; función desplegada v2 idéntica al repo; sin llave el botón no aparece (7
 boletas, solo llamadas "estado"); sin sesión o con token inválido 401, "redactar" sin
@@ -348,10 +377,62 @@ por celda; Mi grupo (lista escondida, textos sin acentos, nombres en mayúsculas
 acentos); tocar dos veces un semáforo lo borra; tiempos de carga de 5 s en boleta y
 reporte y 8.8 s en el primer Inicio.
 
+**Re-ensayo de 3.10: FAIL #2** (revisor 310b, `.qa/revisor-310b/`; lo cortó el límite de
+la API y se reanudó con su contexto). Recorrió el trimestre completo con la segunda cuenta
+(6 alumnos 1°-2°, 2 proyectos, 5 días en "Hoy", diagnóstico, boleta, imprimible, reporte,
+junta, CSV/XLSX) y la Fase 4 con la cuenta QA: los 18 porcentajes calculados a mano
+coinciden, pisos, confirmación, "pendiente", privacidad, aislamiento y "Nadie asistió hoy"
+correctos. Dos bloqueantes:
+1. **Excepción sin capturar en Crear proyecto, paso 3** (`escapeHtml is not defined`): la
+   función vivía dentro de otra y los "Criterios sugeridos" nunca aparecían. → Movida al
+   alcance de la página. Además revisé todo `js/` con eslint `no-undef` (en `.qa/`, fuera
+   de git): no queda ningún identificador sin definir (solo `html2pdf`, que viene del CDN).
+   Verificado con `.qa/verificar-criterios-crear.js` (el panel aparece, consola limpia).
+2. **La boleta cerrada no quedaba congelada**: el desglose y el porcentaje se recalculaban,
+   la fila GEN (que la base no marca cerrada porque no lleva calificación) se reescribía y
+   el trabajo diario se calculaba en vivo. → Regla única `ReporteDatos.boletaCerrada` (los
+   cuatro campos cerrados) que respetan Reportes, la boleta imprimible, el reporte
+   detallado, la exportación y la función de IA (v3 desplegada: responde 409 con la boleta
+   cerrada). Al cerrar se guardan primero los cuadros pendientes y se toma una foto del
+   trabajo diario en `texto_autogenerado.cierre` de la fila GEN. En pantalla: porcentaje y
+   calificación del cierre, aviso si hubo capturas después, textos guardados, nada
+   "propuesto". Prueba `pruebas/boleta-cerrada.test.js` (con el `reportes.js` anterior da 8
+   fallas) y `.qa/verificar-cierre-boleta.js` en navegador (cerrar, cambiar capturas y
+   diagnóstico, regenerar: la base no cambia ninguna fila y la imprimible y el reporte
+   muestran lo del cierre).
+Los datos de prueba de la segunda cuenta se borraron (queda la cuenta y su grupo) antes
+del siguiente ensayo. Menores anotados para Jorge: nombres genéricos de productos;
+no hay forma de reabrir una boleta cerrada; un 10 propuesto con una sola evidencia sin
+advertencia; Diagnóstico de 1° pide multiplicación y división; "Sesiones de hoy: 2" en
+Inicio con una sola tarjeta de plan; botones del cierre que se van de renglón en celular;
+ausentes con 1/1 marcado en el cierre (no se guarda); tareas que vencen en día festivo
+(`dias_no_habiles_extra` no se usa); acentos en "Aqui si puedes", "Aun no hay";
+"1 de 6 alumnos necesitan"; "Agregar producto" con `prompt()`.
+
+## 3.9 Documentación
+
+**Revisión #1 de 3.9: FAIL** (revisor 39, `.qa/revisor-39/`). De 40 afirmaciones
+verificadas contra el código y la base, 37 correctas. Falsas o desactualizadas:
+1. `CLAUDE.md` (tabla de datos) dice que `tareas`, `calificaciones` y
+   `evaluacion_formativa` se materializan al cerrar sesiones. Es falso hoy, pero
+   `CLAUDE.md` es de Jorge: no lo cambié por indicación de un revisor. Queda en
+   "Decisiones pendientes" con el texto sugerido. El criterio de 3.9 son PRODUCTO y
+   CONTEXTO.
+2. CONTEXTO §5.1 decía que la segunda cuenta tiene un grupo vacío; tenía los datos del
+   ensayo. → Texto corregido (los ensayos crean datos de prueba y se borran al terminar) y
+   datos borrados.
+3. La lectura de sesiones de "Hoy" no iba paginada. → Paginada.
+Menores corregidos: Tareas no mira "los mismos proyectos" (redacción precisa), tres
+implementaciones de paginación (ahora documentadas las cuatro, con `js/leer-todo.js`), el
+filtro incluye `fecha_final` futura, fluidez de la junta sin número de lista, "Quitar de
+hoy" también se oculta con la sesión completada, rótulo del examen solo donde se muestra,
+símbolos ✅ fuera de la tabla de módulos. Documentada la boleta cerrada.
+
 ## Aislamiento entre maestros
 
-Segunda cuenta de QA `qa.aislamiento@jissez.com` (contraseña en `.env.local`), con un
-grupo vacío. `node .qa/aislamiento.js`: 0 filas de otro maestro en las 16 tablas y vistas
+Segunda cuenta de QA `qa.aislamiento@jissez.com` (contraseña en `.env.local`), con el
+grupo "QA Aislamiento (vacío)"; los ensayos 3.10 le crean datos de prueba que se borran al
+terminar. `node .qa/aislamiento.js`: 0 filas de otro maestro en las 16 tablas y vistas
 de Mi salón; el catálogo global `plantillas_sugerencia` se lee pero no se puede editar.
 
 ## Decisiones pendientes para Jorge

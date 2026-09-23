@@ -115,7 +115,9 @@ async function crearCardHoy() {
 				.in("alumno_id", alumnos.map((a) => a.id))
 			: Promise.resolve({ data: [] }),
 	]);
-	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id)).size;
+	// Solo alumnos activos: uno dado de baja con asistencia de hoy no debe dar "9 de 8"
+	const activos = new Set(alumnos.map((a) => a.id));
+	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id).filter((id) => activos.has(id))).size;
 	// Cierre del día con la misma regla que "Hoy": no se espera de quien faltó
 	const faltaron = new Set((asisRes.data || [])
 		.filter((r) => r.asistencia_estado === "ausente" || r.asistencia_estado === "justificada")

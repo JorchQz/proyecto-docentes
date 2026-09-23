@@ -26,12 +26,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		console.error("grupo activo:", e);
 	}
 
-	let consultaSesiones = window.sb
-		.from("sesiones")
-		.select("id, proyecto_id, numero_sesion, campo_formativo, momento, duracion, inicio_actividades, desarrollo_actividades, cierre_actividades, proyectos!inner(id, titulo, estado, grupo_id)")
-		.eq("maestro_id", user.id);
-	if (grupoActivoId) consultaSesiones = consultaSesiones.eq("proyectos.grupo_id", grupoActivoId);
-	const { data: sesiones, error } = await consultaSesiones.order("numero_sesion", { ascending: true });
+	// Las sesiones del maestro crecen ciclo con ciclo: se leen por páginas (js/leer-todo.js),
+	// con la consulta armada de nuevo en cada página
+	function consultaSesiones() {
+		let q = window.sb
+			.from("sesiones")
+			.select("id, proyecto_id, numero_sesion, campo_formativo, momento, duracion, inicio_actividades, desarrollo_actividades, cierre_actividades, proyectos!inner(id, titulo, estado, grupo_id)")
+			.eq("maestro_id", user.id);
+		if (grupoActivoId) q = q.eq("proyectos.grupo_id", grupoActivoId);
+		return q.order("numero_sesion", { ascending: true }).order("id");
+	}
+	let sesiones = null, error = null;
+	try {
+		sesiones = await window.LeerTodo.paginas(consultaSesiones);
+	} catch (e) { error = e; }
 
 	if (error) {
 		estadoEl.textContent = "No se pudieron cargar las actividades. Intenta de nuevo.";

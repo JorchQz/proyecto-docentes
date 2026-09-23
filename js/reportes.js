@@ -81,13 +81,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		cont.innerHTML = "<p class='text-gray-400 text-sm'>Generando...</p>";
 
-		const { data, error } = await window.sb
-			.from("asistencias")
-			.select("alumno_id, asistencia_estado")
-			.eq("maestro_id", userId)
-			.eq("grupo_id", grupoId)
-			.gte("fecha", start)
-			.lte("fecha", end);
+		// Un trimestre de un grupo pasa de 1000 asistencias: se lee por páginas (js/leer-todo.js)
+		let data = null, error = null;
+		try {
+			data = await window.LeerTodo.paginas(function () {
+				return window.sb.from("asistencias").select("alumno_id, asistencia_estado")
+					.eq("maestro_id", userId).eq("grupo_id", grupoId)
+					.gte("fecha", start).lte("fecha", end).order("id");
+			});
+		} catch (e) { error = e; }
 
 		if (error) { cont.innerHTML = "<p class='text-red-500 text-sm'>Error al cargar datos.</p>"; return; }
 
@@ -272,6 +274,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	let boletaResumenTexto = ""; // resumen plano para WhatsApp
 	let boletaCtx = null; // { alumnoId, ciclo, trimestre } de la boleta en pantalla (para autosave)
 	let boletaFilas = {}; // filas de boleta_trimestral en pantalla, por campo (para autosave)
+	let guardarCuadroBoleta = null; // guarda un cuadro de texto ya (lo usa "Cerrar boleta")
 
 	/*
 		PostgREST arma un upsert de varias filas con la UNIÓN de sus columnas y a la fila
@@ -410,6 +413,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		*/
 		const oficialPorCampo = {};
 		let hayPropuesta = false, todoConfirmado = true, todoCerrado = true;
+		// Boleta cerrada (los cuatro campos): todo queda como se entregó, también los textos
+		// de la fila GEN y el trabajo diario (ReporteDatos.boletaCerrada)
+		const boletaYaCerrada = window.ReporteDatos.boletaCerrada(boletaPorCampo);
 		try {
 			const upserts = [];
 			CODIGOS.forEach(function (codigo) {
@@ -466,9 +472,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			corto: window.CamposFormativos ? window.CamposFormativos.corto : null,
 			plantillas: await cargarPlantillas(),
 		});
-		await guardarTextosPropuestos(textos, boletaPorCampo, {
-			alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
-		}, false);
+		if (!boletaYaCerrada) {
+			await guardarTextosPropuestos(textos, boletaPorCampo, {
+				alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
+			}, false);
+		}
 
 		const conIa = !todoCerrado && await estadoIa();
 
@@ -511,8 +519,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Fila de porcentaje del campo (lo que el motor convierte a calificación)
 		let filaPorcentaje = "";
+		let cambioTrasCierre = false;
 		CODIGOS.forEach(function (codigo) {
-			const pct = porCampo[codigo] ? porCampo[codigo].porcentaje : null;
+			const vivo = porCampo[codigo] ? porCampo[codigo].porcentaje : null;
+			const fila = boletaPorCampo[codigo] || {};
+			// Campo cerrado: el porcentaje del cierre, no el de las capturas de hoy
+			const guardado = fila.cerrada && fila.porcentaje !== null && fila.porcentaje !== undefined ? Number(fila.porcentaje) : null;
+			if (guardado !== null && vivo !== null && Math.abs(guardado - vivo) >= 0.05) cambioTrasCierre = true;
+			const pct = guardado !== null ? guardado : vivo;
 			filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(pct) + "</td>";
 		});
 
@@ -580,7 +594,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		let barraEstado;
 		if (todoCerrado) {
 			barraEstado = "<div class='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 mb-6'>" +
-				"Boleta cerrada. Las calificaciones ya no se recalculan.</div>";
+				"Boleta cerrada. Las calificaciones ya no se recalculan." +
+				(cambioTrasCierre
+					? "<span class='block text-xs mt-1'>Hubo capturas después del cierre: el desglose por criterio muestra los datos de hoy; el porcentaje y la calificación son los del cierre.</span>"
+					: "") + "</div>";
 		} else {
 			barraEstado =
 				"<div class='rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>" +
@@ -675,8 +692,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// field-sizing: el cuadro crece con su texto (antes 2 renglones escondían casi todo)
 		const CLASE_TA = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none [field-sizing:content] min-h-[4.5rem]";
 		// null = el maestro no lo ha escrito (propuesta); "" = lo vació a propósito
-		const obsTrabajo = (diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined)
-			? diagnostica.observaciones : textos.trabajoDiario;
+		const obsTrabajo = window.ReporteDatos.trabajoDiario(diagnostica, textos.trabajoDiario,
+			boletaPorCampo[window.TextosBoleta.GENERAL], boletaYaCerrada).texto;
 		boletaFilas = boletaPorCampo;
 
 		function renglones(texto) {
@@ -686,6 +703,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		function valorTexto(codigo, tipoTexto, generado) {
 			const fila = boletaPorCampo[codigo] || {};
 			if (window.TextosBoleta.esEditado(fila, tipoTexto)) return fila[tipoTexto] || "";
+			if (boletaYaCerrada) return fila[tipoTexto] || ""; // como se entregó
 			return fila[tipoTexto] || generado || "";
 		}
 
@@ -696,7 +714,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const marca = window.TextosBoleta.esEditado(fila, tipoTexto)
 				? "<span class='text-xs font-normal text-gray-400 ml-1'>(tuyo)</span>"
 				: deIa ? "<span class='text-xs font-normal text-violet-600 ml-1'>(redactado con IA)</span>"
-				: (generado ? "<span class='text-xs font-normal text-blue-500 ml-1'>(propuesto)</span>" : "");
+				: (generado && !boletaYaCerrada ? "<span class='text-xs font-normal text-blue-500 ml-1'>(propuesto)</span>" : "");
 			return "<div><label class='block text-xs font-semibold text-gray-600 mb-1'>" + label + marca + "</label>" +
 				"<textarea data-boleta-campo='" + codigo + "' data-boleta-tipo='" + tipoTexto + "'" +
 				" data-inicial='" + esc(valor) + "' rows='" + renglones(valor) + "'" + (todoCerrado ? " readonly" : "") +
@@ -764,7 +782,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return filas;
 		}
 
-		async function guardarBoleta(filas, btn, textoOcupado) {
+		async function guardarBoleta(filas, btn, textoOcupado, despues) {
 			const original = btn.textContent;
 			btn.disabled = true;
 			btn.textContent = textoOcupado;
@@ -772,6 +790,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				const { error } = await window.sb.from("boleta_trimestral")
 					.upsert(filas, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
 				if (error) throw error;
+				if (despues) await despues();
 				await generarBoleta(); // re-render con el estado nuevo
 			} catch (e) {
 				console.error("boleta_trimestral:", e);
@@ -847,9 +866,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// la de la evaluación, no la de hoy); si no, se crea con la fecha de hoy. Vaciarlo
 		// guarda "" (vacío a propósito), que ya no se vuelve a proponer.
 		const obsTrabajoEl = document.getElementById("boletaObsTrabajo");
-		if (obsTrabajoEl) {
+		let guardarTrabajo = null; // también lo usa "Cerrar boleta"
+		if (obsTrabajoEl && !obsTrabajoEl.readOnly) {
 			let guardadoTrabajo = (obsTrabajo || "").trim();
-			const guardarTrabajo = async function () {
+			guardarTrabajo = async function () {
 				const valor = obsTrabajoEl.value.trim();
 				if (valor === guardadoTrabajo) return;
 				guardadoTrabajo = valor;
@@ -858,6 +878,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 						const { error } = await window.sb.from("evaluacion_diagnostica")
 							.update({ observaciones: valor }).eq("id", diagnostica.id).eq("maestro_id", userId);
 						if (error) throw error;
+						diagnostica.observaciones = valor;
 					} else {
 						const { data, error } = await window.sb.from("evaluacion_diagnostica").upsert({
 							maestro_id: userId, alumno_id: alumnoId, grupo_id: grupoId,
@@ -877,13 +898,39 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		const cerrarBtn = document.getElementById("boletaCerrarBtn");
 		if (cerrarBtn) {
-			cerrarBtn.addEventListener("click", function () {
-				if (!window.confirm("Al cerrar la boleta las calificaciones dejan de recalcularse. ¿Continuar?")) return;
+			cerrarBtn.addEventListener("click", async function () {
+				if (!window.confirm("Al cerrar la boleta, las calificaciones, los porcentajes y los textos quedan como están ahora y ya no se pueden cambiar. ¿Continuar?")) return;
 				const filas = calificacionesEnPantalla().map(function (f) {
 					return Object.assign({}, f, { cerrada: true });
 				});
 				if (!filas.length) return;
-				guardarBoleta(filas, cerrarBtn, "Cerrando...");
+				// Lo que se acaba de escribir entra en lo que se entrega
+				if (guardarCuadroBoleta) {
+					await Promise.all(Array.prototype.map.call(cont.querySelectorAll("textarea[data-boleta-campo]"), function (ta) {
+						return guardarCuadroBoleta(ta);
+					}));
+				}
+				if (guardarTrabajo) await guardarTrabajo();
+				// Foto del trabajo diario tal como se entrega (vive en evaluacion_diagnostica y
+				// podría editarse después en Diagnóstico)
+				const trabajoFinal = obsTrabajoEl ? obsTrabajoEl.value.trim() : (obsTrabajo || "");
+				const previoGen = (boletaFilas[window.TextosBoleta.GENERAL] || {}).texto_autogenerado || {};
+				const foto = {
+					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
+					campo: window.TextosBoleta.GENERAL,
+					texto_autogenerado: Object.assign({}, previoGen, {
+						cierre: {
+							trabajo_diario: trabajoFinal,
+							trabajo_diario_del_maestro: !!(diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined),
+							en: new Date().toISOString(),
+						},
+					}),
+				};
+				guardarBoleta(filas, cerrarBtn, "Cerrando...", async function () {
+					const { error } = await window.sb.from("boleta_trimestral")
+						.upsert(foto, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+					if (error) throw error;
+				});
 			});
 		}
 
@@ -1019,10 +1066,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const trimestre = parseInt(document.getElementById("selectTrimPda").value, 10);
 			cont.innerHTML = "<p class='text-gray-400 text-sm'>Cargando avance...</p>";
 
-			let query = window.sb.from("v_avance_pda").select("*")
-				.eq("maestro_id", userId).eq("grupo_id", grupoId).eq("trimestre", trimestre);
-			if (alumnoId) query = query.eq("alumno_id", alumnoId);
-			const { data, error } = await query;
+			// Todo el grupo: una fila por alumno y PDA, pasa de 1000 con facilidad (js/leer-todo.js)
+			let data = null, error = null;
+			try {
+				data = await window.LeerTodo.paginas(function () {
+					let query = window.sb.from("v_avance_pda").select("*")
+						.eq("maestro_id", userId).eq("grupo_id", grupoId).eq("trimestre", trimestre);
+					if (alumnoId) query = query.eq("alumno_id", alumnoId);
+					return query.order("alumno_id").order("clave_pda");
+				});
+			} catch (e) { error = e; }
 
 			if (error) {
 				console.error("v_avance_pda:", error);
@@ -1136,7 +1189,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// recibiendo propuestas.
 	const boletaContEl = document.getElementById("boletaContainer");
 	if (boletaContEl) {
-		const guardarCuadro = async function (ta) {
+		const guardarCuadro = guardarCuadroBoleta = async function (ta) {
 			if (!ta || !boletaCtx || ta.readOnly) return; // boleta cerrada: nada que guardar
 			// Salir del cuadro sin cambiar nada NO cuenta como edición: si contara, el
 			// primer clic marcaría el texto como del maestro y ya no se volvería a proponer.

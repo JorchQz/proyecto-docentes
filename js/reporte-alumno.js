@@ -139,6 +139,11 @@
 		return (ciclo[datos.trimestre] || {})[campo] || null;
 	}
 
+	// Boleta cerrada: textos y trabajo diario como se entregaron (ReporteDatos.boletaCerrada)
+	function cerradaDe(datos) {
+		return RD().boletaCerrada((datos.boletaCiclo || {})[datos.trimestre]);
+	}
+
 	/*
 		Qué calificación se muestra en un campo:
 		  confirmada → la del docente (calificacionOficial)
@@ -580,9 +585,10 @@
 		var generado = (datos.textos || {})[codigo] || { fortalezas: [], areas: [], sugerencias: [] };
 		var parrafo = function (lista) { return TB ? TB.comoParrafo(lista) : (lista || []).join(" "); };
 		var fila = filaBoleta(datos, codigo);
-		var f = RD().textoSeccion(fila, "fortalezas", parrafo(generado.fortalezas));
-		var a = RD().textoSeccion(fila, "areas_oportunidad", parrafo(generado.areas));
-		var s = RD().textoSeccion(fila, "sugerencias", parrafo(generado.sugerencias));
+		var cerrada = cerradaDe(datos);
+		var f = RD().textoSeccion(fila, "fortalezas", parrafo(generado.fortalezas), cerrada);
+		var a = RD().textoSeccion(fila, "areas_oportunidad", parrafo(generado.areas), cerrada);
+		var s = RD().textoSeccion(fila, "sugerencias", parrafo(generado.sugerencias), cerrada);
 		return "<div class='bloque rounded-xl border border-gray-200 overflow-hidden' data-obs='" + codigo + "'>" + cabecera +
 			"<div class='grid grid-cols-1 sm:grid-cols-3 gap-3 p-3'>" +
 			cuadroTexto("Fortalezas", f, "Sin fortalezas señaladas con la evidencia del trimestre.") +
@@ -593,9 +599,7 @@
 	function renderObservaciones(datos) {
 		var diag = datos.diagnostica;
 		// null = el maestro no lo ha escrito (propuesta); "" = lo vació a propósito
-		var trabajo = (diag && diag.observaciones !== null && diag.observaciones !== undefined)
-			? { texto: String(diag.observaciones).trim(), delMaestro: true }
-			: { texto: (datos.textos && datos.textos.trabajoDiario) || "", delMaestro: false };
+		var trabajo = RD().trabajoDiario(diag, (datos.textos && datos.textos.trabajoDiario) || "", filaBoleta(datos, "GEN"), cerradaDe(datos));
 
 		var bloques = CAMPOS.map(function (c) {
 			var cab = "<p class='flex items-center gap-2 px-3 py-2 border-b border-gray-200' style='border-left:6px solid " + colorCampo(c) + "'>" +

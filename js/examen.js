@@ -323,10 +323,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Respuestas existentes
 		if (alumnos.length) {
 			try {
-				var rRes = await window.sb
-					.from("respuestas_examen")
-					.select("*")
-					.eq("examen_id", examenId);
+				// Alumnos × preguntas pasa de 1000 en un grupo grande (js/leer-todo.js)
+				var rRes = { data: null, error: null };
+				try {
+					rRes.data = await window.LeerTodo.paginas(function () {
+						return window.sb.from("respuestas_examen").select("*").eq("examen_id", examenId).order("id");
+					});
+				} catch (e) { rRes.error = e; }
 				if (!rRes.error && rRes.data) {
 					rRes.data.forEach(function (r) {
 						respMap[rkey(r.alumno_id, r.pregunta_id)] = r;
