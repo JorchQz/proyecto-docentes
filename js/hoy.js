@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var registro = {};        // alumno_id -> {participacion, conducta}
 	var calificaciones = {};  // alumno_id|producto_id -> fila de calificaciones
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
+	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
 
 	var NIVELES = [
 		{ valor: "logrado",        etiqueta: "Logrado",        activo: "bg-emerald-500 text-white" },
@@ -155,11 +156,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
-	await cargarDatosDelDia();
-	renderAsistencia();
-	renderTareas();
-	renderSesiones();
-	renderCierre();
+	// El arranque (cargar + primer render) va al FINAL del archivo, después de que
+	// todo el estado está inicializado. Las funciones se izan, las asignaciones de
+	// `var` no: arrancar aquí dejaba variables de estado en undefined.
 
 	async function cargarDatosDelDia() {
 		// Asistencia y registro diario de hoy
@@ -472,9 +471,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 			filas + "</div>";
 	}
 
-	// Qué paneles de detalle están abiertos, para no cerrarlos al redibujar
-	var detallesAbiertos = {};
-
 	function detalleProducto(producto, alumno, cal) {
 		var id = "detalle-" + producto.id + "-" + alumno.id;
 		var abierto = detallesAbiertos[id];
@@ -633,5 +629,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 		registro[alumnoId] = actual;
 		guardarRegistro(alumnoId);
 		renderCierre();
+	});
+
+	// ── Arranque ──────────────────────────────────────────────────────────────
+	// Hasta aquí todo está declarado e inicializado. Cada sección se dibuja por
+	// separado: si una falla, las demás siguen en pie y el maestro no se queda con
+	// media pantalla en blanco.
+	try {
+		await cargarDatosDelDia();
+	} catch (e) {
+		console.error("hoy: carga de datos", e);
+		mensaje("error", "No se pudieron cargar los datos del día: " + (e.message || "error desconocido"));
+	}
+	[
+		["asistencia", renderAsistencia],
+		["tareas", renderTareas],
+		["sesiones", renderSesiones],
+		["cierre", renderCierre],
+	].forEach(function (par) {
+		try {
+			par[1]();
+		} catch (e) {
+			console.error("hoy: render de " + par[0], e);
+			mensaje("error", "No se pudo mostrar la sección de " + par[0] + ". El resto de la pantalla sigue funcionando.");
+		}
 	});
 });

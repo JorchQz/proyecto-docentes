@@ -122,7 +122,19 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `puntaje/10` si lo hay; si no `logrado 1 · en_proceso 0.7 · requiere_apoyo 0.4`;
   `incompleto` sin nivel 0.5; `no_entregado` 0; `justificado`/`no_aplica` y lo aún no
   capturado salen del máximo. Participación y conducta se reparten en partes iguales entre
-  los campos con sesión ese día. Pruebas: `node pruebas/motor-calificacion.test.js`.
+  los campos con sesión ese día.
+
+> **Pruebas automáticas (`pruebas/`, se corren con `node`, sin npm):** no son una suite
+> formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
+> las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
+> forma la prueba truena.
+> - `node pruebas/motor-calificacion.test.js` — aritmética del motor (23 casos).
+> - `node pruebas/aviso-propuesta.test.js` — el aviso "propuesta: N" de la boleta.
+> - `node pruebas/hoy-filtros.test.js` — filtros de multigrado de la pantalla "Hoy".
+> - `node pruebas/hoy-render.test.js` — render de un producto multigrado.
+> - `node pruebas/hoy-arranque.test.js` — **ejecuta `hoy.js` completo** contra un DOM y un
+>   Supabase falsos; es la única que ve los errores de ejecución (acepta la ruta de otra
+>   versión del archivo como argumento, para comprobar que detecta una regresión).
 - **El maestro confirma el número antes de cerrar** (art. 4 XI): la boleta muestra la
   calificación propuesta en un selector acotado al piso de la fase; `boleta_trimestral`
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
