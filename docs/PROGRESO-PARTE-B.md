@@ -26,7 +26,7 @@ seguir desde el último bloque con PASS.
 | 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → revisor 310e | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → revisor 310f | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -526,6 +526,32 @@ asistencia de una boleta cerrada seguía cambiando en lo impreso → ahora tambi
 foto del cierre. Menor corregido: la retroalimentación de "Hoy" se perdía al recargar sin
 salir del cuadro → se guarda mientras se escribe y cuenta como pendiente. Anotados para
 Jorge: tiempos de carga (boleta 5 a 10 s, junta 7.8 s) y los ya conocidos.
+
+**Quinto ensayo de 3.10: FAIL #5** (revisor 310e, `.qa/revisor-310e/`). Recorrido completo por
+la interfaz en verde: dos proyectos 1°-2° con PDA por grado y consola limpia, proyectos en
+curso de solo consulta, seis días en "Hoy" con red lenta sin pérdidas (retroalimentación
+sin salir del cuadro incluida), 18 porcentajes a mano, pisos, "Elige", boletas cerradas
+idénticas por md5 tras cambiar niveles, asistencia, cierre, PPM y observaciones (en
+pantalla, imprimible, Reportes y exportación), T2 vacío, aislamiento, multigrado, junta
+cuadrada a mano. La carrera al cambiar de alumno ya no ocurre. Bloqueante: **Diagnóstico
+mandaba un guardado completo por toque sin esperar al anterior**; con red lenta el servidor
+los aplicaba fuera de orden y ganaba uno viejo (Supabase lo mostró: el insert 201 llegó
+detrás de dos 200). Además, desmarcar todo dejaba "Siguiente" sin responder (regresión
+del FAIL #7 de 3.7). **Conteo:** el FAIL #4 y el #5 comparten causa (guardados de
+Diagnóstico sin serializar); son dos seguidos; el #3 fue otra (boleta cerrada sin
+congelar). Un sexto por la misma causa detendría 3.10.
+Corrección: los guardados de Diagnóstico van en serie (cola, como "Hoy"), cada uno con el
+estado de la pantalla al salir; si el alumno ya tenía fila y se desmarca todo, se guarda
+vacío (la base dice lo que la pantalla) y "Siguiente" avanza; salir con un cambio sin
+guardar pregunta. Verificado con `.qa/verificar-310g.js`, determinista (el primer guardado
+se retiene 3 s): con el código anterior 3 fallas (la base quedó con 1 de 10 criterios,
+"Siguiente" no avanzó), con el nuevo en verde; `.qa/verificar-310f.js` (3 alumnos
+capturados rápido con 1.5 s de latencia: todo en la base); 22 suites, humo, 37i, 310d,
+cierre-boleta y 37c en verde. Anotados para Jorge: con boleta cerrada, el desglose por
+rubro y el avance por PDA del reporte (con aviso), la junta y los rubros de la exportación
+usan los datos de hoy; tiempos de carga de 4 a 8 s; asistencia de referencia cuenta solo
+días con sesión ("5 de 5" con 6 días de lista); "No hay sesiones pendientes" con dos
+proyectos activos; conducta "0.8 / 1.5" en pantalla y "0.75 / 1.5" en el reporte.
 
 ## 3.9 Documentación
 

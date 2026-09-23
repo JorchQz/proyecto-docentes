@@ -68,6 +68,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var alumnoEnPantalla = null; // { id, momento }
 	var cambiando = false;
 	var sucio = false;          // hubo cambios sin guardar (sin cambios no se reescribe la fecha)
+	var teniaFila = false;      // el alumno en pantalla ya tiene fila guardada en este momento
 	var versionCambios = 0;     // sube con cada cambio: uno hecho mientras se guarda sigue pendiente
 	var conteoFallido = false;  // no se pudo leer quiénes ya están evaluados
 
@@ -236,6 +237,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		alumnoEnPantalla = null;
 		sucio = false;
+		teniaFila = false;
 		resetEstado();
 		ocultarMensaje();
 
@@ -253,6 +255,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 			if (res.error) throw res.error;
 			if (res.data) aplicarFila(res.data);
+			teniaFila = !!res.data;
 			alumnoEnPantalla = { id: alumno.id, momento: momentoActual };
 		} catch (e) {
 			console.error("evaluacion_diagnostica (lectura):", e);
@@ -262,18 +265,40 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// ── upsert completo del alumno actual ─────────────────────────────────────
-	// forzar = guardar lo pendiente del alumno que se deja (al empezar un cambio)
-	async function guardarAlumno(forzar) {
-		if (cambiando && !forzar) return;
+	/*
+		Los guardados van EN SERIE (uno a la vez, como la cola de "Hoy"): cada toque manda el
+		diagnóstico completo, y si dos viajan juntos el servidor puede aplicarlos en otro
+		orden y dejar uno viejo encima del nuevo. Cada guardado toma el estado de la pantalla
+		al momento de salir, así que el último siempre lleva lo más reciente.
+		Siempre devuelve true (guardado o nada que guardar) o false (falló).
+		forzar = guardar lo pendiente del alumno que se deja (al empezar un cambio).
+	*/
+	var colaGuardado = Promise.resolve(true);
+
+	// Salir o recargar con un cambio sin guardar (p. ej. el texto antes de la pausa): pregunta
+	window.addEventListener("beforeunload", function (e) {
+		if (!sucio || cargaFallida) return;
+		guardarAlumno(true);
+		e.preventDefault();
+		e.returnValue = "";
+	});
+	function guardarAlumno(forzar) {
+		if (cambiando && !forzar) return Promise.resolve(true);
+		colaGuardado = colaGuardado.then(guardarAhora, guardarAhora);
+		return colaGuardado;
+	}
+
+	async function guardarAhora() {
 		var objetivo = alumnoEnPantalla;
 		if (!objetivo || cargaFallida || !sucio) return true;
 		var version = versionCambios; // los cambios hechos mientras se guarda lo suben
 
-		// Solo guardar si hay al menos 1 dato
 		var tieneAlgo = estadoCuaderno.some(function (e) { return e.nivel; }) ||
 			estadoMates.some(function (e) { return e.nivel; }) ||
 			comprension || ppm != null || observaciones.trim();
-		if (!tieneAlgo) return;
+		// Sin nada marcado y sin fila guardada no hay nada que guardar. Si ya tenía fila y la
+		// maestra lo desmarcó todo, sí se guarda vacío: la base debe decir lo que la pantalla
+		if (!tieneAlgo && !teniaFila) { sucio = false; return true; }
 
 		// Si seguía vacío a propósito, se conserva "" para que la boleta no reviva la propuesta
 		var obs = observaciones.trim() || (observacionesVaciadas ? "" : null);
@@ -299,7 +324,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (res.error) throw res.error;
 			// Si hubo otro cambio mientras se guardaba, sigue pendiente
 			if (version === versionCambios) sucio = false;
-			if (objetivo.momento === momentoActual) evaluadosSet.add(objetivo.id);
+			teniaFila = true;
+			if (objetivo.momento === momentoActual) {
+				if (tieneAlgo) evaluadosSet.add(objetivo.id); else evaluadosSet.delete(objetivo.id);
+			}
 			actualizarProgreso();
 			return true;
 		} catch (e) {
