@@ -284,6 +284,27 @@ ok("sin 'undefined' ni 'NaN' en el render", /undefined|NaN/.test(todo), false);
 ok("sin emojis en el render",
 	/[\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F000}-\u{1FAFF}\u{FE0F}]/u.test(todo.replace(/[→←]/g, "")), false);
 
+// ── 5b. Boleta cerrada: el porcentaje del cierre, no el de hoy ───────────────
+{
+	const filas = {};
+	CAMPOS.forEach((c) => {
+		filas[c] = { campo: c, calificacion: 7, porcentaje: 12.34, calificacion_confirmada: true, cerrada: true, editado_manual: false };
+	});
+	filas.GEN = { campo: "GEN", cerrada: false, fortalezas: "GENERAL DEL CIERRE",
+		texto_autogenerado: { cierre: { trabajo_diario: "TRABAJO DIARIO DEL CIERRE" } } };
+	const dc = datosRiesgo({ boletaCiclo: { 1: filas, 2: {}, 3: {} }, diagnostica: Object.assign({}, DIAG_RIESGO, { observaciones: "ESCRITO DESPUÉS" }) });
+	const hc = RA.render(dc, INFO);
+	const len = atributos(hc, "LEN");
+	ok("cerrada: el porcentaje del campo es el guardado al cerrar", len && len.pct, "12.3");
+	ok("cerrada: la calificación confirmada", len && len.cal, "7");
+	ok("cerrada: el resumen muestra el porcentaje del cierre", hc.includes("12.3 % del campo") || hc.includes("12.3 % del campo"), true);
+	ok("cerrada: avisa que hubo capturas después del cierre", hc.includes("hubo capturas después del cierre"), true);
+	ok("cerrada: trabajo diario de la foto del cierre", hc.includes("TRABAJO DIARIO DEL CIERRE") && !hc.includes("ESCRITO DESPUÉS"), true);
+	ok("cerrada: texto general guardado", hc.includes("GENERAL DEL CIERRE"), true);
+	const abierta = RA.render(datosRiesgo(), INFO);
+	ok("abierta: sin aviso de cierre", abierta.includes("hubo capturas después del cierre"), false);
+}
+
 // ── 6. Estructura de la página ───────────────────────────────────────────────
 const fuente = fs.readFileSync(path.join(JS, "reporte-alumno.js"), "utf8");
 ok("un solo DOMContentLoaded", cuenta(fuente, /addEventListener\("DOMContentLoaded"/g), 1);

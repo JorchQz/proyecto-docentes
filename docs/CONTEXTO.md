@@ -161,7 +161,8 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   evalúa (`producto_sesion_pda` → `sesiones_pda`), **solo los del grado del alumno**.
   El semáforo sale de `nivel_desde_calificacion`: el nivel capturado; si no hay, el puntaje
   (≥8 logrado, ≥6 en proceso); `no_entregado` cuenta como `requiere_apoyo`; `justificado`
-  y `no_aplica` retiran la evidencia. Borrar la calificación también la retira.
+  y `no_aplica` sin nivel capturado retiran la evidencia (si hay nivel, manda el nivel).
+  Borrar la calificación también la retira.
   Lo que el maestro ajusta en la pantalla de evaluación formativa queda con
   `origen = 'maestro'` y ya no se vuelve a pisar.
   La vista **`v_avance_pda`** resume por alumno y PDA: evidencias, nivel predominante,
@@ -208,7 +209,10 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   el desglose por criterio muestra los datos de hoy); los textos guardados, también los de
   la fila GEN, que no lleva calificación y por eso no se marca `cerrada`; y el trabajo
   diario de la foto del cierre (`texto_autogenerado.cierre` de la fila GEN), aunque
-  después se edite en Diagnóstico. No hay forma de reabrirla desde la interfaz.
+  después se edite en Diagnóstico. El porcentaje del cierre y el aviso se ven en Reportes
+  y en el reporte detallado (la boleta imprimible y la exportación no muestran porcentajes
+  por campo). La presentación de junta no es la boleta: grafica el porcentaje de logro del
+  grupo con los datos de hoy. No hay forma de reabrirla desde la interfaz.
 - **Dónde se captura:** `hoy.html` (§B.1) — asistencia, tareas vencidas, los productos de
   las sesiones del día y el cierre (participación y conducta). Todo se guarda al toque,
   con cola y reintento; la unidad es el producto, no la actividad. En multigrado cada
@@ -231,7 +235,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `js/reporte-datos.js` con su `todas()`, y Hoy, Tareas e Inicio con
   `AlcanceHoy.leerPorLotes` (lotes de 150 ids, páginas de 1000), y las demás pantallas
   (Reportes, Crear proyecto, Exámenes, Actividades) con `js/leer-todo.js`
-  (`LeerTodo.paginas` / `porLotes`). La prueba `pruebas/lecturas-sin-tope.test.js` falla si
+  (`LeerTodo.paginas`; `porLotes` queda para listas largas de ids). La prueba `pruebas/lecturas-sin-tope.test.js` falla si
   aparece una lectura nueva sin tope; las acotadas por naturaleza (un día, una sesión, un
   alumno) están listadas ahí con su razón.
 - **Campo sin evidencias:** sin propuesta; en la boleta se elige a mano (juicio docente)
@@ -496,7 +500,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - **Job de enriquecimiento de productos:** los `productos_sesion` con `origen='backfill'` tienen nombre genérico ("Producto — Sesión N · CAMPO"); antes de lanzar Mi salón al público hay que extraer el nombre real del producto de cada sesión (revisar si el texto de `dosificacion_sesiones` permite regex antes de gastar en IA) y actualizar las instrucciones del bot para que llene `dosificacion_sesiones.productos` con el shape de `cierre_tareas`.
 - La **Parte B** está construida en la rama `mi-salon-parte-b` (sin merge: lo decide Jorge). Lo construido y sus diferencias con la especificación: `docs/PRODUCTO-MI-SALON.md`; bitácora, veredictos de los revisores y decisiones pendientes: `docs/PROGRESO-PARTE-B.md` y `docs/REPORTE-FINAL-PARTE-B.md`.
 - **Decisiones de producto pendientes (Jorge):** el 1 diario de participación/conducta cuenta como 50 % del rubro (los textos lo tratan como normal, la calificación no); "retardo" en asistencia; pantalla para editar `plantillas_sugerencia`; criterios propios de cuaderno y habilidades por maestro; activar la IA (secreto y costo).
-- **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe.
+- **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe; una tarea sin fecha de entrega vence el siguiente día hábil saltando fines de semana, pero no los días festivos (`dias_no_habiles_extra` no se usa todavía); una boleta cerrada no se puede reabrir desde la interfaz.
 - Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
 - El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.
 - Resuelto 2026-09-23 (3.7): Vista Recrea y Concentrado leen la calificación confirmada; la tarjeta vieja de tareas del Dashboard se retiró (Inicio lleva a "Hoy"); el `.single()` de grupos se reemplazó por el grupo activo en toda la app; Hoy, Tareas e Inicio leen calificaciones, productos y sesiones sin el tope de 1000 filas de Supabase (`AlcanceHoy.leerPorLotes`), igual que el motor.

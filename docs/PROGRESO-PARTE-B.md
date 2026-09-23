@@ -25,7 +25,7 @@ seguir desde el último bloque con PASS.
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → revisor 37g | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
-| 3.9 Documentación | corregido, en re-revisión | FAIL #1 revisor 39 (CLAUDE.md, segunda cuenta, sesiones de Hoy) → revisor 39b | — |
+| 3.9 Documentación | corregido, en re-revisión | FAIL #1 revisor 39 (CLAUDE.md, segunda cuenta, sesiones de Hoy) → FAIL #2 39b (porcentaje del cierre en el reporte detallado) → revisor 39c | — |
 | 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → revisor 310c | — |
 
 ## 3.1 Cuenta y datos de QA
@@ -427,6 +427,19 @@ implementaciones de paginación (ahora documentadas las cuatro, con `js/leer-tod
 filtro incluye `fecha_final` futura, fluidez de la junta sin número de lista, "Quitar de
 hoy" también se oculta con la sesión completada, rótulo del examen solo donde se muestra,
 símbolos ✅ fuera de la tabla de módulos. Documentada la boleta cerrada.
+
+**Revisión #2 de 3.9: FAIL #2** (revisor 39b, `.qa/revisor-39b/`). 31 de 32 afirmaciones
+correctas; 20 suites en verde; sin secretos (contraseñas de QA buscadas en todo el
+historial: 0). Falsa: "la boleta cerrada fija el porcentaje en todos los reportes"; el
+reporte detallado seguía mostrando el porcentaje de hoy (simulado en navegador: 19.3 %
+junto a la calificación cerrada, sin aviso). Se corrigió el código, no solo el texto:
+`campoVisible` en `js/reporte-alumno.js` usa el porcentaje guardado al cerrar y avisa si
+hubo capturas después (prueba en `pruebas/reporte-alumno.test.js`: con el código anterior,
+3 fallas). Documentos precisados: dónde se ve el porcentaje del cierre, y que la junta
+grafica el logro del grupo con los datos de hoy (no es la boleta). Menores corregidos:
+festivos y boleta sin reapertura en "Limitaciones conocidas"; `porLotes` sin uso en
+pantallas; matiz de `justificado`/`no_aplica` con nivel capturado. Menor para Jorge:
+`CLAUDE.md` dice "All 16 modules".
 
 ## Aislamiento entre maestros
 

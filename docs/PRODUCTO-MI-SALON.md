@@ -125,10 +125,12 @@ la fórmula: se reporta aparte como referencia.
 - Un solo camino de carga para un alumno y para todo el grupo (lectura paginada).
 - Un campo **sin evidencias** en el trimestre no tiene propuesta: en la boleta se elige su
   calificación a mano (juicio docente, dentro de la escala) para poder confirmar y cerrar.
-  Una boleta cerrada queda fija en todos los reportes: calificación y porcentaje del
-  cierre, los textos guardados (también los generales) y el trabajo diario tal como se
-  entregó, aunque después cambien las capturas o el diagnóstico. No se puede reabrir desde
-  la interfaz.
+  Una boleta cerrada queda fija en la boleta de Reportes, la boleta imprimible, el reporte
+  detallado y la exportación: la calificación, el porcentaje del cierre (donde se muestra
+  porcentaje: Reportes y reporte detallado, con aviso si hubo capturas después), los
+  textos guardados (también los generales) y el trabajo diario tal como se entregó,
+  aunque después cambien las capturas o el diagnóstico. La junta no es la boleta: grafica
+  el logro del grupo con los datos de hoy. No se puede reabrir desde la interfaz.
 
 *Diferencias:* no hay vista `v_resumen_trimestral`; la regla B.10 permitía "una vista SQL o
 un solo módulo" y se eligió el módulo, con la conversión en SQL. La escala de conversión no

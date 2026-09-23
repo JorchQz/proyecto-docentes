@@ -145,6 +145,22 @@
 	}
 
 	/*
+		El campo como se muestra: el del motor, salvo que la boleta esté cerrada; entonces el
+		porcentaje es el guardado al cerrar (igual que en Reportes). El desglose por rubro
+		sigue siendo el de hoy; cambioTrasCierre avisa si ya no coincide.
+	*/
+	function campoVisible(datos, campo) {
+		var pc = (datos.motor && datos.motor.porCampo && datos.motor.porCampo[campo]) || { rubros: {}, porcentaje: null };
+		var fila = filaBoleta(datos, campo);
+		if (!cerradaDe(datos) || !fila || vacio(fila.porcentaje)) return pc;
+		var guardado = Number(fila.porcentaje);
+		return Object.assign({}, pc, {
+			porcentaje: guardado,
+			cambioTrasCierre: !vacio(pc.porcentaje) && Math.abs(Number(pc.porcentaje) - guardado) >= 0.05,
+		});
+	}
+
+	/*
 		Qué calificación se muestra en un campo:
 		  confirmada → la del docente (calificacionOficial)
 		  propuesta  → la del motor (SQL), rotulada "propuesta, sin confirmar"
@@ -256,9 +272,8 @@
 	}
 
 	function renderResumen(datos) {
-		var porCampo = (datos.motor && datos.motor.porCampo) || {};
 		var tiles = CAMPOS.map(function (c) {
-			var pc = porCampo[c] || {};
+			var pc = campoVisible(datos, c);
 			var cal = calificacionCampo(datos, c);
 			return "<div class='rounded-xl border border-gray-200 overflow-hidden'>" +
 				"<div class='h-1.5' style='background:" + colorCampo(c) + "'></div>" +
@@ -364,12 +379,16 @@
 				"de cada pregunta, así que el puntaje por campo se estima como valor total del examen entre número de preguntas. " +
 				"Tómalo como referencia, no como un resultado exacto.");
 		}
+		if (CAMPOS.some(function (c) { return campoVisible(datos, c).cambioTrasCierre; })) {
+			notas.push("<span class='font-semibold text-gray-800'>Boleta cerrada:</span> hubo capturas después del cierre. " +
+				"El porcentaje y la calificación de cada campo son los del cierre; el desglose por rubro muestra los datos de hoy.");
+		}
 		if (m.usaLegacy) {
 			notas.push("Incluye calificaciones capturadas con el formato anterior (revisión de tareas del Dashboard, escala 5 a 10).");
 		}
 
 		var tarjetas = CAMPOS.map(function (c) {
-			var pc = porCampo[c] || { rubros: {}, porcentaje: null };
+			var pc = campoVisible(datos, c);
 			var cal = calificacionCampo(datos, c);
 			var pct = vacio(pc.porcentaje) ? "" : (Math.floor(Number(pc.porcentaje) * 10 + 1e-9) / 10).toFixed(1);
 			return "<div class='bloque rounded-xl border border-gray-200 overflow-hidden' data-campo='" + c + "' data-pct='" + pct +
