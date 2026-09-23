@@ -133,6 +133,9 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `node pruebas/hoy-filtros.test.js` — filtros de multigrado de la pantalla "Hoy".
 > - `node pruebas/hoy-render.test.js` — render de un producto multigrado.
 > - `node pruebas/avance-pda.test.js` — tablas de la pestaña "Avance por PDA".
+> - `node pruebas/textos-boleta.test.js` — reglas de la Capa 1 de textos.
+> - `node pruebas/boleta-arranque.test.js` — **ejecuta `reportes.js` completo** y genera una
+>   boleta: motor, piso por fase, confirmación y textos propuestos, todo de punta a punta.
 > - `node pruebas/hoy-arranque.test.js` — **ejecuta `hoy.js` completo** contra un DOM y un
 >   Supabase falsos; es la única que ve los errores de ejecución (acepta la ruta de otra
 >   versión del archivo como argumento, para comprobar que detecta una regresión).
@@ -147,6 +150,17 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   La vista **`v_avance_pda`** resume por alumno y PDA: evidencias, nivel predominante,
   conteo por nivel y **tendencia** (primera mitad del trimestre contra la segunda).
   Se ve en Reportes → pestaña "Avance por PDA", por alumno o de todo el grupo.
+- **Textos de la boleta, Capa 1 (B.7, 2026-09-23):** `js/textos-boleta.js` propone
+  fortalezas, áreas de oportunidad y sugerencias **por reglas, sin IA**, a partir de lo ya
+  capturado: rubros del motor (≥90 % fortaleza, <60 % área), PDA con al menos 2 evidencias
+  (`v_avance_pda`), habilidades básicas y fluidez lectora, y la asistencia como observación.
+  Reparto por campo: PDA y rubros al suyo; lectura → LEN; matemáticas básicas → SAB;
+  cuaderno, asistencia y "trabajo diario" → `GEN`. La propuesta se guarda siempre en
+  `boleta_trimestral.texto_autogenerado`; los cuadros visibles **solo se rellenan mientras
+  `editado_manual` sea false**. Salir de un cuadro sin cambiar nada no cuenta como edición.
+  El botón "Volver a proponer" rehace los textos y avisa si va a pisar algo escrito a mano.
+  Los PDA en apoyo se **citan** («…») en vez de conjugarlos: el texto del PDA viene en
+  tercera persona y "apoyo para lee" estaría mal escrito.
 - **El maestro confirma el número antes de cerrar** (art. 4 XI): la boleta muestra la
   calificación propuesta en un selector acotado al piso de la fase; `boleta_trimestral`
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger

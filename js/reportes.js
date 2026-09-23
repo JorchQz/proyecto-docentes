@@ -418,6 +418,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 	}
 
+	// Fecha local del maestro, no UTC: a las 7 de la tarde en México, UTC ya es mañana
+	function getLocalDateISO() {
+		const ahora = new Date();
+		const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000);
+		return local.toISOString().slice(0, 10);
+	}
+
 	// ═══════════════════════════════════════════════════════════════
 	// TAB 4 — BOLETA
 	// ═══════════════════════════════════════════════════════════════
@@ -610,6 +617,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		if (!hayPropuesta) { todoConfirmado = false; todoCerrado = false; }
 
+		// ── Capa 1: textos propuestos por reglas (B.7) ──
+		let avancePda = [];
+		try {
+			const { data: pdaRows } = await window.sb.from("v_avance_pda").select("*")
+				.eq("maestro_id", userId).eq("alumno_id", alumnoId).eq("trimestre", trimestre);
+			avancePda = pdaRows || [];
+		} catch (e) { console.error("v_avance_pda:", e); }
+
+		const textos = window.TextosBoleta.generar({
+			porCampo: porCampo,
+			avancePda: avancePda,
+			diagnostica: diagnostica,
+			banda: bandas ? bandas[alumno.grado] : null,
+			asistencia: motor.asistencia,
+			catalogo: window.CatalogoHabilidades,
+			corto: window.CamposFormativos ? window.CamposFormativos.corto : null,
+		});
+		await guardarTextosPropuestos(textos, boletaPorCampo, {
+			alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
+		}, false);
+
 		// ── Renderizar boleta ──
 		const cabecera =
 			"<div class='border-b-2 border-gray-300 pb-4 mb-5'>" +
@@ -780,44 +808,58 @@ document.addEventListener("DOMContentLoaded", async function () {
 		seccion3 += "</div></div>";
 
 		// Sección 4: Observaciones + firmas.
-		// Fortalezas / áreas se guardan por campo formativo (+ una fila general 'GEN')
-		// en boleta_trimestral; el autosave es on-blur (ver listener en boletaContainer).
-		const obsTrabajo = (diagnostica && diagnostica.observaciones) ? diagnostica.observaciones : "";
+		// El texto lo PROPONE la Capa 1 (js/textos-boleta.js, reglas sin IA) y se guarda
+		// en boleta_trimestral.texto_autogenerado. Los cuadros solo se rellenan solos
+		// mientras editado_manual sea false: lo que el maestro escribe nunca se pisa.
 		const CLASE_TA = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none";
+		const obsTrabajo = (diagnostica && diagnostica.observaciones)
+			? diagnostica.observaciones : textos.trabajoDiario;
 
-		function textareaBoleta(codigo, tipoTexto, label, valor) {
-			return "<div><label class='block text-xs font-semibold text-gray-600 mb-1'>" + label + "</label>" +
-				"<textarea data-boleta-campo='" + codigo + "' data-boleta-tipo='" + tipoTexto + "' rows='2' class='" + CLASE_TA + "'>" +
-				esc(valor || "") + "</textarea></div>";
+		function valorTexto(codigo, tipoTexto, generado) {
+			const fila = boletaPorCampo[codigo] || {};
+			if (fila.editado_manual && fila[tipoTexto]) return fila[tipoTexto];
+			return fila[tipoTexto] || generado || "";
+		}
+
+		function textareaBoleta(codigo, tipoTexto, label, generado) {
+			const fila = boletaPorCampo[codigo] || {};
+			const valor = valorTexto(codigo, tipoTexto, generado);
+			const marca = fila.editado_manual
+				? "<span class='text-xs font-normal text-gray-400 ml-1'>(tuyo)</span>"
+				: (generado ? "<span class='text-xs font-normal text-blue-500 ml-1'>(propuesto)</span>" : "");
+			return "<div><label class='block text-xs font-semibold text-gray-600 mb-1'>" + label + marca + "</label>" +
+				"<textarea data-boleta-campo='" + codigo + "' data-boleta-tipo='" + tipoTexto + "'" +
+				" data-inicial='" + esc(valor) + "' rows='2' class='" + CLASE_TA + "'>" +
+				esc(valor) + "</textarea></div>";
+		}
+
+		function bloqueTextos(codigo, titulo, generado) {
+			return "<div class='rounded-xl border border-gray-200 p-3'>" +
+				"<p class='text-sm font-semibold text-gray-700 mb-2'>" + esc(titulo) + "</p>" +
+				"<div class='grid grid-cols-1 sm:grid-cols-3 gap-3'>" +
+				textareaBoleta(codigo, "fortalezas", "Fortalezas", window.TextosBoleta.comoParrafo(generado.fortalezas)) +
+				textareaBoleta(codigo, "areas_oportunidad", "Áreas de oportunidad", window.TextosBoleta.comoParrafo(generado.areas)) +
+				textareaBoleta(codigo, "sugerencias", "Sugerencias", window.TextosBoleta.comoParrafo(generado.sugerencias)) +
+				"</div></div>";
 		}
 
 		let bloquesCampos = "";
 		CAMPOS.forEach(function (cf, i) {
-			const codigo = window.CamposFormativos ? window.CamposFormativos.corto(cf) : null;
-			if (!codigo) return;
-			const fila = boletaPorCampo[codigo] || {};
-			bloquesCampos +=
-				"<div class='rounded-xl border border-gray-200 p-3'>" +
-				"<p class='text-sm font-semibold text-gray-700 mb-2'>" + esc(CAMPOS_CORTOS[i]) + "</p>" +
-				"<div class='grid grid-cols-1 sm:grid-cols-2 gap-3'>" +
-				textareaBoleta(codigo, "fortalezas", "Fortalezas", fila.fortalezas) +
-				textareaBoleta(codigo, "areas_oportunidad", "Áreas de oportunidad", fila.areas_oportunidad) +
-				"</div></div>";
+			const codigo = CODIGOS[i];
+			bloquesCampos += bloqueTextos(codigo, CAMPOS_CORTOS[i], textos[codigo]);
 		});
-		const filaGen = boletaPorCampo.GEN || {};
 
 		let seccion4 =
 			"<h3 class='font-bold text-gray-800 mb-2'>4. Observaciones del docente</h3>" +
+			"<div class='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 no-print'>" +
+			"<p class='text-xs text-blue-800'>Los textos marcados como <span class='font-semibold'>propuestos</span> salen de lo que ya capturaste. Edita lo que quieras: lo que escribas queda como tuyo y no se vuelve a sobreescribir.</p>" +
+			"<button id='boletaRegenerarBtn' type='button' class='min-h-[44px] px-4 rounded-lg border border-blue-300 bg-white text-sm font-medium text-blue-700 hover:bg-blue-100 shrink-0'>Volver a proponer</button>" +
+			"</div>" +
 			"<div class='flex flex-col gap-3 mb-6'>" +
 			"<div><label class='block text-xs font-semibold text-gray-600 mb-1'>Trabajo diario</label>" +
 			"<textarea id='boletaObsTrabajo' rows='2' class='" + CLASE_TA + "'>" + esc(obsTrabajo) + "</textarea></div>" +
 			bloquesCampos +
-			"<div class='rounded-xl border border-gray-200 p-3'>" +
-			"<p class='text-sm font-semibold text-gray-700 mb-2'>Observaciones generales</p>" +
-			"<div class='grid grid-cols-1 sm:grid-cols-2 gap-3'>" +
-			textareaBoleta("GEN", "fortalezas", "Fortalezas", filaGen.fortalezas) +
-			textareaBoleta("GEN", "areas_oportunidad", "Áreas de oportunidad", filaGen.areas_oportunidad) +
-			"</div></div>" +
+			bloqueTextos("GEN", "Observaciones generales", textos.GEN) +
 			"</div>" +
 			"<div class='grid grid-cols-2 gap-12 mt-10 mb-2'>" +
 			"<div class='text-center'><div class='border-t border-gray-400 pt-2 text-sm text-gray-600'>Docente</div></div>" +
@@ -869,6 +911,43 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		}
 
+		// "Volver a proponer": rehace los textos aunque el maestro ya los haya tocado
+		const regenerarBtn = document.getElementById("boletaRegenerarBtn");
+		if (regenerarBtn) {
+			regenerarBtn.addEventListener("click", async function () {
+				const hayEditados = CODIGOS.concat(["GEN"]).some(function (c) {
+					return (boletaPorCampo[c] || {}).editado_manual;
+				});
+				if (hayEditados && !window.confirm(
+					"Hay textos que editaste a mano. Al volver a proponer se reemplazan por los que genera el sistema. ¿Continuar?")) return;
+				regenerarBtn.disabled = true;
+				regenerarBtn.textContent = "Proponiendo...";
+				await guardarTextosPropuestos(textos, boletaPorCampo, {
+					alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
+				}, true);
+				await generarBoleta();
+			});
+		}
+
+		// Trabajo diario: es la observación del trimestre, vive en evaluacion_diagnostica
+		const obsTrabajoEl = document.getElementById("boletaObsTrabajo");
+		if (obsTrabajoEl) {
+			obsTrabajoEl.addEventListener("blur", async function () {
+				const valor = obsTrabajoEl.value.trim();
+				if (valor === (obsTrabajo || "").trim()) return;
+				try {
+					const { error } = await window.sb.from("evaluacion_diagnostica").upsert({
+						maestro_id: userId, alumno_id: alumnoId, grupo_id: grupoId,
+						momento: "trimestre_" + trimestre, fecha: getLocalDateISO(),
+						observaciones: valor || null,
+					}, { onConflict: "maestro_id,alumno_id,momento" });
+					if (error) throw error;
+				} catch (err) {
+					console.error("evaluacion_diagnostica (trabajo diario):", err);
+				}
+			});
+		}
+
 		const cerrarBtn = document.getElementById("boletaCerrarBtn");
 		if (cerrarBtn) {
 			cerrarBtn.addEventListener("click", function () {
@@ -914,6 +993,52 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const sel = e.target.closest ? e.target.closest("select[data-cal-campo]") : null;
 			if (sel) sincronizarAvisoPropuesta(sel, boletaSelectsEl);
 		});
+	}
+
+	/*
+		Guarda lo que propuso la Capa 1. Siempre deja la propuesta en
+		texto_autogenerado (para poder compararla y para la Capa 2 con IA), pero solo
+		escribe los campos visibles cuando el maestro no los ha tocado.
+		`forzar` = el maestro pidió "Volver a proponer": entonces sí se reescribe todo
+		y las filas vuelven a quedar como propuestas.
+	*/
+	async function guardarTextosPropuestos(textos, boletaPorCampo, ctx, forzar) {
+		const filas = [];
+		CODIGOS.concat([window.TextosBoleta.GENERAL]).forEach(function (codigo) {
+			const generado = textos[codigo];
+			if (!generado) return;
+			const fila = boletaPorCampo[codigo] || {};
+			if (fila.cerrada) return; // boleta cerrada: no se toca
+			const propuesta = {
+				fortalezas: window.TextosBoleta.comoParrafo(generado.fortalezas),
+				areas_oportunidad: window.TextosBoleta.comoParrafo(generado.areas),
+				sugerencias: window.TextosBoleta.comoParrafo(generado.sugerencias),
+				generado_en: new Date().toISOString(),
+			};
+			const payload = {
+				maestro_id: userId, alumno_id: ctx.alumnoId, ciclo: ctx.ciclo,
+				trimestre: ctx.trimestre, campo: codigo,
+				texto_autogenerado: propuesta,
+			};
+			const sinTocar = forzar || !fila.editado_manual;
+			if (sinTocar) {
+				payload.fortalezas = propuesta.fortalezas || null;
+				payload.areas_oportunidad = propuesta.areas_oportunidad || null;
+				payload.sugerencias = propuesta.sugerencias || null;
+				if (forzar) payload.editado_manual = false;
+				// El estado local también, para que el render muestre lo mismo que se guardó
+				boletaPorCampo[codigo] = Object.assign({}, fila, payload);
+			}
+			filas.push(payload);
+		});
+		if (!filas.length) return;
+		try {
+			const { error } = await window.sb.from("boleta_trimestral")
+				.upsert(filas, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+			if (error) throw error;
+		} catch (e) {
+			console.error("boleta_trimestral (textos):", e);
+		}
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -1068,6 +1193,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		boletaContEl.addEventListener("blur", async function (e) {
 			const ta = e.target.closest ? e.target.closest("textarea[data-boleta-campo]") : null;
 			if (!ta || !boletaCtx) return;
+			// Salir del cuadro sin cambiar nada NO cuenta como edición: si contara, el
+			// primer clic marcaría el texto como del maestro y ya no se volvería a proponer.
+			if (ta.value === (ta.dataset.inicial || "")) return;
+			ta.dataset.inicial = ta.value;
 			const payload = {
 				maestro_id: userId,
 				alumno_id: boletaCtx.alumnoId,
