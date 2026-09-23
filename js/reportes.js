@@ -18,6 +18,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		"De lo Humano y lo Comunitario",
 	];
 	const CAMPOS_CORTOS = ["Lenguajes", "Sab. Cient.", "Ética/Soc.", "Humano/Com."];
+	// Códigos cortos en el MISMO orden que CAMPOS (el motor y boleta_trimestral los usan)
+	const CODIGOS = ["LEN", "SAB", "ETI", "DHL"];
 
 	// ── Inicialización ─────────────────────────────────────────────
 	const { data: { session }, error: sessErr } = await window.sb.auth.getSession();
@@ -35,7 +37,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		.select("id, nombre_completo, num_lista, grado")
 		.eq("maestro_id", userId)
 		.eq("grupo_id", grupoId)
-		.eq("estatus", "Activo")
+		.eq("estatus", "activo")
 		.order("grado").order("num_lista");
 	alumnos = als || [];
 
@@ -416,35 +418,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ═══════════════════════════════════════════════════════════════
 	// TAB 4 — BOLETA
 	// ═══════════════════════════════════════════════════════════════
-	const CRITERIOS_CUADERNO = [
-		"Orden y limpieza",
-		"Escribe fecha completa",
-		"Escribe título de actividad",
-		"Letra legible",
-		"Uso correcto de mayúsculas/minúsculas",
-		"Signos de puntuación",
-		"Acentuación",
-		"Buen estado de la libreta",
-		"Orden por proyecto",
-		"Respeta margen",
-	];
+	// Claves y etiquetas de cuaderno / matemáticas: catálogo único js/catalogo-habilidades.js
+	const CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
+	const HABILIDADES_MATES  = window.CatalogoHabilidades.MATEMATICAS;
 
-	const HABILIDADES_MATES = [
-		"Suma", "Resta", "Multiplicación", "División",
-		"Fracciones", "Tablas de multiplicar",
-		"Lectura y escritura de cantidades", "Problemas matemáticos",
-	];
-
-	// Niveles de velocidad lectora por grado: [lenta_max, regular_max, buena_max]
-	// < lenta_max = Lenta | < regular_max = Regular | < buena_max = Buena | >= buena_max = Excelente
-	const VELOCIDAD_LECTORA = {
-		1: [30, 45, 70],
-		2: [40, 60, 90],
-		3: [60, 80, 110],
-		4: [70, 90, 120],
-		5: [80, 100, 130],
-		6: [90, 110, 140],
-	};
+	// Bandas de fluidez lectora por grado: tabla bandas_ppm (se cargan una vez)
+	let bandasPPM = null;
+	async function cargarBandasPPM() {
+		if (bandasPPM) return bandasPPM;
+		const { data, error } = await window.sb.from("bandas_ppm").select("*");
+		if (error) { console.error("bandas_ppm:", error); return {}; }
+		bandasPPM = {};
+		(data || []).forEach(function (b) { bandasPPM[b.grado] = b; });
+		return bandasPPM;
+	}
 
 	// Datos del grupo para la cabecera (escuela, ciclo)
 	let boletaGrupoInfo = { escuela: "", ciclo: "" };
@@ -479,32 +466,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		await generarBoleta();
 	});
 
-	function promedioPorTipo(califs, tipo, campo) {
-		const filtro = califs.filter(function (c) {
-			return c.tipo === tipo && (campo === null || c.campo_formativo === campo) && c.calificacion !== null;
-		});
-		if (!filtro.length) return null;
-		return filtro.reduce(function (s, c) { return s + Number(c.calificacion); }, 0) / filtro.length;
-	}
-
-	function calcCF(califs, asistenciaPct, examenPorCF, campo, pesos) {
-		const tareas   = promedioPorTipo(califs, "tarea", campo);
-		const trabajos = promedioPorTipo(califs, "actividad", campo);
-		const part     = promedioPorTipo(califs, "participacion", null); // participación global
-		const cond     = promedioPorTipo(califs, "conducta", null);      // conducta global
-		const examen   = (examenPorCF[campo] !== undefined && examenPorCF[campo] !== null) ? examenPorCF[campo] : null;
-
-		let suma = 0, pesoUsado = 0;
-		if (tareas !== null)        { suma += tareas * pesos.tareas / 100;                 pesoUsado += pesos.tareas; }
-		if (trabajos !== null)      { suma += trabajos * pesos.trabajos / 100;             pesoUsado += pesos.trabajos; }
-		if (asistenciaPct !== null) { suma += asistenciaPct * 10 * pesos.asistencia / 100; pesoUsado += pesos.asistencia; }
-		if (part !== null)          { suma += part * pesos.participacion / 100;            pesoUsado += pesos.participacion; }
-		if (cond !== null)          { suma += cond * pesos.conducta / 100;                 pesoUsado += pesos.conducta; }
-		if (examen !== null)        { suma += examen * pesos.examen / 100;                 pesoUsado += pesos.examen; }
-
-		if (pesoUsado === 0) return null;
-		return suma * 100 / pesoUsado; // normalizar a escala 0-10
-	}
+	// El cálculo por campo vive en js/motor-calificacion.js (B.3), no aquí: es el
+	// único motor del sistema y lee productos_sesion + calificaciones + registro_diario.
 
 	function semColorClass(semaforo) {
 		if (semaforo === "logrado")        return "bg-emerald-500";
@@ -517,19 +480,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return '<span class="inline-block w-4 h-4 rounded-full ' + semColorClass(semaforo) + '"></span>';
 	}
 
-	function nivelVelocidad(grado, ppm) {
-		if (ppm === null || ppm === undefined || isNaN(ppm)) return "—";
-		const t = VELOCIDAD_LECTORA[grado];
-		if (!t) return "—";
-		if (ppm < t[0]) return "Lenta";
-		if (ppm < t[1]) return "Regular";
-		if (ppm < t[2]) return "Buena";
-		return "Excelente";
+	function nivelVelocidad(grado, ppm, bandas) {
+		const nivel = window.CatalogoHabilidades.clasificarPPM(ppm, bandas && bandas[grado]);
+		return nivel ? window.CatalogoHabilidades.ETIQUETA_FLUIDEZ[nivel] : "—";
 	}
 
-	function fmtCal(v) {
+	// Piso de la fase, para acotar el selector con el que el maestro ajusta el número
+	function pisoFase(grado) {
+		return (grado >= 1 && grado <= 2) ? 6 : 5;
+	}
+
+	function fmtPct(v) {
 		if (v === null || v === undefined) return "—";
-		return (Math.round(v * 10) / 10).toFixed(1);
+		return Math.round(v) + " %";
+	}
+
+	function fmtRubro(rubro) {
+		if (!rubro || rubro.maximo <= 0) return "<span class='text-gray-300'>—</span>";
+		const redondea = function (n) { return Math.round(n * 10) / 10; };
+		return "<span class='font-medium'>" + fmtPct(rubro.fraccion * 100) + "</span>" +
+			"<span class='block text-xs text-gray-400'>" + redondea(rubro.obtenido) + " / " + redondea(rubro.maximo) + "</span>";
 	}
 
 	async function generarBoleta() {
@@ -549,118 +519,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		cont.innerHTML = "<p class='text-gray-400 text-sm'>Generando boleta...</p>";
 
-		// 1. Ponderación del maestro
-		const { data: ajustes } = await window.sb
-			.from("maestro_ajustes").select("*").eq("maestro_id", userId).maybeSingle();
-		const pesos = {
-			tareas:        Number(ajustes && ajustes.peso_tareas        != null ? ajustes.peso_tareas        : 25),
-			trabajos:      Number(ajustes && ajustes.peso_trabajos      != null ? ajustes.peso_trabajos      : 25),
-			asistencia:    Number(ajustes && ajustes.peso_asistencia    != null ? ajustes.peso_asistencia    : 10),
-			participacion: Number(ajustes && ajustes.peso_participacion != null ? ajustes.peso_participacion : 5),
-			conducta:      Number(ajustes && ajustes.peso_conducta      != null ? ajustes.peso_conducta      : 5),
-			examen:        Number(ajustes && ajustes.peso_examen        != null ? ajustes.peso_examen        : 30),
-		};
-
-		// 2. Proyectos del trimestre
-		const { data: proyectos } = await window.sb
-			.from("proyectos").select("id")
-			.eq("maestro_id", userId).eq("grupo_id", grupoId).eq("trimestre", trimestre);
-		const proyIds = (proyectos || []).map(function (p) { return p.id; });
-
-		// 2b. Calificaciones del alumno en esos proyectos
-		let califs = [];
-		if (proyIds.length) {
-			const { data: cData } = await window.sb
-				.from("calificaciones")
-				.select("tipo, calificacion, campo_formativo")
-				.eq("alumno_id", alumnoId)
-				.in("proyecto_id", proyIds);
-			califs = cData || [];
-		}
-
-		// 3. Asistencia del trimestre (rango = min/max fecha de sesiones del trimestre)
-		let asistenciaPct = null;
-		let diasPresente = 0, diasTotal = 0;
-		if (proyIds.length) {
-			const { data: ses } = await window.sb
-				.from("sesiones").select("fecha")
-				.in("proyecto_id", proyIds).not("fecha", "is", null);
-			const fechas = (ses || []).map(function (s) { return s.fecha; }).filter(Boolean).sort();
-			if (fechas.length) {
-				const fechaInicio = fechas[0];
-				const fechaFin    = fechas[fechas.length - 1];
-				const { data: asis } = await window.sb
-					.from("asistencias").select("asistencia_estado")
-					.eq("alumno_id", alumnoId)
-					.gte("fecha", fechaInicio).lte("fecha", fechaFin);
-				(asis || []).forEach(function (a) {
-					diasTotal++;
-					if (a.asistencia_estado === "presente") diasPresente++;
-					else if (a.asistencia_estado === "justificada") diasPresente++; // justificada cuenta como presente
-				});
-				if (diasTotal > 0) asistenciaPct = diasPresente / diasTotal;
-			}
-		}
-
-		// 4. Examen del trimestre + puntos por CF
-		const examenPorCF = {};
-		const { data: examen } = await window.sb
-			.from("examenes")
-			.select("id, preguntas_ids, valor_total, total_preguntas")
-			.eq("trimestre", trimestre).eq("maestro_id", userId)
-			.limit(1).maybeSingle();
-
-		if (examen && examen.id) {
-			const { data: respuestas } = await window.sb
-				.from("respuestas_examen")
-				.select("pregunta_id, puntos_obtenidos")
-				.eq("examen_id", examen.id).eq("alumno_id", alumnoId);
-
-			const pregIds = (examen.preguntas_ids || []);
-			let preguntas = [];
-			if (pregIds.length) {
-				const { data: pData } = await window.sb
-					.from("banco_preguntas").select("id, campo_formativo").in("id", pregIds);
-				preguntas = pData || [];
-			}
-			const cfPorPregunta = {};
-			preguntas.forEach(function (p) { cfPorPregunta[p.id] = p.campo_formativo; });
-
-			// max posible por CF: cada pregunta vale (valor_total / total_preguntas) si no hay valor por pregunta
-			const valorPorPregunta = (examen.valor_total && examen.total_preguntas)
-				? Number(examen.valor_total) / Number(examen.total_preguntas) : null;
-
-			const obtPorCF = {}, maxPorCF = {};
-			preguntas.forEach(function (p) {
-				const cf = p.campo_formativo;
-				if (!cf) return;
-				maxPorCF[cf] = (maxPorCF[cf] || 0) + (valorPorPregunta !== null ? valorPorPregunta : 1);
+		// 1. Todo el cálculo (rubros, máximos, examen del grado, asistencia de
+		// referencia y calificación propuesta) lo hace el motor único de B.3.
+		let motor;
+		try {
+			motor = await window.MotorCalificacion.cargarYCalcular(window.sb, {
+				maestroId: userId, grupoId: grupoId, alumnoId: alumnoId,
+				grado: alumno.grado, trimestre: trimestre, campos: CODIGOS,
 			});
-			(respuestas || []).forEach(function (r) {
-				const cf = cfPorPregunta[r.pregunta_id];
-				if (!cf) return;
-				obtPorCF[cf] = (obtPorCF[cf] || 0) + Number(r.puntos_obtenidos || 0);
-			});
-			CAMPOS.forEach(function (cf) {
-				if (maxPorCF[cf] && maxPorCF[cf] > 0) {
-					examenPorCF[cf] = (obtPorCF[cf] || 0) / maxPorCF[cf] * 10; // escala 0-10
-				}
-			});
+		} catch (e) {
+			console.error("motor de calificación:", e);
+			cont.innerHTML = "<p class='text-red-500 text-sm'>No se pudo calcular la boleta: " +
+				esc(e.message || "error desconocido") + "</p>";
+			return;
 		}
+		const porCampo = motor.porCampo;
+		const diasPresente = motor.asistencia.presentes;
+		const diasTotal    = motor.asistencia.total;
+		const asistenciaPct = motor.asistencia.porcentaje;
 
-		// 5. Evaluación diagnóstica del trimestre
+		// 2. Evaluación diagnóstica del trimestre + bandas de fluidez
 		const { data: diagnostica } = await window.sb
 			.from("evaluacion_diagnostica").select("*")
 			.eq("alumno_id", alumnoId).eq("maestro_id", userId)
 			.eq("momento", "trimestre_" + trimestre).maybeSingle();
+		const bandas = await cargarBandasPPM();
 
-		// ── Calcular calificación final por CF ──
-		const calPorCF = {};
-		CAMPOS.forEach(function (cf) {
-			calPorCF[cf] = calcCF(califs, asistenciaPct, examenPorCF, cf, pesos);
-		});
-
-		// ── boleta_trimestral: observaciones persistentes por campo + resultado numérico ──
+		// 3. boleta_trimestral: observaciones, número confirmado y estado de cierre
 		const cicloBoleta = boletaGrupoInfo.ciclo || "";
 		let boletaPorCampo = {};
 		try {
@@ -672,37 +557,55 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (e) {}
 		boletaCtx = { alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre };
 
-		// Persistir porcentaje/calificación/nivel por campo mientras la boleta no esté cerrada
+		/*
+			Qué número manda en cada campo:
+			  - boleta cerrada           → el guardado, sin recalcular
+			  - calificación confirmada  → la del maestro (el motor solo refresca el %)
+			  - sin confirmar            → la propuesta del motor, y se persiste
+			El maestro puede ajustar el número antes de cerrar (Acuerdo art. 4 XI).
+		*/
+		const oficialPorCampo = {};
+		let hayPropuesta = false, todoConfirmado = true, todoCerrado = true;
 		try {
-			const upsertsNum = [];
-			CAMPOS.forEach(function (cf) {
-				const codigo = window.CamposFormativos ? window.CamposFormativos.corto(cf) : null;
-				if (!codigo) return;
-				const fila = boletaPorCampo[codigo];
-				if (fila && fila.cerrada) return;
-				const cal10 = calPorCF[cf];
-				if (cal10 === null || cal10 === undefined) return;
-				const pct = Math.round(cal10 * 1000) / 100; // escala 0-100
-				upsertsNum.push({
+			const upserts = [];
+			CODIGOS.forEach(function (codigo) {
+				const fila = boletaPorCampo[codigo] || {};
+				const datos = porCampo[codigo] || {};
+				const propuesta = datos.calificacionPropuesta;
+				if (propuesta !== null && propuesta !== undefined) hayPropuesta = true;
+
+				if (fila.cerrada) { oficialPorCampo[codigo] = fila.calificacion; return; }
+				todoCerrado = false;
+				if (fila.calificacion_confirmada) {
+					oficialPorCampo[codigo] = fila.calificacion;
+					if (datos.porcentaje !== null && datos.porcentaje !== undefined) {
+						upserts.push({
+							maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
+							trimestre: trimestre, campo: codigo,
+							porcentaje: Math.round(datos.porcentaje * 100) / 100, nivel: datos.nivel,
+						});
+					}
+					return;
+				}
+				todoConfirmado = false;
+				if (propuesta === null || propuesta === undefined) return;
+				oficialPorCampo[codigo] = propuesta;
+				upserts.push({
 					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
 					trimestre: trimestre, campo: codigo,
-					porcentaje: pct,
-					calificacion: Math.min(10, Math.max(5, Math.round(cal10))),
-					nivel: pct >= 80 ? "logrado" : (pct >= 60 ? "en_proceso" : "requiere_apoyo"),
+					porcentaje: Math.round(datos.porcentaje * 100) / 100,
+					calificacion: propuesta, nivel: datos.nivel,
 				});
 			});
-			if (upsertsNum.length) {
-				await window.sb.from("boleta_trimestral")
-					.upsert(upsertsNum, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+			if (upserts.length) {
+				const { error: upErr } = await window.sb.from("boleta_trimestral")
+					.upsert(upserts, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+				if (upErr) throw upErr;
 			}
 		} catch (e) {
 			console.error("boleta_trimestral (numérico):", e);
 		}
-
-		// Detalle de rubros por CF para la tabla (cada celda = avg de ese rubro en ese CF)
-		function rubroCF(tipo, cf) {
-			return promedioPorTipo(califs, tipo, cf);
-		}
+		if (!hayPropuesta) { todoConfirmado = false; todoCerrado = false; }
 
 		// ── Renderizar boleta ──
 		const cabecera =
@@ -724,27 +627,104 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"</div>" +
 			"</div>";
 
-		// Sección 1: Desempeño + examen
+		// Sección 1: Desempeño + examen (cada celda: % del rubro y obtenido/máximo)
 		const camposCols = CAMPOS_CORTOS;
-		const asisCelda10 = (asistenciaPct !== null) ? asistenciaPct * 10 : null;
+		const MOTOR = window.MotorCalificacion;
 
-		function filaRubro(label, tipo, esGlobal, esAsistencia) {
+		function filaRubro(rubro) {
+			const peso = motor.pesos[rubro];
 			let celdas = "";
-			CAMPOS.forEach(function (cf) {
-				let v;
-				if (esAsistencia) v = asisCelda10;
-				else if (tipo === "examen") v = (examenPorCF[cf] !== undefined ? examenPorCF[cf] : null);
-				else if (esGlobal) v = promedioPorTipo(califs, tipo, null);
-				else v = rubroCF(tipo, cf);
-				celdas += "<td class='px-3 py-2 text-center border border-gray-200'>" + fmtCal(v) + "</td>";
+			CODIGOS.forEach(function (codigo) {
+				const datos = (porCampo[codigo] && porCampo[codigo].rubros) ? porCampo[codigo].rubros[rubro] : null;
+				celdas += "<td class='px-3 py-2 text-center border border-gray-200'>" + fmtRubro(datos) + "</td>";
 			});
-			return "<tr><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" + label + "</td>" + celdas + "</tr>";
+			return "<tr><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" +
+				MOTOR.ETIQUETA_RUBRO[rubro] +
+				" <span class='text-xs font-normal " + (peso > 0 ? "text-gray-400" : "text-gray-300") + "'>" +
+				(peso > 0 ? peso + " %" : "sin peso") + "</span></td>" + celdas + "</tr>";
 		}
 
-		let tablaCeldasFinal = "";
-		CAMPOS.forEach(function (cf) {
-			tablaCeldasFinal += "<td class='px-3 py-2 text-center font-bold border border-gray-200 " + colorCalif(calPorCF[cf] !== null ? Math.round(calPorCF[cf]) : null) + "'>" + fmtCal(calPorCF[cf]) + "</td>";
+		// Fila de porcentaje del campo (lo que el motor convierte a calificación)
+		let filaPorcentaje = "";
+		CODIGOS.forEach(function (codigo) {
+			const pct = porCampo[codigo] ? porCampo[codigo].porcentaje : null;
+			filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(pct) + "</td>";
 		});
+
+		// Fila de calificación: selector para que el maestro ajuste antes de confirmar
+		const piso = pisoFase(alumno.grado);
+		let filaCalificacion = "";
+		CODIGOS.forEach(function (codigo) {
+			const fila = boletaPorCampo[codigo] || {};
+			const valor = oficialPorCampo[codigo];
+			const propuesta = porCampo[codigo] ? porCampo[codigo].calificacionPropuesta : null;
+			if (valor === null || valor === undefined) {
+				filaCalificacion += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-300'>—</td>";
+				return;
+			}
+			if (todoCerrado || fila.cerrada) {
+				filaCalificacion += "<td class='px-3 py-2 text-center font-bold border border-gray-200 " +
+					colorCalif(valor) + "'>" + valor + "</td>";
+				return;
+			}
+			let opciones = "";
+			for (let n = piso; n <= 10; n++) {
+				opciones += "<option value='" + n + "'" + (n === valor ? " selected" : "") + ">" + n + "</option>";
+			}
+			// El aviso de "propuesta" se dibuja siempre y se muestra/oculta al vuelo
+			// cuando el maestro mueve el selector (ver listener más abajo).
+			const hayProp = (propuesta !== null && propuesta !== undefined);
+			const ajustada = hayProp && valor !== propuesta;
+			filaCalificacion += "<td class='px-3 py-2 text-center border border-gray-200'>" +
+				"<select data-cal-campo='" + codigo + "'" +
+				(hayProp ? " data-cal-propuesta='" + propuesta + "'" : "") +
+				" class='min-h-[44px] w-20 text-center font-bold rounded-lg border border-gray-300 bg-white " +
+				colorCalif(valor) + "'>" + opciones + "</select>" +
+				(hayProp
+					? "<span data-cal-aviso='" + codigo + "' class='block text-xs text-amber-600 mt-1" +
+						(ajustada ? "" : " hidden") + "'>propuesta: " + propuesta + "</span>"
+					: "") +
+				"</td>";
+		});
+
+		// Estado y botonera: confirmar el número antes de poder cerrar
+		const avisos = [];
+		if (motor.sinProyectos) avisos.push("No hay proyectos de este trimestre en el grupo, así que no hay evidencias que calificar.");
+		if (motor.usaLegacy) avisos.push("Incluye calificaciones capturadas con el formato anterior (revisión de tareas del Dashboard, escala 5-10).");
+		if (motor.examenAproximado) avisos.push("El puntaje del examen por campo es aproximado: el banco de preguntas no guarda el valor de cada pregunta.");
+
+		let barraEstado;
+		if (todoCerrado) {
+			barraEstado = "<div class='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 mb-6'>" +
+				"Boleta cerrada. Las calificaciones ya no se recalculan.</div>";
+		} else {
+			barraEstado =
+				"<div class='rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>" +
+				"<p class='text-sm text-gray-600'>" +
+				(todoConfirmado
+					? "Calificaciones confirmadas por el docente. Puedes cerrar la boleta."
+					: "El sistema propone estas calificaciones. Revísalas, ajústalas si hace falta y confírmalas: la calificación es tu juicio docente.") +
+				"</p>" +
+				"<div class='flex gap-2 shrink-0'>" +
+				"<button id='boletaConfirmarBtn' type='button' " + (hayPropuesta ? "" : "disabled ") +
+				"class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed'>" +
+				(todoConfirmado ? "Guardar ajustes" : "Confirmar calificaciones") + "</button>" +
+				"<button id='boletaCerrarBtn' type='button' " + (todoConfirmado ? "" : "disabled ") +
+				"class='min-h-[44px] px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed'>" +
+				"Cerrar boleta</button>" +
+				"</div></div>";
+		}
+		const avisosHtml = avisos.length
+			? "<ul class='text-xs text-gray-500 mb-6 list-disc pl-5'>" +
+				avisos.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("") + "</ul>"
+			: "";
+
+		// Asistencia: referencia, nunca parte de la calificación (Acuerdo 10/09/23, art. 7 I d)
+		const asisPctTexto = (asistenciaPct !== null) ? Math.round(asistenciaPct * 100) + " %" : "—";
+		const asisReferencia =
+			"<p class='text-sm text-gray-600 mb-6'><span class='font-medium text-gray-700'>Asistencia:</span> " +
+			(diasTotal > 0 ? diasPresente + " de " + diasTotal + " días (" + asisPctTexto + ")" : "sin registros en el trimestre") +
+			". <span class='text-xs text-gray-500'>Dato de referencia; no forma parte de la calificación.</span></p>";
 
 		let seccion1 =
 			"<h3 class='font-bold text-gray-800 mb-2'>1. Desempeño continuo y examen</h3>" +
@@ -753,36 +733,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<th class='px-3 py-2 text-left border border-gray-200'>Criterio</th>";
 		camposCols.forEach(function (c) { seccion1 += "<th class='px-3 py-2 text-center border border-gray-200'>" + c + "</th>"; });
 		seccion1 += "</tr></thead><tbody>" +
-			filaRubro("Tareas", "tarea", false, false) +
-			filaRubro("Trabajos", "actividad", false, false) +
-			filaRubro("Asistencia", null, false, true) +
-			filaRubro("Participación", "participacion", true, false) +
-			filaRubro("Conducta", "conducta", true, false) +
-			filaRubro("Examen", "examen", false, false) +
-			"<tr class='bg-blue-50'><td class='px-3 py-2 font-bold text-gray-800 border border-gray-200'>Calificación Final</td>" + tablaCeldasFinal + "</tr>" +
-			"</tbody></table></div>";
+			MOTOR.RUBROS.map(filaRubro).join("") +
+			"<tr class='bg-gray-50'><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>Porcentaje del campo</td>" + filaPorcentaje + "</tr>" +
+			"<tr class='bg-blue-50'><td class='px-3 py-2 font-bold text-gray-800 border border-gray-200'>Calificación" +
+			"<span class='block text-xs font-normal text-gray-500'>" + (piso === 6 ? "1°-2°: 6 a 10" : "3°-6°: 5 a 10") + "</span></td>" +
+			filaCalificacion + "</tr>" +
+			"</tbody></table></div>" +
+			asisReferencia + barraEstado + avisosHtml;
 
 		// Sección 2: Cuaderno
-		const cuadernoArr = (diagnostica && Array.isArray(diagnostica.cuaderno)) ? diagnostica.cuaderno : [];
-		const cuadernoMap = {};
-		cuadernoArr.forEach(function (it) { cuadernoMap[it.criterio] = it.semaforo; });
+		const cuadernoMap = window.CatalogoHabilidades.aMapa(diagnostica && diagnostica.cuaderno);
 		let seccion2 =
 			"<h3 class='font-bold text-gray-800 mb-2'>2. Revisión de cuaderno</h3>" +
 			"<div class='grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mb-6'>";
 		CRITERIOS_CUADERNO.forEach(function (crit) {
 			seccion2 += "<div class='flex items-center justify-between border-b border-gray-100 py-1'>" +
-				"<span class='text-sm text-gray-700'>" + esc(crit) + "</span>" +
-				semCirculo(cuadernoMap[crit]) + "</div>";
+				"<span class='text-sm text-gray-700'>" + esc(crit.etiqueta) + "</span>" +
+				semCirculo(cuadernoMap[crit.clave]) + "</div>";
 		});
 		seccion2 += "</div>";
 
 		// Sección 3: Habilidades básicas
 		const ppm = (diagnostica && diagnostica.lectura_ppm != null) ? diagnostica.lectura_ppm : null;
 		const compr = (diagnostica && diagnostica.lectura_comprension) ? diagnostica.lectura_comprension : null;
-		const nivelLect = nivelVelocidad(alumno.grado, ppm);
-		const matesArr = (diagnostica && Array.isArray(diagnostica.matematicas)) ? diagnostica.matematicas : [];
-		const matesMap = {};
-		matesArr.forEach(function (it) { matesMap[it.habilidad] = it.semaforo; });
+		const nivelLect = nivelVelocidad(alumno.grado, ppm, bandas);
+		const matesMap = window.CatalogoHabilidades.aMapa(diagnostica && diagnostica.matematicas);
 
 		let seccion3 =
 			"<h3 class='font-bold text-gray-800 mb-2'>3. Habilidades básicas</h3>" +
@@ -790,14 +765,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<div class='rounded-xl border border-gray-200 p-4'>" +
 			"<h4 class='font-semibold text-gray-700 mb-2 text-sm'>Lectura</h4>" +
 			"<div class='flex justify-between text-sm py-1 border-b border-gray-100'><span class='text-gray-600'>Velocidad (PPM)</span><span class='font-semibold'>" + (ppm != null ? ppm : "—") + "</span></div>" +
-			"<div class='flex justify-between text-sm py-1 border-b border-gray-100'><span class='text-gray-600'>Nivel de velocidad</span><span class='font-semibold'>" + nivelLect + "</span></div>" +
+			"<div class='flex justify-between text-sm py-1 border-b border-gray-100'><span class='text-gray-600'>Fluidez lectora</span><span class='font-semibold'>" + nivelLect + "</span></div>" +
 			"<div class='flex justify-between items-center text-sm py-1'><span class='text-gray-600'>Comprensión</span>" + semCirculo(compr) + "</div>" +
 			"</div>" +
 			"<div class='rounded-xl border border-gray-200 p-4'>" +
 			"<h4 class='font-semibold text-gray-700 mb-2 text-sm'>Matemáticas</h4>";
 		HABILIDADES_MATES.forEach(function (hab) {
 			seccion3 += "<div class='flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0'>" +
-				"<span class='text-gray-600'>" + esc(hab) + "</span>" + semCirculo(matesMap[hab]) + "</div>";
+				"<span class='text-gray-600'>" + esc(hab.etiqueta) + "</span>" + semCirculo(matesMap[hab.clave]) + "</div>";
 		});
 		seccion3 += "</div></div>";
 
@@ -851,15 +826,91 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		acciones.classList.remove("hidden");
 
+		// ── Confirmar / cerrar: el número lo valida el maestro antes del cierre ──
+		function calificacionesEnPantalla() {
+			const filas = [];
+			cont.querySelectorAll("select[data-cal-campo]").forEach(function (sel) {
+				filas.push({
+					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
+					trimestre: trimestre, campo: sel.dataset.calCampo,
+					calificacion: parseInt(sel.value, 10),
+					calificacion_confirmada: true,
+				});
+			});
+			return filas;
+		}
+
+		async function guardarBoleta(filas, btn, textoOcupado) {
+			const original = btn.textContent;
+			btn.disabled = true;
+			btn.textContent = textoOcupado;
+			try {
+				const { error } = await window.sb.from("boleta_trimestral")
+					.upsert(filas, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+				if (error) throw error;
+				await generarBoleta(); // re-render con el estado nuevo
+			} catch (e) {
+				console.error("boleta_trimestral:", e);
+				btn.disabled = false;
+				btn.textContent = original;
+				window.alert("No se pudo guardar: " + (e.message || "error desconocido"));
+			}
+		}
+
+		const confirmarBtn = document.getElementById("boletaConfirmarBtn");
+		if (confirmarBtn) {
+			confirmarBtn.addEventListener("click", function () {
+				const filas = calificacionesEnPantalla();
+				if (!filas.length) return;
+				guardarBoleta(filas, confirmarBtn, "Guardando...");
+			});
+		}
+
+		const cerrarBtn = document.getElementById("boletaCerrarBtn");
+		if (cerrarBtn) {
+			cerrarBtn.addEventListener("click", function () {
+				if (!window.confirm("Al cerrar la boleta las calificaciones dejan de recalcularse. ¿Continuar?")) return;
+				const filas = calificacionesEnPantalla().map(function (f) {
+					return Object.assign({}, f, { cerrada: true });
+				});
+				if (!filas.length) return;
+				guardarBoleta(filas, cerrarBtn, "Cerrando...");
+			});
+		}
+
 		// Construir resumen plano para WhatsApp
 		const lineCF = CAMPOS_CORTOS.map(function (corto, i) {
-			return corto + ": " + fmtCal(calPorCF[CAMPOS[i]]);
+			const oficial = oficialPorCampo[CODIGOS[i]];
+			return corto + ": " + (oficial !== undefined && oficial !== null ? oficial : "—");
 		}).join(" | ");
 		const asisTexto = (diasTotal > 0) ? (diasPresente + "/" + diasTotal + " días") : "—";
 		boletaResumenTexto =
 			"Boleta de " + (alumno.nombre_completo || "") + " — Trimestre " + trimestre + "\n" +
 			lineCF + "\n" +
-			"Asistencia: " + asisTexto;
+			"Asistencia (referencia): " + asisTexto;
+	}
+
+	/*
+		Selector de calificación: al moverlo, recolorea y muestra cuál era la propuesta
+		del sistema (para que el maestro vea de qué se está apartando). Se registra una
+		sola vez sobre el contenedor, que sobrevive a cada render de la boleta.
+	*/
+	function sincronizarAvisoPropuesta(sel, contenedor) {
+		if (!sel) return;
+		const valorSel = parseInt(sel.value, 10);
+		sel.className = "min-h-[44px] w-20 text-center font-bold rounded-lg border border-gray-300 bg-white " +
+			colorCalif(valorSel);
+		const aviso = contenedor.querySelector("span[data-cal-aviso='" + sel.dataset.calCampo + "']");
+		if (!aviso || sel.dataset.calPropuesta === undefined) return;
+		aviso.classList.toggle("hidden", valorSel === parseInt(sel.dataset.calPropuesta, 10));
+	}
+
+	const boletaSelectsEl = document.getElementById("boletaContainer");
+	if (boletaSelectsEl) {
+		boletaSelectsEl.addEventListener("change", function (e) {
+			const sel = e.target.closest ? e.target.closest("select[data-cal-campo]") : null;
+			if (sel) sincronizarAvisoPropuesta(sel, boletaSelectsEl);
+		});
 	}
 
 	// ── Autosave de observaciones de boleta (on-blur, upsert por campo) ──

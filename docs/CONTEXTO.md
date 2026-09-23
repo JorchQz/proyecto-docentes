@@ -86,17 +86,54 @@ Cada sesión sigue 3 momentos didácticos:
 
 ---
 
-## 3. Evaluación diaria
+## 3. Evaluación diaria y calificación trimestral
 
-Solo números, escala **5 a 10**. Rubros:
-- **Asistencia** (presente / ausente / justificada).
-- **Tareas** de la clase anterior (5–10).
-- **Actividades** del proyecto del día (5–10), por campo formativo.
-- **Participación** global del día (5–10) — **NO** por campo formativo (para ahorrar tiempo).
-- **Conducta** global del día (5–10) — **NO** por campo formativo.
+**Base legal:** Acuerdo 10/09/23 de la SEP (DOF 27/09/2023). El número oficial vive solo
+en la boleta, por campo formativo y por periodo (art. 4 VII, art. 8); es un **juicio del
+docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el trabajo diario.
 
-Promedios de reporte: redondeo a enteros 5–10, desglosado por campo formativo, agrupable en
-niveles **Bajo (5–6) · Medio (7–8) · Alto (9–10)**.
+**Trabajo diario (formativo)** — la unidad de captura es el **producto** de la sesión
+(`productos_sesion`), no la actividad:
+- **Tareas y trabajos:** por producto, un **semáforo** `logrado / en_proceso / requiere_apoyo`
+  + `retroalimentacion` + estado de entrega; `puntaje` 0–10 es un ajuste fino **opcional**
+  (grano en `calificaciones` con `producto_sesion_id`). La captura diaria completa llega con
+  la pantalla "Hoy" (Parte B). Transición: la revisión de tareas del Dashboard todavía
+  escribe `calificacion` 5–10 sin producto, y es lo que hoy lee `reportes.js`.
+- **Participación y conducta:** una vez al día por alumno, global (no por campo ni sesión),
+  en `registro_diario` con valores **0 · 1 · 2**.
+- **Asistencia:** presente / ausente / justificada. **Es solo referencia: nunca pondera**
+  (art. 7 I d: "no se considera como un criterio para la acreditación"). La boleta muestra
+  el porcentaje de días asistidos aparte.
+
+**Calificación de boleta (oficial)** por campo formativo y trimestre:
+- Ponderación en `maestro_ajustes`: tareas / trabajos / participación / conducta / examen,
+  suman 100 (CHECK en BD), default **28 / 28 / 6 / 5 / 33**. Cualquier peso puede ser 0
+  (p. ej. conducta, si la escuela lo objeta). Rubro sin datos: su peso se renormaliza.
+- Porcentaje → calificación con **una sola regla**, la función SQL
+  `calcular_calificacion_boleta(porcentaje, grado)`: ≥90→10, 80–89→9, 70–79→8, 60–69→7,
+  50–59→6, <50→5, con **piso por fase** (art. 9):
+  - **Fase 3 (1°–2°): enteros 6–10.** Nunca baja de 6.
+  - **Fases 4–5 (3°–6°): enteros 5–10; 5 es reprobatorio.**
+  El trigger `boleta_trimestral_piso_fase` impide guardar un número bajo el piso, venga del
+  motor o de un ajuste manual.
+- **Motor único: `js/motor-calificacion.js`** (B.3, 2026-09-22; reemplazó a `calcCF`).
+  Lee `productos_sesion` + `calificaciones` (grano nuevo) + `registro_diario` + el examen
+  **del grado del alumno**. No hay otra fórmula en ningún `.js`. Valor de un producto:
+  `puntaje/10` si lo hay; si no `logrado 1 · en_proceso 0.7 · requiere_apoyo 0.4`;
+  `incompleto` sin nivel 0.5; `no_entregado` 0; `justificado`/`no_aplica` y lo aún no
+  capturado salen del máximo. Participación y conducta se reparten en partes iguales entre
+  los campos con sesión ese día. Pruebas: `node pruebas/motor-calificacion.test.js`.
+- **El maestro confirma el número antes de cerrar** (art. 4 XI): la boleta muestra la
+  calificación propuesta en un selector acotado al piso de la fase; `boleta_trimestral`
+  guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
+  `boleta_trimestral_confirmacion` impide `cerrada = true` sin confirmación. Una vez
+  confirmada, el motor solo refresca `porcentaje`: no pisa el número del maestro.
+- Transición: mientras no exista la pantalla "Hoy", la revisión de tareas del Dashboard
+  sigue escribiendo filas sin producto (escala 5–10). El motor las toma en su rubro como
+  `calificacion/10` y la boleta lo advierte.
+
+Niveles internos de reporte (no oficiales): `≥80 logrado`, `60–79 en_proceso`,
+`<60 requiere_apoyo`.
 
 ---
 
@@ -147,21 +184,22 @@ común).
 | Tabla | Columnas clave |
 |---|---|
 | `grupos` | `maestro_id`, `nombre`, `escuela`, `tipo_organizacion`, `grados` (array), `es_multigrado` (bool), `ciclo_escolar`, `descripcion` |
-| `alumnos` | `maestro_id`, `grupo_id`, `num_lista` (int), `nombre_completo`, `grado` (smallint 1–6), `estatus` |
+| `alumnos` | `maestro_id`, `grupo_id`, `num_lista` (int), `nombre_completo`, `grado` (smallint 1–6, **NOT NULL**), `estatus` (`activo`, en minúsculas: así escribe y filtra todo el código) |
 | `asistencias` | `maestro_id`, `grupo_id`, `alumno_id`, `fecha`, **`asistencia_estado`** (text: `presente`/`ausente`/`justificada`) |
 | `proyectos` | `maestro_id`, `grupo_id`, `trimestre` (1/2/3), `titulo`, `grados` (array), `fase` (array), `metodologia`, `escenario`, `proposito`, `pregunta_generadora`, `campos_formativos` (array), `ejes_articuladores` (array), `es_multigrado` (bool), `contenidos_pda` (jsonb), `estado` (`borrador`/`activo`/`completado`/`pausado`), `visible_mercado` (bool), `fecha_inicial`, `fecha_final` |
 | `sesiones` | `proyecto_id`, `maestro_id`, `numero_sesion`, `duracion` (text, ej. `"90 min"`), `fecha`, `campo_formativo`, `momento`, `inicio_todos`/`desarrollo_todos`/`cierre_todos` (text), `inicio_actividades`/`desarrollo_actividades`/`cierre_actividades`/`cierre_tareas` (jsonb), `inicio_diferenciado`/`desarrollo_diferenciado`/`cierre_diferenciado` (jsonb), `pda_sesion` (jsonb), `recursos` (jsonb), `criterios_evaluacion`, `estado_sesion` (`pendiente`/`activa`/`completada`/`recorrida`), `notas_cierre`, `observaciones` |
 | `tareas` | `sesion_id`, `proyecto_id`, `grupo_id`, `maestro_id`, `descripcion`, `grado` (smallint, nullable), `fecha_asignada`, `fecha_revision`, `revisada` (bool) |
-| `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (`tarea`/`actividad`/`participacion`/`conducta`), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` (nombre largo). **Nuevo grano (2026-09):** `producto_sesion_id` (FK a `productos_sesion`, SET NULL), `estado_entrega` (`entregado`/`incompleto`/`no_entregado`/`justificado`/`no_aplica`), `nivel` (semáforo), `puntaje` (0–10), `retroalimentacion` (visible a padres), `nota_privada`, `evaluado_en`; índice único parcial `(maestro_id, alumno_id, producto_sesion_id)`. Los tipos `participacion`/`conducta` ya **no se escriben** aquí (ver `registro_diario`) |
+| `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (mismo vocabulario que `productos_sesion.tipo` — `tarea`/`trabajo`/`producto_final`/`examen`/`otro` — más `participacion`/`conducta` legacy y `actividad` legacy sin escritores; **con `producto_sesion_id` el trigger `calificaciones_tipo_desde_producto` copia el tipo del producto**), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` (nombre largo). **Nuevo grano (2026-09):** `producto_sesion_id` (FK a `productos_sesion`), `estado_entrega` (`entregado`/`incompleto`/`no_entregado`/`justificado`/`no_aplica`), `nivel` (semáforo), `puntaje` (0–10), `retroalimentacion` (visible a padres), `nota_privada`, `evaluado_en`; índice único parcial `(maestro_id, alumno_id, producto_sesion_id)`. Los tipos `participacion`/`conducta` ya **no se escriben** aquí (ver `registro_diario`) |
 | `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
 | `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, nullable si el criterio es libre), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
 | `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas) |
 | `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
 | `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. La captura llega con la pantalla "Hoy" (Parte B); el reparto a campos está definido en `docs/PRODUCTO-MI-SALON.md` §B.4 |
-| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb), `editado_manual` (true = el motor no sobreescribe el texto), `cerrada` (true = no se recalcula), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur) |
-| `maestro_ajustes` | PK `maestro_id`; ponderación: `peso_tareas`/`peso_trabajos`/`peso_asistencia`/`peso_participacion`/`peso_conducta`/`peso_examen` (defaults en JS: 25/25/10/5/5/30) |
-| `examenes` / `respuestas_examen` / `banco_preguntas` | Examen por grupo/trimestre/grado con `preguntas_ids`; cada pregunta de `banco_preguntas` tiene `campo_formativo` → el puntaje del examen **sí se calcula por campo** (reportes.js) |
-| `evaluacion_diagnostica` | `maestro_id`, `alumno_id`, `grupo_id`, `momento` (`inicio_ciclo`/`trimestre_1`/`trimestre_2`/`trimestre_3`), `cuaderno` (jsonb), `lectura_ppm`, `lectura_comprension`, `matematicas` (jsonb), `observaciones`, UNIQUE `(maestro_id, alumno_id, momento)` |
+| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb), `editado_manual` (true = el motor no sobreescribe el texto), `cerrada` (true = no se recalcula), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso de la fase (ver §3) |
+| `maestro_ajustes` | PK `maestro_id`; ponderación `peso_tareas`/`peso_trabajos`/`peso_participacion`/`peso_conducta`/`peso_examen`, NOT NULL, DEFAULT 28/28/6/5/33, CHECK `pesos_suman_100`. **Sin peso de asistencia** (Acuerdo 10/09/23 art. 7; ver §3). Onboarding crea la fila solo con `maestro_id` y la BD pone los defaults |
+| `examenes` / `respuestas_examen` / `banco_preguntas` | Examen por grupo/trimestre/grado con `preguntas_ids`; cada pregunta de `banco_preguntas` tiene `campo_formativo` → el puntaje del examen se calcula por campo (reportes.js). **Limitación conocida:** `banco_preguntas` no guarda cuánto vale cada pregunta; el máximo por campo se **aproxima** como `valor_total / total_preguntas` por pregunta. No presentarlo como cálculo exacto |
+| `evaluacion_diagnostica` | **Fuente única de cuaderno y habilidades básicas.** `maestro_id`, `alumno_id`, `grupo_id`, `momento` (`inicio_ciclo`/`trimestre_1`/`trimestre_2`/`trimestre_3`), `cuaderno` y `matematicas` (jsonb `[{clave, nivel}]`, claves estables de `js/catalogo-habilidades.js`, nivel `logrado`/`en_proceso`/`requiere_apoyo`; un CHECK valida prefijo y nivel), `lectura_ppm`, `lectura_comprension`, `observaciones`, UNIQUE `(maestro_id, alumno_id, momento)`. La fluidez lectora no se guarda: se deriva de `lectura_ppm` + `bandas_ppm` |
+| `bandas_ppm` | Catálogo de fluidez lectora por grado (Estándares Nacionales de Habilidad Lectora): `grado` PK, `requiere_apoyo_max`, `cercano_max`, `estandar_max` (avanzado = mayor). Lectura para `authenticated`. La regla de clasificación vive en `CatalogoHabilidades.clasificarPPM` |
 
 > **Convención de campos formativos:** las tablas históricas (`calificaciones`,
 > `dosificacion_*`, `banco_preguntas`) guardan el nombre largo (`"Lenguajes"`, …); las
@@ -169,6 +207,19 @@ común).
 > (`LEN`/`SAB`/`ETI`/`DHL`; el alias histórico `HUM` = `DHL`). La equivalencia vive en un
 > único lugar: `js/campos-formativos.js`, y se aplica **al escribir** (importador,
 > crear_proyecto, reportes), nunca al leer. Un quinto campo se agregaría ahí y aquí.
+
+> **Catálogo de cuaderno y habilidades:** `js/catalogo-habilidades.js` es el único lugar
+> con las claves (`cuaderno.*`, `mates.*`) y sus etiquetas, mismo patrón que
+> `campos-formativos.js`. No hay tabla de catálogo: las tablas `catalogo_habilidades` /
+> `evaluacion_habilidades` que proponía `PRODUCTO-MI-SALON.md` §B.6 quedaron canceladas
+> (2026-09-22).
+
+> **Trimestre de una sesión:** `proyectos.trimestre` es la fuente única de a qué
+> trimestre (y por tanto a qué boleta) pertenece una sesión. Lo escriben el importador
+> (copia `dosificacion_proyectos.trimestre`) y `crear_proyecto.js` (selector obligatorio
+> en el paso 1, precargado con `grupos.trimestre_actual` del grupo destino; desde
+> 2026-09-22). Al editar un proyecto sin trimestre se propone el actual del grupo y se
+> guarda. Sin backfill: `proyectos` tenía 0 filas al hacer el cambio.
 
 > **Simplificación deliberada (Parte A, 2026-09):** calificar el producto final del
 > proyecto usa el mismo grano que todo lo demás (`productos_sesion` tipo
@@ -188,9 +239,10 @@ común).
 > `calificacion_tarea`, `calificacion_trabajo`, `diagnosticos`, `configuracion_calificacion`
 > (el código usa `maestro_ajustes`), `registros_diarios` (genérica, sin uso),
 > `participacion_jornada` (reemplazada por `registro_diario`), `entregas_producto_final`
-> (el producto final se califica vía `productos_sesion`). Se conservan **intactas**
-> `evaluacion_cuaderno` y `evaluacion_habilidades_basicas` (momento semestral) hasta
-> construir el modelo B.6 de `docs/PRODUCTO-MI-SALON.md`.
+> (el producto final se califica vía `productos_sesion`), y desde el 2026-09-22
+> `evaluacion_cuaderno` y `evaluacion_habilidades_basicas` (iban por semestre, sin código
+> que las usara; las reemplaza `evaluacion_diagnostica`). Migraciones B.0 en
+> `supabase/mi_salon_b0_2026-09.sql`.
 
 ### 6.2 Catálogos (compartidos por SaaS y bot)
 - `catalogo_contenidos` (247 filas) — contenidos oficiales SEP por fase y campo formativo.
@@ -286,7 +338,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Planeación (lista de proyectos con filtros + acciones completas) | ✅ Completo | `planeacion.html` |
 | Actividades | ✅ Completo | `actividades.html` |
 | Tareas | ✅ Completo | `tareas.html` |
-| Reportes (Asistencia · Vista Recrea · Concentrado · Boleta PDF/WhatsApp) | ✅ Completo | `reportes.html` |
+| Reportes (Asistencia · Vista Recrea · Concentrado · Boleta PDF/WhatsApp) | ✅ Completo; boleta sobre el motor de B.3 (2026-09) | `reportes.html`, `js/motor-calificacion.js` |
 | Mi Cuenta | ✅ Completo | `mi-cuenta.html` |
 | Ajustes (notificaciones + ponderación de calificaciones) | ✅ Completo | `ajustes.html` |
 | Evaluación Formativa (semáforo por alumno/sesión, autosave) | ✅ Completo | `evaluacion_formativa.html` |
@@ -304,7 +356,12 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - `dosificacion_proyectos.proposito` no existe en BD — el importador usa `producto_final` como fallback.
 - **Job de enriquecimiento de productos:** los `productos_sesion` con `origen='backfill'` tienen nombre genérico ("Producto — Sesión N · CAMPO"); antes de lanzar Mi salón al público hay que extraer el nombre real del producto de cada sesión (revisar si el texto de `dosificacion_sesiones` permite regex antes de gastar en IA) y actualizar las instrucciones del bot para que llene `dosificacion_sesiones.productos` con el shape de `cierre_tareas`.
 - Participación y conducta ya no se capturan en el cierre de sesión; la pasada de fin de día que escribe `registro_diario` llega con la pantalla "Hoy" (`docs/PRODUCTO-MI-SALON.md` §B.1.4). Mientras tanto esos rubros no alimentan la fórmula (los pesos se renormalizan solos).
-- La **Parte B** completa (pantalla "Hoy", máximos automáticos, motor `v_resumen_trimestral`, textos automáticos, reportes nuevos) está especificada en `docs/PRODUCTO-MI-SALON.md` y NO se programa sin instrucción explícita de Jorge.
+- La **Parte B** está especificada en `docs/PRODUCTO-MI-SALON.md`, corregida por las instrucciones de Jorge del 2026-09-22 (B.0: calificación por fase, asistencia sin peso, fuente única de habilidades, bandas PPM, `alumnos.grado` obligatorio, vocabulario de `tipo`). **B.0 aplicada el 2026-09-22**, incluido el trimestre obligatorio en `crear_proyecto` (ver §6.1).
+- Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
+- El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.
+- Las pestañas "Vista Recrea" y "Concentrado" de `reportes.html` siguen leyendo el grano legacy de `calificaciones` (promedios 5–10): quedan pendientes de migrar al motor.
+- `reportes.js` carga el grupo con `.single()`: un maestro con dos o más grupos recibe un error al abrir Reportes. Decisión de Jorge (2026-09-22): no se corrige hoy; el SaaS no está en uso real todavía.
+- **Borrado en cascada (corregido en B.3):** `calificaciones` referencia `producto_sesion_id`, `sesion_id` y `proyecto_id` con `ON DELETE CASCADE`. Antes eran `SET NULL` y borrar una sesión o un proyecto con calificaciones fallaba con error 23503 (dos acciones de integridad en conflicto sobre la misma fila). `registro_diario`, `asistencias` y `boleta_trimestral` no cuelgan del proyecto: sobreviven.
 - Resuelto 2026-09: observaciones de boleta persistentes (tabla `boleta_trimestral`, por campo); esquema real documentado en `supabase/esquema_2026-09.sql` (los `.sql` anteriores quedan como historia).
 
 ---

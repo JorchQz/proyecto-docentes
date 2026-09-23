@@ -11,8 +11,9 @@
 --   zona, estado, municipio, grados_asignados[], activo_saas, created_at
 -- grupos: id, maestro_id, ciclo_escolar, nombre, escuela, tipo_organizacion,
 --   grados[], es_multigrado, descripcion, trimestre_actual
--- alumnos: id, maestro_id, grupo_id, num_lista, nombre_completo, estatus,
---   grado(smallint), created_at
+-- alumnos: id, maestro_id, grupo_id, num_lista, nombre_completo,
+--   estatus(default 'activo'; el código escribe y filtra en minúsculas),
+--   grado(smallint NOT NULL, CHECK 1-6 — B.0.5), created_at
 -- asistencias: id(bigint), maestro_id, grupo_id, alumno_id, fecha,
 --   asistencia_estado CHECK(presente|ausente|justificada),
 --   UNIQUE(grupo_id, alumno_id, fecha); trigger updated_at
@@ -41,9 +42,13 @@
 -- producto_sesion_pda (2026-09): PK(producto_sesion_id, sesion_pda_id), ambas CASCADE
 -- tareas: id, sesion_id, proyecto_id, grupo_id, maestro_id, descripcion, grado,
 --   fecha_asignada, fecha_revision, revisada
--- calificaciones: id, alumno_id(CASCADE), maestro_id, sesion_id(SET NULL),
---   proyecto_id(SET NULL), grupo_id(CASCADE),
---   tipo CHECK(tarea|actividad|participacion|conducta), descripcion,
+-- calificaciones: id, alumno_id(CASCADE), maestro_id, sesion_id(CASCADE),
+--   proyecto_id(CASCADE), grupo_id(CASCADE), producto_sesion_id(CASCADE)
+--   ** las cuatro en CASCADE desde B.3: con SET NULL, borrar una sesión o un
+--      proyecto con calificaciones reventaba con 23503 (acciones RI en conflicto) **
+--   tipo CHECK(tarea|trabajo|producto_final|examen|otro|actividad|participacion|conducta)
+--   — con producto_sesion_id el trigger calificaciones_tipo_desde_producto copia
+--   productos_sesion.tipo (B.0.6); 'actividad' sin escritores desde Parte A, descripcion,
 --   calificacion CHECK(null o 5-10), entrego, fecha, grado CHECK(null o 1-6),
 --   campo_formativo CHECK(null o nombre largo de los 4 campos)
 --   + (2026-09): producto_sesion_id->productos_sesion(SET NULL), estado_entrega
@@ -57,12 +62,19 @@
 --   UNIQUE(sesion_id, alumno_id, criterio)
 -- evaluacion_diagnostica: id, maestro_id, alumno_id, grupo_id,
 --   momento CHECK(inicio_ciclo|trimestre_1|trimestre_2|trimestre_3), fecha,
---   cuaderno(jsonb), lectura_ppm(int), lectura_comprension(semáforo),
---   matematicas(jsonb), observaciones, UNIQUE(maestro_id, alumno_id, momento)
+--   cuaderno(jsonb [{clave:'cuaderno.*', nivel}]), lectura_ppm(int),
+--   lectura_comprension(semáforo), matematicas(jsonb [{clave:'mates.*', nivel}]),
+--   observaciones, UNIQUE(maestro_id, alumno_id, momento)
+--   ** FUENTE ÚNICA de cuaderno y habilidades (B.0.3); claves en js/catalogo-habilidades.js;
+--      CHECK diagnostica_items_validos() valida prefijo y nivel **
+-- bandas_ppm (B.0.4): grado PK, requiere_apoyo_max, cercano_max, estandar_max;
+--   lectura para authenticated. Clasificación en CatalogoHabilidades.clasificarPPM
 -- boleta_trimestral (2026-09): ver mi_salon_2026-09.sql (DDL completo)
+--   + trigger boleta_trimestral_piso_fase: calificacion >= piso_calificacion_boleta(grado)
+--   (6 en 1°-2°, 5 en 3°-6°). Conversión: calcular_calificacion_boleta(porcentaje, grado) (B.0.1)
 -- registro_diario (2026-09): ver mi_salon_2026-09.sql (DDL completo)
--- maestro_ajustes: maestro_id PK, peso_tareas/trabajos/asistencia/participacion/
---   conducta/examen (defaults del código JS: 25/25/10/5/5/30)
+-- maestro_ajustes: maestro_id PK, peso_tareas/trabajos/participacion/conducta/examen
+--   NOT NULL, DEFAULT 28/28/6/5/33, CHECK pesos_suman_100. Sin peso_asistencia (B.0.2)
 -- examenes: id, grupo_id(CASCADE), maestro_id, ciclo_escolar, trimestre CHECK(1-3),
 --   fase, grado, titulo, instrucciones, preguntas_ids[], total_preguntas,
 --   valor_total, tiempo_minutos, estado CHECK(borrador|publicado|cerrado), link_documento
@@ -70,11 +82,8 @@
 --   pregunta_id->banco_preguntas(CASCADE), respuesta_alumno, es_correcta,
 --   puntos_obtenidos, calificada_por CHECK(automatico|maestro), observacion,
 --   UNIQUE(examen_id, alumno_id, pregunta_id)
--- evaluacion_cuaderno (CONSERVADA hasta B.6): 10 criterios fijos con CHECK
---   'Logrado'|'En proceso'|'Requiere apoyo', momento CHECK(diagnostico|semestre_1|semestre_2),
---   UNIQUE(alumno_id, ciclo_escolar, momento)
--- evaluacion_habilidades_basicas (CONSERVADA hasta B.6): lectura_ppm + 10 columnas
---   semáforo fijas, momento semestral, UNIQUE(alumno_id, ciclo_escolar, momento)
+-- zz_deprecated_evaluacion_cuaderno / zz_deprecated_evaluacion_habilidades_basicas
+--   (renombradas en B.0.3, 0 filas): reemplazadas por evaluacion_diagnostica
 -- actividades_proyecto: id, proyecto_id, nombre, tipo, pda, created_at
 -- proyectos_contenidos: id, proyecto_id, contenido_id, created_at
 -- registros calendario: calendario_sep(fecha, ciclo_escolar, tipo, descripcion),
