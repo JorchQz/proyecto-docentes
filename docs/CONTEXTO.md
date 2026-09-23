@@ -144,7 +144,8 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `reportes-grupo` — Vista Recrea y Concentrado (solo calificaciones confirmadas).
 > - `inicio-actividades` — el plan de Inicio lee bien las actividades de "Crear proyecto".
 > - `tareas-situacion`, `alcance-hoy` — Tareas cuenta como revisado cualquier estado de
->   entrega, y "Hoy", Inicio y Tareas usan el mismo alcance de proyectos.
+>   entrega; "Hoy", Inicio y Tareas usan el mismo alcance de proyectos, la misma cuenta del
+>   cierre del día y leen sin el tope de 1000 filas de Supabase (1080 y 7200 calificaciones).
 > - `boleta-imprimible`, `reporte-alumno`, `junta`, `exportar` — render y cálculo de los
 >   cuatro reportes de B.8 con datos de ejemplo (confirmada vs "pendiente", pisos,
 >   privacidad de la junta, columnas y CSV).
@@ -207,7 +208,13 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   últimos 30 días; "Trabajar hoy" solo ofrece sesiones de proyectos activos. Una tarea sin
   `fecha_entrega` vence el siguiente día hábil después de su sesión (`venceTarea`).
   **Cierre del día:** la primera excepción guarda el día de todo el grupo (1 y 1, sin los
-  que faltaron); botón "Guardar el cierre de hoy" para días sin excepciones.
+  que faltaron); botón "Guardar el cierre de hoy" para días sin excepciones. Hoy e Inicio
+  lo cuentan con `AlcanceHoy.resumenCierre`; si faltó todo el grupo, "Nadie asistió hoy".
+  **Lecturas sin tope:** Supabase devuelve como máximo 1000 filas por consulta y corta en
+  silencio. Toda lectura que pueda crecer con el trimestre va paginada: el motor con
+  `todas()` y Hoy, Tareas e Inicio con `AlcanceHoy.leerPorLotes` (lotes de 150 ids,
+  páginas de 1000). Una consulta nueva de calificaciones, productos o sesiones debe usar uno
+  de los dos.
 - **Campo sin evidencias:** sin propuesta; en la boleta se elige a mano (juicio docente)
   para poder confirmar y cerrar. Boleta cerrada: textos de solo lectura.
 - **Evidencia por PDA** (`recalcular_evidencia_pda`): con todas las calificaciones del
@@ -472,7 +479,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe.
 - Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
 - El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.
-- Resuelto 2026-09-23 (3.7): Vista Recrea y Concentrado leen la calificación confirmada; la tarjeta vieja de tareas del Dashboard se retiró (Inicio lleva a "Hoy"); el `.single()` de grupos se reemplazó por el grupo activo en toda la app.
+- Resuelto 2026-09-23 (3.7): Vista Recrea y Concentrado leen la calificación confirmada; la tarjeta vieja de tareas del Dashboard se retiró (Inicio lleva a "Hoy"); el `.single()` de grupos se reemplazó por el grupo activo en toda la app; Hoy, Tareas e Inicio leen calificaciones, productos y sesiones sin el tope de 1000 filas de Supabase (`AlcanceHoy.leerPorLotes`), igual que el motor.
 - **Borrado en cascada (corregido en B.3):** `calificaciones` referencia `producto_sesion_id`, `sesion_id` y `proyecto_id` con `ON DELETE CASCADE`. Antes eran `SET NULL` y borrar una sesión o un proyecto con calificaciones fallaba con error 23503 (dos acciones de integridad en conflicto sobre la misma fila). `registro_diario`, `asistencias` y `boleta_trimestral` no cuelgan del proyecto: sobreviven.
 - Resuelto 2026-09: observaciones de boleta persistentes (tabla `boleta_trimestral`, por campo); esquema real documentado en `supabase/esquema_2026-09.sql` (los `.sql` anteriores quedan como historia).
 

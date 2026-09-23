@@ -82,7 +82,8 @@ Una pantalla con scroll, controles de 44 px o más, sin emojis:
    se tocan excepciones) → `registro_diario`. Al tocar la primera excepción se guarda el día
    de todo el grupo (1 y 1 para los demás, sin contar a quienes faltaron); si no hay
    excepciones, el botón "Guardar el cierre de hoy". Marcar una falta después retira el
-   cierre que se había puesto por defecto.
+   cierre que se había puesto por defecto. Si faltó todo el grupo no hay cierre que guardar
+   ("Nadie asistió hoy") y el día no queda pendiente en Inicio.
 
 Una tarea sin fecha de entrega vence el siguiente día hábil después de su sesión (se
 revisa en la próxima clase, no el mismo día).
@@ -234,7 +235,9 @@ máximos por grado. Con dos o más grupos, el maestro elige el grupo en el menú
 - **Mismo alcance en Hoy, Inicio y Tareas** (`js/alcance-hoy.js`): proyectos activos, en
   borrador o pausados, los del trimestre actual del grupo y los terminados en los últimos
   30 días. Así la tarea de la última sesión de un proyecto recién terminado sigue en "Hoy"
-  hasta revisarse, y las tres pantallas coinciden en qué falta.
+  hasta revisarse, y las tres pantallas coinciden en qué falta. En el mismo archivo viven
+  la cuenta del cierre del día (igual en Hoy e Inicio) y la lectura por lotes y páginas que
+  evita perder calificaciones cuando un trimestre pasa de 1000 filas.
 - Una sola fórmula (motor) y una sola conversión (SQL) en todo el sistema.
 
 ### B.11 Qué NO hacer (sigue vigente)

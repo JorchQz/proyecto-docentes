@@ -34,6 +34,10 @@ Manual testing checklist is in `docs/TESTING.md`.
 - `js/supabase.js` — Supabase client init with hardcoded public URL/anon key
 - `js/section-shell.js` — Shared utilities: `bindMainMenu()`, `getTeacherNameFromUser()`
 - `js/navbar.js` — Shared nav rendered on every protected page
+- `js/grupo-activo.js` — The only place that decides the active group (selector in the nav)
+- `js/motor-calificacion.js` — The only grade formula; percent → grade conversion happens only in SQL (`calcular_calificacion_boleta`)
+- `js/alcance-hoy.js` — Rules shared by "Hoy", Inicio and Tareas (project scope, task due date, day-close count, paged reads past Supabase's 1000-row cap)
+- `js/textos-boleta.js`, `js/reporte-datos.js` — Report-card text proposals (Capa 1) and the data layer shared by boleta, reporte, junta and exportación
 - `docs/CONTEXTO.md` — Single source of truth: product spec, NEM model, full data model
 - `docs/plantilla-proyecto.md` — Printable template for designing projects
 - `bot/` — Docs for the external planning-generator bot (writes to `dosificacion_*`)
@@ -75,4 +79,4 @@ Campo formativo convention: legacy tables store the long name ("Lenguajes", …)
 
 ## Module status
 
-All 16 modules are complete (auth, onboarding, dashboard, asistencia, mi-grupo, crear_proyecto, planeación, actividades, tareas, reportes with boleta PDF/WhatsApp, mi-cuenta, ajustes, evaluación formativa, evaluación diagnóstica, exámenes, marketplace). Full table and remaining debt in `docs/CONTEXTO.md §7`. The next product phase ("Mi salón" Parte B: daily capture screen, grade engine, auto-generated report texts) is specified in `docs/PRODUCTO-MI-SALON.md` and must NOT be built without Jorge's explicit go-ahead.
+All 16 modules are complete (auth, onboarding, dashboard, asistencia, mi-grupo, crear_proyecto, planeación, actividades, tareas, reportes with boleta PDF/WhatsApp, mi-cuenta, ajustes, evaluación formativa, evaluación diagnóstica, exámenes, marketplace). Full table and remaining debt in `docs/CONTEXTO.md §7`. "Mi salón" Parte B (daily capture screen "Hoy", grade engine, auto-generated report texts, printable boleta, detailed report, parents' meeting, export) is built on branch `mi-salon-parte-b` and described in `docs/PRODUCTO-MI-SALON.md`; progress and reviewer verdicts are in `docs/PROGRESO-PARTE-B.md`. Merging to `main` is Jorge's decision. New product or legal decisions (weights, attendance states, reading of the Acuerdo) still need Jorge's explicit go-ahead.
