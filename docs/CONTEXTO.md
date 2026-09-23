@@ -128,7 +128,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (17 suites).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (18 suites).
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad.
 > - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
 > - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
@@ -142,6 +142,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `boleta-ia` — convivencia de la Capa 1, lo redactado por la IA y lo escrito por el
 >   maestro, con un Supabase falso que imita el upsert de PostgREST (unión de columnas).
 > - `reportes-grupo` — Vista Recrea y Concentrado (solo calificaciones confirmadas).
+> - `inicio-actividades` — el plan de Inicio lee bien las actividades de "Crear proyecto".
 > - `tareas-situacion`, `alcance-hoy` — Tareas cuenta como revisado cualquier estado de
 >   entrega, y "Hoy", Inicio y Tareas usan el mismo alcance de proyectos.
 > - `boleta-imprimible`, `reporte-alumno`, `junta`, `exportar` — render y cálculo de los
@@ -203,7 +204,17 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   calificaciones. Inicio (`dashboard.html`) resume el día y lleva a "Hoy"; ya no captura.
   **Alcance:** "Hoy", Inicio y Tareas miran los mismos proyectos (`js/alcance-hoy.js`):
   activos, en borrador o pausados, del trimestre actual del grupo, o terminados en los
-  últimos 30 días; "Trabajar hoy" solo ofrece sesiones de proyectos activos.
+  últimos 30 días; "Trabajar hoy" solo ofrece sesiones de proyectos activos. Una tarea sin
+  `fecha_entrega` vence el siguiente día hábil después de su sesión (`venceTarea`).
+  **Cierre del día:** la primera excepción guarda el día de todo el grupo (1 y 1, sin los
+  que faltaron); botón "Guardar el cierre de hoy" para días sin excepciones.
+- **Campo sin evidencias:** sin propuesta; en la boleta se elige a mano (juicio docente)
+  para poder confirmar y cerrar. Boleta cerrada: textos de solo lectura.
+- **Evidencia por PDA** (`recalcular_evidencia_pda`): con todas las calificaciones del
+  alumno ligadas a ese PDA en la sesión; manda el trabajo (la más baja si hay varias), la
+  tarea solo si no hay otra; lo del maestro no se toca.
+- **Diagnóstico:** la pantalla abre en el trimestre actual ("T1 · boleta"), el que lee la
+  boleta.
 
 Niveles internos de reporte (no oficiales): `≥80 logrado`, `60–79 en_proceso`,
 `<60 requiere_apoyo`.

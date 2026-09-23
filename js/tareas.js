@@ -163,8 +163,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return { total: lista.length, revisados: revisados, conteo: conteo, estado: estado };
 	}
 
+	// Una tarea pendiente de un proyecto que "Hoy" ya no mira (js/alcance-hoy.js) no se
+	// presenta como "Por revisar": no hay dónde revisarla y contradiría a "Hoy" e Inicio
 	function situacion(t) {
-		return situacionDe(alumnosDe(t), revisiones[t.id] || {}, t.vence, hoy);
+		var s = situacionDe(alumnosDe(t), revisiones[t.id] || {}, t.vence, hoy);
+		if (s.estado === "por_revisar" && !window.AlcanceHoy.incluye(t.proyecto, grupoActual, hoy)) s.estado = "sin_revisar_cerrada";
+		return s;
 	}
 
 	function detalleConteo(conteo) {
@@ -188,6 +192,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		revisada: "<span class='inline-flex items-center gap-1 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-semibold'><svg xmlns='http://www.w3.org/2000/svg' class='h-3.5 w-3.5 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='m5 12 5 5L20 7'/></svg>Revisada</span>",
 		proxima: "<span class='inline-flex items-center bg-blue-50 text-blue-800 text-xs px-2 py-1 rounded-full font-semibold'>Próxima</span>",
 		sin_fecha: "<span class='inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold'>Sin fecha</span>",
+		sin_revisar_cerrada: "<span class='inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold'>Quedó sin revisar</span>",
 	};
 
 	function render(lista) {
@@ -214,12 +219,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "<p class='text-sm text-gray-700'><b>" + s.revisados + " de " + s.total + "</b> alumnos revisados" +
 					(s.revisados ? " <span class='text-xs text-gray-500'>(" + detalleConteo(s.conteo) + ")</span>" : "") + "</p>"
 				: "<p class='text-sm text-gray-500'>No hay alumnos activos de ese grado.</p>";
-			// "Revisar en Hoy" solo si "Hoy" la va a mostrar (mismo alcance: js/alcance-hoy.js)
-			var enHoy = window.AlcanceHoy.incluye(t.proyecto, grupoActual, hoy);
-			var accion = s.estado !== "por_revisar" ? ""
-				: enHoy
+			// "Revisar en Hoy" solo cuando "Hoy" la va a mostrar (mismo alcance: js/alcance-hoy.js)
+			var accion = s.estado === "por_revisar"
 				? "<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition'>Revisar en Hoy</a>"
-				: "<span class='text-xs text-gray-500'>Su proyecto terminó hace más de " + window.AlcanceHoy.DIAS_RECIENTES + " días y es de otro trimestre: ya no aparece en Hoy.</span>";
+				: s.estado === "sin_revisar_cerrada"
+				? "<span class='text-xs text-gray-500'>Su proyecto terminó hace más de " + window.AlcanceHoy.DIAS_RECIENTES + " días y es de otro trimestre: ya no aparece en Hoy.</span>"
+				: "";
 			return "<div class='bg-white rounded-2xl border border-gray-200 p-5 shadow-sm'>" +
 				"<div class='flex items-start justify-between gap-3 mb-2'>" +
 				"<div class='min-w-0'>" +

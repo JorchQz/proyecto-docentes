@@ -109,14 +109,20 @@ async function crearCardHoy() {
 
 	// Asistencia y cierre del día de hoy
 	const [asisRes, regRes] = await Promise.all([
-		window.sb.from("asistencias").select("alumno_id").eq("grupo_id", grupoId).eq("fecha", hoy),
+		window.sb.from("asistencias").select("alumno_id, asistencia_estado").eq("grupo_id", grupoId).eq("fecha", hoy),
 		alumnos.length
 			? window.sb.from("registro_diario").select("alumno_id").eq("maestro_id", user.id).eq("fecha", hoy)
 				.in("alumno_id", alumnos.map((a) => a.id))
 			: Promise.resolve({ data: [] }),
 	]);
 	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id)).size;
-	const conCierre = new Set((regRes.data || []).map((r) => r.alumno_id)).size;
+	// Cierre del día con la misma regla que "Hoy": no se espera de quien faltó
+	const faltaron = new Set((asisRes.data || [])
+		.filter((r) => r.asistencia_estado === "ausente" || r.asistencia_estado === "justificada")
+		.map((r) => r.alumno_id));
+	const esperadosCierre = alumnos.filter((a) => !faltaron.has(a.id));
+	const conRegistro = new Set((regRes.data || []).map((r) => r.alumno_id));
+	const conCierre = esperadosCierre.filter((a) => conRegistro.has(a.id)).length;
 
 	// Lo mismo que muestra "Hoy", con el mismo alcance de proyectos (js/alcance-hoy.js):
 	// productos de las sesiones de hoy sin calificar y tareas vencidas con alumnos sin revisar
@@ -132,10 +138,12 @@ async function crearCardHoy() {
 		(ses || []).forEach((s) => { fechaSesion[s.id] = s.fecha; });
 		const idsHoy = (ses || []).filter((s) => s.fecha === hoy).map((s) => s.id);
 		sesionesHoy = idsHoy.length;
-		const conFecha = (ses || []).filter((s) => s.fecha && s.fecha <= hoy).map((s) => s.id);
-		if (conFecha.length) {
+		// Las mismas sesiones que carga "Hoy": una tarea puede tener fecha de entrega aunque
+		// su sesión aún no tenga fecha
+		const idsSesiones = (ses || []).map((s) => s.id);
+		if (idsSesiones.length) {
 			const { data: prods } = await window.sb.from("productos_sesion").select("id, tipo, grados, sesion_id, fecha_entrega")
-				.in("sesion_id", conFecha).eq("activo", true);
+				.in("sesion_id", idsSesiones).eq("activo", true);
 			const trabajos = (prods || []).filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
 			const tareas = (prods || []).filter((p) => {
 				const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id]) : null;
@@ -143,9 +151,10 @@ async function crearCardHoy() {
 			});
 			const revisar = trabajos.concat(tareas);
 			if (revisar.length) {
-				const { data: cals } = await window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, nivel, estado_entrega")
+				const { data: cals } = await window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje")
 					.eq("maestro_id", user.id).in("producto_sesion_id", revisar.map((p) => p.id));
-				const hechas = new Set((cals || []).filter((c) => c.nivel || c.estado_entrega)
+				// Calificado = semáforo, estado de entrega o puntaje (misma regla que "Hoy")
+				const hechas = new Set((cals || []).filter((c) => c.nivel || c.estado_entrega || (c.puntaje !== null && c.puntaje !== undefined))
 					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
 				const conTareaRevisada = new Set((cals || []).filter((c) => c.estado_entrega)
 					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
@@ -176,7 +185,9 @@ async function crearCardHoy() {
 		fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
 		fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 		fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0) +
-		fila("Cierre del día", conCierre + " de " + alumnos.length, alumnos.length > 0 && conCierre >= alumnos.length);
+		fila("Cierre del día", conCierre + " de " + esperadosCierre.length +
+			(faltaron.size ? " (sin contar " + faltaron.size + (faltaron.size === 1 ? " que faltó)" : " que faltaron)") : ""),
+			esperadosCierre.length > 0 && conCierre >= esperadosCierre.length);
 	return card;
 }
 

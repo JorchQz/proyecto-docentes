@@ -473,7 +473,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		});
 		document.getElementById("tareasResumen").textContent = pendientesTareas
-			? pendientesTareas + " sin revisar" : "todas revisadas";
+			? pendientesTareas + (pendientesTareas === 1 ? " alumno sin revisar" : " alumnos sin revisar") : "todas revisadas";
 	}
 
 	document.getElementById("tareasLista").addEventListener("click", function (e) {
@@ -554,7 +554,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			(productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea"; }).forEach(function (p) {
 				alumnosDeProducto(p).forEach(function (al) {
 					var cal = calificaciones[al.id + "|" + p.id] || {};
-					if (!cal.nivel && !cal.estado_entrega) sinCalificar++;
+					// Calificado = semáforo, estado de entrega o puntaje (el motor cuenta el puntaje solo)
+					if (!cal.nivel && !cal.estado_entrega && (cal.puntaje === null || cal.puntaje === undefined)) sinCalificar++;
 				});
 			});
 		});
@@ -764,7 +765,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var esperados = alumnos.filter(function (a) { return !faltoHoy(a.id); });
 		var guardados = esperados.filter(function (a) { return registroGuardado[a.id]; }).length;
 		document.getElementById("cierreResumen").textContent = guardados + " de " + esperados.length + " guardados" +
-			(esperados.length < alumnos.length ? " (sin contar " + (alumnos.length - esperados.length) + " que faltaron)" : "");
+			(esperados.length < alumnos.length
+				? " (sin contar " + (alumnos.length - esperados.length) + ((alumnos.length - esperados.length) === 1 ? " que faltó)" : " que faltaron)")
+				: "");
 		var boton = document.getElementById("cierreGuardarBtn");
 		if (boton) {
 			var completo = guardados >= esperados.length;

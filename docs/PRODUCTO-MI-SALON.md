@@ -79,7 +79,13 @@ Una pantalla con scroll, controles de 44 px o más, sin emojis:
    retroalimentación con frases rápidas. "Agregar producto" para lo que no venía en la
    planeación. Solo aparecen los alumnos de los grados del producto.
 4. **Cierre del día**: participación y conducta 0 · 1 · 2 por alumno (valor normal 1; solo
-   se tocan excepciones) → `registro_diario`.
+   se tocan excepciones) → `registro_diario`. Al tocar la primera excepción se guarda el día
+   de todo el grupo (1 y 1 para los demás, sin contar a quienes faltaron); si no hay
+   excepciones, el botón "Guardar el cierre de hoy". Marcar una falta después retira el
+   cierre que se había puesto por defecto.
+
+Una tarea sin fecha de entrega vence el siguiente día hábil después de su sesión (se
+revisa en la próxima clase, no el mismo día).
 
 **Trabajar hoy / Quitar de hoy.** Las sesiones de una planeación no traen fecha; "Hoy"
 ofrece las siguientes pendientes del proyecto activo y "Trabajar hoy" les pone la fecha de
@@ -114,6 +120,9 @@ la fórmula: se reporta aparte como referencia.
 - El motor también cuenta la **entrega** aparte de la calidad (esperados, entregados,
   completos): la usan los textos; no cambia la calificación.
 - Un solo camino de carga para un alumno y para todo el grupo (lectura paginada).
+- Un campo **sin evidencias** en el trimestre no tiene propuesta: en la boleta se elige su
+  calificación a mano (juicio docente, dentro de la escala) para poder confirmar y cerrar.
+  Una boleta cerrada deja sus textos de solo lectura.
 
 *Diferencias:* no hay vista `v_resumen_trimestral`; la regla B.10 permitía "una vista SQL o
 un solo módulo" y se eligió el módulo, con la conversión en SQL. La escala de conversión no
@@ -130,14 +139,17 @@ día; un día sin sesión o sin registro no entra al máximo.
 Calificar un producto deja evidencia en los PDA que evalúa (triggers
 `propagar_calificacion_a_pda` y `retirar_evidencia_de_pda` sobre `calificaciones`,
 `origen = automatico`); el ajuste fino del maestro queda con `origen = maestro` y no se
-pisa. La vista `v_avance_pda` (security_invoker) da por alumno y PDA: evidencias, conteo
+pisa. La evidencia de un PDA en una sesión se recalcula con **todas** las calificaciones
+del alumno ligadas a ese PDA (`recalcular_evidencia_pda`): manda la del trabajo o producto
+(la más baja si hay varias) y la de la tarea solo cuenta si no hay otra. La vista `v_avance_pda` (security_invoker) da por alumno y PDA: evidencias, conteo
 por nivel, nivel predominante y tendencia. Se ve en Reportes → "Avance por PDA" (por alumno
 o de todo el grupo).
 
 ### B.6 Cuaderno y habilidades básicas
 
 Viven en `evaluacion_diagnostica` (momento `trimestre_1..3`): cuaderno y matemáticas como
-listas clave → nivel, PPM y comprensión. Las claves y etiquetas están en un solo lugar
+listas clave → nivel, PPM y comprensión. La pantalla abre en el trimestre actual del grupo
+("T1 · boleta"), que es el que lee la boleta; "Inicio de ciclo" queda aparte. Las claves y etiquetas están en un solo lugar
 (`js/catalogo-habilidades.js`); la fluidez se calcula contra `bandas_ppm`, no se captura.
 
 *Diferencias:* no se crearon `catalogo_habilidades` ni `evaluacion_habilidades`: la

@@ -23,7 +23,7 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 revisor 37b (Tareas: justificados) → FAIL #2 revisor 37c (proyecto terminado: su tarea sale de Hoy) → revisor 37d | — |
+| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas: Hoy ≠ Inicio) → revisor 37e | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | pendiente | — | — |
 | 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA con trabajo y tarea, cierre del día, boleta sin evidencias, diagnóstico, Inicio) | — |
@@ -240,6 +240,27 @@ Inicio cuenta también las tareas por revisar con la misma lógica que "Hoy". Co
 en Tareas ("1 entregó", "2 justificadas"). Pruebas `pruebas/alcance-hoy.test.js` y
 `.qa/verificar-37b.js` (proyecto recién terminado: la tarea sigue en Hoy, Tareas ofrece el
 botón, Inicio la cuenta; proyecto viejo de otro trimestre: ninguno la pide).
+
+**Revisión #3 de 3.7: FAIL #3** (revisor 37d, `.qa/revisor-37d/`). Los dos defectos
+anteriores quedaron corregidos (reproducidos por la interfaz). Nuevo, introducido por el
+cambio del cierre del día de 3.10: "Hoy" ya no espera el cierre de quien faltó, pero Inicio
+seguía contando sobre todos ("7 de 8" en ámbar sin forma de ponerlo en verde).
+Las tres causas son distintas (no aplica el tope de 3 por la misma causa), pero son de la
+misma familia: Hoy, Inicio y Tareas contando lo pendiente con reglas distintas. Por eso,
+además de corregir, audité "Tu día" contra "Hoy" renglón por renglón:
+- Cierre: Inicio usa la misma regla (sin quienes faltaron) y la misma frase; en verde
+  cuando está completo. Concordancia "1 que faltó".
+- Productos por calificar: los dos cuentan como calificado el semáforo, el estado de
+  entrega o el puntaje (antes un puntaje solo contaba distinto).
+- Tareas: Inicio mira las mismas sesiones que "Hoy" (también tareas con fecha de entrega
+  en sesiones sin fecha); "Hoy" dice "N alumnos sin revisar" y Tareas/Inicio cuentan tareas,
+  con la unidad explícita.
+- Tareas: una tarea de un proyecto que "Hoy" ya no mira sale "Quedó sin revisar" (con la
+  razón y filtro propio), nunca "Por revisar".
+Verificado con `.qa/verificar-cierre-inicio.js`, `.qa/verificar-37b.js`, humo y las 18
+suites. Menores anotados: terminar una sesión solo se puede desde Inicio y solo la de hoy
+del proyecto activo más reciente; con dos proyectos activos, "Trabajar hoy" de Hoy e Inicio
+no ordenan igual.
 
 **Revisión de 3.8: PASS** (revisor 37b). Llave ausente del frontend, de git y de
 `.env.local`; función desplegada v2 idéntica al repo; sin llave el botón no aparece (7

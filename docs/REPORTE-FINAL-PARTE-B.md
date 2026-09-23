@@ -86,7 +86,7 @@ responde "no configurada".
 
 ## 3. Pruebas
 
-- **17 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
+- **18 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
   todas pasan. Cubren motor, textos, boleta de punta a punta, IA y Capa 1, los cuatro
   reportes, Vista Recrea y Concentrado, Tareas, Hoy y ausencia de emojis.
 - **Verificaciones en navegador** (en `.qa/`, locales): recorrido de humo por las 18
