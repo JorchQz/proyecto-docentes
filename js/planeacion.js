@@ -51,6 +51,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			console.error("grupo activo:", e);
 		}
 
+		// error-revisado-en: mostrarError (la consulta se arma aquí y se espera abajo)
 		let consulta = window.sb
 			.from("proyectos")
 			.select("id, titulo, campos_formativos, metodologia, estado, created_at, grados, trimestre, fecha_inicial, sesiones(count)")
@@ -326,7 +327,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const titulo = proyecto ? (proyecto.titulo || "este proyecto") : "este proyecto";
 
 		const confirmar = window.confirm(
-			'¿Eliminar "' + titulo + '"?\n\nSe borrarán también todas sus sesiones. Esta acción no se puede deshacer.'
+			'¿Eliminar "' + titulo + '"?\n\nSe borrarán también todas sus sesiones y lo capturado en ellas (calificaciones, tareas revisadas y evidencias por PDA). Esta acción no se puede deshacer.'
 		);
 		if (!confirmar) { return; }
 

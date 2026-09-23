@@ -31,13 +31,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 	grupoId   = grupo.id;
 	grupNombre = grupo.nombre || "Grupo";
 
-	const { data: als } = await window.sb
+	const { data: als, error: errorAlumnos } = await window.sb
 		.from("alumnos")
 		.select("id, nombre_completo, num_lista, grado")
 		.eq("maestro_id", userId)
 		.eq("grupo_id", grupoId)
 		.eq("estatus", "activo")
 		.order("grado").order("num_lista");
+	if (errorAlumnos) {
+		// Sin la lista no hay reportes que generar: se dice en vez de dejar selectores vacíos
+		console.error("reportes: alumnos", errorAlumnos);
+		const aviso = document.createElement("div");
+		aviso.className = "max-w-3xl mx-auto mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
+		aviso.textContent = "No se pudo cargar la lista de alumnos. Recarga la página para intentarlo de nuevo.";
+		(document.querySelector("main") || document.body).prepend(aviso);
+		return;
+	}
 	alumnos = als || [];
 
 	// Todos los selectores de trimestre arrancan en el trimestre actual del grupo
@@ -228,13 +237,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	const CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
 	const HABILIDADES_MATES  = window.CatalogoHabilidades.MATEMATICAS;
 
-	// Catálogo editable de sugerencias (plantillas_sugerencia), clave → texto. Si no carga,
-	// js/textos-boleta.js usa su copia por defecto con los mismos textos.
+	// Catálogo editable de sugerencias (plantillas_sugerencia), clave → texto. Si la tabla
+	// no tiene una clave, js/textos-boleta.js usa su copia por defecto; si la lectura FALLA,
+	// la boleta no se genera (no se guardan textos con sugerencias que no son las del catálogo).
 	let plantillasSugerencia = null;
 	async function cargarPlantillas() {
 		if (plantillasSugerencia) return plantillasSugerencia;
 		const { data, error } = await window.sb.from("plantillas_sugerencia").select("clave, texto").eq("activo", true);
-		if (error) { console.error("plantillas_sugerencia:", error); return {}; }
+		if (error) throw error; // quien genera la boleta lo dice y no guarda nada
 		plantillasSugerencia = {};
 		(data || []).forEach(function (p) { plantillasSugerencia[p.clave] = p.texto; });
 		return plantillasSugerencia;
@@ -245,7 +255,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function cargarBandasPPM() {
 		if (bandasPPM) return bandasPPM;
 		const { data, error } = await window.sb.from("bandas_ppm").select("*");
-		if (error) { console.error("bandas_ppm:", error); return {}; }
+		if (error) throw error;
 		bandasPPM = {};
 		(data || []).forEach(function (b) { bandasPPM[b.grado] = b; });
 		return bandasPPM;
@@ -388,9 +398,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 		const porCampo = motor.porCampo;
-		const diasPresente = motor.asistencia.presentes;
-		const diasTotal    = motor.asistencia.total;
-		const asistenciaPct = motor.asistencia.porcentaje;
+		// let: con la boleta cerrada se reemplaza por la asistencia del cierre (más abajo)
+		let diasPresente = motor.asistencia.presentes;
+		let diasTotal    = motor.asistencia.total;
+		let asistenciaPct = motor.asistencia.porcentaje;
+		const asistenciaHoy = motor.asistencia; // la que se guarda en la foto al cerrar
 
 		// 2. Evaluación diagnóstica del trimestre + bandas de fluidez
 		/*
@@ -408,7 +420,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.eq("alumno_id", alumnoId).eq("maestro_id", userId)
 			.eq("momento", "trimestre_" + trimestre).maybeSingle();
 		if (errorDiag) { noSePudo("la evaluación diagnóstica", errorDiag); return; }
-		const bandas = await cargarBandasPPM();
+		// Bandas de lectura y sugerencias también se leen antes de guardar nada
+		let bandas, plantillas;
+		try {
+			bandas = await cargarBandasPPM();
+			plantillas = await cargarPlantillas();
+		} catch (e) { noSePudo("las bandas de lectura o las sugerencias", e); return; }
 
 		// 3. boleta_trimestral: observaciones, número confirmado y estado de cierre
 		const cicloBoleta = boletaGrupoInfo.ciclo || "";
@@ -446,6 +463,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const boletaYaCerrada = window.ReporteDatos.boletaCerrada(boletaPorCampo);
 		// Cuaderno, lectura y matemáticas como se entregaron (foto del cierre en la fila GEN)
 		diagnostica = window.ReporteDatos.diagnosticaVisible(diagnostica, boletaPorCampo[window.TextosBoleta.GENERAL], boletaYaCerrada);
+		// Y la asistencia de referencia, que también va impresa en la boleta
+		motor.asistencia = window.ReporteDatos.asistenciaVisible(motor.asistencia, boletaPorCampo[window.TextosBoleta.GENERAL], boletaYaCerrada);
+		diasPresente = motor.asistencia.presentes;
+		diasTotal = motor.asistencia.total;
+		asistenciaPct = motor.asistencia.porcentaje;
 		try {
 			const upserts = [];
 			CODIGOS.forEach(function (codigo) {
@@ -496,7 +518,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			asistencia: motor.asistencia,
 			catalogo: window.CatalogoHabilidades,
 			corto: window.CamposFormativos ? window.CamposFormativos.corto : null,
-			plantillas: await cargarPlantillas(),
+			plantillas: plantillas,
 		});
 		if (!boletaYaCerrada) {
 			await guardarTextosPropuestos(textos, boletaPorCampo, {
@@ -897,7 +919,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			let guardadoTrabajo = (obsTrabajo || "").trim();
 			guardarTrabajo = async function () {
 				const valor = obsTrabajoEl.value.trim();
-				if (valor === guardadoTrabajo) return;
+				if (valor === guardadoTrabajo) return true;
+				const guardadoAntes = guardadoTrabajo;
 				guardadoTrabajo = valor;
 				try {
 					if (diagnostica && diagnostica.id) {
@@ -914,8 +937,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 						if (error) throw error;
 						diagnostica = Object.assign({}, diagnostica || {}, { id: data.id, observaciones: valor });
 					}
+					avisoGuardado("");
+					return true;
 				} catch (err) {
 					console.error("evaluacion_diagnostica (trabajo diario):", err);
+					guardadoTrabajo = guardadoAntes; // se reintenta en el siguiente cambio o al salir
+					avisoGuardado("No se pudo guardar el trabajo diario: " + ((err && err.message) || "error desconocido") +
+						". Lo escrito sigue en pantalla; se volverá a intentar.");
+					return false;
 				}
 			};
 			obsTrabajoEl.addEventListener("blur", guardarTrabajo);
@@ -931,12 +960,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 				});
 				if (!filas.length) return;
 				// Lo que se acaba de escribir entra en lo que se entrega
+				let todoGuardado = true;
 				if (guardarCuadroBoleta) {
-					await Promise.all(Array.prototype.map.call(cont.querySelectorAll("textarea[data-boleta-campo]"), function (ta) {
+					const resultados = await Promise.all(Array.prototype.map.call(cont.querySelectorAll("textarea[data-boleta-campo]"), function (ta) {
 						return guardarCuadroBoleta(ta);
 					}));
+					if (resultados.indexOf(false) !== -1) todoGuardado = false;
 				}
-				if (guardarTrabajo) await guardarTrabajo();
+				if (guardarTrabajo && !(await guardarTrabajo())) todoGuardado = false;
+				// No se cierra con algo sin guardar: lo entregado no sería lo que está en pantalla
+				if (!todoGuardado) {
+					window.alert("No se cerró la boleta: no se pudo guardar lo que escribiste. Revisa tu conexión e inténtalo de nuevo.");
+					return;
+				}
 				// Foto del trabajo diario tal como se entrega (vive en evaluacion_diagnostica y
 				// podría editarse después en Diagnóstico)
 				const trabajoFinal = obsTrabajoEl ? obsTrabajoEl.value.trim() : (obsTrabajo || "");
@@ -950,6 +986,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 							trabajo_diario_del_maestro: !!(diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined),
 							// Cuaderno, lectura y matemáticas tal como se entregan (null = sin diagnóstico)
 							diagnostico: window.ReporteDatos.fotoDiagnostico(diagnostica),
+							asistencia: window.ReporteDatos.fotoAsistencia(asistenciaHoy),
 							en: new Date().toISOString(),
 						},
 					}),
@@ -1210,6 +1247,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 		};
 	}
 
+	// Aviso en la boleta cuando un guardado falla (lo escrito sigue en pantalla y se reintenta)
+	function avisoGuardado(texto) {
+		const cont = document.getElementById("boletaContainer");
+		if (!cont) return;
+		let el = document.getElementById("boletaAvisoGuardado");
+		if (!texto) { if (el) el.remove(); return; }
+		if (!el) {
+			el = document.createElement("div");
+			el.id = "boletaAvisoGuardado";
+			el.className = "sticky top-2 z-20 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 no-print";
+			cont.prepend(el);
+		}
+		el.textContent = texto;
+	}
+
 	// ── Autosave de observaciones de boleta (on-blur, upsert por campo) ──
 	// Editar a mano marca editado_manual = true y anota ESE cuadro en
 	// texto_autogenerado.editados: la Capa 1 nunca sobreescribe lo que el maestro
@@ -1218,10 +1270,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	const boletaContEl = document.getElementById("boletaContainer");
 	if (boletaContEl) {
 		const guardarCuadro = guardarCuadroBoleta = async function (ta) {
-			if (!ta || !boletaCtx || ta.readOnly) return; // boleta cerrada: nada que guardar
+			if (!ta || !boletaCtx || ta.readOnly) return true; // boleta cerrada: nada que guardar
 			// Salir del cuadro sin cambiar nada NO cuenta como edición: si contara, el
 			// primer clic marcaría el texto como del maestro y ya no se volvería a proponer.
-			if (ta.value === (ta.dataset.inicial || "")) return;
+			if (ta.value === (ta.dataset.inicial || "")) return true;
+			const inicialAntes = ta.dataset.inicial || "";
 			ta.dataset.inicial = ta.value;
 			const campo = ta.dataset.boletaCampo;
 			const tipo = ta.dataset.boletaTipo;
@@ -1250,9 +1303,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			try {
 				const { error } = await window.sb.from("boleta_trimestral")
 					.upsert(payload, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
-				if (error) console.error("boleta_trimestral (texto):", error);
+				if (error) throw error;
+				avisoGuardado("");
+				return true;
 			} catch (err) {
+				// Se deshace la marca de guardado para que el siguiente intento lo vuelva a mandar
 				console.error("boleta_trimestral (texto):", err);
+				ta.dataset.inicial = inicialAntes;
+				avisoGuardado("No se pudo guardar un cuadro de texto: " + ((err && err.message) || "error desconocido") +
+					". Lo escrito sigue en pantalla; se volverá a intentar al salir del cuadro.");
+				return false;
 			}
 		};
 		boletaContEl.addEventListener("blur", function (e) {

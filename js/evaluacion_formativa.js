@@ -211,9 +211,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 					.from("sesiones_pda")
 					.insert(filasBackfill)
 					.select("id, pda_id, grado, criterio_aplicado");
-				if (!insSpda.error) sesionesPda = insSpda.data || [];
+				if (insSpda.error) throw insSpda.error;
+				sesionesPda = insSpda.data || [];
 			} catch (e) {
+				// Sin esas filas las evaluaciones se guardarían sin su PDA: no se captura
 				console.error("Backfill de sesiones_pda:", e);
+				mostrarError("No se pudieron preparar los PDA de esta sesión. Recarga la página para intentarlo de nuevo.");
+				return;
 			}
 		}
 	}
@@ -293,11 +297,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 					origen:        "maestro"
 				}, { onConflict: "sesion_id,alumno_id,criterio" });
 
-			if (res.error) {
-				console.error("Error guardando semáforo:", res.error);
-			}
+			if (res.error) throw res.error;
 		} catch (e) {
+			// No se calla: la maestra debe saber que ese semáforo no quedó guardado
 			console.error("Error guardando semáforo:", e);
+			mostrarError("No se pudo guardar: " + ((e && e.message) || "error desconocido") + ". Revisa tu conexión y vuelve a tocar el semáforo.");
 		}
 	}
 
@@ -306,7 +310,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var semaforo = evalMap[mapKey(alumnoId, criterio)] || null;
 		if (!semaforo) return; // No guardar obs si no hay semáforo seleccionado
 		try {
-			await window.sb
+			var resObs = await window.sb
 				.from("evaluacion_formativa")
 				.upsert({
 					maestro_id:    userId,
@@ -319,8 +323,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 					fecha:         getLocalDateISO(),
 					origen:        "maestro"
 				}, { onConflict: "sesion_id,alumno_id,criterio" });
+			if (resObs.error) throw resObs.error;
 		} catch (e) {
 			console.error("Error guardando observación:", e);
+			mostrarError("No se pudo guardar la observación: " + ((e && e.message) || "error desconocido") + ". Revisa tu conexión; el texto sigue en pantalla.");
 		}
 	}
 

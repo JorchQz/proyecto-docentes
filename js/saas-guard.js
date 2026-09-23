@@ -36,6 +36,19 @@
 		rootEl.style.visibility = prevVisibility || "";
 	}
 
+	// No se pudo comprobar el acceso (falló la lectura): ni se deja pasar ni se manda a la
+	// tienda como si la cuenta no tuviera acceso; se dice y se ofrece reintentar
+	function sinComprobar() {
+		function pintar() {
+			document.body.innerHTML = "<div style='max-width:28rem;margin:4rem auto;padding:1.5rem;font-family:system-ui,sans-serif;text-align:center'>" +
+				"<p style='font-size:1.1rem;font-weight:600;color:#1f2937;margin-bottom:.5rem'>No se pudo comprobar tu acceso</p>" +
+				"<p style='color:#4b5563;margin-bottom:1rem'>Revisa tu conexión e intenta de nuevo.</p>" +
+				"<button type='button' onclick='location.reload()' style='min-height:44px;padding:0 1.25rem;border-radius:.75rem;background:#2563eb;color:#fff;font-weight:600;border:0'>Reintentar</button></div>";
+			rootEl.style.visibility = prevVisibility || "";
+		}
+		if (document.body) pintar(); else document.addEventListener("DOMContentLoaded", pintar);
+	}
+
 	if (!window.sb) {
 		// Sin cliente no se puede validar: por seguridad, fuera.
 		expulsar(LOGIN_URL);
@@ -50,6 +63,7 @@
 				expulsar(LOGIN_URL);
 				return null;
 			}
+			// error-revisado-en: perf.error
 			return window.sb
 				.from("perfiles")
 				.select("activo_saas")
@@ -58,6 +72,7 @@
 		})
 		.then(function (perf) {
 			if (!perf) { return; } // ya redirigido (sin sesión)
+			if (perf.error) { sinComprobar(); return; }
 			var activo = perf.data && perf.data.activo_saas === true;
 			if (activo) {
 				permitir();

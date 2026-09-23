@@ -115,7 +115,9 @@ const DATOS = {
 		fortalezas: "General entregado", areas_oportunidad: null, sugerencias: null,
 		texto_autogenerado: { visible: "reglas", editados: [], cierre: { trabajo_diario: "Trabajo diario entregado al cierre", trabajo_diario_del_maestro: false,
 			// Al cerrar el diagnóstico decía 77 ppm y resta "logrado"; hoy dice 20 ppm y "requiere apoyo"
-			diagnostico: { lectura_ppm: 77, lectura_comprension: "logrado", matematicas: [{ clave: "mates.resta", nivel: "logrado" }], cuaderno: [] } } },
+			diagnostico: { lectura_ppm: 77, lectura_comprension: "logrado", matematicas: [{ clave: "mates.resta", nivel: "logrado" }], cuaderno: [] },
+			// Al cerrar asistió 3 de 3; hoy la base dice 2 de 3
+			asistencia: { presentes: 3, total: 3, porcentaje: 1 } } },
 	}]),
 	v_avance_pda: [
 		{ campo_formativo: "Lenguajes", pda: "Escribe su nombre y apellidos", nivel_predominante: "requiere_apoyo", evidencias: 3, tendencia: "mejora" },
@@ -207,6 +209,9 @@ new Function(codigo)();
 	ok("no marca nada como propuesto", html.indexOf("(propuesto)") === -1, true);
 	ok("no ofrece volver a proponer", html.indexOf("Volver a proponer") === -1, true);
 	ok("los cuadros son de solo lectura", html.indexOf("readonly") !== -1, true);
+	ok("asistencia de referencia: la del cierre (3 de 3), no la de hoy (2 de 3)", html.indexOf("3 de 3 días") !== -1 && html.indexOf("2 de 3 días") === -1, true);
+	ok("asistenciaVisible cerrada: la foto", window.ReporteDatos.asistenciaVisible({ presentes: 2, total: 3 }, { texto_autogenerado: { cierre: { asistencia: { presentes: 3, total: 3 } } } }, true).presentes, 3);
+	ok("asistenciaVisible abierta: la de hoy", window.ReporteDatos.asistenciaVisible({ presentes: 2, total: 3 }, { texto_autogenerado: { cierre: { asistencia: { presentes: 3, total: 3 } } } }, false).presentes, 2);
 	ok("cuaderno y habilidades: el PPM del cierre (77), no el de hoy (20)", />77</.test(html) && !/>20</.test(html), true);
 
 	// Diagnóstico visible (lo usan la boleta imprimible, el reporte detallado y la exportación)

@@ -444,8 +444,13 @@
 			try {
 				var res = await window.sb.from("alumnos").select("id, nombre_completo, grupo_id, estatus")
 					.eq("maestro_id", ctx.maestroId).eq("id", alumnoId).maybeSingle();
+				if (res.error) throw res.error;
 				fila = res.data || null;
-			} catch (e) { fila = null; }
+			} catch (e) {
+				// No es "no existe": no se pudo leer
+				mensaje("error", "No se pudo cargar a este alumno. Recarga la página para intentarlo de nuevo.");
+				return;
+			}
 
 			if (!fila) {
 				mensaje("error", "No se encontró a este alumno. Puede que se haya borrado o que el enlace sea de otra cuenta. Elige un alumno de la lista.");

@@ -58,6 +58,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Conjunto de alumno_ids evaluados en el momento actual
 	var evaluadosSet   = new Set();
 	var cargaFallida   = false; // no se pudo leer el diagnóstico del alumno: no se guarda
+	/*
+		El formulario está ligado al alumno cuyos datos muestra DE VERDAD (alumnoEnPantalla),
+		no a alumnoIdx: al tocar "Siguiente", alumnoIdx cambia antes de que lleguen los datos
+		del siguiente, y un toque en ese lapso guardaba el formulario en blanco encima de su
+		diagnóstico. Mientras se cambia de alumno o de momento (cambiando) no se guarda nada
+		y los controles quedan bloqueados.
+	*/
+	var alumnoEnPantalla = null; // { id, momento }
+	var cambiando = false;
+	var sucio = false;          // hubo cambios sin guardar (sin cambios no se reescribe la fecha)
+	var versionCambios = 0;     // sube con cada cambio: uno hecho mientras se guarda sigue pendiente
+	var conteoFallido = false;  // no se pudo leer quiénes ya están evaluados
 
 	// ── helpers ──────────────────────────────────────────────────────────────
 	function getLocalDateISO() {
@@ -208,9 +220,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.eq("momento", momentoActual);
 
 			evaluadosSet = new Set();
-			if (!res.error && res.data) {
-				res.data.forEach(function (row) { evaluadosSet.add(row.alumno_id); });
-			}
+			// Si falla, el conteo no dice "0 de 8": dice que no se pudo contar
+			conteoFallido = !!res.error;
+			if (res.error) console.error("evaluacion_diagnostica (conteo):", res.error);
+			else (res.data || []).forEach(function (row) { evaluadosSet.add(row.alumno_id); });
 		} catch (e) {
 			// No bloquear
 		}
@@ -221,6 +234,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var alumno = alumnos[alumnoIdx];
 		if (!alumno) return;
 
+		alumnoEnPantalla = null;
+		sucio = false;
 		resetEstado();
 		ocultarMensaje();
 
@@ -238,6 +253,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 			if (res.error) throw res.error;
 			if (res.data) aplicarFila(res.data);
+			alumnoEnPantalla = { id: alumno.id, momento: momentoActual };
 		} catch (e) {
 			console.error("evaluacion_diagnostica (lectura):", e);
 			cargaFallida = true;
@@ -246,9 +262,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// ── upsert completo del alumno actual ─────────────────────────────────────
-	async function guardarAlumno() {
-		var alumno = alumnos[alumnoIdx];
-		if (!alumno || cargaFallida) return;
+	// forzar = guardar lo pendiente del alumno que se deja (al empezar un cambio)
+	async function guardarAlumno(forzar) {
+		if (cambiando && !forzar) return;
+		var objetivo = alumnoEnPantalla;
+		if (!objetivo || cargaFallida || !sucio) return true;
+		var version = versionCambios; // los cambios hechos mientras se guarda lo suben
 
 		// Solo guardar si hay al menos 1 dato
 		var tieneAlgo = estadoCuaderno.some(function (e) { return e.nivel; }) ||
@@ -266,9 +285,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.from("evaluacion_diagnostica")
 				.upsert({
 					maestro_id:          user.id,
-					alumno_id:           alumno.id,
+					alumno_id:           objetivo.id,
 					grupo_id:            grupoId,
-					momento:             momentoActual,
+					momento:             objetivo.momento,
 					fecha:               getLocalDateISO(),
 					cuaderno:            estadoCuaderno,
 					lectura_ppm:         ppmVal,
@@ -277,14 +296,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 					observaciones:       obs
 				}, { onConflict: "maestro_id,alumno_id,momento" });
 
-			if (res.error) {
-				console.error("Error guardando:", res.error);
-			} else {
-				evaluadosSet.add(alumno.id);
-				actualizarProgreso();
-			}
+			if (res.error) throw res.error;
+			// Si hubo otro cambio mientras se guardaba, sigue pendiente
+			if (version === versionCambios) sucio = false;
+			if (objetivo.momento === momentoActual) evaluadosSet.add(objetivo.id);
+			actualizarProgreso();
+			return true;
 		} catch (e) {
+			// No se calla: lo capturado sigue en pantalla y se reintenta con el siguiente cambio
 			console.error("Error guardando:", e);
+			mostrarError("No se pudo guardar el diagnóstico de este alumno: " + ((e && e.message) || "error desconocido") +
+				". Revisa tu conexión; lo capturado sigue en pantalla.");
+			return false;
 		}
 	}
 
@@ -300,7 +323,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var evaluados = evaluadosSet.size;
 		var pct       = total > 0 ? Math.round((evaluados / total) * 100) : 0;
 		if (footerProgresoEl) {
-			footerProgresoEl.textContent = evaluados + " de " + total + " alumnos evaluados";
+			footerProgresoEl.textContent = conteoFallido
+				? "No se pudo contar a los evaluados"
+				: evaluados + " de " + total + " alumnos evaluados";
 		}
 		if (footerBarraEl) {
 			footerBarraEl.style.width = pct + "%";
@@ -361,6 +386,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── renderizar el cuerpo del alumno actual ────────────────────────────────
 	function renderAlumno() {
+		// Sin los datos del alumno no se dibuja el formulario vacío (parecería "sin
+		// diagnóstico"): queda el aviso
+		if (cargaFallida) {
+			diagCuerpoEl.innerHTML = '<div class="rounded-xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">' +
+				'No se pudo cargar lo que ya tiene este alumno. Recarga la página; mientras tanto no se muestra ni se guarda nada, para no borrar su diagnóstico.</div>';
+			return;
+		}
 		ocultarMensaje();
 
 		// ── Sección Cuaderno ────────────────────────
@@ -432,14 +464,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		if (inputPPM) {
 			inputPPM.addEventListener("input", function () {
+				if (cambiando) return;
 				ppm = inputPPM.value;
+				sucio = true; versionCambios++;
 				guardarConDebounce();
 			});
 		}
 
 		if (inputObs) {
 			inputObs.addEventListener("input", function () {
+				if (cambiando) return;
 				observaciones = inputObs.value;
+				sucio = true; versionCambios++;
 				guardarConDebounce();
 			});
 		}
@@ -467,7 +503,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── delegar clicks de semáforo en el cuerpo ───────────────────────────────
 	diagCuerpoEl.addEventListener("click", async function (e) {
 		var btn = e.target.closest("button[data-tipo][data-item][data-valor]");
-		if (!btn) return;
+		if (!btn || cambiando || !alumnoEnPantalla) return; // cambiando de alumno: el toque no aplica
 
 		var tipo  = btn.dataset.tipo;
 		var item  = btn.dataset.item;   // índice (string) o 'comprension'
@@ -491,21 +527,42 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		// Autosave inmediato al tocar semáforo
+		sucio = true; versionCambios++;
 		await guardarAlumno();
 	});
 
+	/*
+		Cambio de alumno o de momento: bloquea los controles, guarda lo pendiente del que se
+		deja y solo vuelve a permitir capturar cuando el formulario ya muestra los datos del
+		nuevo (ver alumnoEnPantalla).
+	*/
+	async function cambiar(fn) {
+		if (cambiando) return;
+		cambiando = true;
+		diagCuerpoEl.classList.add("opacity-50", "pointer-events-none");
+		diagCuerpoEl.querySelectorAll("input, textarea").forEach(function (el) { el.readOnly = true; });
+		try {
+			clearTimeout(debounceTimer);
+			// Si no se pudo guardar al que se deja, no se cambia: se perdería lo capturado
+			if (!(await guardarAlumno(true))) return;
+			await fn();
+		} finally {
+			cambiando = false;
+			diagCuerpoEl.classList.remove("opacity-50", "pointer-events-none");
+		}
+	}
+
 	// ── navegar entre alumnos ─────────────────────────────────────────────────
-	async function irAAlumno(nuevoIdx) {
+	function irAAlumno(nuevoIdx) {
 		if (nuevoIdx < 0 || nuevoIdx >= alumnos.length) return;
-		// Guardar antes de cambiar (texto pendiente)
-		clearTimeout(debounceTimer);
-		await guardarAlumno();
-		alumnoIdx = nuevoIdx;
-		await cargarAlumnoActual();
-		actualizarInfoAlumno();
-		renderAlumno();
-		// Scroll al inicio del contenido
-		window.scrollTo({ top: 0, behavior: "smooth" });
+		return cambiar(async function () {
+			alumnoIdx = nuevoIdx;
+			await cargarAlumnoActual();
+			actualizarInfoAlumno();
+			renderAlumno();
+			// Scroll al inicio del contenido
+			window.scrollTo({ top: 0, behavior: "smooth" });
+		});
 	}
 
 	if (btnAnterior) {
@@ -525,16 +582,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		btn.addEventListener("click", async function () {
 			var nuevoMomento = btn.dataset.momento;
 			if (nuevoMomento === momentoActual) return;
-			// Guardar estado actual antes de cambiar
-			clearTimeout(debounceTimer);
-			await guardarAlumno();
-			momentoActual = nuevoMomento;
-			actualizarBotonesMomento();
-			await cargarEvaluadosMomento();
-			await cargarAlumnoActual();
-			actualizarInfoAlumno();
-			actualizarProgreso();
-			renderAlumno();
+			await cambiar(async function () {
+				momentoActual = nuevoMomento;
+				actualizarBotonesMomento();
+				await cargarEvaluadosMomento();
+				await cargarAlumnoActual();
+				actualizarInfoAlumno();
+				actualizarProgreso();
+				renderAlumno();
+			});
 		});
 	});
 
@@ -542,7 +598,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (btnFinalizar) {
 		btnFinalizar.addEventListener("click", async function () {
 			clearTimeout(debounceTimer);
-			await guardarAlumno();
+			if (!(await guardarAlumno(true))) return; // el aviso ya está en pantalla
 			window.location.href = "dashboard.html";
 		});
 	}

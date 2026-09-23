@@ -94,7 +94,7 @@ responde "no configurada".
 
 ## 3. Pruebas
 
-- **21 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
+- **22 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
   todas pasan. Cubren motor, textos, boleta de punta a punta, IA y Capa 1, los cuatro
   reportes, Vista Recrea y Concentrado, Tareas, Hoy y ausencia de emojis.
 - **Verificaciones en navegador** (en `.qa/`, locales): recorrido de humo por las 18
@@ -156,6 +156,11 @@ En cada caso se eligió lo más conservador y el sistema funciona así mientras 
 13. **Ausentes y cierre del día.** Un alumno que faltó sigue contando como "sin calificar"
     en los productos del día, y el primer toque del cierre guarda 1 y 1 también a quien no
     tiene asistencia capturada (se asume presente). *Hoy:* sin cambio.
+14. **La casilla sin marcar en "Asistencia".** En `asistencia.html` (la pantalla vieja de
+    lista) una casilla sin marcar se guarda como falta, y cada toque guarda a todo el
+    grupo; en "Hoy" un alumno sin marcar queda sin registro. *Hoy:* se dejó como estaba
+    (solo se protegió contra lecturas fallidas y el retiro del cierre se limita a faltas
+    marcadas). Decide si debe comportarse como "Hoy".
 
 ---
 

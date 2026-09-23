@@ -22,6 +22,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var saveInProgress = false;
 	var hasPendingAutosave = false;
 	var minAttendanceDateIso = null;
+	// Arriba, con el resto del estado: declarada más abajo, su "= false" se ejecutaba DESPUÉS
+	// del arranque y borraba el aviso de una lectura fallida (ver avisarCargaFallida)
+	var cargaFallida = false;
 
 
 	if (attendanceDateInput) {
@@ -34,8 +37,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 			attendanceListEl.innerHTML = "<div class='rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500'>Cargando alumnos...</div>";
 			attendanceMap = {}; // Limpiar mapa al cambiar de fecha
-			await loadStudents();
-			await loadAttendanceOfSelectedDate();
+			try {
+				await loadStudents();
+				await loadAttendanceOfSelectedDate();
+				cargaFallida = false;
+				clearMessage();
+			} catch (e) {
+				avisarCargaFallida(e);
+			}
 			renderList();
 			updateSummary();
 		});
@@ -58,11 +67,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			await loadAttendanceOfSelectedDate();
 		} catch (attendanceError) {
-			attendanceMap = {};
-			showMessage(
-				"info",
-				"La tabla asistencias aun no esta disponible. Puedes ejecutar el SQL y despues guardar."
-			);
+			avisarCargaFallida(attendanceError);
 		}
 		renderList();
 		updateSummary();
@@ -104,12 +109,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		currentGroup = activo.grupo;
 	}
 
+	/*
+		Si no se pudo leer la asistencia guardada, la lista sale sin marcar y un toque
+		guardaría encima de lo capturado (y retiraría el cierre de quien apareciera como
+		ausente). Por eso no se guarda nada hasta recargar.
+	*/
+	function avisarCargaFallida(e) {
+		console.error("asistencia (lectura):", e);
+		attendanceMap = {};
+		cargaFallida = true;
+		showMessage("error", "No se pudo cargar la asistencia de este día. Recarga la página; mientras tanto no se guarda nada, para no borrar lo que ya estaba.");
+	}
+
 	async function loadStudents() {
 		var studentsResult = await window.sb
 			.from("alumnos")
 			.select("id, nombre_completo, num_lista")
 			.eq("maestro_id", currentUserId)
 			.eq("grupo_id", currentGroup.id)
+			.eq("estatus", "activo") // como en "Hoy": un alumno dado de baja no pasa lista
 			.order("num_lista", { ascending: true })
 			.order("nombre_completo", { ascending: true });
 
@@ -284,6 +302,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	async function saveAttendance() {
+		if (cargaFallida) {
+			showMessage("error", "No se guardó: no se pudo cargar la asistencia de este día. Recarga la página.");
+			return;
+		}
 		if (!currentGroup) {
 			showMessage("error", "No hay grupo activo para guardar asistencia.");
 			return;
@@ -302,6 +324,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		saveInProgress = true;
 
 		try {
+			// En esta pantalla la casilla sin marcar ES la falta (así se diseñó): se guarda a
+			// todos. Decisión pendiente para Jorge: si un alumno sin marcar debe quedar sin
+			// registro (como en "Hoy") en lugar de falta.
 			var rows = students.map(function (student) {
 				return {
 					maestro_id: currentUserId,
@@ -324,9 +349,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// Misma regla que "Hoy" (retirarCierreSiFalto): quien faltó ese día no tiene
 			// cierre. Se retira solo el 1 y 1 que se puso por defecto; una excepción que el
 			// maestro capturó a mano se queda.
-			var faltaron = rows.filter(function (r) {
-				return r.asistencia_estado === "ausente" || r.asistencia_estado === "justificada";
-			}).map(function (r) { return r.alumno_id; });
+			// Solo las faltas marcadas (no la casilla que nadie tocó): el cierre capturado en
+			// "Hoy" de un alumno que aquí nadie marcó no se toca
+			var faltaron = students.filter(function (st) {
+				var e = attendanceMap[st.id];
+				return e === "ausente" || e === "justificada";
+			}).map(function (st) { return st.id; });
 			if (faltaron.length) {
 				var retiro = await window.sb.from("registro_diario").delete()
 					.eq("maestro_id", currentUserId).eq("fecha", attendanceDateIso)

@@ -621,9 +621,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var res = await window.sb
 				.from("respuestas_examen")
 				.upsert(fila, { onConflict: "examen_id,alumno_id,pregunta_id" });
-			if (res.error) console.error("Error guardando respuesta:", res.error);
+			if (res.error) throw res.error;
 		} catch (e) {
+			// No se calla: esa respuesta no quedó guardada y la calificación saldría sin ella
 			console.error("Error guardando respuesta:", e);
+			mostrarError("No se pudo guardar una respuesta: " + ((e && e.message) || "error desconocido") +
+				". Revisa tu conexión y vuelve a capturarla.");
 		}
 	}
 

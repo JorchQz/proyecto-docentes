@@ -128,7 +128,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (21 suites).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (22 suites).
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad.
 > - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
 > - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
@@ -156,6 +156,10 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `lecturas-sin-tope` — revisa el código de `js/`: ninguna lectura de una tabla que crece
 >   sin paginar, fuera de una lista de lecturas acotadas (con el filtro exacto que las acota
 >   y su razón); y `js/leer-todo.js`.
+> - `lecturas-revisan-error` — revisa TODAS las lecturas de `js/`: cada una va en un paginador
+>   (que lanza el error), revisa su error, o lleva un comentario `lectura-opcional:` con la
+>   razón de que sea seguro seguir sin ese dato (o `error-revisado-en:` si se revisa más
+>   adelante). Una lectura nueva que ignore su error hace fallar la prueba.
 > - `lecturas-con-error` — ejecuta "Hoy" y la boleta de Reportes completas con cada una de
 >   sus lecturas en error: avisan y no escriben nada (antes el cierre del día pisaba lo
 >   capturado y la boleta guardaba su propuesta encima de lo confirmado).
@@ -212,9 +216,11 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `porcentaje` y la calificación guardados (si hubo capturas después, un aviso lo dice y
   el desglose por criterio muestra los datos de hoy); los textos guardados, también los de
   la fila GEN, que no lleva calificación y por eso no se marca `cerrada`; y el trabajo
-  diario, el cuaderno, la lectura (PPM y comprensión) y las matemáticas de la foto del
-  cierre (`texto_autogenerado.cierre` de la fila GEN: `trabajo_diario`, `diagnostico`;
-  `ReporteDatos.diagnosticaVisible`), aunque después se edite en Diagnóstico. El semáforo
+  diario, el cuaderno, la lectura (PPM y comprensión), las matemáticas y la asistencia de
+  referencia de la foto del cierre (`texto_autogenerado.cierre` de la fila GEN:
+  `trabajo_diario`, `diagnostico`, `asistencia`; `ReporteDatos.diagnosticaVisible` y
+  `asistenciaVisible`). "Cerrar boleta" no cierra si un cuadro o el trabajo diario no se
+  pudieron guardar, aunque después se edite en Diagnóstico. El semáforo
   de cada campo es el guardado. El porcentaje se guarda truncado a 2 decimales (el que se
   ve, truncado a 1, no cambia al cerrar). El porcentaje del cierre y el aviso se ven en Reportes
   y en el reporte detallado (la boleta imprimible y la exportación no muestran porcentajes
@@ -226,7 +232,12 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   red), "Trabajar hoy" espera a que la cola quede vacía antes de recargar y cerrar la
   página con capturas pendientes pide confirmación. Si una lectura falla, la pantalla lo
   dice y no dibuja ni escribe nada (lo mismo Inicio, la boleta de Reportes, Diagnóstico,
-  Evaluación formativa, Exámenes y Ajustes). Marcar una falta en `asistencia.html` también
+  Evaluación formativa, Exámenes, Ajustes, Asistencia y el candado de acceso, que ya no
+  manda a la tienda si solo falló la lectura del perfil). Un guardado que falla también
+  se avisa (Diagnóstico, Evaluación formativa, Exámenes, cuadros de la boleta). Diagnóstico
+  liga el formulario al alumno cuyos datos muestra: mientras cambia de alumno bloquea los
+  controles, y si no pudo guardar al que se deja, no cambia. La retroalimentación de "Hoy"
+  se guarda también mientras se escribe. Marcar una falta en `asistencia.html` también
   retira el 1 y 1 del cierre de ese día, como en "Hoy". La unidad es el producto, no la
   actividad. En multigrado cada
   alumno solo ve los productos cuyos `grados` incluyen el suyo, agrupados por grado.

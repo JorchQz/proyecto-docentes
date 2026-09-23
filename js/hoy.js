@@ -137,7 +137,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// Cerrar o recargar la página con capturas sin guardar: el navegador pregunta
 	window.addEventListener("beforeunload", function (e) {
-		if (!pendientes) return;
+		if (!pendientes && !Object.keys(retroPendiente || {}).length) return;
 		e.preventDefault();
 		e.returnValue = "";
 	});
@@ -703,11 +703,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 		var ta = e.target.closest("textarea[data-retroalimentacion]");
-		if (ta) {
-			var prod = productoPorId(ta.dataset.retroalimentacion);
-			var alum = alumnos.find(function (x) { return x.id === ta.dataset.alumno; });
-			if (prod && alum) guardarCalificacion(alum, prod, { retroalimentacion: ta.value.trim() || null });
-		}
+		if (ta) guardarRetro(ta);
+	});
+
+	/*
+		Retroalimentación: se guarda al salir del cuadro y también mientras se escribe (tras
+		una pausa). Lo escrito y aún no mandado cuenta como pendiente: recargar o cerrar la
+		página pide confirmación y "Trabajar hoy" lo guarda antes de recargar.
+	*/
+	var retroPendiente = {}; // producto|alumno -> { ta, timer }
+	function guardarRetro(ta) {
+		var clave = ta.dataset.retroalimentacion + "|" + ta.dataset.alumno;
+		if (retroPendiente[clave]) { clearTimeout(retroPendiente[clave].timer); delete retroPendiente[clave]; }
+		var prod = productoPorId(ta.dataset.retroalimentacion);
+		var alum = alumnos.find(function (x) { return x.id === ta.dataset.alumno; });
+		if (prod && alum) guardarCalificacion(alum, prod, { retroalimentacion: ta.value.trim() || null });
+	}
+	function guardarRetrosPendientes() {
+		Object.keys(retroPendiente).forEach(function (k) { guardarRetro(retroPendiente[k].ta); });
+	}
+	sesionesCont.addEventListener("input", function (e) {
+		var ta = e.target.closest("textarea[data-retroalimentacion]");
+		if (!ta) return;
+		var clave = ta.dataset.retroalimentacion + "|" + ta.dataset.alumno;
+		if (retroPendiente[clave]) clearTimeout(retroPendiente[clave].timer);
+		retroPendiente[clave] = { ta: ta, timer: setTimeout(function () { guardarRetro(ta); }, 1000) };
 	});
 
 	function productoPorId(id) {
@@ -730,6 +750,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			// La pantalla se recarga al final: primero debe quedar guardado todo lo que ya
 			// se capturó (antes la recarga cortaba la cola y se perdían marcas)
+			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
 			if (pendientes) {
 				btn.textContent = "Guardando lo capturado...";
 				await colaVacia();

@@ -97,7 +97,9 @@ estén completadas.
 Todo se guarda al tocar (cola en memoria con reintento), sin botón de guardar. Una
 captura nunca se descarta: si no hay red se reintenta y lo avisa; "Trabajar hoy" espera a
 que todo quede guardado antes de recargar, y cerrar la página con capturas pendientes
-pide confirmación. Si una lectura falla, la pantalla lo dice en vez de mostrarse vacía.
+pide confirmación. Si una lectura falla, la pantalla lo dice en vez de mostrarse vacía
+(ni guarda nada encima), y un guardado que falla también se avisa. Lo mismo en Inicio,
+Asistencia, Diagnóstico, Evaluación formativa, Exámenes, Ajustes y la boleta.
 
 *Diferencia con la especificación:* no hay "retardo" en asistencia (agregarlo es una
 decisión de producto pendiente para Jorge).
@@ -106,7 +108,8 @@ decisión de producto pendiente para Jorge).
 crear las sesiones, y el borrado en cascada se llevaría productos, calificaciones y
 evidencias. Por eso un proyecto que ya se está trabajando (sesiones con fecha o en curso,
 o calificaciones) se abre solo para consulta. Editar un proyecto en curso sin perder nada
-queda como decisión pendiente para Jorge.
+queda como decisión pendiente para Jorge. La comprobación se repite al guardar (otra pestaña
+pudo empezar a trabajarlo), y si el catálogo de PDA no se pudo leer tampoco se guarda.
 
 ### B.2 Máximos automáticos
 
@@ -139,7 +142,8 @@ la fórmula: se reporta aparte como referencia.
   detallado y la exportación: la calificación, el porcentaje del cierre (donde se muestra
   porcentaje: Reportes y reporte detallado, con aviso si hubo capturas después), los
   textos guardados (también los generales) y el trabajo diario tal como se entregó,
-  y la sección de cuaderno y habilidades tal como estaban al cerrar, aunque después cambien
+  la sección de cuaderno y habilidades y la asistencia de referencia tal como estaban al
+  cerrar, aunque después cambien
   las capturas o el diagnóstico. La junta no es la boleta: grafica
   el logro del grupo con los datos de hoy. No se puede reabrir desde la interfaz.
 

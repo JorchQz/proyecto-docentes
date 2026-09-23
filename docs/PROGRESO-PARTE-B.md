@@ -23,10 +23,10 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → revisor 37h | — |
+| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa: 2.º seguido) → revisor 37i | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → revisor 310d | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → revisor 310e | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -362,6 +362,42 @@ fallan). En navegador, `.qa/verificar-310d.js`: con `registro_diario`, `asistenc
 `proyectos` en error (500 simulado) Hoy e Inicio lo dicen y no hay escrituras; un proyecto
 en curso no se puede guardar ni forzando el clic.
 
+**Revisión #7 de 3.7: FAIL #7** (revisor 37h, `.qa/revisor-37h/`). FAIL #1-#6 no reaparecieron
+(barrido de 150 casos pantalla × tabla con 500: Hoy, Tareas, boleta, reporte, junta,
+exportar, Formativa, Exámenes y Ajustes avisan y no escriben; red lenta en "Hoy" sin
+pérdidas; Hoy/Inicio/Tareas coinciden). **Misma causa que el FAIL #6** (lecturas cuyo
+error se ignora) en pantallas que quedaban: Asistencia (un toque tras una lectura fallida
+guardó "ausente" a 6 presentes y borró su cierre), Crear proyecto en edición (con el
+catálogo en error borraba los PDA de las sesiones), los pesos del maestro en el motor (con
+error calculaba con los de fábrica y guardaba esa propuesta), el aviso de Diagnóstico que
+se ocultaba y Inicio con la lectura de alumnos en error; más dos de otra causa: la carrera
+de Diagnóstico al cambiar de alumno y guardados que fallaban sin aviso.
+**Conteo para la regla de los 3 FAIL:** son dos seguidos por la misma causa (#6 y #7). Por
+eso la corrección ya no es por pantalla: la prueba nueva
+`pruebas/lecturas-revisan-error.test.js` revisa las 91 lecturas de `js/` y falla si alguna
+ignora su error sin una razón escrita (`lectura-opcional:`; hoy solo 2: el nombre del
+saludo de Inicio y las sugerencias de criterio de Crear proyecto) o sin decir dónde se
+revisa (`error-revisado-en:`). Con ella se corrigieron las 13 que quedaban: motor
+(pesos), ReporteDatos (perfil, bandas, sugerencias, proyectos de las retroalimentaciones),
+Reportes (alumnos; bandas y sugerencias ahora se leen antes de guardar la boleta), boleta
+imprimible (alumno ajeno), Inicio (alumnos), el candado de acceso (ya no manda a la tienda
+si solo falló la lectura del perfil: dice "No se pudo comprobar tu acceso" y ofrece
+reintentar). Además: Asistencia no guarda nada tras una lectura fallida (y su estado se
+declaraba después del arranque, lo que borraba el aviso: corregido), Crear proyecto no
+guarda sin catálogo y vuelve a comprobar "en curso" AL GUARDAR antes de cualquier
+escritura, Diagnóstico liga el formulario al alumno que muestra y bloquea los controles
+al cambiar, y los guardados fallidos avisan (Diagnóstico no cambia de alumno si no pudo
+guardar; "Cerrar boleta" no cierra con un cuadro sin guardar; cuadros y trabajo diario se
+reintentan). Menores: Diagnóstico ya no reescribe la fecha sin cambios; Asistencia solo
+lista alumnos activos y solo retira el cierre de faltas marcadas; el aviso de "Eliminar
+proyecto" dice que se borran también las calificaciones.
+Verificado en navegador con `.qa/verificar-37i.js` (carrera de Diagnóstico con la lectura
+retrasada 4 s: el siguiente alumno no cambia; lectura y guardado fallidos en Diagnóstico;
+Asistencia; Inicio; pesos en error en la boleta) y `.qa/verificar-37j.js` (Crear proyecto
+con el catálogo en error); 22 suites, humo, verificar-37c, 310d y cierre-boleta en verde
+(una corrida de verificar-criterios-crear mostró un error pasajero que no se repitió en tres
+corridas más).
+
 **Revisión de 3.8: PASS** (revisor 37b). Llave ausente del frontend, de git y de
 `.env.local`; función desplegada v2 idéntica al repo; sin llave el botón no aparece (7
 boletas, solo llamadas "estado"); sin sesión o con token inválido 401, "redactar" sin
@@ -476,6 +512,20 @@ Verificado: `pruebas/boleta-cerrada.test.js` y `reporte-alumno.test.js` (foto de
 diagnóstico y semáforo del cierre) y `.qa/verificar-cierre-boleta.js` en navegador (PPM
 cambiado a 987 después de cerrar: no aparece en imprimible, reporte ni Reportes; semáforo
 del cierre).
+
+**Cuarto ensayo de 3.10: FAIL #4** (revisor 310d, `.qa/revisor-310d/`). El trimestre completo
+funciona por la interfaz: proyecto creado con PDA por grado y consola limpia, proyecto en
+curso de solo consulta, 6 días en "Hoy" con red lenta sin pérdidas, 8 porcentajes a mano
+cuadran, pisos, "Elige", edición que sobrevive; boletas cerradas idénticas en la base tras
+cambiar capturas y diagnóstico, y sin cambios en Reportes, imprimible, reporte y
+exportación (calificación, porcentaje, semáforo, textos, trabajo diario, cuaderno y
+habilidades); junta, T2, aislamiento. Bloqueante: **Diagnóstico pisaba el diagnóstico
+completo del siguiente alumno** si se tocaba un control antes de que cargara (lo reprodujo
+sin simular red lenta). → Corregido (ver FAIL #7 de 3.7, mismo defecto). Importante: la
+asistencia de una boleta cerrada seguía cambiando en lo impreso → ahora también va en la
+foto del cierre. Menor corregido: la retroalimentación de "Hoy" se perdía al recargar sin
+salir del cuadro → se guarda mientras se escribe y cuenta como pendiente. Anotados para
+Jorge: tiempos de carga (boleta 5 a 10 s, junta 7.8 s) y los ya conocidos.
 
 ## 3.9 Documentación
 

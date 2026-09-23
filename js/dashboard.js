@@ -59,6 +59,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 });
 
 async function inicializarEncabezado() {
+	// lectura-opcional: solo el nombre del saludo; si falla, saluda sin nombre y no se guarda nada
 	const { data: perfil } = await window.sb
 		.from("perfiles")
 		.select("nombre_completo")
@@ -96,7 +97,8 @@ async function cargarGrupoYAlumnos() {
 		.eq("estatus", "activo")
 		.order("grado")
 		.order("num_lista");
-	if (alumnosError) showError("No se pudo cargar la lista de alumnos: " + alumnosError.message);
+	// Sin la lista no se sigue: "0 alumnos" y todo en verde contradiría a "Hoy"
+	if (alumnosError) throw new Error("No se pudo cargar la lista de alumnos (" + alumnosError.message + "). Recarga la página.");
 	alumnos = als || [];
 	document.getElementById("welcomeSub").textContent = (grupo.nombre || "Grupo") + " · " + alumnos.length + " alumnos";
 }
@@ -108,6 +110,7 @@ async function crearCardHoy() {
 	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6";
 
 	// Asistencia y cierre del día de hoy
+	// error-revisado-en: sinLeerDia
 	const [asisRes, regRes] = await Promise.all([
 		window.sb.from("asistencias").select("alumno_id, asistencia_estado").eq("grupo_id", grupoId).eq("fecha", hoy),
 		alumnos.length

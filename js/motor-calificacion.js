@@ -199,6 +199,9 @@
 
 	async function cargarPesos(sb, maestroId) {
 		var ajustesRes = await sb.from("maestro_ajustes").select("*").eq("maestro_id", maestroId).maybeSingle();
+		// Sin los pesos del maestro no se calcula con los de fábrica: la boleta guardaría una
+		// propuesta con otros pesos sin decirlo
+		if (ajustesRes.error) throw ajustesRes.error;
 		var aj = ajustesRes.data;
 		return {
 			tareas:        Number(aj && aj.peso_tareas        != null ? aj.peso_tareas        : 28),

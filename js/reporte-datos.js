@@ -70,13 +70,18 @@
 		}
 
 		var perfilRes = await sb.from("perfiles").select("nombre_completo, escuela").eq("id", maestroId).maybeSingle();
+		// Un error se lanza: la página dice que no pudo, en vez de imprimir sin escuela ni
+		// docente, o sin bandas de lectura y sugerencias
+		if (perfilRes.error) throw perfilRes.error;
 		var perfil = perfilRes.data || {};
 
 		var bandasRes = await sb.from("bandas_ppm").select("*");
+		if (bandasRes.error) throw bandasRes.error;
 		var bandas = {};
 		(bandasRes.data || []).forEach(function (b) { bandas[b.grado] = b; });
 
 		var plantillasRes = await sb.from("plantillas_sugerencia").select("clave, texto").eq("activo", true);
+		if (plantillasRes.error) throw plantillasRes.error;
 		var plantillas = {};
 		(plantillasRes.data || []).forEach(function (p) { plantillas[p.clave] = p.texto; });
 
@@ -131,6 +136,15 @@
 		if (!foto || !Object.prototype.hasOwnProperty.call(foto, "diagnostico")) return diagnostica;
 		if (!foto.diagnostico) return null;
 		return Object.assign({}, diagnostica || {}, foto.diagnostico);
+	}
+	// Asistencia de referencia como se entregó (foto del cierre); sin foto, la de hoy
+	function asistenciaVisible(asistencia, filaGeneral, cerrada) {
+		var foto = cerrada ? fotoCierre(filaGeneral) : null;
+		return foto && foto.asistencia ? foto.asistencia : asistencia;
+	}
+	function fotoAsistencia(asistencia) {
+		if (!asistencia) return null;
+		return { presentes: asistencia.presentes, total: asistencia.total, porcentaje: asistencia.porcentaje };
 	}
 	function fotoDiagnostico(diagnostica) {
 		if (!diagnostica) return null;
@@ -226,7 +240,9 @@
 
 		var boletas = await boletasCiclo(sb, ctx, [alumno.id]);
 		var boletaT = (boletas[alumno.id] || {})[trimestre] || {};
-		diagnostica = diagnosticaVisible(diagnostica, boletaT.GEN, boletaCerrada(boletaT));
+		var cerrada = boletaCerrada(boletaT);
+		diagnostica = diagnosticaVisible(diagnostica, boletaT.GEN, cerrada);
+		motor = Object.assign({}, motor, { asistencia: asistenciaVisible(motor.asistencia, boletaT.GEN, cerrada) });
 
 		var banda = ctx.bandas[alumno.grado] || null;
 		var fluidez = window.CatalogoHabilidades.clasificarPPM(diagnostica ? diagnostica.lectura_ppm : null, banda);
@@ -252,6 +268,7 @@
 	async function retroalimentaciones(sb, ctx, alumnoId, trimestre, limite) {
 		var proyRes = await sb.from("proyectos").select("id")
 			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupo.id).eq("trimestre", trimestre);
+		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
 		if (!proyIds.length) return [];
 		var res = await sb.from("calificaciones")
@@ -314,6 +331,8 @@
 		boletaCerrada: boletaCerrada,
 		fotoCierre: fotoCierre,
 		diagnosticaVisible: diagnosticaVisible,
+		asistenciaVisible: asistenciaVisible,
+		fotoAsistencia: fotoAsistencia,
 		fotoDiagnostico: fotoDiagnostico,
 		textoSeccion: textoSeccion,
 		trabajoDiario: trabajoDiario,

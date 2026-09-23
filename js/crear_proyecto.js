@@ -1570,6 +1570,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       let variantes = [];
       try {
+        // lectura-opcional: solo sugerencias de criterio; si falla se ofrece el del catálogo
+        // y nada se guarda con este dato
         const { data } = await window.sb
           .from('banco_criterios_pda')
           .select('id, criterio_texto, uso_count')
@@ -1934,7 +1936,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       document.getElementById('borradorBanner')?.classList.add('hidden');
 
       // Cargar catálogo antes de renderizar sesiones (para PDA selects)
-      try { await cargarCatalogo(); } catch (_) {}
+      // Sin catálogo no se dibujan los PDA de las sesiones: guardar los borraría
+      let catalogoFallo = false;
+      try { await cargarCatalogo(); } catch (e) { console.error('catálogo (edición):', e); catalogoFallo = true; }
 
       // Cargar sesiones
       const { data: sesiones, error: errorSesiones } = await window.sb
@@ -1949,7 +1953,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         guarda si las sesiones no se pudieron leer (se guardaría una lista vacía) ni si el
         proyecto ya se está trabajando: en ese caso esta pantalla es solo de consulta.
       */
-      if (errorSesiones) {
+      if (catalogoFallo) {
+        edicionBloqueada = 'No se pudo cargar el catálogo de PDA. Recarga la página; mientras tanto no se puede guardar, para no borrar los PDA de las sesiones.';
+      } else if (errorSesiones) {
         edicionBloqueada = 'No se pudieron cargar las sesiones de este proyecto. Recarga la página; mientras tanto no se puede guardar, para no borrar nada.';
       } else {
         const { count: conCalificaciones, error: errorCal } = await window.sb
@@ -2268,6 +2274,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       if (proyectoId) {
         // Modo edición — actualizar proyecto existente
+        // Se vuelve a comprobar AL GUARDAR (otra pestaña pudo empezar a trabajarlo después de
+        // abrir esta): con trabajo registrado no se toca nada (ni el proyecto ni sus sesiones)
+        // error-revisado-en: sesRes.error
+        const [calRes, sesRes] = await Promise.all([
+          window.sb.from('calificaciones').select('id', { count: 'exact', head: true }).eq('proyecto_id', proyectoId),
+          window.sb.from('sesiones').select('id', { count: 'exact', head: true }).eq('proyecto_id', proyectoId)
+            .or('fecha.not.is.null,estado_sesion.neq.pendiente'),
+        ]);
+        if (calRes.error) throw calRes.error;
+        if (sesRes.error) throw sesRes.error;
+        if ((calRes.count || 0) > 0 || (sesRes.count || 0) > 0) {
+          throw new Error('este proyecto ya se está trabajando; guardarlo borraría lo capturado. Recarga la página.');
+        }
         const { error: pError } = await window.sb
           .from('proyectos')
           .update(proyectoPayload)
