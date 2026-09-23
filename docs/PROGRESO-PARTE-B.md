@@ -26,7 +26,7 @@ seguir desde el último bloque con PASS.
 | 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → FAIL #7 310g (borrar y reinsertar lo cerrado: misma causa, 2.º seguido) → revisor 310h | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → FAIL #7 310g (borrar y reinsertar lo cerrado: misma causa, 2.º seguido) → 310h SIN VEREDICTO (base de producción caída) | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -600,6 +600,22 @@ que choca con una boleta cerrada lo dice y se vuelve a dibujar. Verificado con
 cerrar por UPDATE: rechazado; una fila abierta sí se borra; borrar un alumno con boleta
 cerrada funciona y no deja huérfanas), 22 suites, humo, cierre-boleta, 310g, 37i y 310d en
 verde; todas las funciones nuevas son `security invoker` con `search_path` fijo.
+
+**Octavo ensayo de 3.10: SIN VEREDICTO** (revisor 310h, `.qa/revisor-310h/`). Se detuvo a la mitad
+porque **la base de producción se degradó desde las 18:00 UTC del 2026-09-23** (Auth 504,
+conexiones que se agotan, consultas internas triviales de 11 a 15 s; el panel seguía
+`ACTIVE_HEALTHY`). Confirmado de forma independiente a las 20:58 UTC. No cuenta para la regla
+de los 3 FAIL. Lo que alcanzó a probar, en verde: alta de alumnos, dos proyectos con consola
+limpia y proyecto en curso de solo consulta, seis días en "Hoy" (uno con red lenta), tres
+pasadas de Diagnóstico (6 de 6), cuatro porcentajes a mano, "Elige", ajustes y textos,
+cierre de todo o nada (sin red, 3 campos, respuesta perdida), **20 vías por API contra una
+boleta cerrada rechazadas o sin efecto** (UPDATE, upsert, INSERT duplicado, DELETE de campos
+y GEN, mover filas, cerrar por fuera), `cerrar_boleta` con campo repetido rechazado, borrar
+un alumno con boleta cerrada. Pendiente: pestañas viejas, IA, cambios después del cierre en
+los cuatro documentos, reporte, junta, exportación, T2, aislamiento y Fase 4-5. Posible
+causa del incidente: agotamiento de recursos de la instancia (IO o CPU); la carga de QA de
+hoy (muchas rondas de revisores con navegador) pudo contribuir. Decisión de Jorge:
+reiniciar el proyecto o subir el cómputo desde el panel de Supabase.
 
 ## 3.9 Documentación
 
