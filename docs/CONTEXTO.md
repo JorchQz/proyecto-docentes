@@ -128,9 +128,13 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
   `boleta_trimestral_confirmacion` impide `cerrada = true` sin confirmación. Una vez
   confirmada, el motor solo refresca `porcentaje`: no pisa el número del maestro.
-- Transición: mientras no exista la pantalla "Hoy", la revisión de tareas del Dashboard
-  sigue escribiendo filas sin producto (escala 5–10). El motor las toma en su rubro como
-  `calificacion/10` y la boleta lo advierte.
+- **Dónde se captura:** `hoy.html` (§B.1) — asistencia, tareas vencidas, los productos de
+  las sesiones del día y el cierre (participación y conducta). Todo se guarda al toque,
+  con cola y reintento; la unidad es el producto, no la actividad. En multigrado cada
+  alumno solo ve los productos cuyos `grados` incluyen el suyo, agrupados por grado.
+- Transición: la revisión de tareas del Dashboard **sigue existiendo** y escribe filas sin
+  producto (escala 5–10); el motor las toma en su rubro como `calificacion/10` y la boleta
+  lo advierte. Se retira cuando "Hoy" quede confirmada.
 
 Niveles internos de reporte (no oficiales): `≥80 logrado`, `60–79 en_proceso`,
 `<60 requiere_apoyo`.
@@ -332,6 +336,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Auth (login/registro) | ✅ Completo | `index.html` |
 | Onboarding (crear grupo + alumnos + ciclo + trimestre) | ✅ Completo | `onboarding.html` |
 | Dashboard diario (tarjetas guiadas: asistencia → tareas → sesión → cierre → ev. formativa) | ✅ Completo | `dashboard.html` |
+| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre) | ✅ Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
 | Asistencia (con autosave) | ✅ Completo | `asistencia.html` |
 | Mi Grupo (CRUD grupo y alumnos) | ✅ Completo | `mi-grupo.html` |
 | Crear Proyecto / Planeación (3 pasos con catálogo SEP) | ✅ Completo | `crear_proyecto.html` |
@@ -360,6 +365,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
 - El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.
 - Las pestañas "Vista Recrea" y "Concentrado" de `reportes.html` siguen leyendo el grano legacy de `calificaciones` (promedios 5–10): quedan pendientes de migrar al motor.
+- Hay dos lugares para revisar tareas: la tarjeta del Dashboard (formato viejo) y "Hoy" (grano nuevo). Retirar la del Dashboard en cuanto "Hoy" esté confirmada, para no capturar lo mismo dos veces.
 - `reportes.js` carga el grupo con `.single()`: un maestro con dos o más grupos recibe un error al abrir Reportes. Decisión de Jorge (2026-09-22): no se corrige hoy; el SaaS no está en uso real todavía.
 - **Borrado en cascada (corregido en B.3):** `calificaciones` referencia `producto_sesion_id`, `sesion_id` y `proyecto_id` con `ON DELETE CASCADE`. Antes eran `SET NULL` y borrar una sesión o un proyecto con calificaciones fallaba con error 23503 (dos acciones de integridad en conflicto sobre la misma fila). `registro_diario`, `asistencias` y `boleta_trimestral` no cuelgan del proyecto: sobreviven.
 - Resuelto 2026-09: observaciones de boleta persistentes (tabla `boleta_trimestral`, por campo); esquema real documentado en `supabase/esquema_2026-09.sql` (los `.sql` anteriores quedan como historia).

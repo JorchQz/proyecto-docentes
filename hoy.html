@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Hoy — Jissez</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1707663363640372');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-24 text-gray-800">
+	<main>
+		<div class="max-w-4xl mx-auto flex flex-col gap-4">
+			<header class="bg-blue-800 rounded-2xl shadow-md p-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+				<div>
+					<h1 class="text-2xl font-bold text-white">Hoy</h1>
+					<p id="hoySubtitulo" class="text-blue-100 text-sm mt-1">Cargando...</p>
+				</div>
+				<div id="hoyFecha" class="text-blue-100 text-sm sm:text-right"></div>
+			</header>
+
+			<div id="hoyMensaje" class="hidden rounded-xl px-4 py-3 text-sm"></div>
+
+			<!-- 1. Asistencia -->
+			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="font-bold text-gray-800">1. Asistencia</h2>
+					<span id="asistenciaResumen" class="text-xs text-gray-500"></span>
+				</div>
+				<div id="asistenciaLista" class="flex flex-col gap-2"></div>
+			</section>
+
+			<!-- 2. Tareas por revisar -->
+			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="font-bold text-gray-800">2. Tareas por revisar</h2>
+					<span id="tareasResumen" class="text-xs text-gray-500"></span>
+				</div>
+				<div id="tareasLista" class="flex flex-col gap-5"></div>
+			</section>
+
+			<!-- 3. Sesiones de hoy -->
+			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="font-bold text-gray-800">3. Sesiones de hoy</h2>
+					<span id="sesionesResumen" class="text-xs text-gray-500"></span>
+				</div>
+				<div id="sesionesLista" class="flex flex-col gap-6"></div>
+			</section>
+
+			<!-- 4. Cierre del día -->
+			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<div class="flex items-center justify-between mb-1">
+					<h2 class="font-bold text-gray-800">4. Cierre del día</h2>
+					<span id="cierreResumen" class="text-xs text-gray-500"></span>
+				</div>
+				<p class="text-xs text-gray-500 mb-3">Participación y conducta, una vez al día. Todos empiezan en 1; cambia solo las excepciones.</p>
+				<div id="cierreLista" class="flex flex-col gap-2"></div>
+			</section>
+		</div>
+	</main>
+
+	<!-- Estado de guardado -->
+	<div id="hoyEstadoGuardado" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 text-sm font-medium shadow-lg"></div>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/navbar.js"></script>
+	<script src="js/section-shell.js"></script>
+	<script src="js/campos-formativos.js"></script>
+	<script src="js/hoy.js"></script>
+</body>
+</html>
