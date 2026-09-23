@@ -25,7 +25,7 @@ seguir desde el último bloque con PASS.
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → revisor 37g | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
-| 3.9 Documentación | corregido, en re-revisión | FAIL #1 revisor 39 (CLAUDE.md, segunda cuenta, sesiones de Hoy) → FAIL #2 39b (porcentaje del cierre en el reporte detallado) → revisor 39c | — |
+| 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
 | 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → revisor 310c | — |
 
 ## 3.1 Cuenta y datos de QA
@@ -440,6 +440,18 @@ grafica el logro del grupo con los datos de hoy (no es la boleta). Menores corre
 festivos y boleta sin reapertura en "Limitaciones conocidas"; `porLotes` sin uso en
 pantallas; matiz de `justificado`/`no_aplica` con nivel capturado. Menor para Jorge:
 `CLAUDE.md` dice "All 16 modules".
+
+**Revisión #3 de 3.9: PASS** (revisor 39c, `.qa/revisor-39c/`). 44 afirmaciones de
+PRODUCTO y CONTEXTO verificadas contra el código y la base, ninguna falsa; en navegador
+(solo lectura, escrituras bloqueadas, boleta cerrada simulada con `page.route`): Reportes
+y reporte detallado con el porcentaje del cierre y el aviso, imprimible sin porcentajes,
+junta sin la cifra del cierre, Hoy e Inicio iguales, IA `configurada:false`; 0 errores de
+consola; 20 suites en verde; sin secretos en 182 commits; datos reales iguales. Menores
+atendidos después: los textos de una boleta cerrada en el reporte detallado se marcan
+"Como se entregó" (no "Propuesta del sistema"); la barra "Boleta cerrada" se mantiene
+aunque ya no haya evidencias; `calcular_calificaciones_boleta` descrita con precisión;
+`grupos.trimestre_actual` en §6.1. Anotados: despliegue descrito como Cloudflare Pages en
+§5 (fuera de §5.1) y las frases de `CLAUDE.md` (de Jorge).
 
 ## Aislamiento entre maestros
 

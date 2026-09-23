@@ -452,7 +452,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (e) {
 			console.error("boleta_trimestral (numérico):", e);
 		}
-		if (!hayPropuesta) { todoConfirmado = false; todoCerrado = false; }
+		// Sin propuesta y sin cierre no hay nada que confirmar; una boleta cerrada sigue cerrada
+		// aunque después ya no haya evidencias
+		if (!hayPropuesta && !boletaYaCerrada) { todoConfirmado = false; todoCerrado = false; }
 
 		// ── Capa 1: textos propuestos por reglas (B.7) ──
 		let avancePda = [];

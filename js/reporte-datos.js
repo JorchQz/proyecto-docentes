@@ -160,7 +160,7 @@
 		var guardado = filaBoleta ? filaBoleta[tipo] : null;
 		if (window.TextosBoleta.esEditado(filaBoleta, tipo)) return { texto: guardado || "", delMaestro: true };
 		// Boleta cerrada: lo que se entregó, nunca una propuesta calculada después
-		if (cerrada) return { texto: guardado || "", delMaestro: false };
+		if (cerrada) return { texto: guardado || "", delMaestro: false, delCierre: true };
 		var conIa = filaBoleta && filaBoleta.texto_autogenerado && filaBoleta.texto_autogenerado.visible === "ia";
 		if (conIa && guardado && String(guardado).trim()) return { texto: guardado, delMaestro: false };
 		if (propuesto !== null && propuesto !== undefined) return { texto: propuesto, delMaestro: false };
@@ -176,7 +176,7 @@
 		// Boleta cerrada: el texto que tenía al cerrarse (foto en la fila GEN)
 		var foto = cerrada ? fotoCierre(filaGeneral) : null;
 		if (foto && typeof foto.trabajo_diario === "string") {
-			return { texto: foto.trabajo_diario, delMaestro: !!foto.trabajo_diario_del_maestro };
+			return { texto: foto.trabajo_diario, delMaestro: !!foto.trabajo_diario_del_maestro, delCierre: !foto.trabajo_diario_del_maestro };
 		}
 		var obs = diagnostica ? diagnostica.observaciones : null;
 		if (obs !== null && obs !== undefined) return { texto: String(obs).trim(), delMaestro: true };

@@ -119,7 +119,8 @@ la fórmula: se reporta aparte como referencia.
   junta y exportación).
 - Conversión a calificación: **una sola función SQL** `calcular_calificacion_boleta`
   (≥90→10, ≥80→9, ≥70→8, ≥60→7, ≥50→6, si no 5; y nunca por debajo del piso de la fase).
-  Para grupos, `calcular_calificaciones_boleta` hace lo mismo por lote.
+  El motor la llama por lote con `calcular_calificaciones_boleta` (también para un solo
+  alumno), que aplica la misma función a cada porcentaje.
 - El motor también cuenta la **entrega** aparte de la calidad (esperados, entregados,
   completos): la usan los textos; no cambia la calificación.
 - Un solo camino de carga para un alumno y para todo el grupo (lectura paginada).

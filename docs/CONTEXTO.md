@@ -319,7 +319,7 @@ común).
 
 | Tabla | Columnas clave |
 |---|---|
-| `grupos` | `maestro_id`, `nombre`, `escuela`, `tipo_organizacion`, `grados` (array), `es_multigrado` (bool), `ciclo_escolar`, `descripcion` |
+| `grupos` | `maestro_id`, `nombre`, `escuela`, `tipo_organizacion`, `grados` (array), `es_multigrado` (bool), `ciclo_escolar`, `descripcion`, `trimestre_actual` (lo usan el alcance de "Hoy", el diagnóstico y la semilla de QA) |
 | `alumnos` | `maestro_id`, `grupo_id`, `num_lista` (int), `nombre_completo`, `grado` (smallint 1–6, **NOT NULL**), `estatus` (`activo`, en minúsculas: así escribe y filtra todo el código) |
 | `asistencias` | `maestro_id`, `grupo_id`, `alumno_id`, `fecha`, **`asistencia_estado`** (text: `presente`/`ausente`/`justificada`) |
 | `proyectos` | `maestro_id`, `grupo_id`, `trimestre` (1/2/3), `titulo`, `grados` (array), `fase` (array), `metodologia`, `escenario`, `proposito`, `pregunta_generadora`, `campos_formativos` (array), `ejes_articuladores` (array), `es_multigrado` (bool), `contenidos_pda` (jsonb), `estado` (`borrador`/`activo`/`completado`/`pausado`), `visible_mercado` (bool), `fecha_inicial`, `fecha_final` |

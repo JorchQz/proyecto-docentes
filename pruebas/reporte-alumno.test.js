@@ -301,6 +301,8 @@ ok("sin emojis en el render",
 	ok("cerrada: avisa que hubo capturas después del cierre", hc.includes("hubo capturas después del cierre"), true);
 	ok("cerrada: trabajo diario de la foto del cierre", hc.includes("TRABAJO DIARIO DEL CIERRE") && !hc.includes("ESCRITO DESPUÉS"), true);
 	ok("cerrada: texto general guardado", hc.includes("GENERAL DEL CIERRE"), true);
+	ok("cerrada: los textos guardados se marcan «Como se entregó», no «Propuesta del sistema»",
+		hc.includes("data-origen='cierre'") && !hc.includes("data-origen='propuesta'"), true);
 	const abierta = RA.render(datosRiesgo(), INFO);
 	ok("abierta: sin aviso de cierre", abierta.includes("hubo capturas después del cierre"), false);
 }

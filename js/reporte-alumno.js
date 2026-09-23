@@ -584,8 +584,12 @@
 
 	// ── Render: 6. Observaciones ──────────────────────────────────────────────
 
-	function origen(delDocente, hayTexto) {
+	function origen(delDocente, hayTexto, delCierre) {
 		if (!hayTexto) return "";
+		// Boleta cerrada: el texto congelado al cerrar, no una propuesta de hoy
+		if (!delDocente && delCierre) {
+			return "<span class='ml-1 rounded bg-emerald-50 border border-emerald-200 px-1.5 py-px text-[10px] font-semibold text-emerald-800' data-origen='cierre'>Como se entregó</span>";
+		}
 		return delDocente
 			? "<span class='ml-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-px text-[10px] font-semibold text-blue-800' data-origen='docente'>Del docente</span>"
 			: "<span class='ml-1 rounded bg-gray-50 border border-gray-200 px-1.5 py-px text-[10px] font-semibold text-gray-600' data-origen='propuesta'>Propuesta del sistema</span>";
@@ -594,7 +598,7 @@
 	function cuadroTexto(etiqueta, sec, vacioTexto) {
 		var hay = !!(sec.texto && String(sec.texto).trim());
 		return "<div class='min-w-0'>" +
-			"<p class='text-xs font-semibold text-gray-600 mb-1 flex flex-wrap items-center gap-y-1'>" + esc(etiqueta) + origen(sec.delMaestro, hay) + "</p>" +
+			"<p class='text-xs font-semibold text-gray-600 mb-1 flex flex-wrap items-center gap-y-1'>" + esc(etiqueta) + origen(sec.delMaestro, hay, sec.delCierre) + "</p>" +
 			(hay ? "<p class='text-sm text-gray-800 leading-relaxed whitespace-pre-line'>" + esc(sec.texto) + "</p>"
 				: "<p class='text-sm text-gray-400'>" + esc(vacioTexto) + "</p>") + "</div>";
 	}
@@ -631,7 +635,8 @@
 
 		return "<section class='mb-7' data-seccion='observaciones'>" + titulo(6, "Observaciones") +
 			"<div class='bloque mb-3'>" + nota("<span class='font-semibold text-blue-800'>Del docente:</span> lo escribió o ajustó el docente en la boleta. " +
-				"<span class='font-semibold text-gray-700'>Propuesta del sistema:</span> sale de lo capturado en el trimestre; el docente la revisa y puede editarla en la boleta.") + "</div>" +
+				"<span class='font-semibold text-gray-700'>Propuesta del sistema:</span> sale de lo capturado en el trimestre; el docente la revisa y puede editarla en la boleta." +
+				(cerradaDe(datos) ? " <span class='font-semibold text-emerald-800'>Como se entregó:</span> la boleta está cerrada y el texto quedó como estaba al cerrarla." : "")) + "</div>" +
 			"<div class='bloque rounded-xl border border-gray-200 p-3 mb-3' data-obs='trabajo'>" +
 			cuadroTexto("Trabajo diario", trabajo, "Sin observaciones del trabajo diario.") + "</div>" +
 			"<div class='space-y-3'>" + bloques + bloqueObservaciones(datos, "GEN", cabGen) + "</div></section>";
