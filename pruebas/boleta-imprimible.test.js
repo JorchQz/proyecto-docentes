@@ -205,7 +205,8 @@ contiene("obs: sugerencia de la Capa 1", hoja2, "Establecer un horario fijo para
 contiene("obs: propuesta de lectura (PPM bajo)", hoja2, "Practicar lectura en voz alta 10 minutos diarios.");
 contiene("obs: fila general con lo escrito por el maestro", hoja2, "Su cuaderno necesita más cuidado en: orden y limpieza.");
 contiene("obs: hay bloque general", hoja2, "Observaciones generales");
-contiene("obs: vacío dice sin registro", hoja2, "Sin registro en este trimestre.");
+contiene("obs: un cuadro vacío es un guion neutro (no «Sin registro»)", hoja2, "<dd class='vacio' aria-label='Sin texto'>—</dd>");
+noContiene("obs: nunca «Sin registro» frente a la familia", hoja2, "Sin registro");
 contiene("obs: la propuesta se marca solo en pantalla", hoja2, "<span class='bol-propuesta no-print'>propuesta del sistema</span>");
 // El texto que el maestro escribió no se marca como propuesta
 const bloqueLen = hoja2.slice(hoja2.indexOf("data-obs='LEN'"), hoja2.indexOf("data-obs='SAB'"));

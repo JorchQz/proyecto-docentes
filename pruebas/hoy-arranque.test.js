@@ -65,6 +65,7 @@ global.Event = function () {};
 // El módulo real de campos formativos (el motor y la pantalla lo usan)
 require("../js/campos-formativos.js");
 require("../js/grupo-activo.js");
+require("../js/alcance-hoy.js");
 
 // ── Supabase falso ───────────────────────────────────────────────────────────
 const HOY = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
@@ -104,6 +105,7 @@ function consulta(tabla) {
 		select: function () { return this; },
 		eq: function () { return this; },
 		in: function () { return this; },
+		or: function () { return this; },
 		gte: function () { return this; },
 		lte: function () { return this; },
 		not: function () { return this; },

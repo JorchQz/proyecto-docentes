@@ -160,3 +160,106 @@ from ordenadas
 group by maestro_id, alumno_id, grupo_id, trimestre, clave_pda;
 
 grant select on public.v_avance_pda to authenticated;
+
+-- ── b5c_evidencia_pda_con_todos_los_productos (tras el ensayo final 3.10) ──────
+-- La evidencia de un PDA en una sesión se recalcula con TODAS las calificaciones del
+-- alumno en los productos ligados a ese PDA, no con la última que se escribió. Antes, una
+-- sesión con trabajo y tarea ligados al mismo PDA guardaba la última: una tarea
+-- "entregada" (logrado) tapaba un trabajo "en proceso" y una tarea "incompleta" sin nivel
+-- BORRABA la evidencia del trabajo. Regla: manda la evidencia de trabajos / productos (la
+-- más baja si hay varias); la de tareas solo cuenta si no hay otra (su "logrado" suele
+-- significar solo "la entregó"). Lo del maestro (origen = 'maestro') no se toca.
+
+create or replace function public.recalcular_evidencia_pda(p_alumno uuid, p_sesion_pda uuid, p_maestro uuid)
+returns void language plpgsql set search_path = public as $$
+declare
+  v_sesion uuid;
+  v_criterio text;
+  v_nivel text;
+  v_fecha date;
+begin
+  select sp.sesion_id, coalesce(nullif(sp.criterio_aplicado, ''), cp.pda, 'Criterio de la sesión')
+    into v_sesion, v_criterio
+  from public.sesiones_pda sp
+  left join public.catalogo_pda cp on cp.id = sp.pda_id
+  where sp.id = p_sesion_pda;
+  if v_sesion is null then return; end if;
+
+  select x.nivel, x.fecha into v_nivel, v_fecha
+  from (
+    select public.nivel_desde_calificacion(c.nivel, c.puntaje, c.estado_entrega) as nivel,
+           coalesce(c.fecha, current_date) as fecha,
+           (ps.tipo = 'tarea') as es_tarea
+    from public.calificaciones c
+    join public.producto_sesion_pda psp
+      on psp.producto_sesion_id = c.producto_sesion_id and psp.sesion_pda_id = p_sesion_pda
+    join public.productos_sesion ps on ps.id = c.producto_sesion_id
+    where c.alumno_id = p_alumno
+  ) x
+  where x.nivel is not null
+  order by x.es_tarea,
+           case x.nivel when 'requiere_apoyo' then 0 when 'en_proceso' then 1 else 2 end,
+           x.fecha desc
+  limit 1;
+
+  if v_nivel is null then
+    delete from public.evaluacion_formativa
+    where alumno_id = p_alumno and sesion_pda_id = p_sesion_pda and origen = 'automatico';
+    return;
+  end if;
+
+  insert into public.evaluacion_formativa
+    (maestro_id, sesion_id, alumno_id, criterio, sesion_pda_id, semaforo, fecha, origen)
+  values (p_maestro, v_sesion, p_alumno, v_criterio, p_sesion_pda, v_nivel, v_fecha, 'automatico')
+  on conflict (sesion_id, alumno_id, criterio) do update
+    set semaforo = excluded.semaforo,
+        sesion_pda_id = excluded.sesion_pda_id,
+        fecha = excluded.fecha
+    where public.evaluacion_formativa.origen = 'automatico';
+end $$;
+
+create or replace function public.propagar_calificacion_a_pda()
+returns trigger language plpgsql set search_path = public as $$
+declare v_grado smallint; r record;
+begin
+  if new.producto_sesion_id is null then return null; end if;
+  select grado into v_grado from public.alumnos where id = new.alumno_id;
+  for r in
+    select psp.sesion_pda_id
+    from public.producto_sesion_pda psp
+    join public.sesiones_pda sp on sp.id = psp.sesion_pda_id
+    where psp.producto_sesion_id = new.producto_sesion_id and sp.grado = v_grado
+  loop
+    perform public.recalcular_evidencia_pda(new.alumno_id, r.sesion_pda_id, new.maestro_id);
+  end loop;
+  -- Si la calificación cambió de producto, el PDA del producto anterior también se recalcula
+  if tg_op = 'UPDATE' and old.producto_sesion_id is distinct from new.producto_sesion_id and old.producto_sesion_id is not null then
+    for r in
+      select psp.sesion_pda_id
+      from public.producto_sesion_pda psp
+      join public.sesiones_pda sp on sp.id = psp.sesion_pda_id
+      where psp.producto_sesion_id = old.producto_sesion_id and sp.grado = v_grado
+    loop
+      perform public.recalcular_evidencia_pda(old.alumno_id, r.sesion_pda_id, old.maestro_id);
+    end loop;
+  end if;
+  return null;
+end $$;
+
+create or replace function public.retirar_evidencia_de_pda()
+returns trigger language plpgsql set search_path = public as $$
+declare v_grado smallint; r record;
+begin
+  if old.producto_sesion_id is null then return null; end if;
+  select grado into v_grado from public.alumnos where id = old.alumno_id;
+  -- Borrar una calificación ya no borra a ciegas: se recalcula con las que quedan
+  for r in
+    select psp.sesion_pda_id
+    from public.producto_sesion_pda psp
+    join public.sesiones_pda sp on sp.id = psp.sesion_pda_id
+    where psp.producto_sesion_id = old.producto_sesion_id and sp.grado = v_grado
+  loop
+    perform public.recalcular_evidencia_pda(old.alumno_id, r.sesion_pda_id, old.maestro_id);
+  end loop;
+  return null;
+end $$;

@@ -154,7 +154,7 @@ ok("encabezado: escala de la fase 3", h1.includes("enteros de 6 a 10"), true);
 CAMPOS.forEach((c) => {
 	const a = atributos(h1, c);
 	const pct = d1.motor.porCampo[c].porcentaje;
-	ok("desempeño " + c + ": el % es el del motor con un decimal", a && a.pct, pct === null ? "" : (Math.round(pct * 10) / 10).toFixed(1));
+	ok("desempeño " + c + ": el % es el del motor con un decimal (truncado)", a && a.pct, pct === null ? "" : (Math.floor(pct * 10 + 1e-9) / 10).toFixed(1));
 });
 ok("desempeño: sin confirmar se muestra la propuesta del motor, no la fila vieja (LEN 6, no 9)",
 	JSON.stringify(atributos(h1, "LEN")), JSON.stringify({ pct: atributos(h1, "LEN").pct, cal: "6", tipo: "propuesta" }));
@@ -166,7 +166,7 @@ const tarjetaLen = h1.slice(h1.indexOf("data-campo='LEN'"), h1.indexOf("data-cam
 ok("rubros: los cinco rubros por campo", cuenta(tarjetaLen, /data-rubro='/g), 5);
 ok("rubros: tareas sin datos", /data-rubro='tareas'[\s\S]*?sin datos/.test(tarjetaLen), true);
 ok("rubros: explica que su peso se reparte", tarjetaLen.includes("Sin datos en tareas (28 %)") && tarjetaLen.includes("se reparte entre los demás rubros"), true);
-ok("rubros: peso aplicado de trabajos = 28/72", tarjetaLen.includes("aplica 38.9 %"), true);
+ok("rubros: peso aplicado de trabajos = 28/72 (truncado)", tarjetaLen.includes("aplica 38.8 %"), true);
 ok("rubros: obtenido y máximo de trabajos (0.4+0.4+0.7+0 de 4)", /data-rubro='trabajos'[\s\S]*?>1\.5<[\s\S]*?>4<[\s\S]*?37\.5 %/.test(tarjetaLen), true);
 ok("rubros: el examen rotulado aproximado", /data-rubro='examen'[\s\S]*?aproximado/.test(tarjetaLen), true);
 ok("rubros: nota del examen aproximado", h1.includes("Examen aproximado:") && h1.includes("valor total del examen entre número de preguntas"), true);
@@ -274,7 +274,7 @@ ok("sin banda: lo dice sin tronar", RA.render(datosRiesgo({ banda: null }), INFO
 const alterado = JSON.parse(JSON.stringify(motorRiesgo().porCampo.LEN));
 alterado.porcentaje += 3;
 ok("peso aplicado: si no cuadra con el motor, no se muestra", RA.pesosAplicados(alterado), null);
-ok("formato: % con un decimal", RA.fmtPct(49.86), "49.9 %");
+ok("formato: % con un decimal, truncado (49.86 no se lee 49.9 ni 50)", RA.fmtPct(49.86), "49.8 %");
 ok("formato: cantidades sin ruido de flotantes", RA.fmtCantidad(1.2000000000000002), "1.2");
 ok("formato: fecha corta", RA.fmtFecha("2026-09-08"), "8 sep 2026");
 const xss = RA.render(datosRiesgo({ alumno: { id: "x", nombre_completo: "<img src=x onerror=alert(1)>", grado: 2 } }), INFO);

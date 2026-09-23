@@ -70,8 +70,9 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					<h2 class="font-bold text-gray-800">4. Cierre del día</h2>
 					<span id="cierreResumen" class="text-xs text-gray-500"></span>
 				</div>
-				<p class="text-xs text-gray-500 mb-3">Participación y conducta, una vez al día. Todos empiezan en 1; cambia solo las excepciones.</p>
+				<p class="text-xs text-gray-500 mb-3">Participación y conducta, una vez al día. Todos empiezan en 1; cambia solo las excepciones. Al tocar la primera se guarda el día de todo el grupo (sin contar a quienes faltaron). Si no hay excepciones, usa el botón de abajo.</p>
 				<div id="cierreLista" class="flex flex-col gap-2"></div>
+				<button id="cierreGuardarBtn" type="button" class="mt-3 w-full sm:w-auto min-h-[44px] px-5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:bg-emerald-50 disabled:text-emerald-700 disabled:border disabled:border-emerald-200 disabled:cursor-default">Guardar el cierre de hoy</button>
 			</section>
 		</div>
 	</main>
@@ -83,6 +84,7 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 	<script src="js/saas-guard.js"></script>
 	<script src="js/navbar.js"></script>
 	<script src="js/grupo-activo.js"></script>
+	<script src="js/alcance-hoy.js"></script>
 	<script src="js/section-shell.js"></script>
 	<script src="js/campos-formativos.js"></script>
 	<script src="js/hoy.js"></script>

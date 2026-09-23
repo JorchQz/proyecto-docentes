@@ -188,7 +188,7 @@
 			return "<div><dt>" + tipo.titulo + marca + "</dt>" +
 				(t.texto
 					? "<dd>" + esc(t.texto) + "</dd>"
-					: "<dd class='vacio'>Sin registro en este trimestre.</dd>") + "</div>";
+					: "<dd class='vacio' aria-label='Sin texto'>—</dd>") + "</div>";
 		}).join("");
 		return "<div class='bol-obs bol-bloque' data-obs='" + campo + "' style='border-left-color:" + color + "'>" +
 			"<h3>" + (campo !== GENERAL ? "<span class='bol-codigo'>" + campo + "</span>" : "") + esc(titulo) + "</h3>" +
@@ -207,7 +207,7 @@
 		var html = "<div class='bol-obs bol-bloque' data-obs='trabajo' style='border-left-color:#1e3a8a'>" +
 			"<h3>Trabajo diario</h3>" +
 			(trabajo ? "<p style='font-size:inherit'>" + esc(trabajo) + "</p>"
-				: "<p class='vacio' style='color:#9ca3af;font-style:italic'>Sin registro en este trimestre.</p>") +
+				: "<p class='vacio' style='color:#9ca3af' aria-label='Sin texto'>—</p>") +
 			"</div>";
 		R.CAMPOS.forEach(function (c) {
 			html += bloqueObservaciones(c, R.NOMBRE_CAMPO[c], R.COLOR_CAMPO[c], boletaT[c], textos[c]);

@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tareas = [];
 	var alumnos = [];
 	var revisiones = {}; // producto_sesion_id → { alumno_id: estado_entrega }
+	var grupoActual = null;
 
 	function fechaLocalISO() {
 		var ahora = new Date();
@@ -49,6 +50,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var activo = await window.GrupoActivo.cargar(window.sb, maestroId);
 		var grupo = activo.grupo;
 		if (!grupo) { window.location.href = "onboarding.html"; return false; }
+		grupoActual = grupo;
 
 		// Grados del grupo para el filtro (antes estaba fijo en 3° a 6°)
 		var grados = (grupo.grados || []).map(Number).filter(Boolean).sort();
@@ -64,7 +66,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (alRes.error) throw alRes.error;
 		alumnos = alRes.data || [];
 
-		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre")
+		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final")
 			.eq("maestro_id", maestroId).eq("grupo_id", grupo.id);
 		if (proyRes.error) throw proyRes.error;
 		var proyectos = proyRes.data || [];
@@ -90,7 +92,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return Object.assign({}, t, {
 				sesion: s,
 				proyecto: proyPorId[s.proyecto_id] || {},
-				vence: t.fecha_entrega || s.fecha || null,
+				vence: window.AlcanceHoy.venceTarea(t.fecha_entrega, s.fecha),
 			});
 		});
 
@@ -137,9 +139,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		aplica": así lo cuentan "Hoy" (que ya no la muestra) y el motor (que los saca del
 		máximo). Antes un justificado dejaba la tarea "por revisar" para siempre.
 	*/
+	// [estado, singular, plural]
 	var ETIQUETA_CONTEO = [
-		["entregado", "entregaron"], ["incompleto", "incompleta"], ["no_entregado", "no entregaron"],
-		["justificado", "justificada"], ["no_aplica", "no aplica"],
+		["entregado", "entregó", "entregaron"], ["incompleto", "incompleta", "incompletas"],
+		["no_entregado", "no entregó", "no entregaron"], ["justificado", "justificada", "justificadas"],
+		["no_aplica", "no aplica", "no aplica"],
 	];
 	function situacionDe(lista, rev, vence, hoyISO) {
 		var conteo = { entregado: 0, incompleto: 0, no_entregado: 0, justificado: 0, no_aplica: 0 };
@@ -165,7 +169,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function detalleConteo(conteo) {
 		return ETIQUETA_CONTEO.filter(function (e) { return conteo[e[0]]; })
-			.map(function (e) { return conteo[e[0]] + " " + e[1]; }).join(", ");
+			.map(function (e) { return conteo[e[0]] + " " + (conteo[e[0]] === 1 ? e[1] : e[2]); }).join(", ");
 	}
 
 	function renderFiltrado() {
@@ -210,9 +214,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "<p class='text-sm text-gray-700'><b>" + s.revisados + " de " + s.total + "</b> alumnos revisados" +
 					(s.revisados ? " <span class='text-xs text-gray-500'>(" + detalleConteo(s.conteo) + ")</span>" : "") + "</p>"
 				: "<p class='text-sm text-gray-500'>No hay alumnos activos de ese grado.</p>";
-			var accion = s.estado === "por_revisar"
+			// "Revisar en Hoy" solo si "Hoy" la va a mostrar (mismo alcance: js/alcance-hoy.js)
+			var enHoy = window.AlcanceHoy.incluye(t.proyecto, grupoActual, hoy);
+			var accion = s.estado !== "por_revisar" ? ""
+				: enHoy
 				? "<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition'>Revisar en Hoy</a>"
-				: "";
+				: "<span class='text-xs text-gray-500'>Su proyecto terminó hace más de " + window.AlcanceHoy.DIAS_RECIENTES + " días y es de otro trimestre: ya no aparece en Hoy.</span>";
 			return "<div class='bg-white rounded-2xl border border-gray-200 p-5 shadow-sm'>" +
 				"<div class='flex items-start justify-between gap-3 mb-2'>" +
 				"<div class='min-w-0'>" +

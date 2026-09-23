@@ -118,31 +118,45 @@ async function crearCardHoy() {
 	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id)).size;
 	const conCierre = new Set((regRes.data || []).map((r) => r.alumno_id)).size;
 
-	// Productos de las sesiones de hoy sin calificar
+	// Lo mismo que muestra "Hoy", con el mismo alcance de proyectos (js/alcance-hoy.js):
+	// productos de las sesiones de hoy sin calificar y tareas vencidas con alumnos sin revisar
 	let sinCalificar = 0;
 	let sesionesHoy = 0;
+	let tareasPorRevisar = 0;
 	const { data: proys } = await window.sb.from("proyectos").select("id")
-		.eq("maestro_id", user.id).eq("grupo_id", grupoId).in("estado", ["activo", "borrador"]);
+		.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy));
 	const proyIds = (proys || []).map((p) => p.id);
 	if (proyIds.length) {
-		const { data: ses } = await window.sb.from("sesiones").select("id").in("proyecto_id", proyIds).eq("fecha", hoy);
-		const sesIds = (ses || []).map((s) => s.id);
-		sesionesHoy = sesIds.length;
-		if (sesIds.length) {
-			const { data: prods } = await window.sb.from("productos_sesion").select("id, tipo, grados")
-				.in("sesion_id", sesIds).eq("activo", true);
-			const trabajos = (prods || []).filter((p) => p.tipo !== "tarea");
-			if (trabajos.length) {
+		const { data: ses } = await window.sb.from("sesiones").select("id, fecha").in("proyecto_id", proyIds);
+		const fechaSesion = {};
+		(ses || []).forEach((s) => { fechaSesion[s.id] = s.fecha; });
+		const idsHoy = (ses || []).filter((s) => s.fecha === hoy).map((s) => s.id);
+		sesionesHoy = idsHoy.length;
+		const conFecha = (ses || []).filter((s) => s.fecha && s.fecha <= hoy).map((s) => s.id);
+		if (conFecha.length) {
+			const { data: prods } = await window.sb.from("productos_sesion").select("id, tipo, grados, sesion_id, fecha_entrega")
+				.in("sesion_id", conFecha).eq("activo", true);
+			const trabajos = (prods || []).filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
+			const tareas = (prods || []).filter((p) => {
+				const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id]) : null;
+				return vence && vence <= hoy;
+			});
+			const revisar = trabajos.concat(tareas);
+			if (revisar.length) {
 				const { data: cals } = await window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, nivel, estado_entrega")
-					.eq("maestro_id", user.id).in("producto_sesion_id", trabajos.map((p) => p.id));
+					.eq("maestro_id", user.id).in("producto_sesion_id", revisar.map((p) => p.id));
 				const hechas = new Set((cals || []).filter((c) => c.nivel || c.estado_entrega)
 					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
-				trabajos.forEach((p) => {
+				const conTareaRevisada = new Set((cals || []).filter((c) => c.estado_entrega)
+					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
+				const alumnosDe = (p) => {
 					const grados = (p.grados || []).map(Number);
-					alumnos.forEach((a) => {
-						if (grados.indexOf(Number(a.grado)) !== -1 && !hechas.has(a.id + "|" + p.id)) sinCalificar++;
-					});
+					return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1);
+				};
+				trabajos.forEach((p) => {
+					alumnosDe(p).forEach((a) => { if (!hechas.has(a.id + "|" + p.id)) sinCalificar++; });
 				});
+				tareasPorRevisar = tareas.filter((p) => alumnosDe(p).some((a) => !conTareaRevisada.has(a.id + "|" + p.id))).length;
 			}
 		}
 	}
@@ -159,6 +173,7 @@ async function crearCardHoy() {
 		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
 		"</div>" +
 		fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length) +
+		fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
 		fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 		fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0) +
 		fila("Cierre del día", conCierre + " de " + alumnos.length, alumnos.length > 0 && conCierre >= alumnos.length);
@@ -345,18 +360,47 @@ function getTextoFase(fase) {
 	if (typeof todos === "string" && todos.trim()) return todos;
 	if (typeof diferenciado === "string" && diferenciado.trim()) return diferenciado;
 	if (typeof diferenciado === "object" && diferenciado !== null) {
-		return Object.keys(diferenciado).map((g) => "Grado " + g + ": " + (diferenciado[g] || "")).join("\n");
+		const lineas = Object.keys(diferenciado)
+			.map((g) => ({ g: g, t: textoActividad(diferenciado[g]) }))
+			.filter((x) => x.t)
+			.map((x) => "Grado " + x.g + ": " + x.t);
+		if (lineas.length) return lineas.join("\n");
 	}
 	return "Sin información registrada.";
 }
 
+// Texto legible de una actividad guardada como texto, objeto o lista; nunca JSON crudo
+function textoActividad(x) {
+	if (x === null || x === undefined) return "";
+	if (typeof x === "string") return x.trim();
+	if (Array.isArray(x)) return x.map(textoActividad).filter(Boolean).join("; ");
+	if (typeof x === "object") return textoActividad(x.descripcion || x.texto || x.actividad || x.nombre || "");
+	return String(x);
+}
+
+/*
+	Las actividades llegan en varias formas: lista, texto, o el objeto de "Crear
+	proyecto" { mode, todos: [...], diferenciado: { "1": [...] } }. Antes ese objeto se
+	pintaba tal cual y salía "• todos • null".
+*/
 function getActividadesFase(fase) {
 	const raw = sesionActiva ? sesionActiva[fase + "_actividades"] : null;
 	if (!raw) return [];
-	if (Array.isArray(raw)) return raw.map((x) => (typeof x === "string" ? x : x.descripcion || JSON.stringify(x)));
-	if (typeof raw === "string") return [raw];
+	if (typeof raw === "string") return raw.trim() ? [raw.trim()] : [];
+	if (Array.isArray(raw)) return raw.map(textoActividad).filter(Boolean);
 	if (typeof raw === "object") {
-		return Object.values(raw).flat().map((x) => (typeof x === "string" ? x : (x && x.descripcion) || JSON.stringify(x)));
+		if ("mode" in raw || "todos" in raw || "diferenciado" in raw || "por_grado" in raw) {
+			const out = (Array.isArray(raw.todos) ? raw.todos : raw.todos ? [raw.todos] : []).map(textoActividad).filter(Boolean);
+			const porGrado = raw.diferenciado || raw.por_grado;
+			if (porGrado && typeof porGrado === "object") {
+				Object.keys(porGrado).forEach((g) => {
+					(Array.isArray(porGrado[g]) ? porGrado[g] : [porGrado[g]]).map(textoActividad).filter(Boolean)
+						.forEach((t) => out.push(g + "°: " + t));
+				});
+			}
+			return out;
+		}
+		return Object.values(raw).map(textoActividad).filter(Boolean);
 	}
 	return [];
 }

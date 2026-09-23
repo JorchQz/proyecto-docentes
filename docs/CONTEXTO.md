@@ -128,7 +128,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (16 suites).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (17 suites).
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad.
 > - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
 > - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
@@ -142,6 +142,8 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `boleta-ia` — convivencia de la Capa 1, lo redactado por la IA y lo escrito por el
 >   maestro, con un Supabase falso que imita el upsert de PostgREST (unión de columnas).
 > - `reportes-grupo` — Vista Recrea y Concentrado (solo calificaciones confirmadas).
+> - `tareas-situacion`, `alcance-hoy` — Tareas cuenta como revisado cualquier estado de
+>   entrega, y "Hoy", Inicio y Tareas usan el mismo alcance de proyectos.
 > - `boleta-imprimible`, `reporte-alumno`, `junta`, `exportar` — render y cálculo de los
 >   cuatro reportes de B.8 con datos de ejemplo (confirmada vs "pendiente", pisos,
 >   privacidad de la junta, columnas y CSV).
@@ -199,6 +201,9 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   Las sesiones de una planeación no traen fecha: "Trabajar hoy" les pone la de hoy (y las
   activa) y "Quitar de hoy" las regresa sin fecha y pendientes mientras no tengan
   calificaciones. Inicio (`dashboard.html`) resume el día y lleva a "Hoy"; ya no captura.
+  **Alcance:** "Hoy", Inicio y Tareas miran los mismos proyectos (`js/alcance-hoy.js`):
+  activos, en borrador o pausados, del trimestre actual del grupo, o terminados en los
+  últimos 30 días; "Trabajar hoy" solo ofrece sesiones de proyectos activos.
 
 Niveles internos de reporte (no oficiales): `≥80 logrado`, `60–79 en_proceso`,
 `<60 requiere_apoyo`.

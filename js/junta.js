@@ -64,9 +64,9 @@
 
 	var RUBROS_ATENCION = [
 		{ rubro: "tareas", umbral: UMBRAL_RUBRO, icono: "tareas", titulo: "Entrega de tareas",
-			frase: "entregaron menos del 60 % de sus tareas del trimestre." },
+			frase: "tuvieron menos del 60 % de cumplimiento en sus tareas del trimestre." },
 		{ rubro: "trabajos", umbral: UMBRAL_RUBRO, icono: "trabajos", titulo: "Trabajos en clase",
-			frase: "terminaron menos del 60 % de sus trabajos en clase." },
+			frase: "tuvieron un logro menor al 60 % en sus trabajos en clase." },
 		{ rubro: "examen", umbral: UMBRAL_RUBRO, icono: "examen", titulo: "Evaluación escrita",
 			frase: "obtuvieron menos del 60 % en la evaluación escrita (dato aproximado).", aproximado: true },
 		{ rubro: "participacion", umbral: UMBRAL_DIARIO, icono: "participacion", titulo: "Participación",
@@ -138,7 +138,8 @@
 
 	function fmtPct(v, decimales) {
 		if (!esNumero(v)) return "—";
-		return Number(v).toFixed(decimales === undefined ? 1 : decimales) + " %";
+		var d = decimales === undefined ? 1 : decimales, f = Math.pow(10, d); // truncado, como la boleta
+		return (Math.floor(Number(v) * f + 1e-9) / f).toFixed(d) + " %";
 	}
 
 	function fmtDelta(d) {

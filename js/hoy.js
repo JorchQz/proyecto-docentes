@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var hoy = getLocalDateISO();
 	var asistencia = {};      // alumno_id -> estado
 	var registro = {};        // alumno_id -> {participacion, conducta}
+	var registroGuardado = {}; // alumno_id -> true si ya hay fila de hoy en registro_diario
 	var calificaciones = {};  // alumno_id|producto_id -> fila de calificaciones
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
 	var siguientes = [];       // próximas sesiones sin fecha del proyecto activo (para "Trabajar hoy")
@@ -170,11 +171,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.eq("maestro_id", user.id).eq("fecha", hoy);
 		(regRes.data || []).forEach(function (r) {
 			registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
+			registroGuardado[r.alumno_id] = true;
 		});
 
-		// Proyectos activos del grupo → sesiones → productos
-		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado")
-			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).in("estado", ["activo", "borrador"]);
+		// Proyectos del grupo que mira "Hoy" (js/alcance-hoy.js) → sesiones → productos.
+		// Incluye los recién terminados: la tarea de su última sesión se revisa aquí.
+		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final")
+			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).or(window.AlcanceHoy.filtro(grupo, hoy));
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
 		if (!proyIds.length) return;
 
@@ -222,11 +225,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// hasta que el maestro las revise)
 		tareas = productos.filter(function (p) {
 			if (p.tipo !== "tarea") return false;
-			var vence = p.fecha_entrega || (p.sesion && p.sesion.fecha);
+			var vence = window.AlcanceHoy.venceTarea(p.fecha_entrega, p.sesion && p.sesion.fecha);
 			return vence && vence <= hoy;
 		}).sort(function (a, b) {
-			var fa = a.fecha_entrega || (a.sesion && a.sesion.fecha) || "";
-			var fb = b.fecha_entrega || (b.sesion && b.sesion.fecha) || "";
+			var fa = window.AlcanceHoy.venceTarea(a.fecha_entrega, a.sesion && a.sesion.fecha) || "";
+			var fb = window.AlcanceHoy.venceTarea(b.fecha_entrega, b.sesion && b.sesion.fecha) || "";
 			return fa < fb ? 1 : fa > fb ? -1 : 0; // lo más reciente primero
 		});
 
@@ -244,7 +247,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
 		// revisar: una tarea de hace dos semanas ya revisada no es trabajo pendiente.
 		tareas = tareas.filter(function (t) {
-			var vence = t.fecha_entrega || (t.sesion && t.sesion.fecha);
+			var vence = window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha);
 			if (vence === hoy) return true;
 			return alumnosDeProducto(t).some(function (al) {
 				return !(calificaciones[al.id + "|" + t.id] || {}).estado_entrega;
@@ -265,11 +268,55 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function guardarRegistro(alumnoId) {
 		var v = registro[alumnoId] || { participacion: 1, conducta: 1 };
+		registroGuardado[alumnoId] = true;
 		encolar(async function () {
 			var res = await window.sb.from("registro_diario").upsert({
 				maestro_id: user.id, alumno_id: alumnoId, fecha: hoy,
 				participacion: v.participacion, conducta: v.conducta,
 			}, { onConflict: "maestro_id,alumno_id,fecha" });
+			if (res.error) throw res.error;
+		});
+	}
+
+	function faltoHoy(alumnoId) {
+		return asistencia[alumnoId] === "ausente" || asistencia[alumnoId] === "justificada";
+	}
+
+	/*
+		"Todos empiezan en 1; cambia solo las excepciones": el valor normal también se
+		GUARDA. Antes solo se guardaba a quien se tocaba y el motor, que ignora los días
+		sin registro, calculaba la participación de cada alumno con días distintos. Se
+		guardan de una vez (un solo upsert) los que aún no tienen registro hoy, menos los
+		que faltaron: ese día no participaron.
+	*/
+	function completarCierre() {
+		var filas = [];
+		alumnos.forEach(function (al) {
+			if (registroGuardado[al.id] || faltoHoy(al.id)) return;
+			if (!registro[al.id]) registro[al.id] = { participacion: 1, conducta: 1 };
+			registroGuardado[al.id] = true;
+			filas.push({
+				maestro_id: user.id, alumno_id: al.id, fecha: hoy,
+				participacion: registro[al.id].participacion, conducta: registro[al.id].conducta,
+			});
+		});
+		if (!filas.length) return;
+		encolar(async function () {
+			var res = await window.sb.from("registro_diario").upsert(filas, { onConflict: "maestro_id,alumno_id,fecha" });
+			if (res.error) throw res.error;
+		});
+	}
+
+	// Si se marca una falta después del cierre, se retira el registro que se puso por
+	// defecto (1 y 1); uno que el maestro cambió a mano se deja
+	function retirarCierreSiFalto(alumnoId) {
+		var v = registro[alumnoId];
+		if (!faltoHoy(alumnoId) || !registroGuardado[alumnoId] || !v || v.participacion !== 1 || v.conducta !== 1) return;
+		delete registro[alumnoId];
+		registroGuardado[alumnoId] = false;
+		encolar(async function () {
+			var res = await window.sb.from("registro_diario").delete()
+				.eq("maestro_id", user.id).eq("alumno_id", alumnoId).eq("fecha", hoy);
 			if (res.error) throw res.error;
 		});
 	}
@@ -378,8 +425,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var alumnoId = btn.dataset.asistencia;
 		asistencia[alumnoId] = btn.dataset.valor;
 		guardarAsistencia(alumnoId, btn.dataset.valor);
+		retirarCierreSiFalto(alumnoId);
 		renderAsistencia();
+		renderCierre();
 	});
+
+	// "2026-09-14" → "14 sep" (como lo lee el maestro, no en formato ISO)
+	function fechaCorta(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		if (!m) return iso || "";
+		return Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1];
+	}
 
 	// ── 2. Tareas por revisar ─────────────────────────────────────────────────
 	function renderTareas() {
@@ -390,7 +446,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 		cont.innerHTML = tareas.map(function (t) {
-			var vence = t.fecha_entrega || (t.sesion && t.sesion.fecha);
+			var vence = window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha);
 			var atrasada = vence && vence < hoy;
 			var filas = agruparPorGrado(alumnosDeProducto(t)).map(function (g) {
 				var encabezado = (t.grados || []).length > 1
@@ -407,7 +463,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return "<div>" +
 				"<div class='flex items-center justify-between gap-2 mb-1'>" +
 				"<p class='font-semibold text-gray-800 text-sm'>" + esc(t.nombre) + "</p>" +
-				(atrasada ? "<span class='text-xs text-amber-600 shrink-0'>vencía el " + esc(vence) + "</span>" : "") +
+				(atrasada ? "<span class='text-xs text-amber-600 shrink-0'>vencía el " + esc(fechaCorta(vence)) + "</span>" : "") +
 				"</div>" + filas + "</div>";
 		}).join("");
 		var pendientesTareas = 0;
@@ -705,8 +761,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 				}).join("");
 			return filaAlumno(al, controles);
 		}).join("");
-		var capturados = alumnos.filter(function (a) { return registro[a.id]; }).length;
-		document.getElementById("cierreResumen").textContent = capturados + " de " + alumnos.length + " capturados";
+		var esperados = alumnos.filter(function (a) { return !faltoHoy(a.id); });
+		var guardados = esperados.filter(function (a) { return registroGuardado[a.id]; }).length;
+		document.getElementById("cierreResumen").textContent = guardados + " de " + esperados.length + " guardados" +
+			(esperados.length < alumnos.length ? " (sin contar " + (alumnos.length - esperados.length) + " que faltaron)" : "");
+		var boton = document.getElementById("cierreGuardarBtn");
+		if (boton) {
+			var completo = guardados >= esperados.length;
+			boton.disabled = completo;
+			boton.textContent = completo ? "Cierre de hoy guardado" : "Guardar el cierre de hoy";
+		}
 	}
 
 	document.getElementById("cierreLista").addEventListener("click", function (e) {
@@ -717,8 +781,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		actual[btn.dataset.cierre] = Number(btn.dataset.valor);
 		registro[alumnoId] = actual;
 		guardarRegistro(alumnoId);
+		completarCierre(); // la primera excepción guarda el día de todo el grupo
 		renderCierre();
 	});
+
+	var cierreGuardarBtn = document.getElementById("cierreGuardarBtn");
+	if (cierreGuardarBtn) {
+		cierreGuardarBtn.addEventListener("click", function () {
+			completarCierre();
+			renderCierre();
+		});
+	}
 
 	// ── Arranque ──────────────────────────────────────────────────────────────
 	// Hasta aquí todo está declarado e inicializado. Cada sección se dibuja por

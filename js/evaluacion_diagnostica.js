@@ -10,16 +10,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var LABEL_MOMENTO = {
 		inicio_ciclo: "Inicio de ciclo",
-		trimestre_1:  "Fin T1",
-		trimestre_2:  "Fin T2",
-		trimestre_3:  "Fin T3"
+		trimestre_1:  "T1 · boleta",
+		trimestre_2:  "T2 · boleta",
+		trimestre_3:  "T3 · boleta"
 	};
 
-	// Mapeo: trimestre_actual del grupo → momento correspondiente
+	// Mapeo: trimestre_actual del grupo → momento con el que abre la pantalla.
+	// Es el que lee la boleta de ese trimestre (antes abría en el anterior y lo
+	// capturado "por defecto" no aparecía en la boleta). Inicio de ciclo sigue a mano.
 	var TRIMESTRE_A_MOMENTO = {
-		1: "inicio_ciclo",
-		2: "trimestre_1",
-		3: "trimestre_2"
+		1: "trimestre_1",
+		2: "trimestre_2",
+		3: "trimestre_3"
 	};
 
 	// ── elementos del DOM ────────────────────────────────────────────────────

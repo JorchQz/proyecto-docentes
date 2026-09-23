@@ -39,7 +39,8 @@ const ocho = ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => ({ id: id }));
 const rev = { a: "entregado", b: "entregado", c: "entregado", d: "entregado", e: "justificado", f: "justificado", g: "no_entregado", h: "no_entregado" };
 let s = T.situacionDe(ocho, rev, "2026-09-10", HOY);
 ok("8 de 8 con estado: revisada (los justificados cuentan)", [s.revisados, s.total, s.estado], [8, 8, "revisada"]);
-ok("detalle incluye justificadas", T.detalleConteo(s.conteo), "4 entregaron, 2 no entregaron, 2 justificada");
+ok("detalle incluye justificadas (con concordancia)", T.detalleConteo(s.conteo), "4 entregaron, 2 no entregaron, 2 justificadas");
+ok("singular: 1 entregó, 1 justificada", T.detalleConteo({ entregado: 1, incompleto: 0, no_entregado: 0, justificado: 1, no_aplica: 0 }), "1 entregó, 1 justificada");
 
 s = T.situacionDe(ocho, { a: "entregado", b: "no_aplica" }, "2026-09-10", HOY);
 ok("faltan 6: por revisar", [s.revisados, s.estado], [2, "por_revisar"]);

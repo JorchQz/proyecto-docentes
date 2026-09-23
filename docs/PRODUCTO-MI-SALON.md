@@ -217,7 +217,12 @@ máximos por grado. Con dos o más grupos, el maestro elige el grupo en el menú
   ni revisa tareas en el formato viejo.
 - **Tareas** (`tareas.html`) es seguimiento de los productos tipo tarea (cuándo vencen,
   cuántos alumnos faltan); la revisión se captura en "Hoy". La tabla vieja `tareas` ya no
-  se escribe.
+  se escribe. Un alumno cuenta como revisado con cualquier estado de entrega (también
+  justificado o no aplica), igual que en "Hoy" y en el motor.
+- **Mismo alcance en Hoy, Inicio y Tareas** (`js/alcance-hoy.js`): proyectos activos, en
+  borrador o pausados, los del trimestre actual del grupo y los terminados en los últimos
+  30 días. Así la tarea de la última sesión de un proyecto recién terminado sigue en "Hoy"
+  hasta revisarse, y las tres pantallas coinciden en qué falta.
 - Una sola fórmula (motor) y una sola conversión (SQL) en todo el sistema.
 
 ### B.11 Qué NO hacer (sigue vigente)

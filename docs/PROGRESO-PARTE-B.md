@@ -23,10 +23,10 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 revisor 37b (Tareas: justificados nunca "Revisada") | — |
+| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 revisor 37b (Tareas: justificados) → FAIL #2 revisor 37c (proyecto terminado: su tarea sale de Hoy) → revisor 37d | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | pendiente | — | — |
-| 3.10 Ensayo final | pendiente | — | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA con trabajo y tarea, cierre del día, boleta sin evidencias, diagnóstico, Inicio) | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -224,6 +224,23 @@ columna por grado dice "x de y con las 4 confirmadas"; "Hoy" ya no ofrece "Quita
 en una sesión terminada. Menor anotado (limitación): el plan de Inicio muestra solo las
 sesiones del proyecto activo más reciente.
 
+**Revisión #2 de 3.7: FAIL #2** (revisor 37c, `.qa/revisor-37c/`), por otra causa. El
+defecto de los justificados quedó corregido (reproducido por la interfaz con S12). Nuevo:
+"Hoy" solo leía proyectos activos o en borrador; al terminar la última sesión desde Inicio
+el proyecto pasa a "completado" y su tarea (125 de 134 proyectos del bot traen tarea en la
+última sesión) y sus productos pendientes desaparecían de "Hoy", mientras Tareas los seguía
+pidiendo con "Revisar en Hoy". Lo demás del bloque pasó con evidencia (Vista Recrea y
+Concentrado contra `boleta_trimestral` con ajustes del docente, Inicio igual a "Hoy", 19
+pantallas × 2 grupos sin errores, 0 filas de formato viejo, regresión de los pulidos OK).
+Corrección: una sola regla de alcance, `js/alcance-hoy.js` (proyectos activos, en
+borrador o pausados, del trimestre actual del grupo, o terminados en los últimos 30 días),
+que usan "Hoy", Inicio y Tareas; "Trabajar hoy" sigue exigiendo proyecto activo. Tareas
+solo ofrece "Revisar en Hoy" si "Hoy" la va a mostrar y, si no, lo explica. "Tu día" en
+Inicio cuenta también las tareas por revisar con la misma lógica que "Hoy". Concordancia
+en Tareas ("1 entregó", "2 justificadas"). Pruebas `pruebas/alcance-hoy.test.js` y
+`.qa/verificar-37b.js` (proyecto recién terminado: la tarea sigue en Hoy, Tareas ofrece el
+botón, Inicio la cuenta; proyecto viejo de otro trimestre: ninguno la pide).
+
 **Revisión de 3.8: PASS** (revisor 37b). Llave ausente del frontend, de git y de
 `.env.local`; función desplegada v2 idéntica al repo; sin llave el botón no aparece (7
 boletas, solo llamadas "estado"); sin sesión o con token inválido 401, "redactar" sin
@@ -241,6 +258,43 @@ se guarda como "" y se respeta en boleta, reporte, exportación y diagnóstico, 
 la fecha del diagnóstico; los cuadros se guardan también mientras se escribe; `esc()` con
 comillas; fluidez de la junta sin número de lista cuando no hay nombres; examen exportado
 con dos decimales.
+
+## 3.10 Ensayo final
+
+**Ensayo #1: FAIL** (revisor 310, `.qa/revisor-310/`). Un trimestre completo por la
+interfaz con la segunda cuenta (grupo 1°-2° como el de Fanny, 6 alumnos, 2 proyectos
+creados en "Crear proyecto", 8 días de captura con reloj simulado) y lo esencial de Fase 4
+con Tomás Paz (5 confirmado y cerrado). La cadena funciona y los números cuadran (24
+porcentajes calculados a mano, junta y exportación). Bloqueantes encontrados:
+1. **Evidencia por PDA corrompida** cuando una sesión tiene trabajo y tarea ligados al
+   mismo PDA: gana la última calificación y una tarea "Incompleta" borraba la del trabajo.
+   → Migración `b5c_evidencia_pda_con_todos_los_productos`: la evidencia se recalcula con
+   todas las calificaciones del alumno ligadas a ese PDA (manda el trabajo, la más baja si
+   hay varias; la tarea solo si no hay otra). Recalculada la evidencia QA; los 4 casos del
+   ensayo quedaron bien (verificado por SQL).
+2. **Cierre del día** decía "todos empiezan en 1" pero solo guardaba a quien se tocaba (el
+   motor ignora días sin registro). → La primera excepción guarda el día de todo el grupo
+   (1 y 1, sin contar a quienes faltaron) y hay botón "Guardar el cierre de hoy"; marcar
+   una falta después retira el cierre por defecto.
+3. **Boleta imposible de cerrar** con un campo sin evidencias. → Ese campo ofrece "Elige"
+   (juicio docente, dentro de la escala), la barra explica qué falta y confirmar exige los
+   cuatro.
+4. **Diagnóstico abría en "Inicio de ciclo"** y la boleta lee el del trimestre. → Abre en
+   el trimestre actual ("T1 · boleta") y la boleta avisa si falta.
+5. **Inicio pintaba "• todos • null"** con proyectos de "Crear proyecto". → Lectura correcta
+   de `{mode, todos, diferenciado}` (prueba `pruebas/inicio-actividades.test.js`).
+Menores atendidos: boleta para familias sin "Sin registro" (guion neutro); mismo
+porcentaje truncado en boleta, reporte y junta; tarea sin fecha de entrega vence el
+siguiente día hábil (regla única en `js/alcance-hoy.js`) y "vencía el 14 sep"; boleta
+cerrada con textos de solo lectura y sin "Volver a proponer"; redacción de la junta
+("logro menor al 60 %" en vez de "terminaron"). Verificado con `.qa/verificar-310.js`
+(todas OK, sin errores de consola) y las 18 suites.
+Menores anotados para Jorge: productos con nombre genérico y sin forma de renombrarlos;
+"Crear proyecto" no filtra el PDA por el campo de la sesión; faltas justificadas cuentan
+como asistencia en el dato de referencia; el 5 de Fase 4 no se marca "no acredita" celda
+por celda; Mi grupo (lista escondida, textos sin acentos, nombres en mayúsculas sin
+acentos); tocar dos veces un semáforo lo borra; tiempos de carga de 5 s en boleta y
+reporte y 8.8 s en el primer Inicio.
 
 ## Aislamiento entre maestros
 

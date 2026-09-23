@@ -59,8 +59,10 @@
 
 	// Porcentaje con un decimal (igual que la boleta: 49.86 no se ve como "50 %")
 	function fmtPct(v) {
+		// Truncado a un decimal, igual que la boleta de Reportes: antes 64.35 salía 64.3 en
+		// una pantalla y 64.4 en otra; además 49.97 no se lee "50.0 %" junto a un 5
 		if (vacio(v)) return "—";
-		return (Math.round(Number(v) * 10) / 10).toFixed(1) + "\u00a0%"; // el % no se separa del número
+		return (Math.floor(Number(v) * 10 + 1e-9) / 10).toFixed(1) + "\u00a0%"; // el % no se separa del número
 	}
 
 	// Cantidades de obtenido / máximo: hasta dos decimales, sin ceros de relleno
@@ -364,7 +366,7 @@
 		var tarjetas = CAMPOS.map(function (c) {
 			var pc = porCampo[c] || { rubros: {}, porcentaje: null };
 			var cal = calificacionCampo(datos, c);
-			var pct = vacio(pc.porcentaje) ? "" : (Math.round(Number(pc.porcentaje) * 10) / 10).toFixed(1);
+			var pct = vacio(pc.porcentaje) ? "" : (Math.floor(Number(pc.porcentaje) * 10 + 1e-9) / 10).toFixed(1);
 			return "<div class='bloque rounded-xl border border-gray-200 overflow-hidden' data-campo='" + c + "' data-pct='" + pct +
 				"' data-cal='" + (cal.valor === null ? "" : cal.valor) + "' data-cal-tipo='" + cal.tipo + "'>" +
 				"<div class='flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-gray-200' style='border-left:6px solid " + colorCampo(c) + "'>" +
