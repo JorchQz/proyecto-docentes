@@ -215,7 +215,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			var res = await window.sb
 				.from("evaluacion_diagnostica")
-				.select("alumno_id")
+				.select("alumno_id, cuaderno, matematicas, lectura_ppm, lectura_comprension, observaciones")
 				.eq("maestro_id", user.id)
 				.eq("grupo_id", grupoId)
 				.eq("momento", momentoActual);
@@ -224,7 +224,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// Si falla, el conteo no dice "0 de 8": dice que no se pudo contar
 			conteoFallido = !!res.error;
 			if (res.error) console.error("evaluacion_diagnostica (conteo):", res.error);
-			else (res.data || []).forEach(function (row) { evaluadosSet.add(row.alumno_id); });
+			// Solo cuenta como evaluado quien tiene algo capturado (una fila vaciada no)
+			else (res.data || []).forEach(function (row) {
+				var algo = (row.cuaderno || []).some(function (c) { return c && c.nivel; }) ||
+					(row.matematicas || []).some(function (c) { return c && c.nivel; }) ||
+					row.lectura_ppm !== null || !!row.lectura_comprension ||
+					!!(row.observaciones && String(row.observaciones).trim());
+				if (algo) evaluadosSet.add(row.alumno_id);
+			});
 		} catch (e) {
 			// No bloquear
 		}
@@ -273,7 +280,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		Siempre devuelve true (guardado o nada que guardar) o false (falló).
 		forzar = guardar lo pendiente del alumno que se deja (al empezar un cambio).
 	*/
-	var colaGuardado = Promise.resolve(true);
+	// Como mucho uno en vuelo y UNO esperando: el que espera sale con el estado más reciente,
+	// así que los toques que llegan mientras tanto se funden en él (diez toques rápidos no
+	// hacen diez guardados en fila que "Siguiente" tendría que esperar)
+	var enVuelo = null, enEspera = null;
 
 	// Salir o recargar con un cambio sin guardar (p. ej. el texto antes de la pausa): pregunta
 	window.addEventListener("beforeunload", function (e) {
@@ -284,8 +294,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 	function guardarAlumno(forzar) {
 		if (cambiando && !forzar) return Promise.resolve(true);
-		colaGuardado = colaGuardado.then(guardarAhora, guardarAhora);
-		return colaGuardado;
+		if (enEspera) return enEspera;
+		if (!enVuelo) return lanzar();
+		enEspera = enVuelo.then(function () {}, function () {}).then(function () {
+			enEspera = null;
+			return lanzar();
+		});
+		return enEspera;
+	}
+	function lanzar() {
+		enVuelo = guardarAhora().then(function (r) { enVuelo = null; return r; }, function () { enVuelo = null; return false; });
+		return enVuelo;
 	}
 
 	async function guardarAhora() {
@@ -295,7 +314,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var tieneAlgo = estadoCuaderno.some(function (e) { return e.nivel; }) ||
 			estadoMates.some(function (e) { return e.nivel; }) ||
-			comprension || ppm != null || observaciones.trim();
+			comprension || (ppm !== null && ppm !== "") || observaciones.trim(); // un PPM borrado ("") no es dato
 		// Sin nada marcado y sin fila guardada no hay nada que guardar. Si ya tenía fila y la
 		// maestra lo desmarcó todo, sí se guarda vacío: la base debe decir lo que la pantalla
 		if (!tieneAlgo && !teniaFila) { sucio = false; return true; }
@@ -477,6 +496,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			'<h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">' +
 			'<span class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>Observaciones' +
 			'</h2>' +
+			// Lo que se escribe aquí sale tal cual en la boleta para la familia
+			(momentoActual.indexOf("trimestre_") === 0
+				? '<p class="text-xs text-gray-500">Aparece en la boleta del trimestre como <span class="font-semibold">Trabajo diario</span>, tal como lo escribas.</p>'
+				: "") +
 			'<textarea id="inputObs" rows="3" ' +
 			'placeholder="Observaciones sobre este alumno..." ' +
 			'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +

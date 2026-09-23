@@ -225,7 +225,11 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   ve, truncado a 1, no cambia al cerrar). El porcentaje del cierre y el aviso se ven en Reportes
   y en el reporte detallado (la boleta imprimible y la exportación no muestran porcentajes
   por campo). La presentación de junta no es la boleta: grafica el porcentaje de logro del
-  grupo con los datos de hoy. No hay forma de reabrirla desde la interfaz.
+  grupo con los datos de hoy. No hay forma de reabrirla desde la interfaz. **En la base:** se
+  cierra con la función `cerrar_boleta` (foto y cierre de los cuatro campos en una sola
+  transacción: o todo o nada) y el trigger `boleta_trimestral_cerrada_inmutable` rechaza
+  cualquier cambio a una fila cerrada o a la fila GEN de una boleta cerrada
+  (`supabase/mi_salon_b8_cierre_2026-09.sql`).
 - **Dónde se captura:** `hoy.html` (§B.1) — asistencia, tareas vencidas, los productos de
   las sesiones del día y el cierre (participación y conducta). Todo se guarda al toque,
   con cola y reintento: nunca se descarta una captura (se reintenta hasta que vuelva la

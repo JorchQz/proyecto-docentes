@@ -26,7 +26,7 @@ seguir desde el último bloque con PASS.
 | 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → revisor 310f | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → revisor 310g | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -552,6 +552,33 @@ rubro y el avance por PDA del reporte (con aviso), la junta y los rubros de la e
 usan los datos de hoy; tiempos de carga de 4 a 8 s; asistencia de referencia cuenta solo
 días con sesión ("5 de 5" con 6 días de lista); "No hay sesiones pendientes" con dos
 proyectos activos; conducta "0.8 / 1.5" en pantalla y "0.75 / 1.5" en el reporte.
+
+**Sexto ensayo de 3.10: FAIL #6** (revisor 310f, `.qa/revisor-310f/`). Diagnóstico y "Hoy" con red
+lenta **pasan**: 6 de 6 alumnos iguales entre pantalla y base con red normal, lenta por
+CDP y con retrasos aleatorios; vaciar avanza; sin red avisa y guarda al volver; salir con
+texto pendiente pregunta. Recorrido completo en verde (proyectos, siete días en "Hoy" con
+31 escrituras en red lenta, números a mano, pisos, boletas cerradas idénticas por md5 tras
+cambiar todo, T2, multigrado, aislamiento). Bloqueantes, **causa nueva** (no comparte causa
+con #4 y #5): **el cierre no era atómico** (cerraba los cuatro campos y DESPUÉS subía la
+foto; si la red se caía entre las dos, la boleta quedaba cerrada sin foto y volvía a leer
+los datos de hoy, sin forma de repararlo) y **la base no protegía una boleta cerrada** (una
+pestaña abierta antes del cierre cambió LEN de 6 a 9 con `cerrada=true`).
+Corrección en la base (migración aditiva `b8_cierre_boleta_atomico_inmutable`; no había
+boletas reales): función `cerrar_boleta` (security invoker, RLS) que guarda la foto y cierra
+los cuatro campos en una transacción y exige los cuatro; trigger
+`boleta_trimestral_cerrada_inmutable` que rechaza modificar una fila cerrada o la GEN de una
+boleta cerrada. La pantalla cierra con una sola llamada y, si falla o choca con un cierre de
+otra pestaña, lo dice y vuelve a dibujar lo que hay en la base. Menores corregidos: un PPM
+borrado ya no cuenta como dato; el conteo de "evaluados" no cuenta filas vaciadas;
+Diagnóstico dice que las observaciones salen en la boleta como "Trabajo diario"; la cola de
+Diagnóstico funde los toques (uno en vuelo y uno esperando) para que "Siguiente" no espere
+diez guardados. Verificado con `.qa/verificar-310h.js` (red cortada al cerrar: nada cambia y
+lo dice; 3 campos: la función se deshace completa; cierre normal con foto; pestaña vieja no
+cambia la calificación y ahora ve la boleta cerrada; la base rechaza modificar fila cerrada
+y GEN), 22 suites, humo, cierre-boleta, 310d, 310f, 310g (dos veces), 37i y 37c en verde;
+advisors de seguridad sin avisos nuevos. Anotados para Jorge: si la maestra ACEPTA salir con
+la cola pendiente se pierde lo que no llegó (el navegador sí avisa); "Hoy" no muestra el
+segundo proyecto activo hasta terminar el primero.
 
 ## 3.9 Documentación
 

@@ -830,7 +830,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return filas;
 		}
 
-		async function guardarBoleta(filas, btn, textoOcupado, despues) {
+		async function guardarBoleta(filas, btn, textoOcupado) {
 			const original = btn.textContent;
 			btn.disabled = true;
 			btn.textContent = textoOcupado;
@@ -838,13 +838,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 				const { error } = await window.sb.from("boleta_trimestral")
 					.upsert(filas, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
 				if (error) throw error;
-				if (despues) await despues();
 				await generarBoleta(); // re-render con el estado nuevo
 			} catch (e) {
 				console.error("boleta_trimestral:", e);
 				btn.disabled = false;
 				btn.textContent = original;
 				window.alert("No se pudo guardar: " + (e.message || "error desconocido"));
+				// Si la boleta se cerró en otra pestaña, la base lo rechaza: se muestra lo que hay
+				await generarBoleta();
 			}
 		}
 
@@ -976,26 +977,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 				// Foto del trabajo diario tal como se entrega (vive en evaluacion_diagnostica y
 				// podría editarse después en Diagnóstico)
 				const trabajoFinal = obsTrabajoEl ? obsTrabajoEl.value.trim() : (obsTrabajo || "");
-				const previoGen = (boletaFilas[window.TextosBoleta.GENERAL] || {}).texto_autogenerado || {};
 				const foto = {
-					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
-					campo: window.TextosBoleta.GENERAL,
-					texto_autogenerado: Object.assign({}, previoGen, {
-						cierre: {
-							trabajo_diario: trabajoFinal,
-							trabajo_diario_del_maestro: !!(diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined),
-							// Cuaderno, lectura y matemáticas tal como se entregan (null = sin diagnóstico)
-							diagnostico: window.ReporteDatos.fotoDiagnostico(diagnostica),
-							asistencia: window.ReporteDatos.fotoAsistencia(asistenciaHoy),
-							en: new Date().toISOString(),
-						},
-					}),
+					trabajo_diario: trabajoFinal,
+					trabajo_diario_del_maestro: !!(diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined),
+					// Cuaderno, lectura y matemáticas tal como se entregan (null = sin diagnóstico)
+					diagnostico: window.ReporteDatos.fotoDiagnostico(diagnostica),
+					asistencia: window.ReporteDatos.fotoAsistencia(asistenciaHoy),
+					en: new Date().toISOString(),
 				};
-				guardarBoleta(filas, cerrarBtn, "Cerrando...", async function () {
-					const { error } = await window.sb.from("boleta_trimestral")
-						.upsert(foto, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
+				/*
+					Una sola transacción en la base (supabase/mi_salon_b8_cierre_2026-09.sql): la foto
+					y el cierre de los cuatro campos van juntos o no va ninguno. Antes eran dos
+					escrituras y un corte de red entre ellas dejaba la boleta cerrada sin foto.
+				*/
+				const original = cerrarBtn.textContent;
+				cerrarBtn.disabled = true;
+				cerrarBtn.textContent = "Cerrando...";
+				try {
+					const { error } = await window.sb.rpc("cerrar_boleta", {
+						p_alumno: alumnoId, p_ciclo: cicloBoleta, p_trimestre: trimestre,
+						p_calificaciones: filas.map(function (f) { return { campo: f.campo, calificacion: f.calificacion }; }),
+						p_foto: foto,
+					});
 					if (error) throw error;
-				});
+				} catch (e) {
+					console.error("cerrar_boleta:", e);
+					window.alert("No se cerró la boleta: " + ((e && e.message) || "error desconocido") + ". Nada cambió; inténtalo de nuevo.");
+					cerrarBtn.disabled = false;
+					cerrarBtn.textContent = original;
+				}
+				// En los dos casos, la pantalla muestra lo que quedó en la base
+				await generarBoleta();
 			});
 		}
 
