@@ -106,22 +106,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		procesando = true;
 		while (cola.length) {
 			var tarea = cola[0];
-			var intento = 0, ok = false;
-			while (intento < 4 && !ok) {
+			var intento = 0;
+			// Nunca se descarta una captura: se reintenta hasta que la red vuelva, con espera
+			// creciente (máximo 10 s) y el aviso en pantalla mientras tanto
+			for (;;) {
 				try {
 					await tarea();
-					ok = true;
+					break;
 				} catch (e) {
 					intento++;
 					console.error("hoy: guardado fallido (intento " + intento + ")", e);
-					if (intento >= 4) {
-						estadoGuardado("Sin conexión. Se reintentará al tocar otra vez.", "error");
-						cola.shift();
-						pendientes = Math.max(0, pendientes - 1);
-						procesando = false;
-						return;
-					}
-					await new Promise(function (r) { setTimeout(r, 400 * intento); });
+					if (intento >= 3) estadoGuardado("Sin conexión: se guardará en cuanto vuelva la red. No cierres esta página.", "error");
+					await new Promise(function (r) { setTimeout(r, Math.min(10000, 400 * intento)); });
 				}
 			}
 			cola.shift();
@@ -129,7 +125,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		procesando = false;
 		estadoGuardado("Guardado", "ok");
+		esperandoCola.splice(0).forEach(function (r) { r(); });
 	}
+
+	// Promesa que se cumple cuando todo lo capturado ya está en la base
+	var esperandoCola = [];
+	function colaVacia() {
+		if (!pendientes && !procesando) return Promise.resolve();
+		return new Promise(function (r) { esperandoCola.push(r); });
+	}
+
+	// Cerrar o recargar la página con capturas sin guardar: el navegador pregunta
+	window.addEventListener("beforeunload", function (e) {
+		if (!pendientes) return;
+		e.preventDefault();
+		e.returnValue = "";
+	});
 
 	// ── Carga inicial ─────────────────────────────────────────────────────────
 	var authRes = await window.sb.auth.getUser();
@@ -143,6 +154,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		.select("id, nombre_completo, num_lista, grado")
 		.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("estatus", "activo")
 		.order("grado").order("num_lista");
+	if (alumnosRes.error) {
+		// No es "grupo sin alumnos": no se pudo leer la lista
+		console.error("hoy: alumnos", alumnosRes.error);
+		mensaje("error", "No se pudo cargar la lista de alumnos: " + (alumnosRes.error.message || "error desconocido") + ". Recarga la página para intentarlo de nuevo.");
+		return;
+	}
 	alumnos = alumnosRes.data || [];
 
 	document.getElementById("hoySubtitulo").textContent =
@@ -164,11 +181,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var asisRes = await window.sb.from("asistencias")
 			.select("alumno_id, asistencia_estado")
 			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("fecha", hoy);
+		// Toda lectura fallida detiene la carga (ver el arranque): con datos a medias, el
+		// cierre del día guardaría 1 y 1 encima de lo capturado y las secciones dirían
+		// "nada pendiente"
+		if (asisRes.error) throw asisRes.error;
 		(asisRes.data || []).forEach(function (a) { asistencia[a.alumno_id] = a.asistencia_estado; });
 
 		var regRes = await window.sb.from("registro_diario")
 			.select("alumno_id, participacion, conducta")
 			.eq("maestro_id", user.id).eq("fecha", hoy);
+		if (regRes.error) throw regRes.error;
 		(regRes.data || []).forEach(function (r) {
 			registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
 			registroGuardado[r.alumno_id] = true;
@@ -178,6 +200,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Incluye los recién terminados: la tarea de su última sesión se revisa aquí.
 		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final")
 			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).or(window.AlcanceHoy.filtro(grupo, hoy));
+		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
 		if (!proyIds.length) return;
 
@@ -704,8 +727,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var poner = !!btn.dataset.trabajarHoy;
 		var sesionId = poner ? btn.dataset.trabajarHoy : btn.dataset.quitarHoy;
 		btn.disabled = true;
-		btn.textContent = poner ? "Agregando..." : "Quitando...";
 		try {
+			// La pantalla se recarga al final: primero debe quedar guardado todo lo que ya
+			// se capturó (antes la recarga cortaba la cola y se perdían marcas)
+			if (pendientes) {
+				btn.textContent = "Guardando lo capturado...";
+				await colaVacia();
+			}
+			btn.textContent = poner ? "Agregando..." : "Quitando...";
 			// Quitar de hoy la regresa como estaba: sin fecha y pendiente (no "activa")
 			var cambios = poner ? { fecha: hoy, estado_sesion: "activa" } : { fecha: null, estado_sesion: "pendiente" };
 			var res = await window.sb.from("sesiones").update(cambios).eq("id", sesionId).eq("maestro_id", user.id);

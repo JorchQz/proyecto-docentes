@@ -121,9 +121,14 @@ function consulta(tabla) {
 		update: function () { return this; },
 		upsert: function (filas) {
 			guardado[tabla] = (guardado[tabla] || []).concat(Array.isArray(filas) ? filas : [filas]);
+			this._escribe = true;
 			return this;
 		},
 		then: function (resolver) {
+			// BOLETA_FALLA=tabla: esa lectura responde con error (pruebas/lecturas-con-error.test.js)
+			if (process.env.BOLETA_FALLA === tabla && !this._escribe) {
+				return Promise.resolve(resolver({ data: null, error: { message: "falla simulada en " + tabla } }));
+			}
 			const filas = DATOS[tabla] || [];
 			return Promise.resolve(resolver({ data: this._single ? (filas[0] || null) : filas, error: null }));
 		},
@@ -173,6 +178,14 @@ new Function(codigo)();
 	console.error = consolaOriginal;
 
 	const html = elementos.boletaContainer ? elementos.boletaContainer.innerHTML : "";
+	if (process.env.BOLETA_FALLA) {
+		// Una lectura de la boleta falló: se dice y no se guarda nada (ni número ni textos)
+		const F = process.env.BOLETA_FALLA;
+		ok("falla en " + F + ": avisa que no se pudo leer", /No se pudo leer/.test(html), true);
+		ok("falla en " + F + ": no guarda nada en boleta_trimestral", (guardado.boleta_trimestral || []).length, 0);
+		console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
+		process.exit(fallos ? 1 : 0);
+	}
 	ok("el arranque no dejó errores en consola", errores.length === 0 ? "sin errores" : errores[0], "sin errores");
 	ok("la boleta no quedó vacía", html.length > 0, true);
 

@@ -155,7 +155,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.eq("sesion_id", sesionId)
 			.eq("maestro_id", userId);
 
-		if (!evalRes.error && evalRes.data) {
+		// Sin las evaluaciones guardadas, la cuadrícula saldría vacía y se capturaría encima
+		if (evalRes.error) throw evalRes.error;
+		if (evalRes.data) {
 			evalRes.data.forEach(function (row) {
 				var k = mapKey(row.alumno_id, row.criterio);
 				evalMap[k] = row.semaforo;
@@ -163,7 +165,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		}
 	} catch (e) {
-		// No bloquear si la tabla aún no tiene filas
+		console.error("evaluacion_formativa (lectura):", e);
+		mostrarError("No se pudieron cargar las evaluaciones guardadas de esta sesión. Recarga la página; mientras tanto no se captura nada, para no pisar lo que ya tenías.");
+		return;
 	}
 
 	// ── obtener criterios por alumno ──────────────────────────────────────────
@@ -179,8 +183,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.from("sesiones_pda")
 			.select("id, pda_id, grado, criterio_aplicado")
 			.eq("sesion_id", sesionId);
-		if (!spdaRes.error) sesionesPda = spdaRes.data || [];
-	} catch (e) {}
+		// Si no se pudo leer, no se hace el backfill: crearía filas repetidas
+		if (spdaRes.error) throw spdaRes.error;
+		sesionesPda = spdaRes.data || [];
+	} catch (e) {
+		console.error("sesiones_pda (lectura):", e);
+		mostrarError("No se pudieron cargar los PDA de esta sesión. Recarga la página para intentarlo de nuevo.");
+		return;
+	}
 
 	if (!sesionesPda.length && pdaSesion.length) {
 		var filasBackfill = pdaSesion

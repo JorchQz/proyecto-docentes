@@ -57,6 +57,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// Conjunto de alumno_ids evaluados en el momento actual
 	var evaluadosSet   = new Set();
+	var cargaFallida   = false; // no se pudo leer el diagnóstico del alumno: no se guarda
 
 	// ── helpers ──────────────────────────────────────────────────────────────
 	function getLocalDateISO() {
@@ -223,6 +224,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		resetEstado();
 		ocultarMensaje();
 
+		// Si no se pudo leer lo que ya tenía, no se guarda nada: el formulario vacío
+		// sobrescribiría todo su diagnóstico con el primer toque
+		cargaFallida = false;
 		try {
 			var res = await window.sb
 				.from("evaluacion_diagnostica")
@@ -232,18 +236,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.eq("momento", momentoActual)
 				.maybeSingle();
 
-			if (!res.error && res.data) {
-				aplicarFila(res.data);
-			}
+			if (res.error) throw res.error;
+			if (res.data) aplicarFila(res.data);
 		} catch (e) {
-			// Sin datos previos, comenzar limpio
+			console.error("evaluacion_diagnostica (lectura):", e);
+			cargaFallida = true;
+			mostrarError("No se pudo cargar lo que ya tiene este alumno. Recarga la página; mientras tanto no se guarda nada, para no borrar su diagnóstico.");
 		}
 	}
 
 	// ── upsert completo del alumno actual ─────────────────────────────────────
 	async function guardarAlumno() {
 		var alumno = alumnos[alumnoIdx];
-		if (!alumno) return;
+		if (!alumno || cargaFallida) return;
 
 		// Solo guardar si hay al menos 1 dato
 		var tieneAlgo = estadoCuaderno.some(function (e) { return e.nivel; }) ||

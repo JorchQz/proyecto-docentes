@@ -113,7 +113,9 @@ const DATOS = {
 		id: "b-GEN", alumno_id: "al-2", ciclo: "2025-2026", trimestre: 1, campo: "GEN",
 		cerrada: false, calificacion_confirmada: false,
 		fortalezas: "General entregado", areas_oportunidad: null, sugerencias: null,
-		texto_autogenerado: { visible: "reglas", editados: [], cierre: { trabajo_diario: "Trabajo diario entregado al cierre", trabajo_diario_del_maestro: false } },
+		texto_autogenerado: { visible: "reglas", editados: [], cierre: { trabajo_diario: "Trabajo diario entregado al cierre", trabajo_diario_del_maestro: false,
+			// Al cerrar el diagnóstico decía 77 ppm y resta "logrado"; hoy dice 20 ppm y "requiere apoyo"
+			diagnostico: { lectura_ppm: 77, lectura_comprension: "logrado", matematicas: [{ clave: "mates.resta", nivel: "logrado" }], cuaderno: [] } } },
 	}]),
 	v_avance_pda: [
 		{ campo_formativo: "Lenguajes", pda: "Escribe su nombre y apellidos", nivel_predominante: "requiere_apoyo", evidencias: 3, tendencia: "mejora" },
@@ -205,6 +207,20 @@ new Function(codigo)();
 	ok("no marca nada como propuesto", html.indexOf("(propuesto)") === -1, true);
 	ok("no ofrece volver a proponer", html.indexOf("Volver a proponer") === -1, true);
 	ok("los cuadros son de solo lectura", html.indexOf("readonly") !== -1, true);
+	ok("cuaderno y habilidades: el PPM del cierre (77), no el de hoy (20)", />77</.test(html) && !/>20</.test(html), true);
+
+	// Diagnóstico visible (lo usan la boleta imprimible, el reporte detallado y la exportación)
+	const vivo = { lectura_ppm: 20, observaciones: "hoy", matematicas: [] };
+	const genFoto = { texto_autogenerado: { cierre: { diagnostico: { lectura_ppm: 77, lectura_comprension: null, matematicas: [], cuaderno: [] } } } };
+	ok("diagnosticaVisible cerrada: la foto", window.ReporteDatos.diagnosticaVisible(vivo, genFoto, true).lectura_ppm, 77);
+	ok("diagnosticaVisible abierta: lo de hoy", window.ReporteDatos.diagnosticaVisible(vivo, genFoto, false).lectura_ppm, 20);
+	ok("diagnosticaVisible cerrada sin diagnóstico al cerrar: ninguno",
+		window.ReporteDatos.diagnosticaVisible(vivo, { texto_autogenerado: { cierre: { diagnostico: null } } }, true), null);
+	ok("diagnosticaVisible cerrada antes de la foto: lo de hoy",
+		window.ReporteDatos.diagnosticaVisible(vivo, { texto_autogenerado: { cierre: { trabajo_diario: "x" } } }, true).lectura_ppm, 20);
+	ok("fotoDiagnostico guarda solo cuaderno, lectura y matemáticas",
+		Object.keys(window.ReporteDatos.fotoDiagnostico({ lectura_ppm: 5, observaciones: "no", id: "x", cuaderno: [], matematicas: [], lectura_comprension: null })).sort().join(","),
+		"cuaderno,lectura_comprension,lectura_ppm,matematicas");
 
 	// Reglas compartidas (boleta imprimible, reporte detallado, exportación)
 	const RD = window.ReporteDatos;

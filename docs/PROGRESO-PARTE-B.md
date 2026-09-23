@@ -23,10 +23,10 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → revisor 37g | — |
+| 3.7 Coherencia y deuda | corregido, en re-revisión | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → revisor 37h | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → revisor 310c | — |
+| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → revisor 310d | — |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -322,6 +322,46 @@ que escribió sobre un alumno del grupo 1°-2° asignado al revisor (cerró su b
 sus tareas por unos segundos antes de restaurarlas). El revisor lo detectó y lo aisló de
 su veredicto. Desde aquí, mientras haya un revisor trabajando, no escribo en su partición.
 
+**Revisión #6 de 3.7: FAIL #6** (revisor 37g, `.qa/revisor-37g/`). Lo que habría detenido el
+bloque (tercera vez la misma causa) **no apareció**: revisó las 93 lecturas de `js/`, simuló
+PostgREST con tope y relleno en 19 pantallas × 2 grupos (36 lecturas de más de 1000 filas
+se leyeron completas; las 15 que se cortaron son las acotadas por naturaleza) y midió el
+tope real. FAIL #1-#5 reproducidos y corregidos. **Causa nueva:** "Hoy" e Inicio ignoraban
+el error de tres lecturas (asistencias, registro_diario, proyectos): decían "nada
+pendiente" y, con `registro_diario` en error, el cierre del día pisó en la base el 2 de
+participación de una alumna con 1 y 1. Igual que con la paginación, no corregí solo lo
+señalado: busqué en toda la app lecturas cuyo error se ignora antes de una escritura y
+encontré rutas de pérdida peores:
+- **Crear proyecto en modo edición** ("Ver sesiones" de un proyecto activo): guardar borra
+  las sesiones y las vuelve a crear; el borrado en cascada se lleva productos,
+  calificaciones y evidencias. Con la lectura de sesiones en error guardaba una lista
+  vacía. → No se guarda si las sesiones no se pudieron leer, ni si el proyecto ya se está
+  trabajando (sesiones con fecha o en curso, o calificaciones): esa pantalla queda de
+  consulta. **Decisión pendiente para Jorge:** cómo editar un proyecto en curso sin perder
+  nada.
+- **Diagnóstico:** con la lectura del alumno en error, el primer toque sobrescribía todo su
+  diagnóstico. → No guarda y lo dice.
+- **Boleta de Reportes:** con `boleta_trimestral` en error, la propuesta se guardaba encima
+  de la calificación confirmada y de los textos del maestro. → Toda lectura (boleta,
+  diagnóstico, avance por PDA) se hace antes de escribir; si una falla, no se guarda nada.
+- **Evaluación formativa, Exámenes y Ajustes:** con la lectura en error, la captura salía
+  vacía (o los pesos de fábrica) y se capturaba encima. → Avisan y no dejan capturar.
+- "Hoy" (todas sus lecturas, incluida la de alumnos, que decía "no tiene alumnos") e
+  Inicio (asistencia/cierre y tareas: "no se pudieron leer").
+Menores atendidos: la prueba `lecturas-sin-tope` ahora exige el filtro exacto de cada
+lectura acotada (con `.gte("fecha")` ya no pasa; comprobado con una mutación) y revisa
+`banco_criterios_pda`, `dosificacion_sesiones` y `dosificacion_proyectos` (catálogo del
+marketplace, ahora paginado); marcar una falta en `asistencia.html` retira el 1 y 1 del
+cierre como en "Hoy"; la cola de "Hoy" ya no descarta una captura tras 4 intentos.
+Anotados: el motor y `reporte-datos` usan `.in("sesion_id")` sin lotes (revienta con 400
+visible entre 500 y 700 sesiones por trimestre; el uso real es ~50); semilla QA con
+`proyectos.fase` en null.
+Pruebas nuevas: `pruebas/lecturas-con-error.test.js` (Hoy con cada una de sus 7 lecturas
+en error y la boleta con cada una de sus 3: avisan y no escriben; con el código anterior
+fallan). En navegador, `.qa/verificar-310d.js`: con `registro_diario`, `asistencias` o
+`proyectos` en error (500 simulado) Hoy e Inicio lo dicen y no hay escrituras; un proyecto
+en curso no se puede guardar ni forzando el clic.
+
 **Revisión de 3.8: PASS** (revisor 37b). Llave ausente del frontend, de git y de
 `.env.local`; función desplegada v2 idéntica al repo; sin llave el botón no aparece (7
 boletas, solo llamadas "estado"); sin sesión o con token inválido 401, "redactar" sin
@@ -408,6 +448,34 @@ Inicio con una sola tarjeta de plan; botones del cierre que se van de renglón e
 ausentes con 1/1 marcado en el cierre (no se guarda); tareas que vencen en día festivo
 (`dias_no_habiles_extra` no se usa); acentos en "Aqui si puedes", "Aun no hay";
 "1 de 6 alumnos necesitan"; "Agregar producto" con `prompt()`.
+
+**Tercer ensayo de 3.10: FAIL #3** (revisor 310c, `.qa/revisor-310c/`). El recorrido completo
+funciona por la interfaz (dos proyectos creados con la segunda cuenta, 12 combinaciones
+sesión-grado en Crear proyecto con "Criterios sugeridos" y consola limpia, cinco días en
+"Hoy", diagnóstico, boletas confirmadas y cerradas, imprimible, reporte, junta, CSV/XLSX,
+Fase 4, T2 vacío, aislamiento); 5 porcentajes a mano cuadran; las 25 filas de boletas
+cerradas no cambiaron tras cambiar capturas y diagnóstico. Tres bloqueantes:
+1. El reporte detallado de una boleta cerrada recalculaba el **semáforo** del campo. → Es
+   el guardado al cerrar.
+2. La sección **cuaderno y habilidades** (PPM, comprensión, matemáticas) se leía en vivo
+   en la imprimible, el reporte, Reportes y la exportación: la boleta reimpresa decía "50
+   ppm · Estándar" junto al texto congelado "por debajo de lo esperado". → Al cerrar se
+   guarda también la foto del diagnóstico (`cierre.diagnostico`) y todos la usan
+   (`ReporteDatos.diagnosticaVisible`).
+3. **"Hoy" perdía capturas**: "Trabajar hoy" recargaba sin esperar la cola (con red lenta,
+   6 marcas y solo 5 llegaron). → Espera a que la cola quede vacía, la cola nunca descarta
+   y cerrar la página con capturas pendientes pide confirmación. Verificado con latencia
+   de 1.5 s: las 8 asistencias llegan antes de recargar.
+Menor corregido: el porcentaje subía 0.1 al cerrar (se guardaba redondeado y se muestra
+truncado) → se guarda truncado a 2 decimales. Anotados para Jorge: la junta y las columnas
+de rubros de la exportación usan los datos de hoy aunque la boleta esté cerrada; ausentes
+cuentan como "sin calificar" en los productos del día; la asistencia de referencia solo
+cuenta el rango de fechas con sesiones; el primer toque del cierre guarda 1 y 1 también a
+quien no tiene asistencia capturada.
+Verificado: `pruebas/boleta-cerrada.test.js` y `reporte-alumno.test.js` (foto del
+diagnóstico y semáforo del cierre) y `.qa/verificar-cierre-boleta.js` en navegador (PPM
+cambiado a 987 después de cerrar: no aparece en imprimible, reporte ni Reportes; semáforo
+del cierre).
 
 ## 3.9 Documentación
 

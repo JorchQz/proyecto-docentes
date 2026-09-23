@@ -288,7 +288,7 @@ ok("sin emojis en el render",
 {
 	const filas = {};
 	CAMPOS.forEach((c) => {
-		filas[c] = { campo: c, calificacion: 7, porcentaje: 12.34, calificacion_confirmada: true, cerrada: true, editado_manual: false };
+		filas[c] = { campo: c, calificacion: 7, porcentaje: 12.34, nivel: "logrado", calificacion_confirmada: true, cerrada: true, editado_manual: false };
 	});
 	filas.GEN = { campo: "GEN", cerrada: false, fortalezas: "GENERAL DEL CIERRE",
 		texto_autogenerado: { cierre: { trabajo_diario: "TRABAJO DIARIO DEL CIERRE" } } };
@@ -298,6 +298,8 @@ ok("sin emojis en el render",
 	ok("cerrada: el porcentaje del campo es el guardado al cerrar", len && len.pct, "12.3");
 	ok("cerrada: la calificación confirmada", len && len.cal, "7");
 	ok("cerrada: el resumen muestra el porcentaje del cierre", hc.includes("12.3 % del campo") || hc.includes("12.3 % del campo"), true);
+	const tileLen = (hc.split("12.3 % del campo")[1] || "").slice(0, 200);
+	ok("cerrada: el semáforo del campo es el del cierre (logrado), no el de hoy", /data-nivel=.logrado/.test(tileLen), true);
 	ok("cerrada: avisa que hubo capturas después del cierre", hc.includes("hubo capturas después del cierre"), true);
 	ok("cerrada: trabajo diario de la foto del cierre", hc.includes("TRABAJO DIARIO DEL CIERRE") && !hc.includes("ESCRITO DESPUÉS"), true);
 	ok("cerrada: texto general guardado", hc.includes("GENERAL DEL CIERRE"), true);

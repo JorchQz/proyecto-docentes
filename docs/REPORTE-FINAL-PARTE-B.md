@@ -87,14 +87,14 @@ B.5 (ya reportadas antes), y en esta fase `b7_plantillas_sugerencia`,
 `b8_calificaciones_boleta_por_lote`, `qa_funcion_resembrar` y
 `b7_plantillas_calidad_y_descripciones` y `b5c_evidencia_pda_con_todos_los_productos`. Copia en `supabase/*.sql`.
 
-**Edge Function nueva desplegada:** `redactar-boleta` (v2). Sin el secreto no hace nada:
+**Edge Function nueva desplegada:** `redactar-boleta` (v3). Sin el secreto no hace nada:
 responde "no configurada".
 
 ---
 
 ## 3. Pruebas
 
-- **20 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
+- **21 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
   todas pasan. Cubren motor, textos, boleta de punta a punta, IA y Capa 1, los cuatro
   reportes, Vista Recrea y Concentrado, Tareas, Hoy y ausencia de emojis.
 - **Verificaciones en navegador** (en `.qa/`, locales): recorrido de humo por las 18
@@ -144,6 +144,18 @@ En cada caso se eligió lo más conservador y el sistema funciona así mientras 
     se escribe en "Hoy" al tocar cada producto y `evaluacion_formativa` la llena un
     trigger al calificar (más el ajuste del maestro). No la cambié porque `CLAUDE.md` es
     tuyo; sugiero ese texto.
+11. **Editar un proyecto en curso.** "Crear proyecto" en modo edición guarda borrando y
+    volviendo a crear las sesiones, y el borrado en cascada se llevaría productos,
+    calificaciones y evidencias. *Hoy:* un proyecto que ya se está trabajando se abre solo
+    para consulta (no se puede guardar). Falta decidir cómo editarlo sin perder nada (por
+    ejemplo, actualizar sesión por sesión en lugar de borrar y recrear).
+12. **Boleta cerrada y lo que no es boleta.** La boleta cerrada queda fija en todos sus
+    documentos, pero la junta y las columnas de rubros de la exportación siguen mostrando
+    los datos de hoy. *Hoy:* así está documentado (la junta no es la boleta). Decide si
+    también deben congelarse.
+13. **Ausentes y cierre del día.** Un alumno que faltó sigue contando como "sin calificar"
+    en los productos del día, y el primer toque del cierre guarda 1 y 1 también a quien no
+    tiene asistencia capturada (se asume presente). *Hoy:* sin cambio.
 
 ---
 

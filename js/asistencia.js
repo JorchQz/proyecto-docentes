@@ -321,6 +321,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 				throw saveResult.error;
 			}
 
+			// Misma regla que "Hoy" (retirarCierreSiFalto): quien faltó ese día no tiene
+			// cierre. Se retira solo el 1 y 1 que se puso por defecto; una excepción que el
+			// maestro capturó a mano se queda.
+			var faltaron = rows.filter(function (r) {
+				return r.asistencia_estado === "ausente" || r.asistencia_estado === "justificada";
+			}).map(function (r) { return r.alumno_id; });
+			if (faltaron.length) {
+				var retiro = await window.sb.from("registro_diario").delete()
+					.eq("maestro_id", currentUserId).eq("fecha", attendanceDateIso)
+					.in("alumno_id", faltaron).eq("participacion", 1).eq("conducta", 1);
+				if (retiro.error) console.error("asistencia: retirar el cierre de quien faltó", retiro.error);
+			}
+
 			clearMessage();
 		} catch (error) {
 			showMessage(

@@ -94,10 +94,19 @@ hoy (así entran a la captura, al reparto de participación y al rango de asiste
 "Quitar de hoy" las regresa sin fecha y pendientes mientras no tengan calificaciones ni
 estén completadas.
 
-Todo se guarda al tocar (cola en memoria con reintento), sin botón de guardar.
+Todo se guarda al tocar (cola en memoria con reintento), sin botón de guardar. Una
+captura nunca se descarta: si no hay red se reintenta y lo avisa; "Trabajar hoy" espera a
+que todo quede guardado antes de recargar, y cerrar la página con capturas pendientes
+pide confirmación. Si una lectura falla, la pantalla lo dice en vez de mostrarse vacía.
 
 *Diferencia con la especificación:* no hay "retardo" en asistencia (agregarlo es una
 decisión de producto pendiente para Jorge).
+
+**Proyectos en curso.** "Crear proyecto" en modo edición guarda borrando y volviendo a
+crear las sesiones, y el borrado en cascada se llevaría productos, calificaciones y
+evidencias. Por eso un proyecto que ya se está trabajando (sesiones con fecha o en curso,
+o calificaciones) se abre solo para consulta. Editar un proyecto en curso sin perder nada
+queda como decisión pendiente para Jorge.
 
 ### B.2 Máximos automáticos
 
@@ -130,7 +139,8 @@ la fórmula: se reporta aparte como referencia.
   detallado y la exportación: la calificación, el porcentaje del cierre (donde se muestra
   porcentaje: Reportes y reporte detallado, con aviso si hubo capturas después), los
   textos guardados (también los generales) y el trabajo diario tal como se entregó,
-  aunque después cambien las capturas o el diagnóstico. La junta no es la boleta: grafica
+  y la sección de cuaderno y habilidades tal como estaban al cerrar, aunque después cambien
+  las capturas o el diagnóstico. La junta no es la boleta: grafica
   el logro del grupo con los datos de hoy. No se puede reabrir desde la interfaz.
 
 *Diferencias:* no hay vista `v_resumen_trimestral`; la regla B.10 permitía "una vista SQL o

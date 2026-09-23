@@ -67,11 +67,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Nota: el estado terminal de dosificacion_proyectos es 'publicado'
 		// (CHECK: pendiente · en_generacion · generado · revisado · publicado).
 		// No existe 'aprobado' a nivel proyecto — ese es estado de sesión.
-		const { data, error } = await window.sb
-			.from("dosificacion_proyectos")
-			.select("*, dosificacion_sesiones(count)")
-			.eq("estado", "publicado")
-			.order("created_at", { ascending: false });
+		// El catálogo crece con cada publicación del bot: se lee por páginas (js/leer-todo.js)
+		let data = null, error = null;
+		try {
+			data = await window.LeerTodo.paginas(function () {
+				return window.sb
+					.from("dosificacion_proyectos")
+					.select("*, dosificacion_sesiones(count)")
+					.eq("estado", "publicado")
+					.order("created_at", { ascending: false }).order("id");
+			});
+		} catch (e) { error = e; }
 
 		if (error) {
 			mostrarError();

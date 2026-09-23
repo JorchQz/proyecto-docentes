@@ -28,25 +28,30 @@ const CRECEN = [
 	"asistencias", "calificaciones", "registro_diario", "evaluacion_formativa", "v_avance_pda",
 	"sesiones", "productos_sesion", "producto_sesion_pda", "sesiones_pda", "respuestas_examen",
 	"catalogo_pda", "catalogo_contenidos", "boleta_trimestral", "evaluacion_diagnostica",
-	"banco_preguntas",
+	"banco_preguntas", "banco_criterios_pda", "dosificacion_sesiones", "dosificacion_proyectos",
 ];
 
-// Acotadas por naturaleza: [archivo, tabla, fragmento que la identifica, razón]
+/*
+	Acotadas por naturaleza: [archivo, tabla, filtro EXACTO que la acota, razón]. El filtro
+	se busca tal cual en la consulta (un .gte("fecha", …) no pasa por un .eq("fecha", hoy)).
+*/
 const ACOTADAS = [
-	["asistencia.js", "asistencias", "\"fecha\"", "un día de un grupo"],
-	["hoy.js", "asistencias", "\"fecha\"", "hoy, un grupo"],
-	["hoy.js", "registro_diario", "\"fecha\"", "hoy"],
-	["dashboard.js", "asistencias", "\"fecha\"", "hoy, un grupo"],
-	["dashboard.js", "registro_diario", "\"fecha\"", "hoy"],
-	["dashboard.js", "sesiones", "\"proyecto_id\", proyectoActivo", "las sesiones de un proyecto"],
-	["crear_proyecto.js", "sesiones", "'proyecto_id'", "las sesiones de un proyecto"],
-	["evaluacion_diagnostica.js", "evaluacion_diagnostica", "\"momento\"", "un grupo en un momento: uno por alumno"],
-	["evaluacion_formativa.js", "evaluacion_formativa", "\"sesion_id\"", "una sesión"],
-	["evaluacion_formativa.js", "sesiones_pda", "\"sesion_id\"", "una sesión"],
-	["examen.js", "banco_preguntas", "\"id\"", "las preguntas de un examen"],
-	["reporte-datos.js", "v_avance_pda", "\"alumno_id\", alumno", "un alumno en un trimestre"],
-	["reportes.js", "boleta_trimestral", "\"alumno_id\", alumnoId", "un alumno en un trimestre"],
-	["reportes.js", "v_avance_pda", "\"alumno_id\", alumnoId", "un alumno en un trimestre"],
+	["asistencia.js", "asistencias", ".eq(\"fecha\", attendanceDateIso)", "un día de un grupo"],
+	["hoy.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
+	["hoy.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
+	["dashboard.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
+	["dashboard.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
+	["dashboard.js", "sesiones", ".eq(\"proyecto_id\", proyectoActivo.id)", "las sesiones de un proyecto"],
+	["crear_proyecto.js", "sesiones", ".eq('proyecto_id', id)", "las sesiones de un proyecto"],
+	["evaluacion_diagnostica.js", "evaluacion_diagnostica", ".eq(\"momento\", momentoActual)", "un grupo en un momento: uno por alumno"],
+	["evaluacion_formativa.js", "evaluacion_formativa", ".eq(\"sesion_id\", sesionId)", "una sesión"],
+	["evaluacion_formativa.js", "sesiones_pda", ".eq(\"sesion_id\", sesionId)", "una sesión"],
+	["examen.js", "banco_preguntas", ".in(\"id\"", "las preguntas de un examen"],
+	["importador.js", "dosificacion_sesiones", ".eq(\"proyecto_dos_id\", dosProyectoId)", "las sesiones de un proyecto del bot"],
+	["marketplace.js", "dosificacion_sesiones", ".eq(\"proyecto_dos_id\"", "las sesiones de un proyecto del bot (vista previa)"],
+	["reporte-datos.js", "v_avance_pda", ".eq(\"alumno_id\", alumno.id)", "un alumno en un trimestre"],
+	["reportes.js", "boleta_trimestral", ".eq(\"alumno_id\", alumnoId)", "un alumno en un trimestre"],
+	["reportes.js", "v_avance_pda", ".eq(\"alumno_id\", alumnoId)", "un alumno en un trimestre"],
 ];
 
 const PAGINADORES = /(LeerTodo\.paginas|LeerTodo\.porLotes|leerPorLotes|\btodas|\bleer)\(/;

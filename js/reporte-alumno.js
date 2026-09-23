@@ -156,6 +156,8 @@
 		var guardado = Number(fila.porcentaje);
 		return Object.assign({}, pc, {
 			porcentaje: guardado,
+			// El semáforo del campo también es el del cierre
+			nivel: fila.nivel || pc.nivel,
 			cambioTrasCierre: !vacio(pc.porcentaje) && Math.abs(Number(pc.porcentaje) - guardado) >= 0.05,
 		});
 	}

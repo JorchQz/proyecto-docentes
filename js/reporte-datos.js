@@ -119,6 +119,26 @@
 		return t && t.cierre && typeof t.cierre === "object" ? t.cierre : null;
 	}
 
+	/*
+		Diagnóstico como se entregó. Con la boleta cerrada, cuaderno, lectura y matemáticas
+		salen de la foto del cierre (texto_autogenerado.cierre.diagnostico de la fila GEN),
+		no de lo que se edite después en Evaluación diagnóstica. null en la foto = no había
+		diagnóstico al cerrar. Boletas cerradas antes de la foto: el diagnóstico de hoy.
+	*/
+	var CAMPOS_DIAGNOSTICO = ["cuaderno", "lectura_ppm", "lectura_comprension", "matematicas"];
+	function diagnosticaVisible(diagnostica, filaGeneral, cerrada) {
+		var foto = cerrada ? fotoCierre(filaGeneral) : null;
+		if (!foto || !Object.prototype.hasOwnProperty.call(foto, "diagnostico")) return diagnostica;
+		if (!foto.diagnostico) return null;
+		return Object.assign({}, diagnostica || {}, foto.diagnostico);
+	}
+	function fotoDiagnostico(diagnostica) {
+		if (!diagnostica) return null;
+		var foto = {};
+		CAMPOS_DIAGNOSTICO.forEach(function (k) { foto[k] = diagnostica[k] === undefined ? null : diagnostica[k]; });
+		return foto;
+	}
+
 	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal
 	function promedio(valores) {
 		var nums = valores.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
@@ -195,11 +215,18 @@
 		var diagRes = await sb.from("evaluacion_diagnostica").select("*")
 			.eq("maestro_id", ctx.maestroId).eq("alumno_id", alumno.id)
 			.eq("momento", "trimestre_" + trimestre).maybeSingle();
+		// Un error se lanza: el reporte dice que no pudo, en vez de salir "sin diagnóstico"
+		if (diagRes.error) throw diagRes.error;
 		var diagnostica = diagRes.data || null;
 
 		var pdaRes = await sb.from("v_avance_pda").select("*")
 			.eq("maestro_id", ctx.maestroId).eq("alumno_id", alumno.id).eq("trimestre", trimestre);
+		if (pdaRes.error) throw pdaRes.error;
 		var avancePda = pdaRes.data || [];
+
+		var boletas = await boletasCiclo(sb, ctx, [alumno.id]);
+		var boletaT = (boletas[alumno.id] || {})[trimestre] || {};
+		diagnostica = diagnosticaVisible(diagnostica, boletaT.GEN, boletaCerrada(boletaT));
 
 		var banda = ctx.bandas[alumno.grado] || null;
 		var fluidez = window.CatalogoHabilidades.clasificarPPM(diagnostica ? diagnostica.lectura_ppm : null, banda);
@@ -210,7 +237,6 @@
 			corto: window.CamposFormativos.corto, plantillas: ctx.plantillas,
 		});
 
-		var boletas = await boletasCiclo(sb, ctx, [alumno.id]);
 		var retro = await retroalimentaciones(sb, ctx, alumno.id, trimestre, 5);
 
 		return {
@@ -287,6 +313,8 @@
 		boletasCiclo: boletasCiclo,
 		boletaCerrada: boletaCerrada,
 		fotoCierre: fotoCierre,
+		diagnosticaVisible: diagnosticaVisible,
+		fotoDiagnostico: fotoDiagnostico,
 		textoSeccion: textoSeccion,
 		trabajoDiario: trabajoDiario,
 		alumnoTrimestre: alumnoTrimestre,

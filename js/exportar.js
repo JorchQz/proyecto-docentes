@@ -107,6 +107,7 @@
 			textoSeccion: w.ReporteDatos && w.ReporteDatos.textoSeccion,
 			trabajoDiario: w.ReporteDatos && w.ReporteDatos.trabajoDiario,
 			boletaCerrada: w.ReporteDatos && w.ReporteDatos.boletaCerrada,
+			diagnosticaVisible: w.ReporteDatos && w.ReporteDatos.diagnosticaVisible,
 			calificacionOficial: w.ReporteDatos && w.ReporteDatos.calificacionOficial,
 			catalogo: w.CatalogoHabilidades,
 			corto: w.CamposFormativos && w.CamposFormativos.corto,
@@ -153,8 +154,11 @@
 			var porCampo = m.porCampo || {};
 			var asis = m.asistencia || { presentes: 0, total: 0, porcentaje: null };
 			var hayAsistencia = asis.total > 0;
-			var diag = diagnosticas[al.id] || null;
 			var boletaT = (boletas[al.id] || {})[trimestre] || {};
+			// Boleta cerrada: textos, trabajo diario y diagnóstico como se entregaron
+			var cerrada = deps.boletaCerrada ? deps.boletaCerrada(boletaT) : false;
+			var diag = diagnosticas[al.id] || null;
+			if (deps.diagnosticaVisible) diag = deps.diagnosticaVisible(diag, boletaT[GENERAL] || null, cerrada);
 			var grado = al.grado === null || al.grado === undefined ? null : Number(al.grado);
 
 			var fila = [al.nombre_completo || "", grado];
@@ -192,8 +196,6 @@
 
 			// Trabajo diario: el del maestro (evaluacion_diagnostica.observaciones) o la propuesta
 			// null = no lo ha escrito (propuesta); "" = lo vació a propósito (se respeta)
-			// Boleta cerrada: textos y trabajo diario como se entregaron
-			var cerrada = deps.boletaCerrada ? deps.boletaCerrada(boletaT) : false;
 			var trabajoDiario = deps.trabajoDiario
 				? deps.trabajoDiario(diag, generado.trabajoDiario, boletaT[GENERAL] || null, cerrada).texto
 				: (diag && diag.observaciones !== null && diag.observaciones !== undefined ? diag.observaciones : generado.trabajoDiario);

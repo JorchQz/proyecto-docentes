@@ -316,8 +316,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 					.eq("maestro_id", userId)
 					.eq("estatus", "activo")
 					.order("num_lista", { ascending: true });
-				if (!alRes.error) alumnos = alRes.data || [];
-			} catch (e) { /* sin alumnos */ }
+				if (alRes.error) throw alRes.error;
+				alumnos = alRes.data || [];
+			} catch (e) {
+				console.error("examen: alumnos", e);
+				mainEl.innerHTML = emptyState("No se pudo cargar la lista de alumnos. Recarga la página para intentarlo de nuevo.");
+				return;
+			}
 		}
 
 		// Respuestas existentes
@@ -330,12 +335,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 						return window.sb.from("respuestas_examen").select("*").eq("examen_id", examenId).order("id");
 					});
 				} catch (e) { rRes.error = e; }
-				if (!rRes.error && rRes.data) {
-					rRes.data.forEach(function (r) {
-						respMap[rkey(r.alumno_id, r.pregunta_id)] = r;
-					});
-				}
-			} catch (e) { /* sin respuestas aún */ }
+				if (rRes.error) throw rRes.error;
+				(rRes.data || []).forEach(function (r) {
+					respMap[rkey(r.alumno_id, r.pregunta_id)] = r;
+				});
+			} catch (e) {
+				// Sin las respuestas guardadas la captura saldría vacía y se calificaría encima
+				console.error("examen: respuestas", e);
+				mainEl.innerHTML = emptyState("No se pudieron cargar las respuestas guardadas de este examen. Recarga la página; mientras tanto no se captura nada.");
+				return;
+			}
 		}
 
 		// Pestañas

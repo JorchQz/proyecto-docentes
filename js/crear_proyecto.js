@@ -29,6 +29,8 @@ document.addEventListener("DOMContentLoaded", async function () {
   const _urlParams = new URLSearchParams(window.location.search);
   const editProyectoId = _urlParams.get('id');
   let proyectoId = editProyectoId || null;
+  // Motivo por el que "Guardar proyecto" no se permite en modo edición (null = se permite)
+  let edicionBloqueada = null;
 
   // ============================================================
   // PASO 1 — Datos dinámicos
@@ -1935,11 +1937,45 @@ document.addEventListener("DOMContentLoaded", async function () {
       try { await cargarCatalogo(); } catch (_) {}
 
       // Cargar sesiones
-      const { data: sesiones } = await window.sb
+      const { data: sesiones, error: errorSesiones } = await window.sb
         .from('sesiones')
         .select('*')
         .eq('proyecto_id', id)
         .order('numero_sesion');
+
+      /*
+        Guardar en modo edición borra las sesiones y las vuelve a crear; el borrado en
+        cascada se lleva sus productos, calificaciones y evidencias por PDA. Por eso no se
+        guarda si las sesiones no se pudieron leer (se guardaría una lista vacía) ni si el
+        proyecto ya se está trabajando: en ese caso esta pantalla es solo de consulta.
+      */
+      if (errorSesiones) {
+        edicionBloqueada = 'No se pudieron cargar las sesiones de este proyecto. Recarga la página; mientras tanto no se puede guardar, para no borrar nada.';
+      } else {
+        const { count: conCalificaciones, error: errorCal } = await window.sb
+          .from('calificaciones').select('id', { count: 'exact', head: true }).eq('proyecto_id', id);
+        const trabajadas = (sesiones || []).some(function (s) {
+          return !!s.fecha || (s.estado_sesion && s.estado_sesion !== 'pendiente');
+        });
+        if (errorCal) {
+          edicionBloqueada = 'No se pudo comprobar si este proyecto ya tiene calificaciones. Recarga la página; mientras tanto no se puede guardar, para no borrar nada.';
+        } else if (conCalificaciones > 0 || trabajadas) {
+          edicionBloqueada = 'Este proyecto ya se está trabajando (tiene sesiones en curso o calificaciones capturadas). Guardarlo desde aquí volvería a crear sus sesiones y borraría lo capturado, así que en un proyecto en curso esta pantalla es solo de consulta.';
+        }
+      }
+      if (edicionBloqueada) {
+        const aviso = document.getElementById('mensajePaso2');
+        if (aviso) {
+          aviso.className = 'mt-4 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm';
+          aviso.textContent = edicionBloqueada;
+        }
+        const guardar = document.getElementById('btnGuardar');
+        if (guardar) {
+          guardar.disabled = true;
+          guardar.classList.add('opacity-40', 'cursor-not-allowed');
+          guardar.title = edicionBloqueada;
+        }
+      }
 
       // Ir directo al paso 3
       step1.classList.add('hidden');
@@ -2199,6 +2235,12 @@ document.addEventListener("DOMContentLoaded", async function () {
   document.getElementById('btnGuardar')?.addEventListener('click', async function () {
     const btn  = this;
     const msgEl = document.getElementById('mensajePaso2');
+    if (edicionBloqueada) {
+      // Ver cargarProyectoParaEdicion: guardar borraría lo ya capturado
+      msgEl.className = 'mt-4 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm';
+      msgEl.textContent = edicionBloqueada;
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = 'Guardando...';

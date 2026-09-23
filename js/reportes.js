@@ -342,6 +342,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return (Math.floor(v * 10 + 1e-9) / 10).toFixed(1) + " %";
 	}
 
+	// Porcentaje que se guarda en la boleta: truncado a 2 decimales, no redondeado. Así el
+	// que se ve (truncado a 1) es el mismo antes y después de cerrar, y un 49.996 nunca se
+	// guarda como 50.00 junto a un 5
+	function pctGuardado(p) {
+		return Math.floor(Number(p) * 100 + 1e-9) / 100;
+	}
+
 	function fmtRubro(rubro) {
 		if (!rubro || rubro.maximo <= 0) return "<span class='text-gray-300'>—</span>";
 		const redondea = function (n) { return Math.round(n * 10) / 10; };
@@ -386,22 +393,43 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const asistenciaPct = motor.asistencia.porcentaje;
 
 		// 2. Evaluación diagnóstica del trimestre + bandas de fluidez
-		let { data: diagnostica } = await window.sb
+		/*
+			Generar la boleta ESCRIBE (propuestas de número y de textos). Si una de sus lecturas
+			falla, se detiene sin guardar nada: con la boleta guardada "vacía" la propuesta
+			pisaría una calificación confirmada o los textos del maestro.
+		*/
+		const noSePudo = function (que, e) {
+			console.error("boleta: " + que, e);
+			cont.innerHTML = "<p class='text-red-600 text-sm'>No se pudo leer " + esc(que) + ": " + esc((e && e.message) || "error desconocido") +
+				". No se guardó nada. Vuelve a intentarlo en un momento.</p>";
+		};
+		let { data: diagnostica, error: errorDiag } = await window.sb
 			.from("evaluacion_diagnostica").select("*")
 			.eq("alumno_id", alumnoId).eq("maestro_id", userId)
 			.eq("momento", "trimestre_" + trimestre).maybeSingle();
+		if (errorDiag) { noSePudo("la evaluación diagnóstica", errorDiag); return; }
 		const bandas = await cargarBandasPPM();
 
 		// 3. boleta_trimestral: observaciones, número confirmado y estado de cierre
 		const cicloBoleta = boletaGrupoInfo.ciclo || "";
 		let boletaPorCampo = {};
-		try {
-			const { data: boletaRows } = await window.sb
+		{
+			const { data: boletaRows, error: errorBoleta } = await window.sb
 				.from("boleta_trimestral").select("*")
 				.eq("alumno_id", alumnoId).eq("maestro_id", userId)
 				.eq("ciclo", cicloBoleta).eq("trimestre", trimestre);
+			if (errorBoleta) { noSePudo("la boleta guardada", errorBoleta); return; }
 			(boletaRows || []).forEach(function (r) { boletaPorCampo[r.campo] = r; });
-		} catch (e) {}
+		}
+		let avancePda = [];
+		{
+			const { data: pdaRows, error: errorPda } = await window.sb.from("v_avance_pda").select("*")
+				.eq("maestro_id", userId).eq("alumno_id", alumnoId).eq("trimestre", trimestre);
+			// Se lee antes de guardar nada: sin el avance por PDA los textos propuestos saldrían
+			// incompletos y se guardarían
+			if (errorPda) { noSePudo("el avance por PDA", errorPda); return; }
+			avancePda = pdaRows || [];
+		}
 		boletaCtx = { alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre };
 
 		/*
@@ -416,6 +444,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Boleta cerrada (los cuatro campos): todo queda como se entregó, también los textos
 		// de la fila GEN y el trabajo diario (ReporteDatos.boletaCerrada)
 		const boletaYaCerrada = window.ReporteDatos.boletaCerrada(boletaPorCampo);
+		// Cuaderno, lectura y matemáticas como se entregaron (foto del cierre en la fila GEN)
+		diagnostica = window.ReporteDatos.diagnosticaVisible(diagnostica, boletaPorCampo[window.TextosBoleta.GENERAL], boletaYaCerrada);
 		try {
 			const upserts = [];
 			CODIGOS.forEach(function (codigo) {
@@ -432,7 +462,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 						upserts.push({
 							maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
 							trimestre: trimestre, campo: codigo,
-							porcentaje: Math.round(datos.porcentaje * 100) / 100, nivel: datos.nivel,
+							porcentaje: pctGuardado(datos.porcentaje), nivel: datos.nivel,
 						});
 					}
 					return;
@@ -443,7 +473,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				upserts.push({
 					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
 					trimestre: trimestre, campo: codigo,
-					porcentaje: Math.round(datos.porcentaje * 100) / 100,
+					porcentaje: pctGuardado(datos.porcentaje),
 					calificacion: propuesta, nivel: datos.nivel,
 				});
 			});
@@ -457,12 +487,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!hayPropuesta && !boletaYaCerrada) { todoConfirmado = false; todoCerrado = false; }
 
 		// ── Capa 1: textos propuestos por reglas (B.7) ──
-		let avancePda = [];
-		try {
-			const { data: pdaRows } = await window.sb.from("v_avance_pda").select("*")
-				.eq("maestro_id", userId).eq("alumno_id", alumnoId).eq("trimestre", trimestre);
-			avancePda = pdaRows || [];
-		} catch (e) { console.error("v_avance_pda:", e); }
 
 		const textos = window.TextosBoleta.generar({
 			porCampo: porCampo,
@@ -924,6 +948,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 						cierre: {
 							trabajo_diario: trabajoFinal,
 							trabajo_diario_del_maestro: !!(diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined),
+							// Cuaderno, lectura y matemáticas tal como se entregan (null = sin diagnóstico)
+							diagnostico: window.ReporteDatos.fotoDiagnostico(diagnostica),
 							en: new Date().toISOString(),
 						},
 					}),

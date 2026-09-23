@@ -200,6 +200,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// Valores por defecto (mismos que los DEFAULT de maestro_ajustes). La asistencia
 	// no pondera: Acuerdo 10/09/23, art. 7 — se muestra aparte en la boleta.
+	var ponderacionCargada = false; // no se guarda sin haber leído los pesos actuales
 	var defaultValues = {
 		tareas: 28,
 		trabajos: 28,
@@ -222,10 +223,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.eq("maestro_id", currentUser.id)
 				.maybeSingle();
 
-			if (result.error) {
-				console.error("Error al cargar ponderación:", result.error);
-				return;
-			}
+			if (result.error) throw result.error;
 
 			if (result.data) {
 				pesoTareasInput.value = pesoGuardado(result.data.peso_tareas, defaultValues.tareas);
@@ -242,9 +240,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 				pesoExamenInput.value = defaultValues.examen;
 			}
 
+			ponderacionCargada = true;
 			calcularSuma();
 		} catch (error) {
+			// Sin los pesos guardados, la pantalla mostraría los de fábrica y "Guardar" los pisaría
 			console.error("Error al cargar ponderación:", error);
+			ponderacionCargada = false;
+			savePonderacionBtn.disabled = true;
+			showMessage("ponderacionMessage", "error", "No se pudieron cargar tus pesos guardados. Recarga la página; mientras tanto no se puede guardar, para no cambiarlos sin querer.");
 		}
 	}
 
@@ -261,7 +264,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (suma === 100) {
 			sumaPonderacionSpan.classList.remove("text-red-600");
 			sumaPonderacionSpan.classList.add("text-green-600");
-			savePonderacionBtn.disabled = false;
+			savePonderacionBtn.disabled = !ponderacionCargada;
 		} else {
 			sumaPonderacionSpan.classList.remove("text-green-600");
 			sumaPonderacionSpan.classList.add("text-red-600");

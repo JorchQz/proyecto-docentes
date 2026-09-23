@@ -99,6 +99,9 @@ const DATOS = {
 	],
 };
 
+// HOY_FALLA=tabla: esa lectura responde con error (pruebas/lecturas-con-error.test.js)
+const FALLA = process.env.HOY_FALLA || "";
+const escrituras = [];
 function consulta(tabla) {
 	const q = {
 		_single: false,
@@ -115,10 +118,13 @@ function consulta(tabla) {
 		range: function (desde, hasta) { this._rango = [desde, hasta]; return this; },
 		single: function () { this._single = true; return this; },
 		maybeSingle: function () { this._single = true; return this; },
-		insert: function (fila) { this._insertado = fila; return this; },
-		update: function () { return this; },
-		upsert: function () { return this; },
+		insert: function (fila) { escrituras.push(tabla); this._insertado = fila; return this; },
+		update: function () { escrituras.push(tabla); this._escribe = true; return this; },
+		upsert: function () { escrituras.push(tabla); this._escribe = true; return this; },
 		then: function (resolver) {
+			if (FALLA === tabla && !this._insertado && !this._escribe) {
+				return Promise.resolve(resolver({ data: null, error: { message: "falla simulada en " + tabla } }));
+			}
 			const filas = DATOS[tabla] || [];
 			const data = this._insertado
 				? Object.assign({ id: "nuevo" }, this._insertado)
@@ -151,6 +157,17 @@ new Function(codigo)();
 		console.log("FALLA el arranque lanzó una excepción → " + e);
 	}
 	console.error = originalError;
+
+	if (FALLA) {
+		// Una lectura falló: se dice y no se dibuja ni se escribe nada
+		const msg = elementos.hoyMensaje ? elementos.hoyMensaje.textContent : "";
+		ok("falla en " + FALLA + ": avisa que no se pudo cargar", /No se pud/.test(msg), true);
+		ok("falla en " + FALLA + ": no dibuja el cierre del día", !(elementos.cierreLista && elementos.cierreLista.innerHTML), true);
+		ok("falla en " + FALLA + ": no dibuja las sesiones", !(elementos.sesionesLista && elementos.sesionesLista.innerHTML), true);
+		ok("falla en " + FALLA + ": no escribe nada", escrituras.length, 0);
+		console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
+		process.exit(fallos ? 1 : 0);
+	}
 
 	const asistencia = elementos.asistenciaLista ? elementos.asistenciaLista.innerHTML : "";
 	const tareas = elementos.tareasLista ? elementos.tareasLista.innerHTML : "";

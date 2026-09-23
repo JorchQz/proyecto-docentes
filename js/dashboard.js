@@ -117,6 +117,9 @@ async function crearCardHoy() {
 	]);
 	// Solo alumnos activos: uno dado de baja con asistencia de hoy no debe dar "9 de 8"
 	const activos = new Set(alumnos.map((a) => a.id));
+	// Si no se pudo leer la asistencia o el cierre de hoy, no se inventa "0 de 8": se dice
+	const sinLeerDia = !!(asisRes.error || regRes.error);
+	if (sinLeerDia) console.error("inicio: asistencia/cierre de hoy", asisRes.error || regRes.error);
 	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id).filter((id) => activos.has(id))).size;
 	// Cierre del día con la misma regla que "Hoy": no se espera de quien faltó
 	const faltaron = new Set((asisRes.data || [])
@@ -132,12 +135,13 @@ async function crearCardHoy() {
 	let sinCalificar = 0;
 	let sesionesHoy = 0;
 	let tareasPorRevisar = 0;
-	const { data: proys } = await window.sb.from("proyectos").select("id")
-		.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy));
-	const proyIds = (proys || []).map((p) => p.id);
 	// Si una lectura falla, Inicio sigue en pie: esos conteos dicen que no se pudieron leer
 	let sinLeer = false;
 	try {
+		const { data: proys, error: errorProys } = await window.sb.from("proyectos").select("id")
+			.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy));
+		if (errorProys) throw errorProys;
+		const proyIds = (proys || []).map((p) => p.id);
 		if (proyIds.length) {
 			// Lecturas sin el tope de 1000 filas de Supabase, igual que "Hoy" (js/alcance-hoy.js)
 			const leer = window.AlcanceHoy.leerPorLotes;
@@ -194,13 +198,15 @@ async function crearCardHoy() {
 		"<p class='text-sm text-gray-500'>La captura se hace en Hoy: asistencia, tareas, productos y cierre.</p></div>" +
 		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
 		"</div>" +
-		fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length) +
+		(sinLeerDia
+			? fila("Asistencia y cierre del día", "no se pudieron leer; ábrelos en Hoy", false)
+			: fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length)) +
 		(sinLeer
 			? fila("Tareas y productos", "no se pudieron leer; ábrelos en Hoy", false)
 			: fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
 			fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 			fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0)) +
-		fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo);
+		(sinLeerDia ? "" : fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo));
 	return card;
 }
 
