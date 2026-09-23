@@ -484,7 +484,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
 				" · " + esc(ses.campo_formativo || "") + "</p>" +
 				"<span class='flex gap-2 shrink-0'>" +
-				(sesionTieneCalificaciones(ses.id) ? "" :
+				// Una sesión con calificaciones o ya terminada no se quita de hoy (volvería a "pendiente")
+				(sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" ? "" :
 					"<button type='button' data-quitar-hoy='" + ses.id + "' " +
 					"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-500 hover:bg-gray-50'>Quitar de hoy</button>") +
 				"<button type='button' data-agregar-producto='" + ses.id + "' " +
@@ -634,7 +635,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	/*
 		"Trabajar hoy" pone la fecha de hoy a una sesión pendiente (y la marca activa);
-		"Quitar de hoy" la regresa a sin fecha, solo si todavía no tiene calificaciones.
+		"Quitar de hoy" la regresa a sin fecha y pendiente, solo si todavía no tiene calificaciones.
 		Se recarga la pantalla para que todo (productos, tareas, conteos) salga de la base.
 	*/
 	async function fecharSesion(btn) {
@@ -643,7 +644,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		btn.disabled = true;
 		btn.textContent = poner ? "Agregando..." : "Quitando...";
 		try {
-			var cambios = poner ? { fecha: hoy, estado_sesion: "activa" } : { fecha: null };
+			// Quitar de hoy la regresa como estaba: sin fecha y pendiente (no "activa")
+			var cambios = poner ? { fecha: hoy, estado_sesion: "activa" } : { fecha: null, estado_sesion: "pendiente" };
 			var res = await window.sb.from("sesiones").update(cambios).eq("id", sesionId).eq("maestro_id", user.id);
 			if (res.error) throw res.error;
 			window.location.reload();

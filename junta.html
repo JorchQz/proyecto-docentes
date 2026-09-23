@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Junta de padres — Jissez</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		/* Presentación para la junta (js/junta.js). Las diapositivas se miden en em sobre
+		   un tamaño base proporcional al ancho del escenario (cqw), así se ven iguales en
+		   la tablet, en la PC, en pantalla completa y en la impresión. */
+		.j-pantalla { display: flex; flex-direction: column; align-items: center; gap: .75rem; }
+		.j-escenario { container-type: inline-size; width: min(100%, max(560px, calc((100vh - 250px) * 16 / 9))); outline: none; }
+		.j-slide { display: none; position: relative; width: 100%; aspect-ratio: 16 / 9; font-size: 1.55cqw; background: #fff; color: #0f172a;
+			border: 1px solid #e2e8f0; border-radius: 1em; box-shadow: 0 1px 3px rgba(15, 23, 42, .08), 0 8px 24px rgba(15, 23, 42, .06);
+			padding: 1.9em 2.4em 1.1em; flex-direction: column; overflow: hidden; line-height: 1.3; }
+		.j-slide.j-activa { display: flex; }
+		.j-ico { width: 1.2em; height: 1.2em; flex: 0 0 auto; }
+
+		.j-cab { flex: 0 0 auto; margin-bottom: .9em; }
+		.j-ceja { font-size: .75em; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #64748b; }
+		.j-titulo { font-size: 1.85em; font-weight: 800; color: #1e3a8a; line-height: 1.12; margin-top: .12em; }
+		.j-subtitulo { font-size: .92em; color: #475569; margin-top: .3em; }
+		.j-cuerpo { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: .8em; }
+		.j-pie { flex: 0 0 auto; display: flex; justify-content: space-between; gap: 1em; font-size: .68em; color: #94a3b8;
+			border-top: 1px solid #f1f5f9; padding-top: .6em; margin-top: .7em; }
+		.j-nota { font-size: .76em; color: #64748b; line-height: 1.45; margin-top: auto; }
+		.j-apagado { color: #64748b; }
+		.j-sin { font-size: .8em; color: #94a3b8; font-style: italic; }
+
+		/* Portada */
+		.j-portada { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 60%, #1d4ed8 100%); color: #fff; border: none; }
+		.j-portada .j-pie { color: rgba(255, 255, 255, .65); border-top-color: rgba(255, 255, 255, .15); }
+		.j-portada-cuerpo { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
+		.j-portada-ceja { font-size: .95em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #a7f3d0; }
+		.j-portada-titulo { font-size: 3.5em; font-weight: 800; line-height: 1.05; margin-top: .2em; }
+		.j-portada-trimestre { font-size: 1.75em; font-weight: 600; color: #bfdbfe; margin-top: .15em; }
+		.j-portada-datos { margin-top: 1.3em; display: flex; flex-direction: column; gap: .3em; }
+		.j-portada-escuela { font-size: 1.25em; font-weight: 700; }
+		.j-portada-linea { font-size: 1em; color: #dbeafe; }
+		.j-portada-nota { display: flex; gap: .7em; align-items: flex-start; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .16);
+			border-radius: .8em; padding: .75em 1em; font-size: .76em; color: #dbeafe; line-height: 1.45; }
+		.j-ico-nota { color: #a7f3d0; margin-top: .1em; }
+
+		/* Panorama */
+		.j-panorama { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8em; }
+		.j-tile { border: 1px solid #e2e8f0; border-radius: .9em; padding: .9em 1.1em; background: #f8fafc; display: flex; flex-direction: column; gap: .35em; }
+		.j-tile-hero { background: #eff6ff; border-color: #bfdbfe; }
+		.j-tile-vacio { background: #fff; border-style: dashed; border-color: #cbd5e1; }
+		.j-tile-boleta { background: #fff; }
+		.j-tile-etq { font-size: .75em; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+		.j-hero { font-size: 3.2em; font-weight: 800; color: #1e3a8a; line-height: 1; }
+		.j-tile-sub { font-size: .8em; color: #64748b; }
+		.j-tile-linea { font-size: .98em; color: #0f172a; }
+		.j-comparativo { display: flex; align-items: center; gap: 1.1em; }
+		.j-num-grande { font-size: 1.9em; font-weight: 800; color: #0f172a; line-height: 1.1; }
+		.j-flecha { font-size: 1.5em; color: #94a3b8; }
+		.j-grado-linea { display: flex; align-items: center; gap: .6em; font-size: .98em; }
+		.j-grado-val { font-weight: 700; }
+		.j-grado-n { color: #64748b; font-size: .85em; margin-left: auto; }
+		.j-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 2.2em; padding: .08em .5em; border-radius: 999px;
+			color: #fff; font-weight: 800; font-size: .85em; flex: 0 0 auto; }
+		.j-delta { display: inline-block; margin-left: .4em; padding: .02em .45em; border-radius: .4em; font-size: .8em; font-weight: 700; white-space: nowrap; }
+		.j-sube { background: #dcfce7; color: #166534; }
+		.j-neutro { background: #f1f5f9; color: #475569; }
+
+		/* Barras por alumno */
+		.j-resumen-grado { display: flex; flex-wrap: wrap; align-items: center; gap: .35em 1.2em; font-size: .92em; color: #334155; }
+		.j-cols { display: grid; grid-template-columns: repeat(var(--columnas, 1), minmax(0, 1fr)); gap: 0 2.2em; align-content: start; }
+		.j-col { display: flex; flex-direction: column; }
+		.j-fila { display: grid; grid-template-columns: 4.4em minmax(0, 1fr) 6.4em; align-items: center; gap: .7em; height: var(--alto, 2em); }
+		.j-con-nombres .j-fila { grid-template-columns: 11em minmax(0, 1fr) 6.4em; }
+		.j-fila-eje { height: 1.3em; }
+		.j-etq { display: flex; align-items: center; gap: .45em; min-width: 0; font-size: .9em; }
+		.j-num { font-weight: 700; color: #334155; white-space: nowrap; }
+		.j-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #0f172a; }
+		.j-pista { position: relative; height: 100%; border-right: 1px solid #e2e8f0;
+			background-image: linear-gradient(to right, #e2e8f0 1px, transparent 1px); background-size: 25% 100%; }
+		.j-pista > .j-sin { position: absolute; left: .5em; top: 50%; transform: translateY(-50%); }
+		.j-barra { position: absolute; left: 0; border-radius: 0 .3em .3em 0; }
+		.j-barra-act { top: 22%; height: 56%; }
+		.j-con-ant .j-barra-ant { top: 12%; height: 28%; background: #cbd5e1; }
+		.j-con-ant .j-barra-act { top: 46%; height: 42%; }
+		.j-val { display: flex; align-items: center; white-space: nowrap; font-size: .9em; }
+		.j-valor { font-weight: 700; color: #0f172a; }
+		.j-eje { position: relative; height: 100%; font-size: .72em; color: #94a3b8; }
+		.j-eje span { position: absolute; top: .15em; transform: translateX(-50%); white-space: nowrap; }
+		.j-eje-arriba span { top: auto; bottom: .05em; }
+		.j-eje .j-eje-fin { transform: translateX(.3em); }
+
+		.j-leyenda { display: flex; flex-wrap: wrap; gap: .4em 1.4em; font-size: .78em; color: #475569; align-items: center; margin-top: auto; }
+		.j-ley { display: inline-flex; align-items: center; gap: .45em; }
+		.j-ley-barra { width: 1.8em; height: .6em; border-radius: .2em; display: inline-block; }
+		.j-ley-ant { background: #cbd5e1; }
+		.j-ley-nota { color: #64748b; font-style: italic; }
+		.j-ley-zona { width: 1.5em; height: .9em; border-radius: .2em; display: inline-block; border: 1px solid rgba(15, 23, 42, .1); }
+
+		/* Fluidez */
+		.j-fluidez { display: flex; flex-direction: column; gap: .7em; }
+		.j-panel-fluidez { display: flex; flex-direction: column; }
+		.j-pista-banda { height: 72%; border-radius: .3em; border-right: none; background-size: auto; }
+		.j-punto-ppm { position: absolute; top: 50%; width: 1em; height: 1em; border-radius: 50%; background: #1e293b; border: .18em solid #fff;
+			box-shadow: 0 0 0 1px #1e293b; transform: translate(-50%, -50%); }
+		.j-punto-ley { position: static; transform: none; display: inline-block; }
+
+		/* Campo x grado */
+		.j-matriz { display: grid; grid-template-columns: 14em repeat(var(--columnas, 1), minmax(0, 1fr)); gap: .5em 1.3em; align-items: center; }
+		.j-mcab { font-weight: 700; font-size: .9em; }
+		.j-mgrupo { font-weight: 800; color: #1e3a8a; }
+		.j-mcampo { display: flex; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; line-height: 1.2; }
+		.j-punto { width: .9em; height: .9em; border-radius: .25em; flex: 0 0 auto; }
+		.j-mcelda { display: flex; flex-direction: column; gap: .25em; padding: .45em 0; }
+		.j-mpista { height: 1em; background: #f1f5f9; border-radius: .3em; overflow: hidden; }
+		.j-mbarra { height: 100%; border-radius: 0 .3em .3em 0; }
+		.j-mval { font-size: .95em; }
+		.j-mant { font-size: .74em; color: #64748b; }
+
+		/* Áreas de atención */
+		.j-tarjetas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8em; }
+		.j-tarjeta { border: 1px solid #e2e8f0; border-radius: .9em; padding: .8em 1em; background: #fff; display: flex; flex-direction: column; gap: .4em; }
+		.j-tarjeta-bien { background: #f0fdf4; border-color: #bbf7d0; }
+		.j-tarjeta-cab { display: flex; align-items: center; gap: .5em; }
+		.j-ico-tarjeta { color: #1e40af; width: 1.35em; height: 1.35em; }
+		.j-tarjeta-bien .j-ico-tarjeta { color: #059669; }
+		.j-tarjeta-titulo { font-weight: 700; font-size: 1em; }
+		.j-tarjeta-texto { font-size: .92em; color: #334155; line-height: 1.4; }
+		.j-tarjeta-sub { font-size: .8em; color: #64748b; }
+		.j-desglose { font-size: .8em; color: #64748b; margin-top: auto; }
+		.j-lista-pda { display: flex; flex-direction: column; gap: .5em; }
+		.j-lista-pda li { display: flex; align-items: center; gap: .6em; font-size: .92em; padding: .45em .7em; border: 1px solid #e2e8f0; border-radius: .7em; background: #f8fafc; }
+		.j-campo-chip { border: 1px solid; border-radius: .35em; padding: 0 .35em; font-size: .78em; font-weight: 800; flex: 0 0 auto; background: #fff; }
+		.j-pda-texto { flex: 1 1 auto; min-width: 0; color: #0f172a; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+		.j-pda-n { color: #475569; font-weight: 700; white-space: nowrap; flex: 0 0 auto; }
+
+		/* Cierre */
+		.j-sugerencias { display: flex; flex-direction: column; gap: .6em; }
+		.j-sugerencias li { display: flex; align-items: center; gap: .8em; font-size: 1.1em; line-height: 1.35; background: #f8fafc; border: 1px solid #e2e8f0;
+			border-radius: .8em; padding: .55em .9em; }
+		.j-sug-num { flex: 0 0 auto; width: 1.7em; height: 1.7em; border-radius: 50%; background: #059669; color: #fff; font-weight: 800;
+			display: inline-flex; align-items: center; justify-content: center; font-size: .85em; }
+		.j-cierre { margin-top: auto; display: flex; flex-direction: column; gap: .35em; font-size: .9em; color: #334155; }
+		.j-cierre p { display: flex; align-items: center; gap: .5em; }
+		.j-ico-linea { color: #059669; }
+		.j-gracias { font-weight: 800; color: #1e3a8a; font-size: 1.25em; margin-top: .2em; }
+
+		/* Estados (cargando, vacío, sin grupo) */
+		.j-estado { width: 100%; background: #fff; border: 1px dashed #cbd5e1; border-radius: 1rem; padding: 2.5rem 1.5rem; text-align: center; color: #475569;
+			font-size: .95rem; display: flex; flex-direction: column; gap: .6rem; align-items: center; }
+		.j-estado p { max-width: 38rem; }
+		.j-estado-titulo { font-size: 1.2rem; font-weight: 700; color: #1e3a8a; }
+		.j-estado-sub { font-size: .85rem; color: #64748b; }
+		.j-estado a { color: #1d4ed8; text-decoration: underline; font-weight: 600; }
+
+		/* Controles de navegación */
+		.j-controles { display: flex; align-items: center; justify-content: center; gap: 1rem; }
+		.j-nav-btn { width: 56px; height: 56px; border-radius: 999px; background: #1e40af; color: #fff; display: inline-flex; align-items: center;
+			justify-content: center; box-shadow: 0 2px 6px rgba(30, 64, 175, .25); transition: background-color .15s; }
+		.j-nav-btn:hover:not(:disabled) { background: #1e3a8a; }
+		.j-nav-btn:disabled { background: #cbd5e1; box-shadow: none; cursor: default; }
+		.j-nav-btn svg { width: 28px; height: 28px; }
+		.j-indicador { min-width: 5rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; color: #334155; font-size: 1.05rem; }
+
+		/* Interruptor "Mostrar nombres" */
+		.j-switch-pista { width: 2.25rem; height: 1.25rem; border-radius: 999px; background: #cbd5e1; position: relative; transition: background-color .15s; flex: 0 0 auto; }
+		.j-switch-bola { position: absolute; top: 2px; left: 2px; width: 1rem; height: 1rem; border-radius: 50%; background: #fff; transition: transform .15s;
+			box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
+		.j-switch-on { border-color: #f59e0b !important; background: #fffbeb !important; }
+		.j-switch-on .j-switch-pista { background: #d97706; }
+		.j-switch-on .j-switch-bola { transform: translateX(1rem); }
+
+		/* Pantalla completa */
+		.j-pantalla:fullscreen { background: #0f172a; justify-content: center; padding: 1rem; }
+		.j-pantalla:fullscreen .j-escenario { width: min(100%, calc((100vh - 110px) * 16 / 9)); }
+		.j-pantalla:fullscreen .j-slide { box-shadow: none; border-color: transparent; }
+		.j-pantalla:fullscreen .j-indicador { color: #e2e8f0; }
+		.j-pantalla:fullscreen .j-nav-btn:disabled { background: #334155; color: #64748b; }
+		.j-pantalla::backdrop { background: #0f172a; }
+
+		/* Celular: sin proporción fija, la diapositiva crece con su contenido */
+		@media (max-width: 700px) {
+			.j-escenario { width: 100%; }
+			.j-slide { aspect-ratio: auto; min-height: 62vh; font-size: 13px; padding: 1.2em 1.1em .8em; }
+			.j-cols { grid-template-columns: minmax(0, 1fr) !important; }
+			.j-fila { height: 2.3em; grid-template-columns: 3.6em minmax(0, 1fr) 5.6em; gap: .5em; }
+			.j-con-nombres .j-fila { grid-template-columns: 7em minmax(0, 1fr) 5.6em; }
+			.j-fila-eje { height: 1.3em; }
+			.j-panorama, .j-tarjetas { grid-template-columns: minmax(0, 1fr); }
+			.j-matriz { grid-template-columns: 7.5em repeat(var(--columnas, 1), minmax(0, 1fr)); gap: .4em .7em; }
+			.j-portada-titulo { font-size: 2.6em; }
+			.j-pie { flex-wrap: wrap; }
+		}
+
+		/* Impresión: una diapositiva por página, carta horizontal */
+		@media print {
+			@page { size: letter landscape; margin: 0.35in; }
+			* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+			html, body { background: #fff !important; }
+			body { padding: 0 !important; margin: 0 !important; }
+			#app-navbar, .no-print { display: none !important; }
+			main > div { max-width: none !important; gap: 0 !important; margin: 0 !important; }
+			.j-pantalla { display: block; }
+			.j-escenario { width: 10.3in !important; margin: 0; }
+			.j-slide { display: flex !important; aspect-ratio: auto; height: 7.55in; font-size: 1.7cqw; box-shadow: none; border: 1px solid #e2e8f0; border-radius: .6em;
+				break-inside: avoid; break-after: page; page-break-after: always; }
+			.j-slide:last-child { break-after: auto; page-break-after: auto; }
+			.j-portada { border: none; }
+		}
+	</style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1707663363640372');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-10 text-gray-800">
+	<main>
+		<div class="max-w-6xl mx-auto flex flex-col gap-3">
+			<header class="no-print flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pt-2">
+				<div class="min-w-0">
+					<h1 class="text-xl sm:text-2xl font-bold text-blue-900">Junta de padres</h1>
+					<p id="juntaSubtitulo" class="text-sm text-gray-500 mt-0.5">Cargando...</p>
+				</div>
+				<div class="flex flex-wrap items-center gap-2">
+					<div id="juntaTrimestres" role="group" aria-label="Trimestre" class="inline-flex gap-1 rounded-xl bg-white border border-gray-200 p-1">
+						<button type="button" data-trimestre="1" aria-pressed="false" class="min-h-[44px] px-3 sm:px-4 rounded-lg text-sm font-semibold text-gray-700">1er trimestre</button>
+						<button type="button" data-trimestre="2" aria-pressed="false" class="min-h-[44px] px-3 sm:px-4 rounded-lg text-sm font-semibold text-gray-700">2do trimestre</button>
+						<button type="button" data-trimestre="3" aria-pressed="false" class="min-h-[44px] px-3 sm:px-4 rounded-lg text-sm font-semibold text-gray-700">3er trimestre</button>
+					</div>
+					<button id="juntaNombres" type="button" role="switch" aria-checked="false"
+						class="inline-flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+						<span class="j-switch-pista" aria-hidden="true"><span class="j-switch-bola"></span></span>
+						<span>Mostrar nombres</span>
+					</button>
+					<button id="juntaImprimir" type="button" disabled
+						class="inline-flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+						<span>Imprimir</span>
+					</button>
+					<button id="juntaPantallaBtn" type="button" disabled
+						class="inline-flex items-center gap-2 min-h-[44px] px-3 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-900 disabled:opacity-50">
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+						<span>Pantalla completa</span>
+					</button>
+				</div>
+			</header>
+
+			<div id="juntaMensaje" class="hidden no-print rounded-xl px-4 py-3 text-sm"></div>
+			<div id="juntaAvisoNombres" class="hidden no-print rounded-xl px-4 py-3 text-sm bg-amber-50 text-amber-900 border border-amber-200">
+				Los nombres están visibles. Úsalo solo en tu equipo; para proyectar a las familias, apaga "Mostrar nombres". No se guarda: al recargar vuelve a apagarse.
+			</div>
+
+			<div id="juntaPantalla" class="j-pantalla">
+				<div id="juntaEscenario" class="j-escenario" tabindex="-1" role="region" aria-roledescription="presentación" aria-label="Presentación para la junta de padres">
+					<div id="juntaDeck"><div class="j-estado"><p>Cargando...</p></div></div>
+				</div>
+				<nav id="juntaControles" class="j-controles no-print hidden" aria-label="Navegación de diapositivas">
+					<button id="juntaAnterior" type="button" class="j-nav-btn" aria-label="Diapositiva anterior">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+					</button>
+					<span id="juntaIndicador" class="j-indicador" aria-live="polite">1 / 1</span>
+					<button id="juntaSiguiente" type="button" class="j-nav-btn" aria-label="Diapositiva siguiente">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+					</button>
+				</nav>
+			</div>
+
+			<p id="juntaAyuda" class="no-print hidden text-xs text-gray-500 text-center">
+				Cambia de diapositiva con las flechas del teclado, con los botones o deslizando el dedo. Los datos salen del motor de Mi salón; nada se guarda desde esta pantalla.
+			</p>
+		</div>
+	</main>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/navbar.js"></script>
+	<script src="js/grupo-activo.js"></script>
+	<script src="js/campos-formativos.js"></script>
+	<script src="js/catalogo-habilidades.js"></script>
+	<script src="js/motor-calificacion.js"></script>
+	<script src="js/textos-boleta.js"></script>
+	<script src="js/reporte-datos.js"></script>
+	<script src="js/junta.js"></script>
+</body>
+</html>

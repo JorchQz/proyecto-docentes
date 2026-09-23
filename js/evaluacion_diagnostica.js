@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var comprension    = null;
 	var ppm            = null;
 	var observaciones  = "";
+	var observacionesVaciadas = false; // ver aplicarFila
 
 	// Para debounce de guardado de texto
 	var debounceTimer  = null;
@@ -100,6 +101,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		comprension = null;
 		ppm         = null;
 		observaciones = "";
+		observacionesVaciadas = false;
 	}
 
 	// Aplica datos de una fila de BD al estado local
@@ -112,6 +114,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		comprension   = fila.lectura_comprension || null;
 		ppm           = fila.lectura_ppm != null ? fila.lectura_ppm : null;
 		observaciones = fila.observaciones || "";
+		// "" = el maestro vació a propósito el trabajo diario en la boleta (null = nunca lo escribió)
+		observacionesVaciadas = fila.observaciones === "";
 	}
 
 	// ── auth ─────────────────────────────────────────────────────────────────
@@ -245,7 +249,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			comprension || ppm != null || observaciones.trim();
 		if (!tieneAlgo) return;
 
-		var obs = observaciones.trim() || null;
+		// Si seguía vacío a propósito, se conserva "" para que la boleta no reviva la propuesta
+		var obs = observaciones.trim() || (observacionesVaciadas ? "" : null);
 		var ppmVal = (ppm !== null && ppm !== "" && !isNaN(parseInt(ppm, 10)))
 			? parseInt(ppm, 10) : null;
 

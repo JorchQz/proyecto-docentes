@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Boleta trimestral — Jissez</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		/* ── La hoja de la boleta (pantalla e impresión) ─────────────────────── */
+		.bol-hoja { background: #fff; color: #1f2937; font-size: 14px; line-height: 1.45; }
+		.bol-hoja * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+		.bol-encabezado { border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
+		.bol-titulo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px 16px; }
+		.bol-titulo h1 { font-size: 22px; font-weight: 700; color: #1e3a8a; line-height: 1.2; }
+		.bol-escuela { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: .03em; }
+		.bol-periodo { text-align: right; font-size: 13px; color: #374151; }
+		.bol-periodo strong { display: block; font-size: 16px; color: #111827; }
+		.bol-complemento { margin-top: 8px; font-size: 12px; color: #1e3a8a; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 4px 10px; }
+		.bol-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin-top: 12px; }
+		.bol-datos div { min-width: 0; }
+		.bol-datos dt { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: .03em; }
+		.bol-datos dd { font-weight: 600; color: #111827; overflow-wrap: anywhere; }
+		.bol-datos .ancho { grid-column: span 2; }
+		@media (min-width: 640px) {
+			.bol-datos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+		}
+
+		.bol-seccion { margin-top: 18px; }
+		.bol-seccion > h2 { font-size: 15px; font-weight: 700; color: #1e3a8a; margin-bottom: 8px; break-after: avoid; page-break-after: avoid; }
+		.bol-bloque { break-inside: avoid; page-break-inside: avoid; }
+
+		.bol-tabla-envoltura { overflow-x: auto; }
+		.bol-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+		.bol-tabla th, .bol-tabla td { border: 1px solid #d1d5db; padding: 6px 8px; }
+		.bol-tabla thead th { background: #f3f4f6; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #374151; }
+		.bol-tabla th.actual, .bol-tabla td.actual { background: #eff6ff; }
+		.bol-tabla td.num { text-align: center; font-weight: 700; font-size: 15px; color: #111827; min-width: 64px; }
+		.bol-tabla td.pendiente { text-align: center; font-style: italic; color: #6b7280; min-width: 64px; }
+		.bol-tabla tr { break-inside: avoid; page-break-inside: avoid; }
+		.bol-tabla tfoot td, .bol-tabla tfoot th { background: #f9fafb; }
+		.bol-campo { display: flex; align-items: center; gap: 8px; text-align: left; font-weight: 600; min-width: 190px; }
+		.bol-chip { display: inline-block; width: 10px; height: 26px; border-radius: 3px; flex: none; }
+		.bol-codigo { font-size: 11px; font-weight: 700; color: #4b5563; }
+		.bol-codigo-tabla { display: block; }
+		.bol-corto { display: none; }
+		@media screen and (max-width: 639px) {
+			.bol-largo { display: none; }
+			.bol-corto { display: inline; }
+			.bol-campo { min-width: 120px; }
+			.bol-tabla th, .bol-tabla td { padding: 5px 6px; }
+			.bol-tabla td.num, .bol-tabla td.pendiente { min-width: 52px; }
+		}
+		.bol-nota { font-size: 11px; color: #6b7280; margin-top: 6px; }
+
+		.bol-asistencia { margin-top: 10px; font-size: 13px; border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px 10px; }
+		.bol-asistencia span.ref { display: block; font-size: 11px; color: #6b7280; }
+
+		.bol-obs { border: 1px solid #e5e7eb; border-left: 5px solid #9ca3af; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+		.bol-obs h3 { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+		.bol-obs h3 .bol-codigo { margin-right: 6px; }
+		.bol-obs-grid { display: grid; grid-template-columns: 1fr; gap: 6px 14px; }
+		@media (min-width: 640px) { .bol-obs-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+		.bol-obs dt { font-size: 11px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: .03em; }
+		.bol-obs dd { font-size: 13px; color: #1f2937; }
+		.bol-obs dd.vacio { color: #9ca3af; font-style: italic; }
+		.bol-propuesta { font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0; color: #2563eb; margin-left: 4px; }
+
+		.bol-dos-col { display: grid; grid-template-columns: 1fr; gap: 12px; }
+		@media (min-width: 640px) { .bol-dos-col { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+		.bol-caja { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; }
+		.bol-caja h3 { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+		.bol-caja h4 { font-size: 11px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: .03em; margin: 6px 0 2px; }
+		.bol-renglon { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 3px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+		.bol-renglon:last-child { border-bottom: 0; }
+		.bol-renglon .etiqueta { color: #374151; }
+		.bol-renglon .valor { text-align: right; font-weight: 600; }
+		.bol-renglon .detalle { display: block; font-size: 11px; font-weight: 400; color: #6b7280; }
+		.bol-sem { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 600; }
+		.bol-punto { display: inline-block; width: 10px; height: 10px; border-radius: 9999px; border: 1.5px solid #9ca3af; flex: none; }
+		.bol-sem.sin-dato { font-weight: 400; font-style: italic; color: #6b7280; }
+
+		.bol-firmas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; margin-top: 48px; }
+		.bol-firma { text-align: center; }
+		.bol-firma .linea { border-top: 1px solid #374151; margin-bottom: 4px; }
+		.bol-firma .nombre { font-size: 13px; font-weight: 600; min-height: 1.45em; }
+		.bol-firma .rol { font-size: 12px; color: #4b5563; }
+
+		/* ── Impresión: carta vertical, solo la hoja ─────────────────────────── */
+		@page { size: letter portrait; margin: 12mm 12mm 14mm; }
+		@media print {
+			html, body { background: #fff !important; }
+			body { padding: 0 !important; margin: 0 !important; }
+			#app-navbar, .no-print { display: none !important; }
+			main, .bol-contenedor { max-width: none !important; margin: 0 !important; padding: 0 !important; gap: 0 !important; }
+			.bol-marco { border: 0 !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; }
+			.bol-hoja { font-size: 9.5pt; line-height: 1.35; }
+			.bol-titulo h1 { font-size: 16pt; }
+			.bol-encabezado { padding-bottom: 8px; margin-bottom: 10px; }
+			.bol-datos { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 12px; margin-top: 8px; }
+			.bol-obs-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; }
+			.bol-dos-col { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+			.bol-tabla, .bol-obs dd, .bol-renglon, .bol-asistencia { font-size: 9pt; }
+			.bol-tabla th, .bol-tabla td { padding: 4px 6px; }
+			.bol-tabla td.num { font-size: 11pt; }
+			.bol-chip { height: 14px; width: 8px; }
+			.bol-codigo-tabla { display: inline; margin-right: 2px; }
+			.bol-tabla-envoltura { overflow: visible; }
+			.bol-seccion { margin-top: 10px; }
+			.bol-seccion > h2 { font-size: 11pt; margin-bottom: 5px; }
+			.bol-obs { padding: 5px 8px; margin-bottom: 5px; }
+			.bol-obs h3, .bol-caja h3 { font-size: 10pt; margin-bottom: 2px; }
+			.bol-obs dt, .bol-caja h4, .bol-datos dt { font-size: 7.5pt; }
+			.bol-caja { padding: 5px 8px; }
+			.bol-renglon { padding: 1.5px 0; }
+			.bol-asistencia { margin-top: 6px; padding: 4px 8px; }
+			.bol-firmas { margin-top: 34px; }
+		}
+	</style>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1707663363640372');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-24 text-gray-800">
+	<main>
+		<div class="bol-contenedor max-w-4xl mx-auto flex flex-col gap-4">
+			<header class="no-print bg-blue-800 rounded-2xl shadow-md p-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+				<div>
+					<h1 class="text-2xl font-bold text-white">Boleta trimestral</h1>
+					<p id="boletaSubtitulo" class="text-blue-100 text-sm mt-1">Cargando...</p>
+				</div>
+				<a href="reportes.html" class="inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg border border-blue-500 text-sm font-medium text-white hover:bg-blue-700">Ir a Reportes</a>
+			</header>
+
+			<!-- Selector de alumno y trimestre -->
+			<section class="no-print bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<div class="flex flex-col md:flex-row md:items-end gap-3">
+					<label class="flex-1 min-w-0">
+						<span class="block text-sm font-semibold text-gray-700 mb-1">Alumno</span>
+						<select id="boletaAlumno" class="w-full min-h-[44px] px-3 rounded-lg border border-gray-300 bg-white text-sm">
+							<option value="">Cargando alumnos...</option>
+						</select>
+					</label>
+					<label class="md:w-44">
+						<span class="block text-sm font-semibold text-gray-700 mb-1">Trimestre</span>
+						<select id="boletaTrimestre" class="w-full min-h-[44px] px-3 rounded-lg border border-gray-300 bg-white text-sm">
+							<option value="1">Trimestre 1</option>
+							<option value="2">Trimestre 2</option>
+							<option value="3">Trimestre 3</option>
+						</select>
+					</label>
+					<div class="flex gap-2">
+						<button id="boletaVer" type="button" class="flex-1 md:flex-none min-h-[44px] px-5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">Ver boleta</button>
+						<button id="boletaImprimir" type="button" disabled class="flex-1 md:flex-none inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>
+							Imprimir
+						</button>
+					</div>
+				</div>
+				<p class="text-xs text-gray-500 mt-3">La tabla muestra los tres trimestres del ciclo. El trimestre que elijas define las observaciones, la asistencia, el cuaderno y las habilidades que se imprimen. Para PDF, elige "Guardar como PDF" en la ventana de impresión.</p>
+			</section>
+
+			<div id="boletaMensaje" class="no-print hidden rounded-xl px-4 py-3 text-sm"></div>
+
+			<!-- La boleta -->
+			<div id="boletaMarco" class="bol-marco bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-8">
+				<div id="boletaHoja" class="bol-hoja">
+					<p class="text-sm text-gray-400 py-6 text-center">Cargando...</p>
+				</div>
+			</div>
+		</div>
+	</main>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/navbar.js"></script>
+	<script src="js/grupo-activo.js"></script>
+	<script src="js/campos-formativos.js"></script>
+	<script src="js/catalogo-habilidades.js"></script>
+	<script src="js/motor-calificacion.js"></script>
+	<script src="js/textos-boleta.js"></script>
+	<script src="js/reporte-datos.js"></script>
+	<script src="js/boleta.js"></script>
+</body>
+</html>

@@ -85,5 +85,25 @@ ok('alumno en riesgo → menos de 50%', r.LEN.porcentaje < 50, true);
 ok('rubro tareas 0 de 1', r.LEN.rubros.tareas.obtenido + '/' + r.LEN.rubros.tareas.maximo, '0/1');
 ok('producto de otro campo no contamina', r.LEN.rubros.trabajos.maximo, 1);
 
+// Entrega, aparte de la calidad (la usan los textos; la calificación no cambia)
+r = M.calcularPorcentajes({
+  campos: ['LEN'], pesos: PESOS,
+  productos: ['a', 'b', 'c', 'd', 'e', 'f'].map(function (id) { return { id: id, tipo: 'trabajo', campo: 'LEN' }; }),
+  calificaciones: {
+    a: { estado_entrega: 'entregado', nivel: 'requiere_apoyo' },
+    b: { estado_entrega: 'no_entregado' },
+    c: { estado_entrega: 'incompleto', nivel: 'en_proceso' },
+    d: { estado_entrega: 'justificado' },
+    e: { estado_entrega: null, nivel: null }, // marcado y desmarcado: sin revisar
+  },
+});
+const ent = r.LEN.rubros.trabajos.entrega;
+ok('entrega: esperados excluye justificado y sin revisar', ent.esperados, 3);
+ok('entrega: entregados cuenta entregado + incompleto', ent.entregados, 2);
+ok('entrega: completos solo entregado', ent.completos, 1);
+ok('entrega: calidad de lo entregado (0.4 + 0.7)', Math.round(ent.sumaEntregados * 10) / 10, 1.1);
+ok('entrega: la calificación no cambia (0.4 + 0 + 0.7 de 3)', Math.round(r.LEN.rubros.trabajos.fraccion * 1000) / 1000, 0.367);
+ok('entrega: participación no lleva conteo de entrega', r.LEN.rubros.participacion.entrega, undefined);
+
 console.log(fallos === 0 ? '\nTODAS PASAN' : '\n' + fallos + ' FALLAS');
 process.exit(fallos ? 1 : 0);

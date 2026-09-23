@@ -39,6 +39,16 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 		<header class="bg-blue-800 rounded-2xl shadow-md p-6">
 			<h1 class="text-2xl md:text-3xl font-bold text-white">Reportes</h1>
 			<p class="text-blue-100 text-sm md:text-base mt-1">Asistencia, calificaciones y concentrado del grupo</p>
+			<div class="flex flex-wrap gap-2 mt-4">
+				<a href="junta.html" class="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl bg-white text-blue-800 text-sm font-semibold hover:bg-blue-50 transition">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8"/></svg>
+					Presentación para la junta
+				</a>
+				<a href="exportar.html" class="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl border border-blue-300 text-white text-sm font-semibold hover:bg-blue-700 transition">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+					Exportar concentrado (CSV / Excel)
+				</a>
+			</div>
 		</header>
 
 		<!-- Tabs -->
@@ -95,12 +105,11 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 			<!-- Tab: Vista Recrea -->
 			<div id="panelCalificaciones" class="hidden p-6 flex flex-col gap-5">
-				<p class="text-sm text-gray-500">Promedio por alumno y campo formativo. Usa estos datos para capturar en la plataforma de la SEP.</p>
+				<p class="text-sm text-gray-500">Calificación confirmada por alumno y campo formativo, lista para capturar en SIGED. Lo que todavía no confirmas en la Boleta aparece como «pendiente».</p>
 				<div class="flex flex-col sm:flex-row gap-3 items-end">
 					<div class="flex-1">
 						<label class="block text-xs font-semibold text-gray-600 mb-1">Trimestre</label>
 						<select id="selectTrimestre" class="w-full px-3 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-							<option value="">Todos los trimestres</option>
 							<option value="1">1er Trimestre</option>
 							<option value="2">2do Trimestre</option>
 							<option value="3">3er Trimestre</option>
@@ -122,12 +131,11 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 			<!-- Tab: Concentrado Director -->
 			<div id="panelConcentrado" class="hidden p-6 flex flex-col gap-5">
-				<p class="text-sm text-gray-500">Agrupa a los alumnos por nivel de desempeño para el informe al director.</p>
+				<p class="text-sm text-gray-500">Agrupa a los alumnos por nivel según sus calificaciones confirmadas, para el informe a la dirección.</p>
 				<div class="flex flex-col sm:flex-row gap-3 items-end">
 					<div class="flex-1">
 						<label class="block text-xs font-semibold text-gray-600 mb-1">Trimestre</label>
 						<select id="selectTrimestreConc" class="w-full px-3 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-							<option value="">Todos los trimestres</option>
 							<option value="1">1er Trimestre</option>
 							<option value="2">2do Trimestre</option>
 							<option value="3">3er Trimestre</option>
@@ -168,15 +176,15 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 				<div id="boletaAcciones" class="hidden flex-wrap gap-2 no-print">
 					<button id="boletaImprimirBtn" class="inline-flex items-center gap-2 px-4 py-3 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="13" width="12" height="8"/><path d="M6 17H4v-6h16v6h-2"/></svg>
-						Imprimir / PDF
+						Boleta para imprimir
+					</button>
+					<button id="boletaReporteBtn" class="inline-flex items-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+						Reporte detallado
 					</button>
 					<button id="boletaWhatsappBtn" class="inline-flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20.5l1.8-5.2A8.5 8.5 0 1 1 21 11.5Z"/></svg>
 						Enviar por WhatsApp
-					</button>
-					<button id="boletaImagenBtn" class="inline-flex items-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-4 4 3 3-2 4 3"/></svg>
-						Descargar imagen
 					</button>
 				</div>
 
@@ -226,6 +234,8 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 	<script src="js/catalogo-habilidades.js"></script>
 	<script src="js/motor-calificacion.js"></script>
 	<script src="js/textos-boleta.js"></script>
+	<script src="js/reporte-datos.js"></script>
+	<script src="js/reportes-grupo.js"></script>
 	<script src="js/reportes.js"></script>
 </body>
 </html>

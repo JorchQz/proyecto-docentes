@@ -8,7 +8,12 @@
 
 	De dónde sale cada frase (nada se afirma con una sola evidencia):
 	  - PDA con al menos 2 evidencias (v_avance_pda): lo logrado y lo que necesita apoyo.
-	  - Rubros del motor: tareas, trabajos y examen por campo (≥90 % fortaleza, <60 % área).
+	  - Hábitos (fila general): ENTREGA de tareas y trabajos terminados, sumando todos los
+	    campos (≥90 % fortaleza, <60 % área). No se mezclan con la calidad. Si tareas y
+	    trabajos van bien, es una sola frase.
+	  - Calidad de lo entregado (trabajos, con al menos 2 entregados) y examen, por campo
+	    (≥90 % fortaleza, <60 % área). Si la misma frase aplicaría a dos o más campos, va
+	    una sola vez a la fila general nombrando esos campos.
 	  - Participación y conducta: se registran UNA vez al día, globales; por eso van a la
 	    fila general y no se repiten en los cuatro campos.
 	  - Habilidades básicas: lectura (PPM contra la banda del grado y comprensión) → LEN;
@@ -38,13 +43,14 @@
 	var UMBRAL_DIARIO_NORMAL = 50; // participación y conducta: 1 de 2 es lo normal
 
 	// Prioridad al recortar: primero lo que habla del aprendizaje, luego los hábitos
-	var PRIORIDAD = { pda: 1, lectura: 2, matematicas: 2, examen: 3, trabajos: 4, tareas: 4, cuaderno: 5,
+	var PRIORIDAD = { pda: 1, lectura: 2, matematicas: 2, calidad: 3, examen: 3, trabajos: 4, tareas: 4, cuaderno: 5,
 		participacion: 6, conducta: 6, asistencia: 7 };
 
 	// Copia por defecto del catálogo plantillas_sugerencia (mismas claves y textos)
 	var SUGERENCIAS_DEFECTO = {
 		tareas: "Establecer un horario fijo para hacer la tarea en casa.",
 		trabajos: "Revisar juntos, al final del día, que los trabajos hayan quedado completos.",
+		calidad: "Platicar en casa sobre lo que hace en clase y repasar juntos lo que se le dificulta.",
 		participacion: "Invitarle a compartir sus ideas en casa para ganar confianza al hablar en clase.",
 		conducta: "Repasar en casa los acuerdos del salón y reconocer cuando los cumple.",
 		examen: "Repasar los contenidos del trimestre con ejercicios cortos antes del examen.",
@@ -57,10 +63,28 @@
 		pda_apoyo: "Practicar en casa lo que se trabajó en clase sobre este aprendizaje.",
 	};
 
+	var NOMBRE_CAMPO = {
+		LEN: "Lenguajes",
+		SAB: "Saberes y Pensamiento Científico",
+		ETI: "Ética, Naturaleza y Sociedades",
+		DHL: "De lo Humano y lo Comunitario",
+	};
+
 	var RUBROS = {
-		tareas: { fortaleza: "Entrega puntualmente sus tareas.", area: "No entrega todas sus tareas." },
+		// Hábitos, por entrega (fila general). Si los dos van bien, una sola frase.
+		tareas: { fortaleza: "Entrega con regularidad sus tareas.", area: "No entrega todas sus tareas." },
 		trabajos: { fortaleza: "Termina sus trabajos en clase.", area: "Le falta terminar los trabajos que se hacen en clase." },
-		examen: { fortaleza: "Muestra buenos resultados en la evaluación escrita.", area: "Los resultados de la evaluación escrita quedaron por debajo de lo esperado." },
+		habitos: { fortaleza: "Entrega con regularidad sus tareas y termina sus trabajos en clase." },
+		// Por campo. {campos} queda vacío si es un solo campo (la frase va en su sección) o
+		// nombra los campos cuando la frase se junta en la fila general.
+		calidad: {
+			fortaleza: "Sus trabajos muestran un buen nivel de logro{campos}.", prepFortaleza: "en",
+			area: "Sus trabajos{campos} todavía no alcanzan el nivel esperado.", prepArea: "de",
+		},
+		examen: {
+			fortaleza: "Muestra buenos resultados en la evaluación escrita{campos}.", prepFortaleza: "de",
+			area: "Sus resultados en la evaluación escrita{campos} quedaron por debajo de lo esperado.", prepArea: "de",
+		},
 		participacion: { fortaleza: "Participa de forma constante en las actividades del grupo.", area: "Participa poco en las actividades del grupo." },
 		conducta: { fortaleza: "Respeta los acuerdos de convivencia del grupo.", area: "Le cuesta seguir los acuerdos de convivencia del grupo." },
 	};
@@ -74,15 +98,20 @@
 		mates_bien: "Resuelve con seguridad: ",
 		cuaderno_baja: "Su cuaderno necesita más cuidado en: ",
 		cuaderno_bien: "Mantiene su cuaderno ordenado y completo.",
-		asistencia_baja: "Asistencia irregular: sus faltas se reflejan en su avance.",
+		asistencia_baja: "Su asistencia en el trimestre fue irregular.",
 		asistencia_bien: "Asiste con regularidad.",
 	};
 
+	// Trabajo diario: solo de la ENTREGA (trae la tarea, termina el trabajo), no de la calidad
 	var TRABAJO_DIARIO = {
 		ambos_bien: "Cumple con sus tareas y termina sus trabajos en clase.",
-		tareas_mal: "Entrega sus trabajos en clase, pero no siempre trae la tarea.",
+		tareas_mal: "Termina sus trabajos en clase, pero no siempre trae la tarea.",
 		trabajos_mal: "Trae sus tareas, pero le falta terminar los trabajos en clase.",
-		ambos_mal: "No trae las tareas y le falta terminar los trabajos en clase.",
+		ambos_mal: "No siempre trae la tarea y le falta terminar los trabajos en clase.",
+		solo_tareas_bien: "Cumple con sus tareas.",
+		solo_tareas_mal: "No siempre trae la tarea.",
+		solo_trabajos_bien: "Termina sus trabajos en clase.",
+		solo_trabajos_mal: "Le falta terminar los trabajos en clase.",
 		sin_datos: "Todavía no hay suficientes registros para describir su trabajo diario.",
 	};
 
@@ -92,15 +121,41 @@
 		return items.slice(0, -1).join(", ") + " y " + items[items.length - 1];
 	}
 
+	// Palabras con las que empieza una cláusula nueva después de una coma
+	var INICIO_CLAUSULA = /^(a|al|para|mediante|desde|en|por|que|con|como|cuando|donde|según|sin|así|tanto|además|a través|[a-záéíóúñ]+ndo)\b/i;
+
+	// Posición de la última ", " antes de `limite` seguida de un inicio de cláusula; -1 si no hay
+	function corteDeClausula(texto, limite) {
+		var i = texto.slice(0, limite).lastIndexOf(", ");
+		while (i > 0) {
+			if (INICIO_CLAUSULA.test(texto.slice(i + 2))) return i;
+			i = texto.slice(0, i).lastIndexOf(", ");
+		}
+		return -1;
+	}
+
 	// "Lee en voz alta diversos textos: cuentos, poemas" → frase corta y legible
 	function frasePda(texto) {
 		if (!texto) return null;
 		var limpio = String(texto).trim().replace(/\s+/g, " ");
 		var corte = limpio.indexOf(":");
-		if (corte > 30) limpio = limpio.slice(0, corte);
-		if (limpio.length > 140) limpio = limpio.slice(0, 137).replace(/[,;\s]+\S*$/, "") + "...";
+		// Los dos puntos cortan bien "Lee textos diversos: cuentos, poemas", pero no
+		// "textos del tipo: …" ni "tales como: …" (la frase quedaría colgando)
+		if (corte > 30 && !/\b(tipo|tipos|como|ejemplo|siguientes?|ellos|ellas|entre|son|de|del|los|las|a|al|en|y)$/i.test(limpio.slice(0, corte).trim())) {
+			limpio = limpio.slice(0, corte);
+		}
+		if (limpio.length > 140) {
+			// Mejor una cláusula completa que una frase cortada: se corta en la última
+			// coma que ABRE una cláusula (", a partir de…", ", para…", ", mediante…",
+			// ", considerando…") antes de 140 caracteres. Una coma de enumeración
+			// ("óseo, muscular y nervioso") no sirve. Si no hay, en palabra y con "...".
+			var coma = corteDeClausula(limpio, 140);
+			limpio = coma >= 50
+				? limpio.slice(0, coma)
+				: limpio.slice(0, 137).replace(/[,;\s]+\S*$/, "") + "...";
+		}
 		limpio = limpio.charAt(0).toUpperCase() + limpio.slice(1);
-		return limpio.replace(/\.*$/, ".");
+		return /\.\.\.$/.test(limpio) ? limpio : limpio.replace(/\.*$/, ".");
 	}
 
 	function sinPuntoFinal(frase) {
@@ -121,13 +176,22 @@
 		lista.push(item);
 	}
 
+	function enPlural(texto) {
+		return texto.replace(/\beste aprendizaje\b/g, "estos aprendizajes").replace(/\beste punto\b/g, "estos puntos");
+	}
+
 	function resolver(sec) {
 		function porPrioridad(a, b) { return (a.prioridad - b.prioridad) || (a.orden - b.orden); }
 		var fortalezas = sec.fortalezas.slice().sort(porPrioridad).slice(0, MAXIMO_POR_LISTA);
 		var areas = sec.areas.slice().sort(porPrioridad).slice(0, MAXIMO_POR_LISTA);
 		var sugerencias = [];
 		areas.forEach(function (a) {
-			if (a.sugerencia && sugerencias.indexOf(a.sugerencia) === -1) sugerencias.push(a.sugerencia);
+			if (!a.sugerencia) return;
+			var texto = a.sugerencia;
+			// Una sola sugerencia para varios PDA: "este aprendizaje" → "estos aprendizajes"
+			var mismas = areas.filter(function (b) { return b.sugerencia === a.sugerencia; }).length;
+			if (a.plural && mismas > 1) texto = enPlural(texto);
+			if (sugerencias.indexOf(texto) === -1) sugerencias.push(texto);
 		});
 		return {
 			fortalezas: fortalezas.map(function (x) { return x.texto; }),
@@ -184,18 +248,87 @@
 		return r.fraccion * 100;
 	}
 
-	function porRubros(porCampo, secs, sugerencia) {
-		// Tareas, trabajos y examen: por campo
+	// Suma la entrega de un rubro (tareas o trabajos) de todos los campos
+	function entregaTotal(porCampo, rubro) {
+		var t = { esperados: 0, entregados: 0, completos: 0 };
 		CAMPOS.forEach(function (campo) {
-			["tareas", "trabajos", "examen"].forEach(function (rubro) {
-				var pct = fraccionRubro(porCampo, campo, rubro);
+			var d = porCampo[campo];
+			var e = d && d.rubros && d.rubros[rubro] ? d.rubros[rubro].entrega : null;
+			if (!e) return;
+			t.esperados += e.esperados;
+			t.entregados += e.entregados;
+			t.completos += e.completos;
+		});
+		return t;
+	}
+
+	// % de tareas entregadas (completas o no) y % de trabajos terminados; null sin evidencia
+	function tasaEntrega(porCampo) {
+		var tareas = entregaTotal(porCampo, "tareas");
+		var trabajos = entregaTotal(porCampo, "trabajos");
+		return {
+			tareas: tareas.esperados >= EVIDENCIAS_MINIMAS ? tareas.entregados / tareas.esperados * 100 : null,
+			trabajos: trabajos.esperados >= EVIDENCIAS_MINIMAS ? trabajos.completos / trabajos.esperados * 100 : null,
+		};
+	}
+
+	// Calidad de lo entregado en un campo: promedio de los trabajos entregados (al menos 2)
+	function calidadCampo(porCampo, campo) {
+		var d = porCampo[campo];
+		var e = d && d.rubros && d.rubros.trabajos ? d.rubros.trabajos.entrega : null;
+		if (!e || e.entregados < EVIDENCIAS_MINIMAS) return null;
+		return e.sumaEntregados / e.entregados * 100;
+	}
+
+	// " de «Lenguajes» y «Saberes y Pensamiento Científico»" / " en todos los campos formativos"
+	function nombrarCampos(campos, prep) {
+		if (campos.length === CAMPOS.length) return " " + prep + " todos los campos formativos";
+		return " " + prep + " " + listaEnTexto(campos.map(function (c) { return "«" + NOMBRE_CAMPO[c] + "»"; }));
+	}
+
+	/*
+		Una frase que se decide por campo (calidad, examen): si aplica a un solo campo va
+		en ese campo; si aplica a varios, una sola vez en la fila general nombrándolos.
+	*/
+	function repartirPorCampos(secs, lista, campos, plantilla, prep, item) {
+		if (!campos.length) return;
+		var destino = campos.length === 1 ? secs[campos[0]] : secs[GENERAL];
+		var frase = plantilla.replace("{campos}", campos.length === 1 ? "" : nombrarCampos(campos, prep));
+		agregar(destino[lista], Object.assign({}, item, { texto: frase }));
+	}
+
+	function porRubros(porCampo, secs, sugerencia) {
+		// Hábitos: entrega de tareas y trabajos terminados, sumando todos los campos (fila general)
+		var tasa = tasaEntrega(porCampo);
+		var bien = [];
+		["tareas", "trabajos"].forEach(function (rubro) {
+			if (tasa[rubro] === null) return;
+			if (tasa[rubro] >= UMBRAL_FORTALEZA) bien.push(rubro);
+			else if (tasa[rubro] < UMBRAL_AREA) {
+				agregar(secs[GENERAL].areas, { texto: RUBROS[rubro].area, sugerencia: sugerencia(rubro), prioridad: PRIORIDAD[rubro] });
+			}
+		});
+		if (bien.length === 2) {
+			agregar(secs[GENERAL].fortalezas, { texto: RUBROS.habitos.fortaleza, prioridad: PRIORIDAD.tareas });
+		} else if (bien.length === 1) {
+			agregar(secs[GENERAL].fortalezas, { texto: RUBROS[bien[0]].fortaleza, prioridad: PRIORIDAD[bien[0]] });
+		}
+
+		// Calidad de lo entregado y examen: se deciden por campo
+		[
+			{ clave: "calidad", valor: function (campo) { return calidadCampo(porCampo, campo); } },
+			{ clave: "examen", valor: function (campo) { return fraccionRubro(porCampo, campo, "examen"); } },
+		].forEach(function (r) {
+			var fuertes = [], flojos = [];
+			CAMPOS.forEach(function (campo) {
+				var pct = r.valor(campo);
 				if (pct === null) return;
-				if (pct >= UMBRAL_FORTALEZA) {
-					agregar(secs[campo].fortalezas, { texto: RUBROS[rubro].fortaleza, prioridad: PRIORIDAD[rubro] });
-				} else if (pct < UMBRAL_AREA) {
-					agregar(secs[campo].areas, { texto: RUBROS[rubro].area, sugerencia: sugerencia(rubro), prioridad: PRIORIDAD[rubro] });
-				}
+				if (pct >= UMBRAL_FORTALEZA) fuertes.push(campo);
+				else if (pct < UMBRAL_AREA) flojos.push(campo);
 			});
+			var frases = RUBROS[r.clave];
+			repartirPorCampos(secs, "fortalezas", fuertes, frases.fortaleza, frases.prepFortaleza, { prioridad: PRIORIDAD[r.clave] });
+			repartirPorCampos(secs, "areas", flojos, frases.area, frases.prepArea, { sugerencia: sugerencia(r.clave), prioridad: PRIORIDAD[r.clave] });
 		});
 		// Participación y conducta: registro global del día → una sola vez, en general.
 		// Se toma el total repartido entre campos (misma evidencia, sin duplicarla).
@@ -234,6 +367,7 @@
 				agregar(secs[campo].areas, {
 					texto: "Necesita apoyo para lograr: «" + sinPuntoFinal(frase) + "».",
 					sugerencia: sugerencia(f.tendencia === "mejora" ? "pda_mejora" : "pda_apoyo"),
+					plural: true, // si la comparten varios PDA, se dice en plural
 					prioridad: PRIORIDAD.pda,
 				});
 			}
@@ -293,23 +427,15 @@
 		else if (pct < 80) agregar(general.areas, { texto: TEXTOS.asistencia_baja, sugerencia: sugerencia("asistencia"), prioridad: PRIORIDAD.asistencia });
 	}
 
-	// Promedio de un rubro entre los campos donde hay datos
-	function promedioRubro(porCampo, rubro) {
-		var suma = 0, n = 0;
-		CAMPOS.forEach(function (campo) {
-			var pct = fraccionRubro(porCampo, campo, rubro);
-			if (pct === null) return;
-			suma += pct; n++;
-		});
-		return n ? suma / n : null;
-	}
-
+	// Trabajo diario: de la entrega (trae la tarea, termina el trabajo), nunca de la calidad
 	function trabajoDiario(porCampo) {
-		var tareas = promedioRubro(porCampo, "tareas");
-		var trabajos = promedioRubro(porCampo, "trabajos");
-		if (tareas === null && trabajos === null) return TRABAJO_DIARIO.sin_datos;
-		var tareasBien = tareas === null || tareas >= UMBRAL_AREA;
-		var trabajosBien = trabajos === null || trabajos >= UMBRAL_AREA;
+		var tasa = tasaEntrega(porCampo);
+		if (tasa.tareas === null && tasa.trabajos === null) return TRABAJO_DIARIO.sin_datos;
+		var tareasBien = tasa.tareas !== null && tasa.tareas >= UMBRAL_AREA;
+		var trabajosBien = tasa.trabajos !== null && tasa.trabajos >= UMBRAL_AREA;
+		// Sin evidencia de uno de los dos, no se afirma nada sobre él
+		if (tasa.tareas === null) return trabajosBien ? TRABAJO_DIARIO.solo_trabajos_bien : TRABAJO_DIARIO.solo_trabajos_mal;
+		if (tasa.trabajos === null) return tareasBien ? TRABAJO_DIARIO.solo_tareas_bien : TRABAJO_DIARIO.solo_tareas_mal;
 		if (tareasBien && trabajosBien) return TRABAJO_DIARIO.ambos_bien;
 		if (!tareasBien && !trabajosBien) return TRABAJO_DIARIO.ambos_mal;
 		return tareasBien ? TRABAJO_DIARIO.trabajos_mal : TRABAJO_DIARIO.tareas_mal;
@@ -320,6 +446,19 @@
 		return items.join(" ");
 	}
 
+	/*
+		¿El maestro escribió este cuadro? (fortalezas | areas_oportunidad | sugerencias)
+		Lo editado se respeta tal cual, incluso vacío. Se lleva por cuadro en
+		texto_autogenerado.editados; las filas anteriores a esa marca solo tienen
+		editado_manual (por campo), y entonces cuentan los tres cuadros como editados.
+	*/
+	var TIPOS_TEXTO = ["fortalezas", "areas_oportunidad", "sugerencias"];
+	function esEditado(fila, tipo) {
+		if (!fila || !fila.editado_manual) return false;
+		var editados = fila.texto_autogenerado && fila.texto_autogenerado.editados;
+		return Array.isArray(editados) ? editados.indexOf(tipo) !== -1 : true;
+	}
+
 	var api = {
 		CAMPOS: CAMPOS,
 		GENERAL: GENERAL,
@@ -327,11 +466,14 @@
 		UMBRAL_FORTALEZA: UMBRAL_FORTALEZA,
 		UMBRAL_AREA: UMBRAL_AREA,
 		MAXIMO_POR_LISTA: MAXIMO_POR_LISTA,
+		UMBRAL_DIARIO_NORMAL: UMBRAL_DIARIO_NORMAL,
 		TRABAJO_DIARIO: TRABAJO_DIARIO,
 		SUGERENCIAS_DEFECTO: SUGERENCIAS_DEFECTO,
+		TIPOS_TEXTO: TIPOS_TEXTO,
 		frasePda: frasePda,
 		generar: generar,
 		comoParrafo: comoParrafo,
+		esEditado: esEditado,
 	};
 
 	if (typeof window !== "undefined") window.TextosBoleta = api;

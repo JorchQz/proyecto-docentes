@@ -1,122 +1,94 @@
-let proyectoActivo = null;
-let sesionActiva = null;
+/*
+	dashboard.js — Inicio del maestro.
+
+	La captura del día (asistencia, tareas, productos, cierre) vive en "Hoy" (hoy.html).
+	Inicio NO la duplica: resume lo que falta de hoy y muestra el plan de la sesión que
+	toca, con lo necesario para trabajarla y terminarla.
+
+	  1. Tu día: lo pendiente de hoy, con el botón a "Hoy".
+	  2. Sesión de hoy: el plan (inicio, desarrollo, cierre, recursos, PDA por grado).
+	     Si ninguna sesión tiene fecha de hoy, propone la siguiente pendiente del proyecto
+	     activo con "Trabajar hoy" (le pone la fecha de hoy, igual que en "Hoy").
+	  3. Terminar sesión: la marca como completada con notas opcionales. Ya no escribe la
+	     tabla vieja `tareas`: las tareas son productos de la sesión y se revisan en "Hoy".
+*/
+
+let user = null;
+let grupo = null;
 let grupoId = null;
 let alumnos = [];
-let user = null;
-
-let flujoEstado = {
-	asistenciaGuardada: false,
-	tareasRevisadas: false,
-	sesionCompletada: false,
-};
-
-let resumenDia = {
-	presentes: 0,
-	totalAlumnos: 0,
-	tareasRevisadas: [],
-	sesionNombre: "",
-	tareasParaManana: [],
-	proyectoCompletado: false,
-	haySiguienteSesion: false,
-};
+let proyectoActivo = null;
+let sesionActiva = null; // la que se está mostrando (los ayudantes de render la leen)
 
 document.addEventListener("DOMContentLoaded", async function () {
 	try {
-		const {
-			data: { user: u },
-			error: userError,
-		} = await window.sb.auth.getUser();
-
+		const { data: { user: u }, error: userError } = await window.sb.auth.getUser();
 		if (userError || !u) {
 			window.location.href = "index.html";
 			return;
 		}
-
 		user = u;
 		await inicializarEncabezado();
 		await cargarGrupoYAlumnos();
+		if (!grupoId) return;
 
 		const { data: proyectos, error: proyectoError } = await window.sb
 			.from("proyectos")
 			.select("id, titulo, campos_formativos, metodologia, estado")
 			.eq("maestro_id", user.id)
+			.eq("grupo_id", grupoId)
 			.eq("estado", "activo")
+			.order("created_at", { ascending: false })
 			.limit(1);
-
 		if (proyectoError) {
 			showError("No se pudo cargar el proyecto activo: " + proyectoError.message);
-			renderSinProyecto();
+		}
+		proyectoActivo = proyectos && proyectos.length ? proyectos[0] : null;
+
+		const container = document.getElementById("flowContainer");
+		container.innerHTML = "";
+		container.appendChild(await crearCardHoy());
+		if (!proyectoActivo) {
+			container.appendChild(crearCardSinProyecto());
 			return;
 		}
-
-		if (!proyectos || proyectos.length === 0) {
-			renderSinProyecto();
-			return;
-		}
-
-		proyectoActivo = proyectos[0];
-
-		const { data: sesiones, error: sesionError } = await window.sb
-			.from("sesiones")
-			.select("*")
-			.eq("proyecto_id", proyectoActivo.id)
-			.eq("estado_sesion", "activa")
-			.order("numero_sesion")
-			.limit(1);
-
-		if (sesionError) {
-			showError("No se pudo cargar la sesion activa: " + sesionError.message);
-		}
-
-		sesionActiva = sesiones && sesiones.length ? sesiones[0] : null;
-		await iniciarFlujo();
+		await renderSesiones(container);
 	} catch (error) {
-		showError("Error inesperado al cargar el dashboard: " + (error.message || ""));
+		showError("Error inesperado al cargar el inicio: " + (error.message || ""));
 	}
 });
 
 async function inicializarEncabezado() {
-	const { data: perfil, error: perfilError } = await window.sb
+	const { data: perfil } = await window.sb
 		.from("perfiles")
 		.select("nombre_completo")
 		.eq("id", user.id)
-		.single();
-
-	if (perfilError) {
-		showError("No se pudo obtener el perfil: " + perfilError.message);
-	}
+		.maybeSingle();
 
 	const hora = new Date().getHours();
-	const saludo = hora < 12 ? "Buenos dias" : hora < 19 ? "Buenas tardes" : "Buenas noches";
+	const saludo = hora < 12 ? "Buenos días" : hora < 19 ? "Buenas tardes" : "Buenas noches";
 	const nombre = (perfil && perfil.nombre_completo ? perfil.nombre_completo : "").trim();
-	document.getElementById("welcomeTitle").textContent =
-		saludo + (nombre ? ", " + nombre.split(" ")[0] : "");
-
-	const hoy = new Date();
-	document.getElementById("fechaHoy").textContent = hoy.toLocaleDateString("es-MX", {
-		weekday: "long",
-		year: "numeric",
-		month: "long",
-		day: "numeric",
+	document.getElementById("welcomeTitle").textContent = saludo + (nombre ? ", " + nombre.split(" ")[0] : "");
+	document.getElementById("fechaHoy").textContent = new Date().toLocaleDateString("es-MX", {
+		weekday: "long", year: "numeric", month: "long", day: "numeric",
 	});
-	document.getElementById("welcomeSub").textContent = "Panel de jornada diaria";
+	document.getElementById("welcomeSub").textContent = "Inicio";
 }
 
 async function cargarGrupoYAlumnos() {
 	// Grupo activo: único lugar que lo decide (valida que el guardado sea de este maestro)
 	try {
-		const { grupo } = await window.GrupoActivo.cargar(window.sb, user.id);
+		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
+		grupo = activo.grupo;
 		grupoId = grupo ? grupo.id : null;
 	} catch (grupoError) {
 		showError("No se pudo cargar el grupo activo: " + (grupoError.message || "error desconocido"));
 		return;
 	}
-
 	if (!grupoId) {
 		window.location.href = "onboarding.html";
 		return;
 	}
-
 	const { data: als, error: alumnosError } = await window.sb
 		.from("alumnos")
 		.select("id, nombre_completo, grado, num_lista")
@@ -124,338 +96,142 @@ async function cargarGrupoYAlumnos() {
 		.eq("estatus", "activo")
 		.order("grado")
 		.order("num_lista");
-
-	if (alumnosError) {
-		showError("No se pudo cargar la lista de alumnos: " + alumnosError.message);
-	}
-
+	if (alumnosError) showError("No se pudo cargar la lista de alumnos: " + alumnosError.message);
 	alumnos = als || [];
+	document.getElementById("welcomeSub").textContent = (grupo.nombre || "Grupo") + " · " + alumnos.length + " alumnos";
 }
 
-function renderSinProyecto() {
-	document.getElementById("flowContainer").innerHTML =
-		"<div class='bg-white rounded-2xl shadow-md p-8 text-center'>" +
-		"<p class='text-gray-400 text-lg mb-2'>No tienes ningun proyecto activo</p>" +
-		"<p class='text-gray-400 text-sm mb-6'>Ve a Proyectos, selecciona uno y presiona \"Iniciar proyecto\"</p>" +
-		"<a href='planeacion.html' class='bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700 transition'>" +
-		"Ir a Mis Proyectos -></a></div>";
-}
-
-async function iniciarFlujo() {
-	const container = document.getElementById("flowContainer");
-	container.innerHTML = "";
-
-	container.appendChild(await crearCardAsistencia());
-	container.appendChild(await crearCardTareas());
-	container.appendChild(await crearCardSesion());
-
-	expandirCard("card-asistencia");
-
-	if (flujoEstado.asistenciaGuardada) {
-		expandirCard("card-tareas");
-	}
-	if (flujoEstado.asistenciaGuardada && flujoEstado.tareasRevisadas) {
-		expandirCard("card-sesion");
-	}
-}
-
-async function crearCardAsistencia() {
-	const card = crearCardBase("card-asistencia", "border-l-blue-500", "Asistencia", formatFechaCorta(new Date()));
-	const body = card.querySelector(".card-flow-body");
+// ── 1. Tu día: lo que falta de hoy ──────────────────────────────────────────
+async function crearCardHoy() {
 	const hoy = getLocalDateISO();
+	const card = document.createElement("section");
+	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6";
 
-	let registrosHoy = [];
-	if (grupoId) {
-		const { data, error } = await window.sb
-			.from("asistencias")
-			.select("alumno_id, asistencia_estado")
-			.eq("grupo_id", grupoId)
-			.eq("fecha", hoy);
-		if (error) {
-			showError("No se pudo consultar asistencia de hoy: " + error.message);
-		}
-		registrosHoy = data || [];
-	}
+	// Asistencia y cierre del día de hoy
+	const [asisRes, regRes] = await Promise.all([
+		window.sb.from("asistencias").select("alumno_id").eq("grupo_id", grupoId).eq("fecha", hoy),
+		alumnos.length
+			? window.sb.from("registro_diario").select("alumno_id").eq("maestro_id", user.id).eq("fecha", hoy)
+				.in("alumno_id", alumnos.map((a) => a.id))
+			: Promise.resolve({ data: [] }),
+	]);
+	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id)).size;
+	const conCierre = new Set((regRes.data || []).map((r) => r.alumno_id)).size;
 
-	if (registrosHoy.length > 0) {
-		const resumen = buildAsistenciaResumen(registrosHoy, alumnos.length);
-		flujoEstado.asistenciaGuardada = true;
-		resumenDia.presentes = resumen.presentes;
-		resumenDia.totalAlumnos = alumnos.length;
-		colapsar("card-asistencia", resumen.presentes + " presentes, " + resumen.ausentes + " ausentes");
-		body.innerHTML = "<p class='text-sm text-gray-500'>La asistencia de hoy ya fue registrada.</p>";
-		return card;
-	}
-
-	if (!alumnos.length) {
-		body.innerHTML = "<p class='text-red-600 text-sm'>No hay alumnos activos en el grupo.</p>";
-		return card;
-	}
-
-	const estadoPorAlumno = {};
-	alumnos.forEach((a) => {
-		estadoPorAlumno[a.id] = "presente";
-	});
-
-	body.appendChild(renderAlumnosAsistencia(alumnos, estadoPorAlumno));
-
-	const saveBtn = document.createElement("button");
-	saveBtn.type = "button";
-	saveBtn.className = "mt-5 bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition";
-	saveBtn.textContent = "Guardar asistencia";
-	body.appendChild(saveBtn);
-
-	saveBtn.addEventListener("click", async function () {
-		saveBtn.disabled = true;
-		saveBtn.classList.add("opacity-70", "cursor-not-allowed");
-		clearError();
-
-		try {
-			const payload = alumnos.map((a) => ({
-				maestro_id: user.id,
-				grupo_id: grupoId,
-				alumno_id: a.id,
-				fecha: hoy,
-				asistencia_estado: estadoPorAlumno[a.id] || "presente",
-			}));
-
-			const { error } = await window.sb
-				.from("asistencias")
-				.upsert(payload, { onConflict: "alumno_id,fecha" });
-
-			if (error) {
-				throw error;
-			}
-
-			const resumen = buildAsistenciaResumen(payload, alumnos.length);
-			flujoEstado.asistenciaGuardada = true;
-			resumenDia.presentes = resumen.presentes;
-			resumenDia.totalAlumnos = alumnos.length;
-			colapsar("card-asistencia", resumen.presentes + " presentes, " + resumen.ausentes + " ausentes");
-			expandirCard("card-tareas");
-		} catch (errorGuardar) {
-			showError("No se pudo guardar la asistencia: " + errorGuardar.message);
-		} finally {
-			saveBtn.disabled = false;
-			saveBtn.classList.remove("opacity-70", "cursor-not-allowed");
-		}
-	});
-
-	return card;
-}
-
-async function crearCardTareas() {
-	const { data: tareasPendientes, error } = await window.sb
-		.from("tareas")
-		.select("id, descripcion, grado, sesion_id, fecha_asignada")
-		.eq("maestro_id", user.id)
-		.eq("revisada", false)
-		.not("fecha_asignada", "is", null)
-		.eq("proyecto_id", proyectoActivo.id)
-		.order("fecha_asignada");
-
-	if (error) {
-		showError("No se pudieron cargar las tareas pendientes: " + error.message);
-	}
-
-	const tareas = tareasPendientes || [];
-	const card = crearCardBase(
-		"card-tareas",
-		"border-l-emerald-500",
-		"Revisión de tareas",
-		tareas.length ? tareas.length + " pendientes" : "Sin pendientes"
-	);
-	const body = card.querySelector(".card-flow-body");
-
-	if (!tareas.length) {
-		flujoEstado.tareasRevisadas = true;
-		body.innerHTML = "<p class='text-sm text-gray-500'>No hay tareas pendientes de revision.</p>";
-		colapsar("card-tareas", "No hay tareas pendientes de revision");
-		return card;
-	}
-
-	const grupos = agruparTareas(tareas);
-	const revisiones = [];
-
-	grupos.forEach((grupo, idx) => {
-		const box = document.createElement("div");
-		box.className = "mb-4 rounded-xl border border-emerald-100 p-4 bg-emerald-50/30";
-		box.innerHTML =
-			"<p class='font-semibold text-gray-800'>" + escapeHtml(grupo.descripcion) + "</p>" +
-			"<p class='text-xs text-gray-500 mb-3'>" +
-			(grupo.grado == null ? "Todos los grados" : "Grado " + grupo.grado) +
-			"</p>";
-
-		const lista = document.createElement("div");
-		lista.className = "space-y-2";
-		const candidatos = alumnos.filter((a) => grupo.grado == null || Number(a.grado) === Number(grupo.grado));
-
-		candidatos.forEach((alumno) => {
-			const row = document.createElement("div");
-			row.className = "grid grid-cols-1 md:grid-cols-3 gap-2 items-center bg-white p-2 rounded-lg border border-gray-100";
-			row.innerHTML =
-				"<span class='text-sm font-medium text-gray-700'>" + escapeHtml(getNombreAlumno(alumno)) + "</span>" +
-				"<input type='number' min='5' max='10' step='0.1' value='10' class='tarea-calif border border-gray-300 rounded-lg px-3 py-1.5 text-sm' />" +
-				"<label class='inline-flex items-center gap-2 text-sm text-gray-600'><input type='checkbox' class='tarea-no-entrego' /> No entrego</label>";
-
-			const inputCalif = row.querySelector(".tarea-calif");
-			const chkNo = row.querySelector(".tarea-no-entrego");
-			chkNo.addEventListener("change", function () {
-				inputCalif.disabled = chkNo.checked;
-				if (chkNo.checked) {
-					inputCalif.value = "";
-				}
-			});
-
-			revisiones.push({
-				grupoIndex: idx,
-				descripcion: grupo.descripcion,
-				sesion_id: grupo.sesion_id,
-				grado: grupo.grado,
-				alumno,
-				inputCalif,
-				chkNo,
-			});
-
-			lista.appendChild(row);
-		});
-
-		if (!candidatos.length) {
-			const vacio = document.createElement("p");
-			vacio.className = "text-sm text-gray-500";
-			vacio.textContent = "No hay alumnos activos para este grado.";
-			lista.appendChild(vacio);
-		}
-
-		box.appendChild(lista);
-		body.appendChild(box);
-	});
-
-	const saveBtn = document.createElement("button");
-	saveBtn.type = "button";
-	saveBtn.className = "bg-emerald-600 text-white font-semibold px-5 py-2.5 rounded-xl hover:bg-emerald-700 transition";
-	saveBtn.textContent = "Guardar revision";
-	body.appendChild(saveBtn);
-
-	saveBtn.addEventListener("click", async function () {
-		saveBtn.disabled = true;
-		saveBtn.classList.add("opacity-70", "cursor-not-allowed");
-		clearError();
-		const hoy = getLocalDateISO();
-
-		try {
-			const payload = [];
-			revisiones.forEach((r) => {
-				const noEntrego = r.chkNo.checked;
-				const califRaw = r.inputCalif.value;
-				const calif = califRaw ? Number(califRaw) : null;
-
-				if (!noEntrego && (calif == null || Number.isNaN(calif) || calif < 5 || calif > 10)) {
-					throw new Error("Las calificaciones deben estar entre 5 y 10.");
-				}
-
-				payload.push({
-					alumno_id: r.alumno.id,
-					maestro_id: user.id,
-					sesion_id: r.sesion_id || (sesionActiva ? sesionActiva.id : null),
-					proyecto_id: proyectoActivo.id,
-					grupo_id: grupoId,
-					tipo: "tarea",
-					descripcion: r.descripcion,
-					calificacion: noEntrego ? null : calif,
-					entrego: !noEntrego,
-					fecha: hoy,
-					grado: r.alumno.grado,
-					campo_formativo: sesionActiva ? sesionActiva.campo_formativo || null : null,
+	// Productos de las sesiones de hoy sin calificar
+	let sinCalificar = 0;
+	let sesionesHoy = 0;
+	const { data: proys } = await window.sb.from("proyectos").select("id")
+		.eq("maestro_id", user.id).eq("grupo_id", grupoId).in("estado", ["activo", "borrador"]);
+	const proyIds = (proys || []).map((p) => p.id);
+	if (proyIds.length) {
+		const { data: ses } = await window.sb.from("sesiones").select("id").in("proyecto_id", proyIds).eq("fecha", hoy);
+		const sesIds = (ses || []).map((s) => s.id);
+		sesionesHoy = sesIds.length;
+		if (sesIds.length) {
+			const { data: prods } = await window.sb.from("productos_sesion").select("id, tipo, grados")
+				.in("sesion_id", sesIds).eq("activo", true);
+			const trabajos = (prods || []).filter((p) => p.tipo !== "tarea");
+			if (trabajos.length) {
+				const { data: cals } = await window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, nivel, estado_entrega")
+					.eq("maestro_id", user.id).in("producto_sesion_id", trabajos.map((p) => p.id));
+				const hechas = new Set((cals || []).filter((c) => c.nivel || c.estado_entrega)
+					.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
+				trabajos.forEach((p) => {
+					const grados = (p.grados || []).map(Number);
+					alumnos.forEach((a) => {
+						if (grados.indexOf(Number(a.grado)) !== -1 && !hechas.has(a.id + "|" + p.id)) sinCalificar++;
+					});
 				});
-			});
-
-			if (payload.length) {
-				// Idempotente: si se re-guarda la revisión, reemplazar las filas de estas
-				// mismas tareas en lugar de duplicarlas.
-				const sesionIds = [...new Set(payload.map((p) => p.sesion_id).filter(Boolean))];
-				const alumnoIds = [...new Set(payload.map((p) => p.alumno_id))];
-				const descripciones = [...new Set(payload.map((p) => p.descripcion).filter(Boolean))];
-				if (sesionIds.length && descripciones.length) {
-					await window.sb.from("calificaciones").delete()
-						.eq("maestro_id", user.id)
-						.eq("tipo", "tarea")
-						.in("sesion_id", sesionIds)
-						.in("alumno_id", alumnoIds)
-						.in("descripcion", descripciones);
-				}
-				const { error: insertError } = await window.sb.from("calificaciones").insert(payload);
-				if (insertError) {
-					throw insertError;
-				}
 			}
-
-			const ids = tareas.map((t) => t.id);
-			const { error: updateError } = await window.sb
-				.from("tareas")
-				.update({ revisada: true, fecha_revision: hoy })
-				.in("id", ids);
-
-			if (updateError) {
-				throw updateError;
-			}
-
-			flujoEstado.tareasRevisadas = true;
-			resumenDia.tareasRevisadas = [...new Set(tareas.map((t) => t.descripcion))];
-			colapsar("card-tareas", ids.length + " tareas revisadas");
-			expandirCard("card-sesion");
-		} catch (e) {
-			showError("No se pudo guardar la revision de tareas: " + e.message);
-		} finally {
-			saveBtn.disabled = false;
-			saveBtn.classList.remove("opacity-70", "cursor-not-allowed");
 		}
-	});
+	}
 
+	const fila = (etiqueta, valor, listo) =>
+		"<div class='flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0'>" +
+		"<span class='text-sm text-gray-700'>" + etiqueta + "</span>" +
+		"<span class='text-sm font-semibold " + (listo ? "text-emerald-600" : "text-amber-600") + "'>" + valor + "</span></div>";
+
+	card.innerHTML =
+		"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3'>" +
+		"<div><h2 class='text-lg font-bold text-gray-800'>Tu día</h2>" +
+		"<p class='text-sm text-gray-500'>La captura se hace en Hoy: asistencia, tareas, productos y cierre.</p></div>" +
+		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
+		"</div>" +
+		fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length) +
+		fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
+		fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0) +
+		fila("Cierre del día", conCierre + " de " + alumnos.length, alumnos.length > 0 && conCierre >= alumnos.length);
 	return card;
 }
 
-async function crearCardSesion() {
-	const tituloSesion = sesionActiva
-		? "Sesión " + (sesionActiva.numero_sesion || "-") + " - " + (sesionActiva.momento || "Dia")
-		: "Sesión del día";
-	const card = crearCardBase(
-		"card-sesion",
-		"border-l-violet-500",
-		tituloSesion,
-		sesionActiva && sesionActiva.campo_formativo ? sesionActiva.campo_formativo : "Sin sesion activa"
-	);
-	const body = card.querySelector(".card-flow-body");
+function crearCardSinProyecto() {
+	const card = document.createElement("section");
+	card.className = "bg-white rounded-2xl shadow-md p-8 text-center";
+	card.innerHTML =
+		"<p class='text-gray-500 text-lg mb-2'>No tienes ningún proyecto activo en este grupo</p>" +
+		"<p class='text-gray-400 text-sm mb-6'>Ve a Proyectos, elige uno y presiona \"Iniciar proyecto\".</p>" +
+		"<a href='planeacion.html' class='inline-flex min-h-[44px] items-center bg-blue-600 text-white font-bold px-6 rounded-xl hover:bg-blue-700 transition'>Ir a Proyectos</a>";
+	return card;
+}
 
-	if (!sesionActiva) {
-		body.innerHTML =
-			"<p class='text-gray-500 mb-4'>No hay sesion activa en este momento.</p>" +
-			"<a href='planeacion.html' class='inline-flex border border-blue-300 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition'>Ver proyecto</a>";
-		return card;
+// ── 2. Sesión de hoy (o la siguiente pendiente) ─────────────────────────────
+async function renderSesiones(container) {
+	const hoy = getLocalDateISO();
+	const { data: sesiones, error } = await window.sb
+		.from("sesiones")
+		.select("*")
+		.eq("proyecto_id", proyectoActivo.id)
+		.order("numero_sesion");
+	if (error) {
+		showError("No se pudieron cargar las sesiones: " + error.message);
+		return;
 	}
+	const deHoy = (sesiones || []).filter((s) => s.fecha === hoy);
+	if (deHoy.length) {
+		deHoy.forEach((s) => container.appendChild(crearCardSesion(s, true)));
+		return;
+	}
+	const siguiente = (sesiones || []).find((s) => !s.fecha && s.estado_sesion !== "completada");
+	if (siguiente) {
+		container.appendChild(crearCardSesion(siguiente, false));
+		return;
+	}
+	const card = document.createElement("section");
+	card.className = "bg-white rounded-2xl shadow-md p-6";
+	card.innerHTML = "<p class='text-gray-600'>Todas las sesiones de <span class='font-semibold'>" +
+		escapeHtml(proyectoActivo.titulo || "este proyecto") + "</span> ya se trabajaron.</p>";
+	container.appendChild(card);
+}
 
-	body.appendChild(renderBloqueSesion("INICIO", "border-l-blue-500", getTextoFase("inicio"), getActividadesFase("inicio")));
-	body.appendChild(renderBloqueSesion("DESARROLLO", "border-l-violet-500", getTextoFase("desarrollo"), getActividadesFase("desarrollo")));
-	body.appendChild(
-		renderBloqueSesion(
-			"CIERRE",
-			"border-l-emerald-500",
-			getTextoFase("cierre"),
-			getActividadesFase("cierre"),
-			getTareasCierreTexto()
-		)
-	);
+function crearCardSesion(sesion, esDeHoy) {
+	sesionActiva = sesion; // los ayudantes de render leen esta variable
+	const card = document.createElement("section");
+	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6 border-l-4 " + (esDeHoy ? "border-l-violet-500" : "border-l-gray-300");
 
-	const recursos = normalizarRecursos(sesionActiva.recursos);
+	const titulo = "Sesión " + (sesion.numero_sesion || "-") + (sesion.campo_formativo ? " · " + sesion.campo_formativo : "");
+	const cabecera = document.createElement("div");
+	cabecera.className = "flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4";
+	cabecera.innerHTML =
+		"<div><p class='text-xs font-semibold uppercase tracking-wide " + (esDeHoy ? "text-violet-600" : "text-gray-400") + "'>" +
+		(esDeHoy ? (sesion.estado_sesion === "completada" ? "Hoy · terminada" : "Hoy") : "Siguiente sesión") + "</p>" +
+		"<h2 class='text-lg font-bold text-gray-800'>" + escapeHtml(titulo) + "</h2>" +
+		"<p class='text-sm text-gray-500'>" + escapeHtml(proyectoActivo.titulo || "") + (sesion.momento ? " · " + escapeHtml(sesion.momento) : "") + "</p></div>";
+	card.appendChild(cabecera);
+
+	card.appendChild(renderBloqueSesion("Inicio", "border-l-blue-500", getTextoFase("inicio"), getActividadesFase("inicio")));
+	card.appendChild(renderBloqueSesion("Desarrollo", "border-l-violet-500", getTextoFase("desarrollo"), getActividadesFase("desarrollo")));
+	card.appendChild(renderBloqueSesion("Cierre", "border-l-emerald-500", getTextoFase("cierre"), getActividadesFase("cierre"), getTareasCierreTexto()));
+
+	const recursos = normalizarRecursos(sesion.recursos);
 	if (recursos.length) {
-		const bloqueRecursos = document.createElement("section");
-		bloqueRecursos.className = "border-l-4 border-l-amber-500 pl-4 py-2";
-		bloqueRecursos.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>Recursos</h4>";
+		const bloque = document.createElement("section");
+		bloque.className = "border-l-4 border-l-amber-500 pl-4 py-2 mb-3";
+		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>Recursos</h4>";
 		const wrap = document.createElement("div");
 		wrap.className = "flex flex-wrap gap-2";
 		recursos.forEach((r) => {
-			// Defensa en profundidad: nunca enlazar un esquema que no sea http(s).
-			if (!/^https?:\/\//i.test(String(r.url || ""))) { return; }
+			if (!/^https?:\/\//i.test(String(r.url || ""))) return; // solo http(s)
 			const a = document.createElement("a");
 			a.target = "_blank";
 			a.rel = "noopener noreferrer";
@@ -464,410 +240,140 @@ async function crearCardSesion() {
 			a.textContent = r.titulo;
 			wrap.appendChild(a);
 		});
-		bloqueRecursos.appendChild(wrap);
-		body.appendChild(bloqueRecursos);
+		bloque.appendChild(wrap);
+		card.appendChild(bloque);
 	}
 
-	const pdaHtml = renderPdaSesion(sesionActiva.pda_sesion);
+	const pdaHtml = renderPdaSesion(sesion.pda_sesion);
 	if (pdaHtml) {
-		const bloquePda = document.createElement("section");
-		bloquePda.className = "border-l-4 border-l-rose-500 pl-4 py-2";
-		bloquePda.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>PDA por grado</h4>" + pdaHtml;
-		body.appendChild(bloquePda);
+		const bloque = document.createElement("section");
+		bloque.className = "border-l-4 border-l-rose-500 pl-4 py-2 mb-3";
+		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>PDA por grado</h4>" + pdaHtml;
+		card.appendChild(bloque);
 	}
 
 	const acciones = document.createElement("div");
-	acciones.className = "mt-5 flex flex-wrap gap-2";
+	acciones.className = "mt-4 flex flex-wrap gap-2";
+	const idSesion = sesion.id;
 
-	const siguiente = await buscarSiguienteSesionPendiente();
-	if (siguiente) {
-		const btnSiguiente = document.createElement("button");
-		btnSiguiente.type = "button";
-		btnSiguiente.className = "border border-blue-400 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50";
-		btnSiguiente.textContent = "Continuar con siguiente sesion";
-		btnSiguiente.addEventListener("click", async function () {
-			await activarSiguienteSesion(siguiente);
-			await iniciarFlujo();
+	if (!esDeHoy) {
+		const btnHoy = document.createElement("button");
+		btnHoy.type = "button";
+		btnHoy.className = "min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700";
+		btnHoy.textContent = "Trabajar hoy";
+		btnHoy.addEventListener("click", async function () {
+			btnHoy.disabled = true;
+			btnHoy.textContent = "Agregando...";
+			const { error } = await window.sb.from("sesiones")
+				.update({ fecha: getLocalDateISO(), estado_sesion: "activa" })
+				.eq("id", idSesion).eq("maestro_id", user.id);
+			if (error) {
+				btnHoy.disabled = false;
+				btnHoy.textContent = "Trabajar hoy";
+				showError("No se pudo agregar la sesión a hoy: " + error.message);
+				return;
+			}
+			window.location.reload();
 		});
-		acciones.appendChild(btnSiguiente);
+		acciones.appendChild(btnHoy);
+	} else {
+		const aHoy = document.createElement("a");
+		aHoy.href = "hoy.html";
+		aHoy.className = "inline-flex items-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700";
+		aHoy.textContent = "Capturar en Hoy";
+		acciones.appendChild(aHoy);
+
+		const aPda = document.createElement("a");
+		aPda.href = "evaluacion_formativa.html?sesion_id=" + encodeURIComponent(idSesion);
+		aPda.className = "inline-flex items-center min-h-[44px] px-4 rounded-xl border border-emerald-300 text-emerald-700 font-medium hover:bg-emerald-50";
+		aPda.textContent = "Afinar evaluación por PDA";
+		acciones.appendChild(aPda);
+
+		if (sesion.estado_sesion !== "completada") {
+			const btnTerminar = document.createElement("button");
+			btnTerminar.type = "button";
+			btnTerminar.className = "min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
+			btnTerminar.textContent = "Marcar sesión como terminada";
+			btnTerminar.addEventListener("click", function () {
+				abrirModalCierre(async function (notas) {
+					await terminarSesion(idSesion, notas);
+				});
+			});
+			acciones.appendChild(btnTerminar);
+		}
 	}
-
-	const btnTerminar = document.createElement("button");
-	btnTerminar.type = "button";
-	btnTerminar.className = "border border-gray-300 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50";
-	btnTerminar.textContent = "Terminar jornada";
-	btnTerminar.addEventListener("click", function () {
-		window.scrollTo({ top: 0, behavior: "smooth" });
-	});
-	acciones.appendChild(btnTerminar);
-
-	const btnCompletar = document.createElement("button");
-	btnCompletar.type = "button";
-	btnCompletar.className = "bg-green-600 text-white text-lg font-semibold px-5 py-2.5 rounded-xl hover:bg-green-700";
-	btnCompletar.textContent = "Sesión completada";
-	btnCompletar.addEventListener("click", function () {
-		abrirModalCierre(async function (notas) {
-			await completarSesionDelDia(notas);
-		});
-	});
-	acciones.appendChild(btnCompletar);
-
-	body.appendChild(acciones);
+	card.appendChild(acciones);
 	return card;
 }
 
-async function completarSesionDelDia(notasCierre) {
+// ── 3. Terminar la sesión ───────────────────────────────────────────────────
+async function terminarSesion(sesionId, notasCierre) {
 	clearError();
-	const hoy = getLocalDateISO();
-	const sesionCompletadaId = sesionActiva.id; // guardar ANTES de que se modifique sesionActiva
 	try {
-		const updatePayload = {
-			estado_sesion: "completada",
-			fecha: hoy,
-			notas_cierre: notasCierre || null,
-		};
-
 		const { error: updateError } = await window.sb
 			.from("sesiones")
-			.update(updatePayload)
-			.eq("id", sesionActiva.id);
-		if (updateError) {
-			throw updateError;
-		}
+			.update({ estado_sesion: "completada", notas_cierre: notasCierre || null })
+			.eq("id", sesionId)
+			.eq("maestro_id", user.id);
+		if (updateError) throw updateError;
 
-		const tareasCierre = extraerTareasCierre();
-		const insertsTareas = construirInsertsTareasCierre(tareasCierre, hoy);
-		if (insertsTareas.length) {
-			const { error: insertTaskError } = await window.sb.from("tareas").insert(insertsTareas);
-			if (insertTaskError) {
-				throw insertTaskError;
-			}
-		}
-
-		// Participación y conducta ya no se registran por sesión ni en `calificaciones`:
-		// son un registro diario global por alumno (tabla registro_diario) que captura
-		// la pasada de fin de día — ver docs/PRODUCTO-MI-SALON.md §B.1.4.
-
-		const siguiente = await buscarSiguienteSesionPendiente();
-		if (siguiente) {
-			await activarSiguienteSesion(siguiente);
-			resumenDia.haySiguienteSesion = true;
-			resumenDia.proyectoCompletado = false;
-		} else {
+		// Si ya no queda ninguna por trabajar, el proyecto se da por completado
+		const { count, error: countError } = await window.sb
+			.from("sesiones")
+			.select("id", { count: "exact", head: true })
+			.eq("proyecto_id", proyectoActivo.id)
+			.neq("estado_sesion", "completada");
+		if (countError) throw countError;
+		if (!count) {
 			const { error: proyectoError } = await window.sb
 				.from("proyectos")
-				.update({ estado: "completado", fecha_final: hoy })
+				.update({ estado: "completado", fecha_final: getLocalDateISO() })
 				.eq("id", proyectoActivo.id);
-			if (proyectoError) {
-				throw proyectoError;
-			}
-			resumenDia.haySiguienteSesion = false;
-			resumenDia.proyectoCompletado = true;
-			sesionActiva = null;
+			if (proyectoError) throw proyectoError;
 		}
-
-		flujoEstado.sesionCompletada = true;
-		resumenDia.sesionNombre =
-			"Sesion " + (sesionActiva ? sesionActiva.numero_sesion || "-" : "") + " " +
-			(sesionActiva && sesionActiva.momento ? "- " + sesionActiva.momento : "");
-		resumenDia.tareasParaManana = insertsTareas.map((t) =>
-			t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion
-		);
-
 		cerrarModalCierre();
-		colapsar("card-sesion", "Sesión marcada como completada");
-		crearCardResumen();
-		crearCardEvaluacion(sesionCompletadaId);
+		window.location.reload();
 	} catch (error) {
-		showError("No se pudo completar la sesion: " + error.message);
+		showError("No se pudo terminar la sesión: " + error.message);
 	}
 }
 
-function crearCardResumen() {
-	const container = document.getElementById("flowContainer");
-	const card = document.createElement("section");
-	card.className = "bg-white border border-gray-200 rounded-2xl p-6";
-
-	const tareasRevisadasHtml = resumenDia.tareasRevisadas.length
-		? "<ul class='list-disc pl-5 text-sm text-gray-600'>" +
-			resumenDia.tareasRevisadas.map((t) => "<li>" + escapeHtml(t) + "</li>").join("") +
-			"</ul>"
-		: "<p class='text-sm text-gray-500'>Sin tareas revisadas hoy.</p>";
-
-	const tareasMananaHtml = resumenDia.tareasParaManana.length
-		? "<ul class='list-disc pl-5 text-sm text-gray-600'>" +
-			resumenDia.tareasParaManana.map((t) => "<li>" + escapeHtml(t) + "</li>").join("") +
-			"</ul>"
-		: "<p class='text-sm text-gray-500'>No se dejaron tareas nuevas.</p>";
-
-	card.innerHTML =
-		"<h3 class='text-xl font-bold text-gray-800 mb-4'>Jornada completada</h3>" +
-		"<div class='space-y-3'>" +
-		"<p class='text-sm text-gray-700'><span class='font-semibold'>Resumen asistencia:</span> " +
-		resumenDia.presentes + " de " + resumenDia.totalAlumnos + " alumnos presentes</p>" +
-		"<div><p class='font-semibold text-gray-700'>Tareas revisadas:</p>" + tareasRevisadasHtml + "</div>" +
-		"<p class='text-sm text-gray-700'><span class='font-semibold'>Sesion trabajada:</span> " +
-		escapeHtml(resumenDia.sesionNombre || "N/A") + "</p>" +
-		"<div><p class='font-semibold text-gray-700'>Tareas dejadas para manana:</p>" + tareasMananaHtml + "</div>" +
-		"</div>";
-
-	const acciones = document.createElement("div");
-	acciones.className = "mt-5 flex flex-wrap gap-2";
-
-	const btnPrint = document.createElement("button");
-	btnPrint.type = "button";
-	btnPrint.className = "border border-gray-300 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50";
-	btnPrint.textContent = "Imprimir resumen";
-	btnPrint.onclick = function () {
-		window.print();
-	};
-	acciones.appendChild(btnPrint);
-
-	if (resumenDia.haySiguienteSesion) {
-		const btnNext = document.createElement("button");
-		btnNext.type = "button";
-		btnNext.className = "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700";
-		btnNext.textContent = "Continuar con siguiente sesion";
-		btnNext.onclick = async function () {
-			flujoEstado.sesionCompletada = false;
-			await iniciarFlujo();
-		};
-		acciones.appendChild(btnNext);
-	}
-
-	if (resumenDia.proyectoCompletado) {
-		const aProyecto = document.createElement("a");
-		aProyecto.href = "planeacion.html";
-		aProyecto.className = "bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700";
-		aProyecto.textContent = "Proyecto completado: ver en Proyectos";
-		acciones.appendChild(aProyecto);
-	}
-
-	card.appendChild(acciones);
-	container.appendChild(card);
-}
-
-function crearCardEvaluacion(sesionId) {
-	if (!sesionId) {
-		return;
-	}
-	const container = document.getElementById("flowContainer");
-	const card = document.createElement("section");
-	card.className = "bg-white border-2 border-emerald-400 rounded-2xl p-6";
-
-	const mensaje = resumenDia.proyectoCompletado
-		? "Proyecto terminado. Evalua la ultima sesion."
-		: "Sesion completada. Ahora registra el progreso de cada alumno con el semaforo de evaluacion formativa.";
-
-	card.innerHTML =
-		"<div class='flex items-start gap-3 mb-4'>" +
-		"<svg xmlns='http://www.w3.org/2000/svg' class='h-8 w-8 text-blue-600' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='8' y='2' width='8' height='20' rx='3'/><circle cx='12' cy='7' r='1.5'/><circle cx='12' cy='12' r='1.5'/><circle cx='12' cy='17' r='1.5'/></svg>" +
-		"<div>" +
-		"<h3 class='text-xl font-bold text-gray-800'>Evalua el progreso</h3>" +
-		"<p class='text-sm text-gray-600 mt-1'>" + escapeHtml(mensaje) + "</p>" +
-		"</div>" +
-		"</div>";
-
-	const btn = document.createElement("a");
-	btn.href = "evaluacion_formativa.html?sesion_id=" + encodeURIComponent(sesionId);
-	btn.className =
-		"block w-full text-center bg-emerald-600 text-white text-lg font-bold px-6 py-4 rounded-xl hover:bg-emerald-700 transition";
-	btn.textContent = "Ir a Evaluacion Formativa →";
-	card.appendChild(btn);
-
-	container.appendChild(card);
-}
-
-function expandirCard(id) {
-	document.querySelectorAll(".card-flow-body").forEach((b) => {
-		b.classList.add("hidden");
-	});
-	const body = document.getElementById(id + "-body");
-	if (body) {
-		body.classList.remove("hidden");
-	}
-}
-
-function colapsar(id, resumenHTML) {
-	const body = document.getElementById(id + "-body");
-	if (body) {
-		body.classList.add("hidden");
-	}
-	const resumen = document.getElementById(id + "-resumen");
-	if (resumen) {
-		resumen.innerHTML = resumenHTML;
-		resumen.classList.remove("hidden");
-	}
-}
-
-function crearCardBase(id, borderColorClass, titulo, badgeTexto) {
-	const card = document.createElement("section");
-	card.id = id;
-	card.className =
-		"bg-white rounded-2xl shadow-sm border border-gray-200 border-l-4 overflow-hidden " + borderColorClass;
-
-	const header = document.createElement("div");
-	header.className = "flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition";
-	header.innerHTML =
-		"<h3 class='font-bold text-gray-800'>" + escapeHtml(titulo) + "</h3>" +
-		"<span class='text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full'>" +
-		escapeHtml(badgeTexto || "") +
-		"</span>";
-
-	const resumen = document.createElement("div");
-	resumen.id = id + "-resumen";
-	resumen.className = "hidden px-4 pb-4 text-sm text-gray-600";
-
-	const body = document.createElement("div");
-	body.id = id + "-body";
-	body.className = "card-flow-body p-5 border-t border-gray-100 hidden";
-
-	header.addEventListener("click", function () {
-		expandirCard(id);
-	});
-
-	card.appendChild(header);
-	card.appendChild(resumen);
-	card.appendChild(body);
-	return card;
-}
-
-function renderAlumnosAsistencia(listaAlumnos, estadoPorAlumno) {
-	const wrapper = document.createElement("div");
-	const porGrado = {};
-
-	listaAlumnos.forEach((a) => {
-		const key = a.grado || "-";
-		if (!porGrado[key]) {
-			porGrado[key] = [];
-		}
-		porGrado[key].push(a);
-	});
-
-	Object.keys(porGrado)
-		.sort((a, b) => Number(a) - Number(b))
-		.forEach((grado) => {
-			const bloque = document.createElement("div");
-			bloque.className = "mb-4";
-			bloque.innerHTML = "<h4 class='font-semibold text-gray-700 mb-2'>Grado " + grado + "</h4>";
-
-			porGrado[grado].forEach((a) => {
-				const row = document.createElement("div");
-				row.className = "flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 border-b border-gray-100";
-				const groupName = "asis-" + a.id;
-				row.innerHTML =
-					"<span class='text-sm font-medium text-gray-700'>" + escapeHtml(getNombreAlumno(a)) + "</span>" +
-					"<div class='flex flex-wrap gap-2'>" +
-					crearPillAsistencia(groupName, "presente", "Presente", true) +
-					crearPillAsistencia(groupName, "ausente", "Falta", false) +
-					crearPillAsistencia(groupName, "justificada", "~ Justificada", false) +
-					"</div>";
-
-				row.querySelectorAll("input[type='radio']").forEach((radio) => {
-					radio.addEventListener("change", function () {
-						estadoPorAlumno[a.id] = radio.value;
-					});
-				});
-
-				bloque.appendChild(row);
-			});
-
-			wrapper.appendChild(bloque);
-		});
-
-	return wrapper;
-}
-
-function crearPillAsistencia(name, value, text, checked) {
-	return (
-		"<label class='inline-flex items-center border border-gray-300 rounded-full px-3 py-1 text-xs cursor-pointer hover:bg-gray-50'>" +
-		"<input class='mr-1' type='radio' name='" +
-		name +
-		"' value='" +
-		value +
-		"' " +
-		(checked ? "checked" : "") +
-		" />" +
-		escapeHtml(text) +
-		"</label>"
-	);
-}
-
-function buildAsistenciaResumen(registros, total) {
-	const presentes = registros.filter((r) => r.asistencia_estado !== "ausente").length;
-	const ausentes = total - presentes;
-	return { presentes, ausentes };
-}
-
-function agruparTareas(tareas) {
-	const mapa = {};
-	tareas.forEach((t) => {
-		const key = (t.descripcion || "") + "__" + (t.grado == null ? "all" : t.grado);
-		if (!mapa[key]) {
-			mapa[key] = {
-				descripcion: t.descripcion || "Tarea",
-				grado: t.grado,
-				sesion_id: t.sesion_id,
-				ids: [],
-			};
-		}
-		mapa[key].ids.push(t.id);
-	});
-	return Object.keys(mapa).map((k) => mapa[k]);
-}
-
+// ── Ayudantes de render del plan de la sesión ───────────────────────────────
 function getTextoFase(fase) {
 	const todos = sesionActiva && sesionActiva[fase + "_todos"] ? sesionActiva[fase + "_todos"] : "";
 	const diferenciado = sesionActiva && sesionActiva[fase + "_diferenciado"] ? sesionActiva[fase + "_diferenciado"] : "";
-	if (typeof todos === "string" && todos.trim()) {
-		return todos;
-	}
-	if (typeof diferenciado === "string" && diferenciado.trim()) {
-		return diferenciado;
-	}
+	if (typeof todos === "string" && todos.trim()) return todos;
+	if (typeof diferenciado === "string" && diferenciado.trim()) return diferenciado;
 	if (typeof diferenciado === "object" && diferenciado !== null) {
-		return Object.keys(diferenciado)
-			.map((g) => "Grado " + g + ": " + (diferenciado[g] || ""))
-			.join("\n");
+		return Object.keys(diferenciado).map((g) => "Grado " + g + ": " + (diferenciado[g] || "")).join("\n");
 	}
-	return "Sin informacion registrada.";
+	return "Sin información registrada.";
 }
 
 function getActividadesFase(fase) {
 	const raw = sesionActiva ? sesionActiva[fase + "_actividades"] : null;
-	if (!raw) {
-		return [];
-	}
-	if (Array.isArray(raw)) {
-		return raw.map((x) => (typeof x === "string" ? x : x.descripcion || JSON.stringify(x)));
-	}
-	if (typeof raw === "string") {
-		return [raw];
-	}
+	if (!raw) return [];
+	if (Array.isArray(raw)) return raw.map((x) => (typeof x === "string" ? x : x.descripcion || JSON.stringify(x)));
+	if (typeof raw === "string") return [raw];
 	if (typeof raw === "object") {
-		return Object.values(raw).flat().map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
+		return Object.values(raw).flat().map((x) => (typeof x === "string" ? x : (x && x.descripcion) || JSON.stringify(x)));
 	}
 	return [];
 }
 
 function getTareasCierreTexto() {
-	return extraerTareasCierre().map((t) =>
-		t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion
-	);
+	return extraerTareasCierre().map((t) => (t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion));
 }
 
 function extraerTareasCierre() {
 	const raw = sesionActiva ? sesionActiva.cierre_tareas : null;
-	if (!raw) {
-		return [];
-	}
+	if (!raw) return [];
 	if (Array.isArray(raw)) {
 		return raw.map((x) => ({ descripcion: typeof x === "string" ? x : x.descripcion || "Tarea", grado: x.grado ?? null }));
 	}
 	if (typeof raw === "object") {
 		const mode = raw.mode || "todos";
-		// Modo diferenciado: { diferenciado: { "4": [...], "5": [...] } }.
-		// "por_grado" se acepta como alias por compatibilidad con borradores antiguos.
+		// Modo diferenciado: { diferenciado: { "4": [...] } }; "por_grado" es alias antiguo
 		const porGrado = raw.diferenciado || raw.por_grado;
 		if (mode === "diferenciado" && porGrado && typeof porGrado === "object") {
 			const out = [];
@@ -878,24 +384,10 @@ function extraerTareasCierre() {
 			});
 			return out;
 		}
-		// Modo igual para todos: { todos: [...] }. "items"/"tareas" son alias antiguos.
 		const lista = raw.todos || raw.items || raw.tareas || [];
 		return (Array.isArray(lista) ? lista : [lista]).map((t) => ({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: null }));
 	}
 	return [];
-}
-
-function construirInsertsTareasCierre(tareasCierre, hoy) {
-	return tareasCierre.map((t) => ({
-		sesion_id: sesionActiva.id,
-		proyecto_id: proyectoActivo.id,
-		grupo_id: grupoId,
-		maestro_id: user.id,
-		descripcion: t.descripcion,
-		grado: t.grado,
-		fecha_asignada: hoy,
-		revisada: false,
-	}));
 }
 
 function renderBloqueSesion(titulo, borde, texto, actividades, tareas) {
@@ -904,167 +396,84 @@ function renderBloqueSesion(titulo, borde, texto, actividades, tareas) {
 	let html =
 		"<h4 class='font-semibold text-gray-800 mb-1'>" + titulo + "</h4>" +
 		"<p class='text-sm text-gray-600 whitespace-pre-line mb-2'>" + escapeHtml(texto || "") + "</p>";
-
 	if (actividades && actividades.length) {
 		html += "<ul class='list-disc pl-5 text-sm text-gray-600 mb-2'>" +
-			actividades.map((a) => "<li>" + escapeHtml(a) + "</li>").join("") +
-			"</ul>";
+			actividades.map((a) => "<li>" + escapeHtml(a) + "</li>").join("") + "</ul>";
 	}
-
 	if (tareas && tareas.length) {
 		html += "<p class='text-sm font-medium text-gray-700'>Tareas del cierre:</p>" +
 			"<ul class='list-disc pl-5 text-sm text-gray-600'>" +
-			tareas.map((t) => "<li>" + escapeHtml(t) + "</li>").join("") +
-			"</ul>";
+			tareas.map((t) => "<li>" + escapeHtml(t) + "</li>").join("") + "</ul>";
 	}
-
 	box.innerHTML = html;
 	return box;
 }
 
 function renderPdaSesion(rawPda) {
-	if (!rawPda) {
-		return "";
-	}
+	if (!rawPda) return "";
 	let pda = rawPda;
 	if (typeof pda === "string") {
-		try {
-			pda = JSON.parse(pda);
-		} catch (_) {
-			return "<p class='text-sm text-gray-600'>" + escapeHtml(rawPda) + "</p>";
-		}
+		try { pda = JSON.parse(pda); } catch (_) { return "<p class='text-sm text-gray-600'>" + escapeHtml(rawPda) + "</p>"; }
 	}
-	if (!pda || typeof pda !== "object") {
-		return "";
-	}
-
-	return Object.keys(pda)
-		.map((grado) => {
-			const item = pda[grado] || {};
-			const texto = typeof item === "string" ? item : item.pda || item.texto || "";
-			const criterio = typeof item === "object" ? item.criterio_aplicado || "" : "";
-			return (
-				"<div class='mb-2 text-sm text-gray-700'>" +
-				"<p><span class='font-semibold'>Grado " + escapeHtml(grado) + ":</span> " + escapeHtml(texto) + "</p>" +
-				(criterio ? "<p class='text-gray-500'>Criterio: " + escapeHtml(criterio) + "</p>" : "") +
-				"</div>"
-			);
-		})
-		.join("");
+	if (!pda || typeof pda !== "object") return "";
+	// Acepta tanto un arreglo [{grado, pda_texto, criterio_aplicado}] como un objeto por grado
+	const items = Array.isArray(pda)
+		? pda.map((p) => ({ grado: p.grado, texto: p.pda_texto || p.pda || p.texto || "", criterio: p.criterio_aplicado || "" }))
+		: Object.keys(pda).map((g) => {
+			const item = pda[g] || {};
+			return {
+				grado: g,
+				texto: typeof item === "string" ? item : item.pda || item.pda_texto || item.texto || "",
+				criterio: typeof item === "object" ? item.criterio_aplicado || "" : "",
+			};
+		});
+	return items.map((it) =>
+		"<div class='mb-2 text-sm text-gray-700'>" +
+		"<p><span class='font-semibold'>" + escapeHtml(it.grado) + "°:</span> " + escapeHtml(it.texto) + "</p>" +
+		(it.criterio ? "<p class='text-gray-500'>Criterio: " + escapeHtml(it.criterio) + "</p>" : "") +
+		"</div>").join("");
 }
 
 function normalizarRecursos(raw) {
-	if (!raw) {
-		return [];
-	}
+	if (!raw) return [];
 	let recursos = raw;
 	if (typeof recursos === "string") {
-		try {
-			recursos = JSON.parse(recursos);
-		} catch (_) {
-			return [];
-		}
+		try { recursos = JSON.parse(recursos); } catch (_) { return []; }
 	}
+	// El jsonb puede venir como {links: [...], archivos: [...]} o como arreglo
 	if (!Array.isArray(recursos)) {
-		recursos = [recursos];
+		recursos = [].concat(recursos.links || [], recursos.archivos || [], (recursos.url || recursos.link) ? [recursos] : []);
 	}
 	return recursos
 		.map((r) => {
-			const url = r.url || r.link || r.href || null;
-			if (!url) {
-				return null;
-			}
-			// SEGURIDAD: solo http(s). Descarta esquemas como javascript: que,
-			// al ir a un <a href> con clic, ejecutarían código y robarían la sesión.
-			if (!/^https?:\/\//i.test(String(url))) {
-				return null;
-			}
-			return { titulo: r.nombre || r.titulo || "Abrir recurso", url };
+			const url = r && (r.url || r.link || r.href) || null;
+			if (!url) return null;
+			// SEGURIDAD: solo http(s). Un esquema como javascript: en un <a href> ejecutaría código.
+			if (!/^https?:\/\//i.test(String(url))) return null;
+			return { titulo: r.nombre || r.titulo || "Abrir recurso", url: url };
 		})
 		.filter(Boolean);
-}
-
-async function buscarSiguienteSesionPendiente() {
-	const { data, error } = await window.sb
-		.from("sesiones")
-		.select("*")
-		.eq("proyecto_id", proyectoActivo.id)
-		.eq("estado_sesion", "pendiente")
-		.order("numero_sesion")
-		.limit(1);
-	if (error) {
-		showError("No se pudo consultar la siguiente sesion: " + error.message);
-		return null;
-	}
-	return data && data.length ? data[0] : null;
-}
-
-async function activarSiguienteSesion(siguiente) {
-	const { error } = await window.sb
-		.from("sesiones")
-		.update({ estado_sesion: "activa" })
-		.eq("id", siguiente.id);
-	if (error) {
-		showError("No se pudo activar la siguiente sesion: " + error.message);
-		return;
-	}
-	sesionActiva = siguiente;
 }
 
 function abrirModalCierre(onConfirm) {
 	let modal = document.getElementById("modal-cierre-sesion");
 	if (modal) modal.remove();
-
 	modal = document.createElement("div");
 	modal.id = "modal-cierre-sesion";
 	modal.className = "fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4";
-
-	const inner = document.createElement("div");
-	inner.className = "bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]";
-	modal.appendChild(inner);
-
-	// Cabecera
-	const hdr = document.createElement("div");
-	hdr.className = "p-5 border-b shrink-0";
-	hdr.innerHTML = "<h3 class='text-lg font-bold text-gray-800'>Cerrar sesión del día</h3>";
-	inner.appendChild(hdr);
-
-	// Área scrollable
-	const body = document.createElement("div");
-	body.className = "flex-1 overflow-y-auto p-5 flex flex-col gap-5";
-	inner.appendChild(body);
-
-	// — Notas —
-	const notasWrap = document.createElement("div");
-	notasWrap.innerHTML =
-		"<label class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
-		"<textarea id='notasCierreInput' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea>";
-	body.appendChild(notasWrap);
-
-	// Participación y conducta se capturan en el registro diario (registro_diario),
-	// no al cerrar cada sesión — ver docs/PRODUCTO-MI-SALON.md §B.1.4.
-
-	// Footer
-	const footer = document.createElement("div");
-	footer.className = "p-5 border-t flex justify-end gap-2 shrink-0";
-	const cancelBtn = document.createElement("button");
-	cancelBtn.type = "button";
-	cancelBtn.id = "cancelarCierreBtn";
-	cancelBtn.className = "border border-gray-300 text-gray-600 px-4 py-3 rounded-xl";
-	cancelBtn.textContent = "Cancelar";
-	const confirmBtn = document.createElement("button");
-	confirmBtn.type = "button";
-	confirmBtn.id = "confirmarCierreBtn";
-	confirmBtn.className = "bg-green-600 text-white px-5 py-3 rounded-xl font-semibold";
-	confirmBtn.textContent = "Guardar y cerrar";
-	footer.appendChild(cancelBtn);
-	footer.appendChild(confirmBtn);
-	inner.appendChild(footer);
-
+	modal.innerHTML =
+		"<div class='bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]'>" +
+		"<div class='p-5 border-b'><h3 class='text-lg font-bold text-gray-800'>Terminar la sesión</h3>" +
+		"<p class='text-sm text-gray-500 mt-1'>Las calificaciones y el cierre del día se capturan en Hoy; aquí solo se marca la sesión como trabajada.</p></div>" +
+		"<div class='p-5'><label for='notasCierreInput' class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
+		"<textarea id='notasCierreInput' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea></div>" +
+		"<div class='p-5 border-t flex justify-end gap-2'>" +
+		"<button type='button' id='cancelarCierreBtn' class='min-h-[44px] border border-gray-300 text-gray-600 px-4 rounded-xl'>Cancelar</button>" +
+		"<button type='button' id='confirmarCierreBtn' class='min-h-[44px] bg-green-600 text-white px-5 rounded-xl font-semibold'>Marcar como terminada</button>" +
+		"</div></div>";
 	document.body.appendChild(modal);
-
-	cancelBtn.addEventListener("click", cerrarModalCierre);
-	confirmBtn.addEventListener("click", async function () {
+	document.getElementById("cancelarCierreBtn").addEventListener("click", cerrarModalCierre);
+	document.getElementById("confirmarCierreBtn").addEventListener("click", async function () {
 		const notas = document.getElementById("notasCierreInput").value.trim();
 		await onConfirm(notas);
 	});
@@ -1072,31 +481,25 @@ function abrirModalCierre(onConfirm) {
 
 function cerrarModalCierre() {
 	const modal = document.getElementById("modal-cierre-sesion");
-	if (modal) {
-		modal.remove();
-	}
+	if (modal) modal.remove();
 }
 
 function showError(msg) {
 	const container = document.getElementById("flowContainer");
-	if (!container) {
-		return;
+	if (!container) return;
+	let alerta = document.getElementById("flowError");
+	if (!alerta) {
+		alerta = document.createElement("div");
+		alerta.id = "flowError";
+		alerta.className = "bg-red-100 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm";
+		container.prepend(alerta);
 	}
-	let alert = document.getElementById("flowError");
-	if (!alert) {
-		alert = document.createElement("div");
-		alert.id = "flowError";
-		alert.className = "bg-red-100 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm";
-		container.prepend(alert);
-	}
-	alert.textContent = msg;
+	alerta.textContent = msg;
 }
 
 function clearError() {
-	const alert = document.getElementById("flowError");
-	if (alert) {
-		alert.remove();
-	}
+	const alerta = document.getElementById("flowError");
+	if (alerta) alerta.remove();
 }
 
 function getLocalDateISO() {
@@ -1105,19 +508,8 @@ function getLocalDateISO() {
 	return local.toISOString().slice(0, 10);
 }
 
-function formatFechaCorta(date) {
-	return date.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function getNombreAlumno(alumno) {
-	return alumno.nombre_completo || alumno.nombre || "Alumno";
-}
-
 function escapeHtml(value) {
-	return String(value || "")
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\"/g, "&quot;")
-		.replace(/'/g, "&#39;");
+	return String(value === null || value === undefined ? "" : value)
+		.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }

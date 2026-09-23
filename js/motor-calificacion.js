@@ -65,7 +65,31 @@
 	function acumulador() {
 		var acc = {};
 		RUBROS.forEach(function (r) { acc[r] = { obtenido: 0, maximo: 0 }; });
+		acc.tareas.entrega = entregaVacia();
+		acc.trabajos.entrega = entregaVacia();
 		return acc;
+	}
+
+	function entregaVacia() {
+		return { esperados: 0, entregados: 0, completos: 0, sumaEntregados: 0 };
+	}
+
+	/*
+		Entrega, aparte de la calidad: de los productos ya revisados y no justificados,
+		cuántos entregó, cuántos completos y cuánto valen los entregados. Lo usan los
+		textos (trabajo diario, hábitos, calidad de lo entregado); la calificación no cambia.
+	*/
+	function contarEntrega(entrega, cal) {
+		if (!cal) return;
+		var estado = cal.estado_entrega;
+		if (estado === "justificado" || estado === "no_aplica") return;
+		var valor = puntajeProducto(cal);
+		if (!estado && valor === null) return; // abierto pero sin revisar
+		entrega.esperados++;
+		if (estado === "no_entregado") return;
+		entrega.entregados++;
+		if (estado !== "incompleto") entrega.completos++;
+		if (valor !== null) entrega.sumaEntregados += valor;
 	}
 
 	function sumar(rubro, obtenido, maximo) {
@@ -116,7 +140,9 @@
 		(datos.productos || []).forEach(function (p) {
 			var rubro = rubroDeProducto(p.tipo);
 			if (!rubro || !porCampo[p.campo]) return;
-			var valor = puntajeProducto((datos.calificaciones || {})[p.id]);
+			var cal = (datos.calificaciones || {})[p.id];
+			contarEntrega(porCampo[p.campo][rubro].entrega, cal);
+			var valor = puntajeProducto(cal);
 			if (valor === null) return; // excluido del máximo
 			sumar(porCampo[p.campo][rubro], valor, 1);
 		});
@@ -142,6 +168,7 @@
 				var peso = Number(datos.pesos[r] || 0);
 				var fraccion = acc.maximo > 0 ? acc.obtenido / acc.maximo : null;
 				rubros[r] = { obtenido: acc.obtenido, maximo: acc.maximo, fraccion: fraccion, peso: peso };
+				if (acc.entrega) rubros[r].entrega = acc.entrega;
 				if (fraccion !== null && peso > 0) { suma += fraccion * peso; pesoUsado += peso; }
 			});
 			resultado[campo] = {

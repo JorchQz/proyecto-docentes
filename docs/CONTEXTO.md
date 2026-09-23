@@ -96,9 +96,9 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 (`productos_sesion`), no la actividad:
 - **Tareas y trabajos:** por producto, un **semáforo** `logrado / en_proceso / requiere_apoyo`
   + `retroalimentacion` + estado de entrega; `puntaje` 0–10 es un ajuste fino **opcional**
-  (grano en `calificaciones` con `producto_sesion_id`). La captura diaria completa llega con
-  la pantalla "Hoy" (Parte B). Transición: la revisión de tareas del Dashboard todavía
-  escribe `calificacion` 5–10 sin producto, y es lo que hoy lee `reportes.js`.
+  (grano en `calificaciones` con `producto_sesion_id`). Se captura en la pantalla "Hoy".
+  Nada escribe ya el formato viejo (`calificacion` 5–10 sin producto); si quedara alguna
+  fila así, el motor la toma como `calificacion/10` y la boleta lo advierte.
 - **Participación y conducta:** una vez al día por alumno, global (no por campo ni sesión),
   en `registro_diario` con valores **0 · 1 · 2**.
 - **Asistencia:** presente / ausente / justificada. **Es solo referencia: nunca pondera**
@@ -128,17 +128,25 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> - `node pruebas/motor-calificacion.test.js` — aritmética del motor (23 casos).
-> - `node pruebas/aviso-propuesta.test.js` — el aviso "propuesta: N" de la boleta.
-> - `node pruebas/hoy-filtros.test.js` — filtros de multigrado de la pantalla "Hoy".
-> - `node pruebas/hoy-render.test.js` — render de un producto multigrado.
-> - `node pruebas/avance-pda.test.js` — tablas de la pestaña "Avance por PDA".
-> - `node pruebas/textos-boleta.test.js` — reglas de la Capa 1 de textos.
-> - `node pruebas/boleta-arranque.test.js` — **ejecuta `reportes.js` completo** y genera una
->   boleta: motor, piso por fase, confirmación y textos propuestos, todo de punta a punta.
-> - `node pruebas/hoy-arranque.test.js` — **ejecuta `hoy.js` completo** contra un DOM y un
->   Supabase falsos; es la única que ve los errores de ejecución (acepta la ruta de otra
->   versión del archivo como argumento, para comprobar que detecta una regresión).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (16 suites).
+> - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad.
+> - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
+> - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
+> - `hoy-arranque` — **ejecuta `hoy.js` completo** contra un DOM y un Supabase falsos
+>   (incluye "Trabajar hoy"; acepta la ruta de otra versión para probar una regresión).
+> - `avance-pda` — tablas de la pestaña "Avance por PDA".
+> - `textos-boleta` — reglas de la Capa 1 (entrega vs calidad, frases por varios campos,
+>   plural de sugerencias, marca por cuadro de lo editado).
+> - `boleta-arranque` — **ejecuta `reportes.js` completo** y genera una boleta: motor, piso
+>   por fase, confirmación y textos propuestos, de punta a punta.
+> - `boleta-ia` — convivencia de la Capa 1, lo redactado por la IA y lo escrito por el
+>   maestro, con un Supabase falso que imita el upsert de PostgREST (unión de columnas).
+> - `reportes-grupo` — Vista Recrea y Concentrado (solo calificaciones confirmadas).
+> - `boleta-imprimible`, `reporte-alumno`, `junta`, `exportar` — render y cálculo de los
+>   cuatro reportes de B.8 con datos de ejemplo (confirmada vs "pendiente", pisos,
+>   privacidad de la junta, columnas y CSV).
+> - `sin-emojis` — ningún emoji ni símbolo tipo emoji en el SaaS (rangos completos).
+> Variables para probar otra copia: `REPORTES_JS=ruta` (pruebas que leen `reportes.js`).
 - **Trazabilidad por PDA (B.5, 2026-09-23):** el maestro califica el producto una vez y
   el trigger `propagar_calificacion_a_pda` deja la evidencia en cada PDA que ese producto
   evalúa (`producto_sesion_pda` → `sesiones_pda`), **solo los del grado del alumno**.
@@ -150,17 +158,35 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   La vista **`v_avance_pda`** resume por alumno y PDA: evidencias, nivel predominante,
   conteo por nivel y **tendencia** (primera mitad del trimestre contra la segunda).
   Se ve en Reportes → pestaña "Avance por PDA", por alumno o de todo el grupo.
-- **Textos de la boleta, Capa 1 (B.7, 2026-09-23):** `js/textos-boleta.js` propone
-  fortalezas, áreas de oportunidad y sugerencias **por reglas, sin IA**, a partir de lo ya
-  capturado: rubros del motor (≥90 % fortaleza, <60 % área), PDA con al menos 2 evidencias
-  (`v_avance_pda`), habilidades básicas y fluidez lectora, y la asistencia como observación.
-  Reparto por campo: PDA y rubros al suyo; lectura → LEN; matemáticas básicas → SAB;
-  cuaderno, asistencia y "trabajo diario" → `GEN`. La propuesta se guarda siempre en
-  `boleta_trimestral.texto_autogenerado`; los cuadros visibles **solo se rellenan mientras
-  `editado_manual` sea false**. Salir de un cuadro sin cambiar nada no cuenta como edición.
-  El botón "Volver a proponer" rehace los textos y avisa si va a pisar algo escrito a mano.
-  Los PDA en apoyo se **citan** («…») en vez de conjugarlos: el texto del PDA viene en
-  tercera persona y "apoyo para lee" estaría mal escrito.
+- **Textos de la boleta, Capa 1 (B.7):** `js/textos-boleta.js` propone fortalezas, áreas
+  de oportunidad y sugerencias **por reglas, sin IA**. Nada se afirma con una sola
+  evidencia. PDA con al menos 2 evidencias (`v_avance_pda`) → su campo; **hábitos por
+  ENTREGA** (tareas entregadas, trabajos terminados, sumando campos) → fila general `GEN`;
+  **calidad de lo entregado** (≥2 entregados) y examen → su campo, o una sola frase en `GEN`
+  nombrando los campos si aplica a varios; participación, conducta, cuaderno y asistencia
+  (solo observación) → `GEN`; lectura → LEN; matemáticas básicas → SAB. "Trabajo diario"
+  sale de la entrega, nunca de la calidad. Máximo 4 frases por sección con prioridad al
+  aprendizaje; sugerencias del catálogo `plantillas_sugerencia` (en plural si una sirve a
+  varios PDA). La propuesta se guarda siempre en `texto_autogenerado`.
+  **Lo del maestro manda, cuadro por cuadro:** editar un cuadro lo anota en
+  `texto_autogenerado.editados` (y pone `editado_manual`); ese cuadro ya no se vuelve a
+  proponer aunque quede vacío (`TextosBoleta.esEditado`, que también usan los reportes y la
+  IA). Filas sin esa marca pero con `editado_manual` cuentan como editados los tres.
+  "Volver a proponer" es la única forma de reemplazarlo y avisa antes.
+  Los PDA en apoyo se **citan** («…») y se recortan en una cláusula completa.
+  **Guardado:** varias filas de distinta forma se guardan con un upsert por forma
+  (`upsertPorForma` en `reportes.js`): PostgREST usa la unión de columnas y pondría NULL
+  en lo que una fila no trae (así se llegaron a borrar textos del maestro).
+- **Capa 2, redacción con IA (B.7):** Edge Function `redactar-boleta` (Claude, modelo
+  `claude-opus-5`). La llave es el secreto `ANTHROPIC_API_KEY` de las Edge Functions;
+  **hoy no existe**, así que `accion: "estado"` responde `configurada: false` y el botón
+  "Redactar con IA" no aparece. No se manda el nombre del alumno. Guarda en
+  `texto_autogenerado.ia`, copia solo a los cuadros que el maestro no editó y marca
+  `texto_autogenerado.visible = "ia"`; la Capa 1 no lo pisa al reabrir la boleta.
+- **Reportes (B.8):** todos leen de `js/reporte-datos.js` (motor, calificación oficial =
+  la confirmada, textos, diagnóstico): `boleta.html`, `reporte-alumno.html`, `junta.html`,
+  `exportar.html`, y en `reportes.html` la Vista Recrea y el Concentrado
+  (`js/reportes-grupo.js`). Lo no confirmado es "pendiente" en todos.
 - **El maestro confirma el número antes de cerrar** (art. 4 XI): la boleta muestra la
   calificación propuesta en un selector acotado al piso de la fase; `boleta_trimestral`
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
@@ -170,9 +196,9 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   las sesiones del día y el cierre (participación y conducta). Todo se guarda al toque,
   con cola y reintento; la unidad es el producto, no la actividad. En multigrado cada
   alumno solo ve los productos cuyos `grados` incluyen el suyo, agrupados por grado.
-- Transición: la revisión de tareas del Dashboard **sigue existiendo** y escribe filas sin
-  producto (escala 5–10); el motor las toma en su rubro como `calificacion/10` y la boleta
-  lo advierte. Se retira cuando "Hoy" quede confirmada.
+  Las sesiones de una planeación no traen fecha: "Trabajar hoy" les pone la de hoy (y las
+  activa) y "Quitar de hoy" las regresa sin fecha y pendientes mientras no tengan
+  calificaciones. Inicio (`dashboard.html`) resume el día y lleva a "Hoy"; ya no captura.
 
 Niveles internos de reporte (no oficiales): `≥80 logrado`, `60–79 en_proceso`,
 `<60 requiere_apoyo`.
@@ -217,6 +243,27 @@ común).
   cada maestro solo ve sus datos (multi-tenant).
 - **Despliegue:** GitHub → Cloudflare Pages (CI/CD). Entorno local: VS Code Live Server.
 
+### 5.1 Cómo se prueba (QA)
+
+- **Cuenta de maestro de QA:** `qa.misalon@jissez.com` (perfil con `activo_saas`), con dos
+  grupos multigrado: "QA 1°-2° (Fase 3)" y "QA 3°-4° (Fase 4)", ciclo 2026-2027, 4 alumnos
+  por grado con perfiles a propósito (sobresaliente, en riesgo, irregular con
+  justificados, PPM bajo; todos con prefijo "QA"). Trimestre 1 con datos; trimestre 2
+  vacío a propósito.
+- **Segunda cuenta:** `qa.aislamiento@jissez.com`, con un grupo vacío, solo para probar que
+  un maestro no ve datos de otro.
+- Las contraseñas **no** están en el repo: viven en `.env.local` (ignorado por git:
+  `QA_EMAIL`, `QA_PASSWORD`, `QA2_EMAIL`, `QA2_PASSWORD`).
+- **Semilla:** `select qa.resembrar();` (función en el esquema `qa`, no expuesto por el API;
+  solo la ejecuta `postgres`) borra y recrea **solo** los datos de la cuenta QA. Código en
+  `supabase/qa_semilla.sql`. Nunca toca maestros reales.
+- **Herramientas locales** en `.qa/` (ignorado por git): `servidor.js` (estático en
+  `127.0.0.1:5500`, no entrega archivos ocultos), `navegador.js` (Playwright con inicio de
+  sesión real; `abrir({ cuenta: 2 })` para la segunda cuenta), `humo.js` (recorre todas las
+  pantallas con los dos grupos), `aislamiento.js`, `verificar-*.js` y las carpetas de los
+  revisores con sus scripts y evidencias.
+- Pruebas automáticas: ver §3.
+
 ---
 
 ## 6. Modelo de datos (Supabase) — verificado contra el esquema real
@@ -230,14 +277,15 @@ común).
 | `asistencias` | `maestro_id`, `grupo_id`, `alumno_id`, `fecha`, **`asistencia_estado`** (text: `presente`/`ausente`/`justificada`) |
 | `proyectos` | `maestro_id`, `grupo_id`, `trimestre` (1/2/3), `titulo`, `grados` (array), `fase` (array), `metodologia`, `escenario`, `proposito`, `pregunta_generadora`, `campos_formativos` (array), `ejes_articuladores` (array), `es_multigrado` (bool), `contenidos_pda` (jsonb), `estado` (`borrador`/`activo`/`completado`/`pausado`), `visible_mercado` (bool), `fecha_inicial`, `fecha_final` |
 | `sesiones` | `proyecto_id`, `maestro_id`, `numero_sesion`, `duracion` (text, ej. `"90 min"`), `fecha`, `campo_formativo`, `momento`, `inicio_todos`/`desarrollo_todos`/`cierre_todos` (text), `inicio_actividades`/`desarrollo_actividades`/`cierre_actividades`/`cierre_tareas` (jsonb), `inicio_diferenciado`/`desarrollo_diferenciado`/`cierre_diferenciado` (jsonb), `pda_sesion` (jsonb), `recursos` (jsonb), `criterios_evaluacion`, `estado_sesion` (`pendiente`/`activa`/`completada`/`recorrida`), `notas_cierre`, `observaciones` |
-| `tareas` | `sesion_id`, `proyecto_id`, `grupo_id`, `maestro_id`, `descripcion`, `grado` (smallint, nullable), `fecha_asignada`, `fecha_revision`, `revisada` (bool) |
+| `tareas` | **En desuso (0 filas; nadie la escribe desde 2026-09-23).** Las tareas son `productos_sesion` tipo `tarea`: se revisan en "Hoy" y `tareas.html` las sigue desde ahí. Columnas: `sesion_id`, `proyecto_id`, `grupo_id`, `maestro_id`, `descripcion`, `grado`, `fecha_asignada`, `fecha_revision`, `revisada` |
 | `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (mismo vocabulario que `productos_sesion.tipo` — `tarea`/`trabajo`/`producto_final`/`examen`/`otro` — más `participacion`/`conducta` legacy y `actividad` legacy sin escritores; **con `producto_sesion_id` el trigger `calificaciones_tipo_desde_producto` copia el tipo del producto**), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` (nombre largo). **Nuevo grano (2026-09):** `producto_sesion_id` (FK a `productos_sesion`), `estado_entrega` (`entregado`/`incompleto`/`no_entregado`/`justificado`/`no_aplica`), `nivel` (semáforo), `puntaje` (0–10), `retroalimentacion` (visible a padres), `nota_privada`, `evaluado_en`; índice único parcial `(maestro_id, alumno_id, producto_sesion_id)`. Los tipos `participacion`/`conducta` ya **no se escriben** aquí (ver `registro_diario`) |
 | `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`origen`** (`automatico` = la dejó el trigger al calificar un producto · `maestro` = la ajustó a mano; el trigger nunca pisa las del maestro), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
 | `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, **nullable** desde B.5 — antes era NOT NULL y un criterio libre reventaba la materialización), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)` y, para el criterio libre, UNIQUE `(sesion_id, grado, criterio_aplicado)` cuando `pda_id IS NULL`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
 | `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas) |
 | `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
-| `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. La captura llega con la pantalla "Hoy" (Parte B); el reparto a campos está definido en `docs/PRODUCTO-MI-SALON.md` §B.4 |
-| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb), `editado_manual` (true = el motor no sobreescribe el texto), `cerrada` (true = no se recalcula), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso de la fase (ver §3) |
+| `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. Se captura en el cierre del día de "Hoy" (valor normal 1); el motor lo reparte entre los campos con sesión ese día (`docs/PRODUCTO-MI-SALON.md` §B.4) |
+| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb: la propuesta de la Capa 1 + `editados` [cuadros que escribió el maestro] + `ia` [redacción de la Capa 2] + `visible` [`reglas`/`ia`]), `editado_manual` (true = el maestro escribió algo en esa fila), `calificacion_confirmada` + `confirmada_en` (la calificación oficial es solo la confirmada), `cerrada` (true = no se recalcula; exige confirmación), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso de la fase (ver §3) |
+| `plantillas_sugerencia` | Catálogo global de sugerencias para padres (Capa 1): `clave` PK (`tareas`, `trabajos`, `calidad`, `participacion`, `conducta`, `examen`, `lectura_ppm`, `comprension`, `matematicas` con `{habilidades}`, `cuaderno`, `asistencia`, `pda_mejora`, `pda_apoyo`), `texto`, `descripcion`, `activo`. Lectura para `authenticated`; escritura solo `es_admin()`. Sin pantalla de edición todavía |
 | `maestro_ajustes` | PK `maestro_id`; ponderación `peso_tareas`/`peso_trabajos`/`peso_participacion`/`peso_conducta`/`peso_examen`, NOT NULL, DEFAULT 28/28/6/5/33, CHECK `pesos_suman_100`. **Sin peso de asistencia** (Acuerdo 10/09/23 art. 7; ver §3). Onboarding crea la fila solo con `maestro_id` y la BD pone los defaults |
 | `examenes` / `respuestas_examen` / `banco_preguntas` | Examen por grupo/trimestre/grado con `preguntas_ids`; cada pregunta de `banco_preguntas` tiene `campo_formativo` → el puntaje del examen se calcula por campo (reportes.js). **Limitación conocida:** `banco_preguntas` no guarda cuánto vale cada pregunta; el máximo por campo se **aproxima** como `valor_total / total_preguntas` por pregunta. No presentarlo como cálculo exacto |
 | `evaluacion_diagnostica` | **Fuente única de cuaderno y habilidades básicas.** `maestro_id`, `alumno_id`, `grupo_id`, `momento` (`inicio_ciclo`/`trimestre_1`/`trimestre_2`/`trimestre_3`), `cuaderno` y `matematicas` (jsonb `[{clave, nivel}]`, claves estables de `js/catalogo-habilidades.js`, nivel `logrado`/`en_proceso`/`requiere_apoyo`; un CHECK valida prefijo y nivel), `lectura_ppm`, `lectura_comprension`, `observaciones`, UNIQUE `(maestro_id, alumno_id, momento)`. La fluidez lectora no se guarda: se deriva de `lectura_ppm` + `bandas_ppm` |
@@ -271,9 +319,8 @@ común).
 > de Parte B a diseñar cuando haya un caso real, no un olvido.
 
 > Nota: `proyectos` conserva columnas legacy (`nombre`, `campo_formativo`) junto a las
-> actuales (`titulo`, `campos_formativos`); el frontend usa las actuales. Las tareas se
-> **materializan** en la tabla `tareas` (una fila por grado) al cerrar una sesión, leyendo
-> el JSONB `cierre_tareas`. Además, al importar o guardar un proyecto, `js/sesiones-materializar.js`
+> actuales (`titulo`, `campos_formativos`); el frontend usa las actuales. Al cerrar una
+> sesión ya **no** se escribe la tabla `tareas` (en desuso). Al importar o guardar un proyecto, `js/sesiones-materializar.js`
 > crea por cada sesión sus `sesiones_pda` y sus `productos_sesion` (un trabajo genérico por
 > grado con `origen='backfill'` + las tareas reales de `cierre_tareas`).
 
@@ -373,15 +420,21 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 |---|---|---|
 | Auth (login/registro) | ✅ Completo | `index.html` |
 | Onboarding (crear grupo + alumnos + ciclo + trimestre) | ✅ Completo | `onboarding.html` |
-| Dashboard diario (tarjetas guiadas: asistencia → tareas → sesión → cierre → ev. formativa) | ✅ Completo | `dashboard.html` |
-| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre) | ✅ Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
+| Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | ✅ Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
+| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy) | ✅ Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
 | Asistencia (con autosave) | ✅ Completo | `asistencia.html` |
 | Mi Grupo (CRUD grupo y alumnos) | ✅ Completo | `mi-grupo.html` |
 | Crear Proyecto / Planeación (3 pasos con catálogo SEP) | ✅ Completo | `crear_proyecto.html` |
 | Planeación (lista de proyectos con filtros + acciones completas) | ✅ Completo | `planeacion.html` |
 | Actividades | ✅ Completo | `actividades.html` |
-| Tareas | ✅ Completo | `tareas.html` |
-| Reportes (Asistencia · Vista Recrea · Concentrado · Boleta PDF/WhatsApp) | ✅ Completo; boleta sobre el motor de B.3 (2026-09) | `reportes.html`, `js/motor-calificacion.js` |
+| Tareas (seguimiento de los productos tipo tarea; la revisión es en "Hoy") | ✅ Completo (rehecho 2026-09-23, 3.7) | `tareas.html` |
+| Reportes (Asistencia · Vista Recrea · Concentrado · Boleta · Avance por PDA), todo sobre el motor y la calificación confirmada | ✅ Completo (2026-09) | `reportes.html`, `js/reportes.js`, `js/reportes-grupo.js` |
+| Boleta imprimible por alumno (B.8.1) | ✅ Completo (2026-09-23) | `boleta.html`, `js/boleta.js` |
+| Reporte detallado por alumno (B.8.2) | ✅ Completo (2026-09-23) | `reporte-alumno.html`, `js/reporte-alumno.js` |
+| Presentación para la junta de padres (B.8.3) | ✅ Completo (2026-09-23) | `junta.html`, `js/junta.js` |
+| Exportación CSV/XLSX del concentrado (B.8.5) | ✅ Completo (2026-09-23) | `exportar.html`, `js/exportar.js` |
+| Redacción de textos con IA (B.7 Capa 2) | Construido, **apagado** hasta que exista el secreto `ANTHROPIC_API_KEY` | Edge `redactar-boleta` |
+| Grupo activo (selector en la barra, toda la app) | ✅ Completo (2026-09-23) | `js/grupo-activo.js` |
 | Mi Cuenta | ✅ Completo | `mi-cuenta.html` |
 | Ajustes (notificaciones + ponderación de calificaciones) | ✅ Completo | `ajustes.html` |
 | Evaluación Formativa (semáforo por alumno/sesión, autosave) | ✅ Completo; ahora **afina** lo que ya propuso la propagación por PDA | `evaluacion_formativa.html` |
@@ -398,13 +451,12 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - El Marketplace muestra estado vacío hasta que el bot publique proyectos con `estado = 'publicado'`.
 - `dosificacion_proyectos.proposito` no existe en BD — el importador usa `producto_final` como fallback.
 - **Job de enriquecimiento de productos:** los `productos_sesion` con `origen='backfill'` tienen nombre genérico ("Producto — Sesión N · CAMPO"); antes de lanzar Mi salón al público hay que extraer el nombre real del producto de cada sesión (revisar si el texto de `dosificacion_sesiones` permite regex antes de gastar en IA) y actualizar las instrucciones del bot para que llene `dosificacion_sesiones.productos` con el shape de `cierre_tareas`.
-- Participación y conducta ya no se capturan en el cierre de sesión; la pasada de fin de día que escribe `registro_diario` llega con la pantalla "Hoy" (`docs/PRODUCTO-MI-SALON.md` §B.1.4). Mientras tanto esos rubros no alimentan la fórmula (los pesos se renormalizan solos).
-- La **Parte B** está especificada en `docs/PRODUCTO-MI-SALON.md`, corregida por las instrucciones de Jorge del 2026-09-22 (B.0: calificación por fase, asistencia sin peso, fuente única de habilidades, bandas PPM, `alumnos.grado` obligatorio, vocabulario de `tipo`). **B.0 aplicada el 2026-09-22**, incluido el trimestre obligatorio en `crear_proyecto` (ver §6.1).
+- La **Parte B** está construida en la rama `mi-salon-parte-b` (sin merge: lo decide Jorge). Lo construido y sus diferencias con la especificación: `docs/PRODUCTO-MI-SALON.md`; bitácora, veredictos de los revisores y decisiones pendientes: `docs/PROGRESO-PARTE-B.md` y `docs/REPORTE-FINAL-PARTE-B.md`.
+- **Decisiones de producto pendientes (Jorge):** el 1 diario de participación/conducta cuenta como 50 % del rubro (los textos lo tratan como normal, la calificación no); "retardo" en asistencia; pantalla para editar `plantillas_sugerencia`; criterios propios de cuaderno y habilidades por maestro; activar la IA (secreto y costo).
+- **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe.
 - Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
 - El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.
-- Las pestañas "Vista Recrea" y "Concentrado" de `reportes.html` siguen leyendo el grano legacy de `calificaciones` (promedios 5–10): quedan pendientes de migrar al motor.
-- Hay dos lugares para revisar tareas: la tarjeta del Dashboard (formato viejo) y "Hoy" (grano nuevo). Retirar la del Dashboard en cuanto "Hoy" esté confirmada, para no capturar lo mismo dos veces.
-- `reportes.js` carga el grupo con `.single()`: un maestro con dos o más grupos recibe un error al abrir Reportes. Decisión de Jorge (2026-09-22): no se corrige hoy; el SaaS no está en uso real todavía.
+- Resuelto 2026-09-23 (3.7): Vista Recrea y Concentrado leen la calificación confirmada; la tarjeta vieja de tareas del Dashboard se retiró (Inicio lleva a "Hoy"); el `.single()` de grupos se reemplazó por el grupo activo en toda la app.
 - **Borrado en cascada (corregido en B.3):** `calificaciones` referencia `producto_sesion_id`, `sesion_id` y `proyecto_id` con `ON DELETE CASCADE`. Antes eran `SET NULL` y borrar una sesión o un proyecto con calificaciones fallaba con error 23503 (dos acciones de integridad en conflicto sobre la misma fila). `registro_diario`, `asistencias` y `boleta_trimestral` no cuelgan del proyecto: sobreviven.
 - Resuelto 2026-09: observaciones de boleta persistentes (tabla `boleta_trimestral`, por campo); esquema real documentado en `supabase/esquema_2026-09.sql` (los `.sql` anteriores quedan como historia).
 

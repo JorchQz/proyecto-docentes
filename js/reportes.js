@@ -9,7 +9,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 	let grupoId   = null;
 	let grupNombre = "";
 	let alumnos   = [];
-	let lastCalifData = []; // cache para CSV y concentrado
 
 	const CAMPOS = [
 		"Lenguajes",
@@ -40,6 +39,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		.eq("estatus", "activo")
 		.order("grado").order("num_lista");
 	alumnos = als || [];
+
+	// Todos los selectores de trimestre arrancan en el trimestre actual del grupo
+	["selectTrimestre", "selectTrimestreConc", "selectTrimBoleta", "selectTrimPda"].forEach(function (id) {
+		const sel = document.getElementById(id);
+		if (sel && grupo.trimestre_actual) sel.value = String(grupo.trimestre_actual);
+	});
 
 	// ── Tabs ───────────────────────────────────────────────────────
 	document.querySelectorAll(".tab-btn").forEach(function (btn) {
@@ -137,240 +142,61 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 
 	// ═══════════════════════════════════════════════════════════════
-	// TAB 2 — VISTA RECREA (Calificaciones por campo formativo)
+	// TAB 2 — VISTA RECREA  ·  TAB 3 — CONCENTRADO DIRECTOR
+	// Las dos leen la calificación OFICIAL: la confirmada por el maestro en
+	// boleta_trimestral. Lo no confirmado sale "pendiente" (Acuerdo 10/09/23, art. 4 XI).
+	// Datos: js/reporte-datos.js (motor único); render: js/reportes-grupo.js.
 	// ═══════════════════════════════════════════════════════════════
-	document.getElementById("generarCalifBtn").addEventListener("click", async function () {
-		await generarVistaRecrea();
-	});
-
-	document.getElementById("exportCsvBtn").addEventListener("click", function () {
-		if (!lastCalifData.length) return;
-		exportarCSV(lastCalifData);
-	});
-
-	async function generarVistaRecrea() {
-		const cont = document.getElementById("califContainer");
-		const trimestre = document.getElementById("selectTrimestre").value;
-		cont.innerHTML = "<p class='text-gray-400 text-sm'>Cargando calificaciones...</p>";
-
-		// Obtener IDs de proyectos del trimestre seleccionado
-		let proyIds = null;
-		if (trimestre) {
-			const { data: proyectos } = await window.sb
-				.from("proyectos")
-				.select("id")
-				.eq("maestro_id", userId)
-				.eq("grupo_id", grupoId)
-				.eq("trimestre", parseInt(trimestre));
-			if (!proyectos || !proyectos.length) {
-				cont.innerHTML = "<p class='text-gray-400'>No hay proyectos para el trimestre " + trimestre + ".</p>";
-				return;
-			}
-			proyIds = proyectos.map(function (p) { return p.id; });
-		}
-
-		let query = window.sb
-			.from("calificaciones")
-			.select("alumno_id, tipo, calificacion, campo_formativo, grado")
-			.eq("maestro_id", userId)
-			.eq("grupo_id", grupoId);
-
-		if (proyIds) {
-			query = query.in("proyecto_id", proyIds);
-		}
-
-		const { data: califs, error } = await query;
-		if (error) { cont.innerHTML = "<p class='text-red-500 text-sm'>Error al cargar calificaciones.</p>"; return; }
-
-		if (!califs || !califs.length) {
-			cont.innerHTML = "<div class='py-8 text-center'><p class='text-gray-400 text-lg mb-2'>Sin calificaciones registradas</p><p class='text-sm text-gray-400'>Las calificaciones se generan al cerrar sesiones desde el Dashboard.</p></div>";
-			return;
-		}
-
-		// Calcular promedios por alumno x campo + participación + conducta
-		const resumen = {};
-		alumnos.forEach(function (al) {
-			resumen[al.id] = {
-				nombre:  al.nombre_completo || "Sin nombre",
-				num:     al.num_lista,
-				grado:   al.grado,
-				campos:  {},
-				part:    [],
-				cond:    [],
-			};
-			CAMPOS.forEach(function (c) { resumen[al.id].campos[c] = []; });
-		});
-
-		califs.forEach(function (r) {
-			if (!resumen[r.alumno_id] || r.calificacion === null) return;
-			const cal = Number(r.calificacion);
-			if (r.tipo === "participacion") {
-				resumen[r.alumno_id].part.push(cal);
-			} else if (r.tipo === "conducta") {
-				resumen[r.alumno_id].cond.push(cal);
-			} else if (r.campo_formativo && resumen[r.alumno_id].campos[r.campo_formativo]) {
-				resumen[r.alumno_id].campos[r.campo_formativo].push(cal);
-			}
-		});
-
-		// Mostrar TODOS los alumnos — los sin datos muestran "—" para que el maestro vea quién falta
-		const filas = Object.values(resumen)
-			.sort(function (a, b) { return (a.grado || 0) - (b.grado || 0) || (a.num || 0) - (b.num || 0); });
-
-		if (!filas.length) {
-			cont.innerHTML = "<p class='text-gray-400'>Sin alumnos en el grupo.</p>";
-			return;
-		}
-
-		lastCalifData = filas;
-
-		// Renderizar tabla
-		let html = "<div class='overflow-x-auto'><table class='min-w-full text-sm border-collapse'>" +
-			"<thead><tr class='bg-gray-50 text-xs text-gray-500 uppercase'>" +
-			"<th class='px-3 py-3 text-left whitespace-nowrap'>No.</th>" +
-			"<th class='px-3 py-3 text-left whitespace-nowrap'>Alumno</th>" +
-			"<th class='px-3 py-3 text-center'>Grado</th>";
-
-		CAMPOS_CORTOS.forEach(function (c) {
-			html += "<th class='px-3 py-3 text-center whitespace-nowrap'>" + c + "</th>";
-		});
-		html += "<th class='px-3 py-3 text-center'>Part.</th>" +
-			"<th class='px-3 py-3 text-center'>Cond.</th>" +
-			"<th class='px-3 py-3 text-center font-bold text-gray-700'>Prom.</th>" +
-			"</tr></thead><tbody class='divide-y divide-gray-100'>";
-
-		filas.forEach(function (al) {
-			const campoProms = CAMPOS.map(function (c) {
-				return promedio(al.campos[c]);
-			});
-			const partProm = promedio(al.part);
-			const condProm = promedio(al.cond);
-			const todos    = campoProms.filter(function (v) { return v !== null; })
-				.concat(partProm !== null ? [partProm] : [])
-				.concat(condProm !== null ? [condProm] : []);
-			const promTotal = todos.length ? Math.round(todos.reduce(function (a, b) { return a + b; }, 0) / todos.length) : null;
-
-			html += "<tr class='hover:bg-gray-50'>" +
-				"<td class='px-3 py-3 text-gray-500'>" + (al.num || "") + "</td>" +
-				"<td class='px-3 py-3 font-medium text-gray-800 whitespace-nowrap'>" + esc(al.nombre) + "</td>" +
-				"<td class='px-3 py-3 text-center'>" + (al.grado ? al.grado + "°" : "—") + "</td>";
-
-			campoProms.forEach(function (v) {
-				html += "<td class='px-3 py-3 text-center'>" + celdaCalif(v) + "</td>";
-			});
-			html += "<td class='px-3 py-3 text-center'>" + celdaCalif(partProm) + "</td>" +
-				"<td class='px-3 py-3 text-center'>" + celdaCalif(condProm) + "</td>" +
-				"<td class='px-3 py-3 text-center'><span class='font-bold text-base " + colorCalif(promTotal) + "'>" +
-				(promTotal !== null ? promTotal : "—") + "</span></td>" +
-				"</tr>";
-		});
-
-		html += "</tbody></table></div>";
-		cont.innerHTML = html;
+	let ctxReportes = null;
+	async function filasGrupo(trimestre) {
+		if (!ctxReportes) ctxReportes = await window.ReporteDatos.contexto(window.sb);
+		const datos = await window.ReporteDatos.grupoTrimestre(window.sb, ctxReportes, trimestre);
+		return window.ReportesGrupo.filas(ctxReportes.alumnos, datos, trimestre);
 	}
 
-	// ═══════════════════════════════════════════════════════════════
-	// TAB 3 — CONCENTRADO DIRECTOR
-	// ═══════════════════════════════════════════════════════════════
-	document.getElementById("generarConcBtn").addEventListener("click", async function () {
-		const cont = document.getElementById("concentradoContainer");
-		const trimestre = document.getElementById("selectTrimestreConc").value;
-
-		// Reusar datos cacheados si el trimestre coincide con Vista Recrea
-		const trimestreCalif = document.getElementById("selectTrimestre").value;
-		let filas = [];
-
-		if (lastCalifData.length && trimestreCalif === trimestre) {
-			filas = lastCalifData;
-		} else {
-			cont.innerHTML = "<p class='text-gray-400 text-sm'>Generando desde calificaciones...</p>";
-
-			let proyIds = null;
-			if (trimestre) {
-				const { data: proyectos } = await window.sb
-					.from("proyectos").select("id")
-					.eq("maestro_id", userId).eq("grupo_id", grupoId)
-					.eq("trimestre", parseInt(trimestre));
-				if (proyectos && proyectos.length) proyIds = proyectos.map(function (p) { return p.id; });
-			}
-
-			let q = window.sb.from("calificaciones")
-				.select("alumno_id, tipo, calificacion, campo_formativo, grado")
-				.eq("maestro_id", userId).eq("grupo_id", grupoId);
-			if (proyIds) q = q.in("proyecto_id", proyIds);
-
-			const { data: califs, error } = await q;
-			if (error || !califs || !califs.length) {
-				cont.innerHTML = "<p class='text-gray-400'>Sin calificaciones para este período.</p>";
-				return;
-			}
-
-			const resumen = {};
-			alumnos.forEach(function (al) {
-				resumen[al.id] = { nombre: al.nombre_completo, grado: al.grado, todos: [] };
-			});
-			califs.forEach(function (r) {
-				if (!resumen[r.alumno_id] || r.calificacion === null) return;
-				resumen[r.alumno_id].todos.push(Number(r.calificacion));
-			});
-
-			filas = Object.values(resumen)
-				.filter(function (al) { return al.todos.length; })
-				.map(function (al) {
-					const prom = al.todos.reduce(function (a, b) { return a + b; }, 0) / al.todos.length;
-					return { nombre: al.nombre, grado: al.grado, promedio: Math.round(prom) };
-				})
-				.sort(function (a, b) { return b.promedio - a.promedio; });
+	async function pintarGrupo(contId, trimestre, render) {
+		const cont = document.getElementById(contId);
+		cont.innerHTML = "<p class='text-gray-400 text-sm'>Cargando calificaciones...</p>";
+		try {
+			cont.innerHTML = render(await filasGrupo(trimestre), trimestre);
+		} catch (e) {
+			console.error("reportes de grupo:", e);
+			cont.innerHTML = "<p class='text-red-500 text-sm'>No se pudieron cargar las calificaciones: " +
+				esc(e.message || "error desconocido") + "</p>";
 		}
+	}
 
-		if (!filas.length) { cont.innerHTML = "<p class='text-gray-400'>Sin datos para este período.</p>"; return; }
+	document.getElementById("generarCalifBtn").addEventListener("click", function () {
+		pintarGrupo("califContainer", parseInt(document.getElementById("selectTrimestre").value, 10),
+			window.ReportesGrupo.htmlVistaRecrea);
+	});
 
-		const calcProm = function (fila) {
-			const campoProms = CAMPOS.map(function (c) { return promedio(fila.campos ? (fila.campos[c] || []) : []); });
-			const partP = promedio(fila.part || []);
-			const condP = promedio(fila.cond || []);
-			const todos = campoProms.filter(Boolean)
-				.concat(partP !== null ? [partP] : [])
-				.concat(condP !== null ? [condP] : []);
-			return todos.length ? Math.round(todos.reduce(function (a, b) { return a + b; }, 0) / todos.length) : (fila.promedio || null);
-		};
+	document.getElementById("exportCsvBtn").addEventListener("click", async function () {
+		const btn = this;
+		const trimestre = parseInt(document.getElementById("selectTrimestre").value, 10);
+		btn.disabled = true;
+		try {
+			const csv = window.ReportesGrupo.csvVistaRecrea(await filasGrupo(trimestre));
+			const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = "vista-recrea-" + (grupNombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+				.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "grupo") + "-T" + trimestre + ".csv";
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			console.error("vista recrea (csv):", e);
+			window.alert("No se pudo exportar: " + (e.message || "error desconocido"));
+		}
+		btn.disabled = false;
+	});
 
-		const bajo  = filas.filter(function (f) { const p = calcProm(f); return p !== null && p <= 6; });
-		const medio = filas.filter(function (f) { const p = calcProm(f); return p !== null && p >= 7 && p <= 8; });
-		const alto  = filas.filter(function (f) { const p = calcProm(f); return p !== null && p >= 9; });
-
-		const bloque = function (titulo, color, lista) {
-			if (!lista.length) return "";
-			const items = lista.map(function (al) {
-				const p = calcProm(al);
-				return "<li class='flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0'>" +
-					"<span class='text-sm text-gray-800'>" + esc(al.nombre) + (al.grado ? " <span class='text-xs text-gray-400'>" + al.grado + "°</span>" : "") + "</span>" +
-					"<span class='text-sm font-bold " + colorCalif(p) + "'>" + (p !== null ? p : "—") + "</span>" +
-					"</li>";
-			}).join("");
-			return "<div class='rounded-xl border " + color.border + " overflow-hidden'>" +
-				"<div class='" + color.header + " px-4 py-3 flex justify-between items-center'>" +
-				"<span class='font-bold text-sm'>" + titulo + "</span>" +
-				"<span class='text-sm font-semibold'>" + lista.length + " alumno" + (lista.length !== 1 ? "s" : "") + "</span>" +
-				"</div><ul class='px-4 py-1'>" + items + "</ul></div>";
-		};
-
-		cont.innerHTML =
-			"<div class='flex flex-col gap-4'>" +
-			bloque("Alto (9-10)", { border: "border-green-200", header: "bg-green-50 text-green-800" }, alto) +
-			bloque("Medio (7-8)", { border: "border-yellow-200", header: "bg-yellow-50 text-yellow-800" }, medio) +
-			bloque("Bajo (5-6)",  { border: "border-red-200",   header: "bg-red-50 text-red-800"   }, bajo) +
-			"<p class='text-xs text-gray-400 text-right'>Total: " + (alto.length + medio.length + bajo.length) + " alumnos con datos</p>" +
-			"</div>";
+	document.getElementById("generarConcBtn").addEventListener("click", function () {
+		pintarGrupo("concentradoContainer", parseInt(document.getElementById("selectTrimestreConc").value, 10),
+			window.ReportesGrupo.htmlConcentrado);
 	});
 
 	// ── Helpers ────────────────────────────────────────────────────
-	function promedio(arr) {
-		if (!arr || !arr.length) return null;
-		const sum = arr.reduce(function (a, b) { return a + b; }, 0);
-		return Math.round(sum / arr.length);
-	}
-
 	function colorCalif(v) {
 		if (v === null || v === undefined) return "text-gray-400";
 		if (v >= 9) return "text-green-600";
@@ -378,44 +204,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return "text-red-500";
 	}
 
-	function celdaCalif(v) {
-		if (v === null || v === undefined) return "<span class='text-gray-300'>—</span>";
-		return "<span class='font-semibold " + colorCalif(v) + "'>" + v + "</span>";
-	}
-
-	function exportarCSV(filas) {
-		const cabecera = ["No.", "Alumno", "Grado"].concat(CAMPOS).concat(["Participacion", "Conducta", "Promedio"]);
-		const lineas = [cabecera.join(",")];
-
-		filas.forEach(function (al) {
-			const campoProms = CAMPOS.map(function (c) {
-				return promedio(al.campos ? (al.campos[c] || []) : []) ?? "";
-			});
-			const partP = promedio(al.part || []) ?? "";
-			const condP = promedio(al.cond || []) ?? "";
-			const todos = [].concat(campoProms.filter(function (v) { return v !== ""; }))
-				.concat(partP !== "" ? [partP] : [])
-				.concat(condP !== "" ? [condP] : []);
-			const promT = todos.length ? Math.round(todos.reduce(function (a, b) { return Number(a) + Number(b); }, 0) / todos.length) : "";
-
-			const fila = [al.num || "", '"' + (al.nombre || "") + '"', al.grado || ""]
-				.concat(campoProms)
-				.concat([partP, condP, promT]);
-			lineas.push(fila.join(","));
-		});
-
-		const blob = new Blob(["﻿" + lineas.join("\n")], { type: "text/csv;charset=utf-8;" });
-		const url  = URL.createObjectURL(blob);
-		const a    = document.createElement("a");
-		a.href     = url;
-		a.download = "vista-recrea-" + grupNombre + ".csv";
-		a.click();
-		URL.revokeObjectURL(url);
-	}
-
+	// También comillas: varios textos van dentro de atributos (data-inicial='…'), y un
+	// apóstrofo del maestro cortaba el atributo
 	function esc(str) {
-		return String(str || "")
-			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+		return String(str === null || str === undefined ? "" : str)
+			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 	}
 
 	// Fecha local del maestro, no UTC: a las 7 de la tarde en México, UTC ya es mañana
@@ -455,21 +249,47 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return bandasPPM;
 	}
 
-	// Datos del grupo para la cabecera (escuela, ciclo)
-	let boletaGrupoInfo = { escuela: "", ciclo: "" };
+	/*
+		Redacción con IA (B.7 Capa 2). La llave vive solo en la Edge Function
+		redactar-boleta; aquí solo se pregunta si está configurada. Sin llave, el botón
+		no aparece (bandera) y la boleta funciona igual con la Capa 1.
+	*/
+	let iaDisponible = null;
+	async function estadoIa() {
+		if (iaDisponible !== null) return iaDisponible;
+		try {
+			const { data, error } = await window.sb.functions.invoke("redactar-boleta", { body: { accion: "estado" } });
+			iaDisponible = !error && !!(data && data.configurada);
+		} catch (e) {
+			iaDisponible = false;
+		}
+		return iaDisponible;
+	}
+
+	// Datos del grupo para la cabecera (escuela, ciclo): ya vienen con el grupo activo.
+	// Antes se pedían aparte y una boleta generada muy rápido podía salir sin ciclo.
+	const boletaGrupoInfo = { escuela: grupo.escuela || "", ciclo: grupo.ciclo_escolar || "" };
 	let boletaResumenTexto = ""; // resumen plano para WhatsApp
 	let boletaCtx = null; // { alumnoId, ciclo, trimestre } de la boleta en pantalla (para autosave)
+	let boletaFilas = {}; // filas de boleta_trimestral en pantalla, por campo (para autosave)
 
-	// Cargar info extra del grupo (escuela, ciclo escolar)
-	(async function cargarInfoGrupoBoleta() {
-		const { data: g } = await window.sb
-			.from("grupos").select("escuela, ciclo_escolar")
-			.eq("id", grupoId).maybeSingle();
-		if (g) {
-			boletaGrupoInfo.escuela = g.escuela || "";
-			boletaGrupoInfo.ciclo   = g.ciclo_escolar || "";
+	/*
+		PostgREST arma un upsert de varias filas con la UNIÓN de sus columnas y a la fila
+		que no trae una columna le pone NULL: así se borraban los textos del maestro (y
+		podía borrarse una calificación confirmada) cuando se guardaban juntas filas de
+		distinta forma. Se agrupan por forma y va un upsert por grupo.
+	*/
+	async function upsertPorForma(tabla, filas, onConflict) {
+		const grupos = {};
+		filas.forEach(function (f) {
+			const forma = Object.keys(f).sort().join(",");
+			(grupos[forma] = grupos[forma] || []).push(f);
+		});
+		for (const forma of Object.keys(grupos)) {
+			const { error } = await window.sb.from(tabla).upsert(grupos[forma], { onConflict: onConflict });
+			if (error) throw error;
 		}
-	})();
+	}
 
 	// Poblar selector de alumnos
 	(function poblarAlumnosBoleta() {
@@ -512,11 +332,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return (grado >= 1 && grado <= 2) ? 6 : 5;
 	}
 
-	// Un decimal: redondear a entero mostraba "50 %" junto a un 5 cuando el valor real
-	// era 49.86 % (la escala pone el 6 a partir de 50). Con un decimal el número cuadra.
+	// Un decimal y truncado, no redondeado: 49.86 % se veía "50 %" junto a un 5 (la
+	// escala pone el 6 a partir de 50). Truncar evita que 49.97 se lea "50.0 %".
 	function fmtPct(v) {
 		if (v === null || v === undefined) return "—";
-		return (Math.round(v * 10) / 10).toFixed(1) + " %";
+		return (Math.floor(v * 10 + 1e-9) / 10).toFixed(1) + " %";
 	}
 
 	function fmtRubro(rubro) {
@@ -563,7 +383,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const asistenciaPct = motor.asistencia.porcentaje;
 
 		// 2. Evaluación diagnóstica del trimestre + bandas de fluidez
-		const { data: diagnostica } = await window.sb
+		let { data: diagnostica } = await window.sb
 			.from("evaluacion_diagnostica").select("*")
 			.eq("alumno_id", alumnoId).eq("maestro_id", userId)
 			.eq("momento", "trimestre_" + trimestre).maybeSingle();
@@ -621,11 +441,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 					calificacion: propuesta, nivel: datos.nivel,
 				});
 			});
-			if (upserts.length) {
-				const { error: upErr } = await window.sb.from("boleta_trimestral")
-					.upsert(upserts, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
-				if (upErr) throw upErr;
-			}
+			// Confirmadas (solo %) y sin confirmar (con número) tienen forma distinta
+			if (upserts.length) await upsertPorForma("boleta_trimestral", upserts, "maestro_id,alumno_id,ciclo,trimestre,campo");
 		} catch (e) {
 			console.error("boleta_trimestral (numérico):", e);
 		}
@@ -652,6 +469,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		await guardarTextosPropuestos(textos, boletaPorCampo, {
 			alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
 		}, false);
+
+		const conIa = !todoCerrado && await estadoIa();
 
 		// ── Renderizar boleta ──
 		const cabecera =
@@ -826,27 +645,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Sección 4: Observaciones + firmas.
 		// El texto lo PROPONE la Capa 1 (js/textos-boleta.js, reglas sin IA) y se guarda
-		// en boleta_trimestral.texto_autogenerado. Los cuadros solo se rellenan solos
-		// mientras editado_manual sea false: lo que el maestro escribe nunca se pisa.
-		const CLASE_TA = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none";
-		const obsTrabajo = (diagnostica && diagnostica.observaciones)
+		// en boleta_trimestral.texto_autogenerado. Cada cuadro se rellena solo mientras el
+		// maestro no lo haya escrito (TextosBoleta.esEditado): lo suyo nunca se pisa, ni
+		// siquiera si lo dejó vacío a propósito.
+		// field-sizing: el cuadro crece con su texto (antes 2 renglones escondían casi todo)
+		const CLASE_TA = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none [field-sizing:content] min-h-[4.5rem]";
+		// null = el maestro no lo ha escrito (propuesta); "" = lo vació a propósito
+		const obsTrabajo = (diagnostica && diagnostica.observaciones !== null && diagnostica.observaciones !== undefined)
 			? diagnostica.observaciones : textos.trabajoDiario;
+		boletaFilas = boletaPorCampo;
+
+		function renglones(texto) {
+			return Math.max(3, Math.min(10, Math.ceil(String(texto || "").length / 45) + 1));
+		}
 
 		function valorTexto(codigo, tipoTexto, generado) {
 			const fila = boletaPorCampo[codigo] || {};
-			if (fila.editado_manual && fila[tipoTexto]) return fila[tipoTexto];
+			if (window.TextosBoleta.esEditado(fila, tipoTexto)) return fila[tipoTexto] || "";
 			return fila[tipoTexto] || generado || "";
 		}
 
 		function textareaBoleta(codigo, tipoTexto, label, generado) {
 			const fila = boletaPorCampo[codigo] || {};
 			const valor = valorTexto(codigo, tipoTexto, generado);
-			const marca = fila.editado_manual
+			const deIa = (fila.texto_autogenerado || {}).visible === "ia" && fila[tipoTexto];
+			const marca = window.TextosBoleta.esEditado(fila, tipoTexto)
 				? "<span class='text-xs font-normal text-gray-400 ml-1'>(tuyo)</span>"
+				: deIa ? "<span class='text-xs font-normal text-violet-600 ml-1'>(redactado con IA)</span>"
 				: (generado ? "<span class='text-xs font-normal text-blue-500 ml-1'>(propuesto)</span>" : "");
 			return "<div><label class='block text-xs font-semibold text-gray-600 mb-1'>" + label + marca + "</label>" +
 				"<textarea data-boleta-campo='" + codigo + "' data-boleta-tipo='" + tipoTexto + "'" +
-				" data-inicial='" + esc(valor) + "' rows='2' class='" + CLASE_TA + "'>" +
+				" data-inicial='" + esc(valor) + "' rows='" + renglones(valor) + "' class='" + CLASE_TA + "'>" +
 				esc(valor) + "</textarea></div>";
 		}
 
@@ -870,11 +699,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<h3 class='font-bold text-gray-800 mb-2'>4. Observaciones del docente</h3>" +
 			"<div class='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 no-print'>" +
 			"<p class='text-xs text-blue-800'>Los textos marcados como <span class='font-semibold'>propuestos</span> salen de lo que ya capturaste. Edita lo que quieras: lo que escribas queda como tuyo y no se vuelve a sobreescribir.</p>" +
-			"<button id='boletaRegenerarBtn' type='button' class='min-h-[44px] px-4 rounded-lg border border-blue-300 bg-white text-sm font-medium text-blue-700 hover:bg-blue-100 shrink-0'>Volver a proponer</button>" +
-			"</div>" +
+			"<div class='flex flex-wrap gap-2 shrink-0'>" +
+			(conIa
+				? "<button id='boletaIaBtn' type='button' title='Reescribe los textos propuestos con mejor redacción. Los que editaste no se tocan.' class='min-h-[44px] px-4 rounded-lg border border-violet-300 bg-white text-sm font-medium text-violet-700 hover:bg-violet-50'>Redactar con IA</button>"
+				: "") +
+			"<button id='boletaRegenerarBtn' type='button' class='min-h-[44px] px-4 rounded-lg border border-blue-300 bg-white text-sm font-medium text-blue-700 hover:bg-blue-100'>Volver a proponer</button>" +
+			"</div></div>" +
 			"<div class='flex flex-col gap-3 mb-6'>" +
 			"<div><label class='block text-xs font-semibold text-gray-600 mb-1'>Trabajo diario</label>" +
-			"<textarea id='boletaObsTrabajo' rows='2' class='" + CLASE_TA + "'>" + esc(obsTrabajo) + "</textarea></div>" +
+			"<textarea id='boletaObsTrabajo' rows='" + renglones(obsTrabajo) + "' class='" + CLASE_TA + "'>" + esc(obsTrabajo) + "</textarea></div>" +
 			bloquesCampos +
 			bloqueTextos("GEN", "Observaciones generales", textos.GEN) +
 			"</div>" +
@@ -946,23 +779,62 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		}
 
+		// "Redactar con IA": la función de servidor reescribe la propuesta y solo copia
+		// a los cuadros que el maestro no ha editado
+		const iaBtn = document.getElementById("boletaIaBtn");
+		if (iaBtn) {
+			iaBtn.addEventListener("click", async function () {
+				iaBtn.disabled = true;
+				iaBtn.textContent = "Redactando...";
+				const { error } = await window.sb.functions.invoke("redactar-boleta", {
+					body: { accion: "redactar", alumno_id: alumnoId, ciclo: cicloBoleta, trimestre: trimestre },
+				});
+				if (error) {
+					let mensaje = "No se pudo redactar con IA.";
+					try {
+						const cuerpo = await error.context.json();
+						if (cuerpo && cuerpo.error) mensaje = cuerpo.error;
+					} catch (e) {}
+					window.alert(mensaje);
+					iaBtn.disabled = false;
+					iaBtn.textContent = "Redactar con IA";
+					return;
+				}
+				await generarBoleta();
+			});
+		}
+
 		// Trabajo diario: es la observación del trimestre, vive en evaluacion_diagnostica
+		// Si ya hay diagnóstico del trimestre se actualiza solo la observación (su fecha es
+		// la de la evaluación, no la de hoy); si no, se crea con la fecha de hoy. Vaciarlo
+		// guarda "" (vacío a propósito), que ya no se vuelve a proponer.
 		const obsTrabajoEl = document.getElementById("boletaObsTrabajo");
 		if (obsTrabajoEl) {
-			obsTrabajoEl.addEventListener("blur", async function () {
+			let guardadoTrabajo = (obsTrabajo || "").trim();
+			const guardarTrabajo = async function () {
 				const valor = obsTrabajoEl.value.trim();
-				if (valor === (obsTrabajo || "").trim()) return;
+				if (valor === guardadoTrabajo) return;
+				guardadoTrabajo = valor;
 				try {
-					const { error } = await window.sb.from("evaluacion_diagnostica").upsert({
-						maestro_id: userId, alumno_id: alumnoId, grupo_id: grupoId,
-						momento: "trimestre_" + trimestre, fecha: getLocalDateISO(),
-						observaciones: valor || null,
-					}, { onConflict: "maestro_id,alumno_id,momento" });
-					if (error) throw error;
+					if (diagnostica && diagnostica.id) {
+						const { error } = await window.sb.from("evaluacion_diagnostica")
+							.update({ observaciones: valor }).eq("id", diagnostica.id).eq("maestro_id", userId);
+						if (error) throw error;
+					} else {
+						const { data, error } = await window.sb.from("evaluacion_diagnostica").upsert({
+							maestro_id: userId, alumno_id: alumnoId, grupo_id: grupoId,
+							momento: "trimestre_" + trimestre, fecha: getLocalDateISO(),
+							observaciones: valor,
+						}, { onConflict: "maestro_id,alumno_id,momento" }).select("id").single();
+						if (error) throw error;
+						diagnostica = Object.assign({}, diagnostica || {}, { id: data.id, observaciones: valor });
+					}
 				} catch (err) {
 					console.error("evaluacion_diagnostica (trabajo diario):", err);
 				}
-			});
+			};
+			obsTrabajoEl.addEventListener("blur", guardarTrabajo);
+			obsTrabajoEl.addEventListener("input", conPausa(obsTrabajoEl, guardarTrabajo));
 		}
 
 		const cerrarBtn = document.getElementById("boletaCerrarBtn");
@@ -979,8 +851,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Construir resumen plano para WhatsApp
 		const lineCF = CAMPOS_CORTOS.map(function (corto, i) {
-			const oficial = oficialPorCampo[CODIGOS[i]];
-			return corto + ": " + (oficial !== undefined && oficial !== null ? oficial : "—");
+			const fila = boletaPorCampo[CODIGOS[i]] || {};
+			return corto + ": " + (fila.calificacion_confirmada && fila.calificacion !== null && fila.calificacion !== undefined
+				? fila.calificacion : "pendiente");
 		}).join(" | ");
 		const asisTexto = (diasTotal > 0) ? (diasPresente + "/" + diasTotal + " días") : "—";
 		boletaResumenTexto =
@@ -1035,27 +908,32 @@ document.addEventListener("DOMContentLoaded", async function () {
 				sugerencias: window.TextosBoleta.comoParrafo(generado.sugerencias),
 				generado_en: new Date().toISOString(),
 			};
+			const TB = window.TextosBoleta;
+			const previo = fila.texto_autogenerado || {};
+			// Lo que redactó la IA (Capa 2) se conserva: la Capa 1 solo lo reemplaza si el
+			// maestro pide "Volver a proponer"
+			const conIa = !forzar && previo.visible === "ia";
+			// Cuadros que escribió el maestro: se respetan (incluso vacíos) salvo "Volver a proponer"
+			const editados = forzar ? [] : TB.TIPOS_TEXTO.filter(function (t) { return TB.esEditado(fila, t); });
+			const aEscribir = conIa ? [] : TB.TIPOS_TEXTO.filter(function (t) { return editados.indexOf(t) === -1; });
 			const payload = {
 				maestro_id: userId, alumno_id: ctx.alumnoId, ciclo: ctx.ciclo,
 				trimestre: ctx.trimestre, campo: codigo,
-				texto_autogenerado: propuesta,
+				texto_autogenerado: Object.assign({}, propuesta,
+					previo.ia ? { ia: previo.ia } : {},
+					{ visible: conIa ? "ia" : "reglas", editados: editados }),
 			};
-			const sinTocar = forzar || !fila.editado_manual;
-			if (sinTocar) {
-				payload.fortalezas = propuesta.fortalezas || null;
-				payload.areas_oportunidad = propuesta.areas_oportunidad || null;
-				payload.sugerencias = propuesta.sugerencias || null;
-				if (forzar) payload.editado_manual = false;
-				// El estado local también, para que el render muestre lo mismo que se guardó
-				boletaPorCampo[codigo] = Object.assign({}, fila, payload);
-			}
+			aEscribir.forEach(function (t) { payload[t] = propuesta[t] || null; });
+			if (forzar) payload.editado_manual = false;
+			// El estado local también, para que el render muestre lo mismo que se guardó
+			boletaPorCampo[codigo] = Object.assign({}, fila, payload);
 			filas.push(payload);
 		});
 		if (!filas.length) return;
 		try {
-			const { error } = await window.sb.from("boleta_trimestral")
-				.upsert(filas, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
-			if (error) throw error;
+			// Filas con y sin cuadros visibles tienen forma distinta: un upsert por forma,
+			// o PostgREST le pone NULL a los cuadros que una fila no trae
+			await upsertPorForma("boleta_trimestral", filas, "maestro_id,alumno_id,ciclo,trimestre,campo");
 		} catch (e) {
 			console.error("boleta_trimestral (textos):", e);
 		}
@@ -1205,27 +1083,51 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<p class='text-xs text-gray-400 mt-3'>Ordenado por lo que más hay que reforzar. Cada alumno cuenta con su nivel predominante en ese PDA.</p>";
 	}
 
+	// Llama a fn cuando el elemento lleva ~1 s sin cambios (un temporizador por elemento)
+	function conPausa(el, fn) {
+		return function () {
+			clearTimeout(el._pausa);
+			el._pausa = setTimeout(fn, 1000);
+		};
+	}
+
 	// ── Autosave de observaciones de boleta (on-blur, upsert por campo) ──
-	// Editar a mano marca editado_manual = true: el motor de textos automáticos
-	// (Parte B) nunca sobreescribirá lo que el maestro escribió.
+	// Editar a mano marca editado_manual = true y anota ESE cuadro en
+	// texto_autogenerado.editados: la Capa 1 nunca sobreescribe lo que el maestro
+	// escribió (ni si lo dejó vacío), y los otros dos cuadros del campo siguen
+	// recibiendo propuestas.
 	const boletaContEl = document.getElementById("boletaContainer");
 	if (boletaContEl) {
-		boletaContEl.addEventListener("blur", async function (e) {
-			const ta = e.target.closest ? e.target.closest("textarea[data-boleta-campo]") : null;
+		const guardarCuadro = async function (ta) {
 			if (!ta || !boletaCtx) return;
 			// Salir del cuadro sin cambiar nada NO cuenta como edición: si contara, el
 			// primer clic marcaría el texto como del maestro y ya no se volvería a proponer.
 			if (ta.value === (ta.dataset.inicial || "")) return;
 			ta.dataset.inicial = ta.value;
+			const campo = ta.dataset.boletaCampo;
+			const tipo = ta.dataset.boletaTipo;
+			const fila = boletaFilas[campo] || {};
+			const previo = fila.texto_autogenerado || {};
+			const TB = window.TextosBoleta;
+			const editados = TB.TIPOS_TEXTO.filter(function (t) { return t === tipo || TB.esEditado(fila, t); });
 			const payload = {
 				maestro_id: userId,
 				alumno_id: boletaCtx.alumnoId,
 				ciclo: boletaCtx.ciclo,
 				trimestre: boletaCtx.trimestre,
-				campo: ta.dataset.boletaCampo,
+				campo: campo,
 				editado_manual: true,
+				texto_autogenerado: Object.assign({}, previo, { editados: editados }),
 			};
-			payload[ta.dataset.boletaTipo] = ta.value.trim() || null;
+			payload[tipo] = ta.value.trim() || null;
+			boletaFilas[campo] = Object.assign({}, fila, payload);
+			// La marca "(tuyo)" del cuadro, sin volver a pintar toda la boleta
+			const etiqueta = ta.parentElement ? ta.parentElement.querySelector("label") : null;
+			if (etiqueta) {
+				const marca = etiqueta.querySelector("span");
+				if (marca) marca.remove();
+				etiqueta.insertAdjacentHTML("beforeend", "<span class='text-xs font-normal text-gray-400 ml-1'>(tuyo)</span>");
+			}
 			try {
 				const { error } = await window.sb.from("boleta_trimestral")
 					.upsert(payload, { onConflict: "maestro_id,alumno_id,ciclo,trimestre,campo" });
@@ -1233,50 +1135,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} catch (err) {
 				console.error("boleta_trimestral (texto):", err);
 			}
+		};
+		boletaContEl.addEventListener("blur", function (e) {
+			const ta = e.target.closest ? e.target.closest("textarea[data-boleta-campo]") : null;
+			if (ta) guardarCuadro(ta);
 		}, true); // captura: blur no burbujea
+		// También mientras escribe (tras una pausa): recargar sin salir del cuadro ya no
+		// pierde lo escrito
+		boletaContEl.addEventListener("input", function (e) {
+			const ta = e.target.closest ? e.target.closest("textarea[data-boleta-campo]") : null;
+			if (ta) conPausa(ta, function () { return guardarCuadro(ta); })();
+		});
 	}
 
 	// ── Botones de distribución de la boleta ──
-	const boletaImprimirBtn = document.getElementById("boletaImprimirBtn");
-	if (boletaImprimirBtn) {
-		boletaImprimirBtn.addEventListener("click", function () {
-			const el = document.getElementById("boletaContainer");
-			if (!el.querySelector("table")) return;
-			const alSel = document.getElementById("selectAlumnoBoleta");
-			const nombre = alSel.options[alSel.selectedIndex] ? alSel.options[alSel.selectedIndex].text : "alumno";
-			html2pdf().set({
-				margin: 0.5,
-				filename: "boleta-" + nombre.replace(/[^a-zA-Z0-9]+/g, "-") + ".pdf",
-				html2canvas: { scale: 2 },
-				jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-			}).from(el).save();
-		});
+	// Enlaces a la boleta imprimible y al reporte detallado del alumno elegido
+	function enlaceAlumno(pagina) {
+		const alumnoId = document.getElementById("selectAlumnoBoleta").value;
+		const trimestre = document.getElementById("selectTrimBoleta").value;
+		if (!alumnoId) return;
+		window.open(pagina + "?alumno=" + encodeURIComponent(alumnoId) + "&trimestre=" + encodeURIComponent(trimestre), "_blank");
 	}
+	const boletaImprimirBtn = document.getElementById("boletaImprimirBtn");
+	if (boletaImprimirBtn) boletaImprimirBtn.addEventListener("click", function () { enlaceAlumno("boleta.html"); });
+	const boletaReporteBtn = document.getElementById("boletaReporteBtn");
+	if (boletaReporteBtn) boletaReporteBtn.addEventListener("click", function () { enlaceAlumno("reporte-alumno.html"); });
 
 	const boletaWhatsappBtn = document.getElementById("boletaWhatsappBtn");
 	if (boletaWhatsappBtn) {
 		boletaWhatsappBtn.addEventListener("click", function () {
 			if (!boletaResumenTexto) return;
 			window.open("https://wa.me/?text=" + encodeURIComponent(boletaResumenTexto), "_blank");
-		});
-	}
-
-	const boletaImagenBtn = document.getElementById("boletaImagenBtn");
-	if (boletaImagenBtn) {
-		boletaImagenBtn.addEventListener("click", function () {
-			const el = document.getElementById("boletaContainer");
-			if (!el.querySelector("table")) return;
-			// html2canvas no está disponible como global; usar window.print como fallback
-			if (typeof html2canvas === "function") {
-				html2canvas(el, { scale: 2 }).then(function (canvas) {
-					const link = document.createElement("a");
-					link.download = "boleta.png";
-					link.href = canvas.toDataURL("image/png");
-					link.click();
-				});
-			} else {
-				window.print();
-			}
 		});
 	}
 });

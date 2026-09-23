@@ -3,6 +3,7 @@
 -- Copia de las migraciones aplicadas en producción (aditivas):
 --   20260923074936  b7_plantillas_sugerencia
 --   20260923075246  b8_calificaciones_boleta_por_lote
+--   (siguiente)     b7_plantillas_calidad_y_descripciones
 -- ============================================================================
 
 -- ── b7_plantillas_sugerencia ────────────────────────────────────────────────
@@ -49,3 +50,19 @@ returns smallint[] language sql immutable set search_path = public as $$
   from unnest(p_porcentajes, p_grados) with ordinality as t(p, g, i)
 $$;
 grant execute on function public.calcular_calificaciones_boleta(numeric[], smallint[]) to authenticated;
+
+-- ── b7_plantillas_calidad_y_descripciones (corrección tras la revisión #2 de 3.2) ──
+-- Los hábitos se miden por ENTREGA y la calidad de lo entregado es otra frase, con su
+-- propia sugerencia. Solo el catálogo global; ningún dato de maestros.
+insert into public.plantillas_sugerencia (clave, texto, descripcion) values
+  ('calidad', 'Platicar en casa sobre lo que hace en clase y repasar juntos lo que se le dificulta.',
+   'Calidad de los trabajos entregados por debajo de 60 % (al menos 2 entregados)')
+on conflict (clave) do nothing;
+
+update public.plantillas_sugerencia set descripcion = 'Entrega de tareas por debajo de 60 % (al menos 2 tareas revisadas)', actualizado_en = now() where clave = 'tareas';
+update public.plantillas_sugerencia set descripcion = 'Trabajos terminados por debajo de 60 % (al menos 2 revisados; incompleto no cuenta como terminado)', actualizado_en = now() where clave = 'trabajos';
+update public.plantillas_sugerencia set descripcion = 'Participación: promedio por debajo del valor normal del día (1 de 2)', actualizado_en = now() where clave = 'participacion';
+update public.plantillas_sugerencia set descripcion = 'Conducta: promedio por debajo del valor normal del día (1 de 2)', actualizado_en = now() where clave = 'conducta';
+update public.plantillas_sugerencia set descripcion = 'Examen por debajo de 60 % en uno o más campos', actualizado_en = now() where clave = 'examen';
+update public.plantillas_sugerencia set descripcion = 'Varios PDA en requiere apoyo con tendencia a mejorar (en plural: "estos puntos")', actualizado_en = now() where clave = 'pda_mejora';
+update public.plantillas_sugerencia set descripcion = 'PDA en requiere apoyo (si son varios, se dice "estos aprendizajes")', actualizado_en = now() where clave = 'pda_apoyo';

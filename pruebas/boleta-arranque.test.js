@@ -66,6 +66,8 @@ const PRODUCTOS = [
 	{ id: "pr1", sesion_id: "s1", tipo: "tarea", campo: "LEN", grados: ["2"], activo: true },
 	{ id: "pr2", sesion_id: "s1", tipo: "trabajo", campo: "LEN", grados: ["2"], activo: true },
 	{ id: "pr3", sesion_id: "s2", tipo: "trabajo", campo: "SAB", grados: ["2"], activo: true },
+	// Segunda tarea: con una sola no se afirma nada (EVIDENCIAS_MINIMAS = 2)
+	{ id: "pr4", sesion_id: "s1", tipo: "tarea", campo: "LEN", grados: ["2"], activo: true },
 ];
 const DATOS = {
 	grupos: [{ id: "g1", nombre: "Multigrado", escuela: "Escuela de prueba", ciclo_escolar: "2025-2026" }],
@@ -83,6 +85,7 @@ const DATOS = {
 		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr1", estado_entrega: "no_entregado", nivel: null, puntaje: null },
 		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr2", estado_entrega: "entregado", nivel: "requiere_apoyo", puntaje: null },
 		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr3", estado_entrega: "entregado", nivel: "logrado", puntaje: null },
+		{ alumno_id: "al-2", proyecto_id: "p1", producto_sesion_id: "pr4", estado_entrega: "no_entregado", nivel: null, puntaje: null },
 	],
 	registro_diario: [{ alumno_id: "al-2", fecha: "2026-09-21", participacion: 2, conducta: 2 }, { alumno_id: "al-2", fecha: "2026-09-22", participacion: 2, conducta: 2 }],
 	asistencias: [{ alumno_id: "al-2", asistencia_estado: "presente" }, { alumno_id: "al-2", asistencia_estado: "presente" }, { alumno_id: "al-2", asistencia_estado: "ausente" }],
@@ -192,7 +195,7 @@ new Function(codigo)();
 	contiene("la lectura lenta se señala", html, "velocidad de lectura está por debajo");
 	contiene("con su sugerencia de leer en casa", html, "10 minutos diarios");
 	contiene("las matemáticas flojas van a Saberes", html, "Necesita apoyo en: resta");
-	// Tareas en 0% pero trabajos al 70% entre los dos campos: la frase mixta
+	// No trae tareas (0 de 2) pero termina sus trabajos (2 de 2): la frase mixta, por entrega
 	contiene("el trabajo diario se redacta solo", html, "no siempre trae la tarea");
 
 	const textosGuardados = (guardado.boleta_trimestral || []).filter(function (f) { return f.texto_autogenerado; });
