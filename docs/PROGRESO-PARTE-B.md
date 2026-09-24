@@ -12,6 +12,14 @@ seguir desde el último bloque con PASS.
 - Semilla de QA: `supabase/qa_semilla.sql` (idempotente, solo toca la cuenta QA).
 - Datos reales que no deben cambiar: 18 alumnos y 404 asistencias fuera de la cuenta QA;
   0 proyectos, calificaciones, boletas, diagnósticos y registros diarios reales.
+- **Desde el 2026-09-24 el QA corre contra el proyecto Supabase de pruebas `docentes-pruebas`
+  (`raoxdxwgsxbqlzdnndly`)**, no contra producción: misma estructura (61 tablas, 61 funciones,
+  117 políticas, 12 triggers, 150 índices, permisos iguales, comparado objeto por objeto),
+  catálogos copiados, las dos cuentas QA con sus grupos y la función `redactar-boleta` sin
+  llave. El servidor local reescribe al vuelo la dirección de producción por la de pruebas
+  (el repo no cambia) y el ayudante de navegador corta cualquier petición a producción.
+  Scripts para rehacerlo en `.qa/` (extraer-estructura, aplicar-estructura, copiar-catalogos,
+  crear-cuentas-qa, verificar-proyecto-pruebas).
 
 ## Bloques
 
@@ -616,6 +624,12 @@ los cuatro documentos, reporte, junta, exportación, T2, aislamiento y Fase 4-5.
 causa del incidente: agotamiento de recursos de la instancia (IO o CPU); la carga de QA de
 hoy (muchas rondas de revisores con navegador) pudo contribuir. Decisión de Jorge:
 reiniciar el proyecto o subir el cómputo desde el panel de Supabase.
+**Causa confirmada** con las gráficas de Reports → Database que mandó Jorge: la instancia (plan
+gratuito, cómputo NANO, 0.5 GB) ya tenía el "memory commitment" en ~1.2 de ~1.26 GB en reposo;
+la carga de QA lo subió a 1.40-1.44 GB, creció el swap y la CPU se fue a IOwait. Jorge reinició
+el proyecto y se recuperó (datos reales intactos: 18 alumnos, 404 asistencias). Para no repetirlo
+se creó el proyecto de pruebas (ver arriba) y el QA ya no toca producción. Los restos del octavo
+ensayo en la segunda cuenta de producción se borraron (queda la cuenta y su grupo vacío).
 
 ## 3.9 Documentación
 
