@@ -53,6 +53,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	await cargar();
 
+	// Al final de la página, cuando ya se pintaron las compras (sin saltos).
+	if (window.EliminarCuenta) {
+		window.EliminarCuenta.montar(document.getElementById("seccionCuenta"), { sb: window.sb });
+	}
+
 	// ── Carga de datos ──────────────────────────────────────────────────────
 	async function cargar() {
 		var accRes = await window.sb

@@ -2,6 +2,7 @@ var muestraPendiente = false; // clic en "Ver muestra gratis" antes de que cargu
 // Landing dinámico: trae precios reales y paquetes destacados desde la BD
 // (marketplace_productos, editable por el admin). Sin datos inventados.
 document.addEventListener("DOMContentLoaded", function () {
+	avisoCuentaEliminada();
 	// El botón del hero ya ofrece la muestra desde el HTML; si tocan antes de
 	// que la sección exista, se anota el clic y renderMuestra baja a ella.
 	var heroSec = document.getElementById("heroSecundario");
@@ -17,6 +18,31 @@ document.addEventListener("DOMContentLoaded", function () {
 	if (!window.sb) { return; }
 	cargarLanding();
 });
+
+// Regreso de "Eliminar mi cuenta" (Mis compras, js/eliminar-cuenta.js): confirma que se
+// eliminó. La marca va en sessionStorage (no en la URL, que vería el Pixel) y se lee una vez.
+// Se inserta al inicio del body; el encabezado (montarNav) queda encima.
+function avisoCuentaEliminada() {
+	try {
+		if (sessionStorage.getItem("jissez.aviso.cuentaEliminada") !== "1") { return; }
+		sessionStorage.removeItem("jissez.aviso.cuentaEliminada");
+	} catch (_) { return; }
+	var aviso = document.createElement("div");
+	aviso.setAttribute("role", "status");
+	aviso.setAttribute("data-aviso-cuenta", "");
+	aviso.className = "border-b";
+	aviso.style.cssText = "background:#ecfdf5;border-color:#a7f3d0;color:#065f46";
+	aviso.innerHTML =
+		'<div class="max-w-content mx-auto px-4 sm:px-6 py-2 flex items-center gap-3">' +
+		'<i data-lucide="circle-check" class="w-5 h-5 shrink-0"></i>' +
+		'<p class="flex-1 min-w-0 text-[15px] font-medium leading-snug py-2">Tu cuenta se eliminó y cerramos tu sesión. Gracias por haber usado Jissez.</p>' +
+		'<button type="button" class="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-xl hover:bg-black/5 transition" aria-label="Cerrar aviso">' +
+		'<i data-lucide="x" class="w-5 h-5"></i></button>' +
+		"</div>";
+	aviso.querySelector("button").addEventListener("click", function () { aviso.remove(); });
+	document.body.insertBefore(aviso, document.body.firstChild);
+	if (window.Tienda) { Tienda.iconos(); }
+}
 
 var GRADO_COLOR = {
 	"1": { bg: "#f2cf6b", txt: "rgba(30,58,138,.85)" },
