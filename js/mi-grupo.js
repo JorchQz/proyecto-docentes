@@ -73,7 +73,15 @@
 	bindGroupActionsMenu();
 	bindMainMenu();
 	bindEditTabs();
-	await loadCurrentGroup();
+	// Si una lectura falla (el grupo, la lista), la página se detiene con el aviso común
+	// (js/lectura.js): nada de "Aún no hay alumnos" ni "0 alumnos" cuando no se pudo leer,
+	// ni dar de alta encima de una lista que no se leyó (numeraría desde 1)
+	try {
+		await loadCurrentGroup();
+	} catch (error) {
+		window.Lectura.detenerPagina(error);
+		return;
+	}
 
 	window.sb.auth.onAuthStateChange(function (event) {
 		if (event === "SIGNED_OUT") {
@@ -210,7 +218,14 @@
 
 			closeGroupActionsMenu();
 
-			var studentsCount = await countStudentsByGroupId(currentGroup.id);
+			var studentsCount;
+			try {
+				studentsCount = await countStudentsByGroupId(currentGroup.id);
+			} catch (error) {
+				console.error("mi-grupo: conteo antes de eliminar", error);
+				showMessage("error", "No se pudo contar a los alumnos del grupo, así que no se eliminó nada. Revisa tu conexión e intenta de nuevo.");
+				return;
+			}
 			var countText = formatStudentCount(studentsCount);
 			var confirmation = await showDeleteConfirmModal(
 				"Se eliminara el grupo \"" +
@@ -432,29 +447,14 @@
 
 	async function loadCurrentGroup() {
 		// Grupo activo (con 2+ grupos se edita el que el maestro eligió en la barra)
-		var groupResult;
-		try {
-			var activo = await window.GrupoActivo.cargar(window.sb, userId);
-			groupResult = { data: activo.grupo ? [activo.grupo] : [], error: null };
-		} catch (err) {
-			groupResult = { data: null, error: err };
-		}
-
-		if (groupResult.error) {
-			showMessage(
-				"error",
-				"No se pudo cargar el grupo: " +
-					(groupResult.error.message || "Error desconocido")
-			);
-			return;
-		}
-
-		if (!groupResult.data || groupResult.data.length === 0) {
+		// Si la lectura del grupo falla, GrupoActivo.cargar detiene la página él mismo
+		var activo = await window.GrupoActivo.cargar(window.sb, userId);
+		if (!activo.grupo) {
 			window.location.href = "onboarding.html";
 			return;
 		}
 
-		currentGroup = groupResult.data[0];
+		currentGroup = activo.grupo;
 		renderGroupInfo(currentGroup);
 		syncEditForm(currentGroup);
 		configureStudentGradeSelector();
@@ -462,6 +462,8 @@
 		refreshStudentsCount();
 	}
 
+	// La lista del grupo. Si no se pudo leer, LANZA (la página se detiene): una lista vacía
+	// diría "Aún no hay alumnos" y el alta numeraría desde 1
 	async function loadStudents() {
 		if (!currentGroup || !studentsListEl) {
 			return;
@@ -470,39 +472,14 @@
 		studentsListEl.innerHTML =
 			"<div class='rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500'>Cargando alumnos...</div>";
 
-		var result = await window.sb
+		students = (await window.Lectura.uno(window.sb
 			.from("alumnos")
 			.select("id, nombre_completo, num_lista, grado")
 			.eq("maestro_id", userId)
 			.eq("grupo_id", currentGroup.id)
 			.order("num_lista", { ascending: true })
-			.order("nombre_completo", { ascending: true });
-
-		if (result.error && (result.error.message || "").toLowerCase().indexOf("grado") !== -1) {
-			hasStudentGradeColumn = false;
-			result = await window.sb
-				.from("alumnos")
-				.select("id, nombre_completo, num_lista")
-				.eq("maestro_id", userId)
-				.eq("grupo_id", currentGroup.id)
-				.order("num_lista", { ascending: true })
-				.order("nombre_completo", { ascending: true });
-		} else {
-			hasStudentGradeColumn = true;
-		}
-
-		if (result.error) {
-			students = [];
-			renderStudentsList();
-			showStudentsMessage(
-				"error",
-				"No se pudo cargar la lista de alumnos: " +
-					(result.error.message || "Error desconocido")
-			);
-			return;
-		}
-
-		students = result.data || [];
+			.order("nombre_completo", { ascending: true }))) || [];
+		hasStudentGradeColumn = true;
 		try {
 			await recalculateAndPersistListOrder();
 		} catch (error) {
@@ -516,25 +493,18 @@
 		renderStudentsList();
 	}
 
+	// Conteo en la base (antes de borrar el grupo). Si no se pudo contar, LANZA: el aviso
+	// de borrado decía "0 alumnos" cuando la lectura había fallado
 	async function countStudentsByGroupId(groupId) {
-		if (!groupId) {
-			return 0;
-		}
-
-		var countResult = await window.sb
+		return window.Lectura.contar(window.sb
 			.from("alumnos")
 			.select("id", { count: "exact", head: true })
 			.eq("grupo_id", groupId)
-			.eq("maestro_id", userId);
-
-		if (countResult.error) {
-			return 0;
-		}
-
-		return typeof countResult.count === "number" ? countResult.count : 0;
+			.eq("maestro_id", userId));
 	}
 
-	async function refreshStudentsCount() {
+	// El total del grupo es la lista ya leída (la misma consulta: todos los alumnos del grupo)
+	function refreshStudentsCount() {
 		if (!groupStudentsCountEl) {
 			return;
 		}
@@ -544,9 +514,7 @@
 			return;
 		}
 
-		groupStudentsCountEl.textContent = "Cargando...";
-		var total = await countStudentsByGroupId(currentGroup.id);
-		groupStudentsCountEl.textContent = formatStudentCount(total);
+		groupStudentsCountEl.textContent = formatStudentCount(students.length);
 	}
 
 	function formatStudentCount(total) {

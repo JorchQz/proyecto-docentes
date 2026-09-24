@@ -42,23 +42,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 	};
 
 	// ── Init ──────────────────────────────────────────────────────────────────
-	await cargarGrupo();
+	// Arranque común (js/lectura.js): si el grupo o el catálogo no se pudieron leer, la página
+	// se detiene con el aviso "No se pudo cargar" (antes decía "crea tu grupo" al importar)
 	bindFiltros();
 	bindModal();
-	await cargarProyectos();
+	await window.Lectura.arrancar(async function () {
+		await cargarGrupo();
+		await cargarProyectos();
+	});
 
 	// =========================================================================
 	// CARGA DE DATOS
 	// =========================================================================
 
 	async function cargarGrupo() {
-		// Se importa al grupo activo (el que el maestro eligió en la barra)
-		try {
-			const { grupo } = await window.GrupoActivo.cargar(window.sb, user.id);
-			if (grupo) grupoId = grupo.id;
-		} catch (e) {
-			console.error("grupo activo:", e);
-		}
+		// Se importa al grupo activo (el que el maestro eligió en la barra). Si la lectura
+		// falla, GrupoActivo.cargar detiene la página él mismo
+		const { grupo } = await window.GrupoActivo.cargar(window.sb, user.id);
+		if (grupo) grupoId = grupo.id;
 	}
 
 	async function cargarProyectos() {
@@ -68,23 +69,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// (CHECK: pendiente · en_generacion · generado · revisado · publicado).
 		// No existe 'aprobado' a nivel proyecto — ese es estado de sesión.
 		// El catálogo crece con cada publicación del bot: se lee por páginas (js/leer-todo.js)
-		let data = null, error = null;
-		try {
-			data = await window.LeerTodo.paginas(function () {
-				return window.sb
-					.from("dosificacion_proyectos")
-					.select("*, dosificacion_sesiones(count)")
-					.eq("estado", "publicado")
-					.order("created_at", { ascending: false }).order("id");
-			});
-		} catch (e) { error = e; }
-
-		if (error) {
-			mostrarError();
-			return;
-		}
-
-		todosLosProyectos = data || [];
+		// Si falla, lanza: no se dice "Catálogo en camino"
+		todosLosProyectos = await window.Lectura.todas(function () {
+			return window.sb
+				.from("dosificacion_proyectos")
+				.select("*, dosificacion_sesiones(count)")
+				.eq("estado", "publicado")
+				.order("created_at", { ascending: false }).order("id");
+		});
 
 		if (!todosLosProyectos.length) {
 			mostrarCatalogoVacio();
@@ -318,17 +310,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		if (modalEl) { modalEl.classList.remove("hidden"); }
 
-		// Cargar sesiones del proyecto
-		const { data: sesiones, error } = await window.sb
-			.from("dosificacion_sesiones")
-			.select("numero_sesion, momento_metodologico, campo_formativo, duracion_minutos")
-			.eq("proyecto_dos_id", id)
-			.order("numero_sesion", { ascending: true });
+		// Cargar sesiones del proyecto. Si falla, la vista previa lo dice (antes decía "no
+		// tiene sesiones cargadas")
+		let sesiones = null;
+		try {
+			sesiones = (await window.Lectura.uno(window.sb
+				.from("dosificacion_sesiones")
+				.select("numero_sesion, momento_metodologico, campo_formativo, duracion_minutos")
+				.eq("proyecto_dos_id", id)
+				.order("numero_sesion", { ascending: true }))) || [];
+		} catch (e) {
+			console.error("vista previa: sesiones", e);
+		}
 
 		// El usuario pudo cerrar el modal mientras cargaba
 		if (String(proyectoPreviewId) !== String(id)) { return; }
 
-		renderPreviewBody(proyecto, error ? null : (sesiones || []));
+		renderPreviewBody(proyecto, sesiones);
 	}
 
 	function renderPreviewBody(proyecto, sesiones) {
@@ -363,8 +361,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		// Sesiones
-		html += '<div><p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Sesiones (' + (sesiones ? sesiones.length : 0) + ")</p>";
-		if (sesiones && sesiones.length) {
+		html += '<div><p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Sesiones' + (sesiones ? " (" + sesiones.length + ")" : "") + "</p>";
+		if (!sesiones) {
+			html += '<p class="text-sm text-red-600">No se pudieron cargar las sesiones de este proyecto. Revisa tu conexión y vuelve a abrir la vista previa.</p>';
+		} else if (sesiones.length) {
 			html += '<ul class="flex flex-col gap-1.5">';
 			sesiones.forEach(function (s) {
 				const dur = s.duracion_minutos ? s.duracion_minutos + " min" : "";
@@ -440,14 +440,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
 		gridEl.innerHTML = "";
-	}
-
-	function mostrarError() {
-		if (!estadoEl || !gridEl) { return; }
-		estadoEl.innerHTML = '<p class="text-red-500 font-medium">Error al cargar el marketplace. Intenta de nuevo.</p>';
-		estadoEl.className = "text-center py-16";
-		estadoEl.classList.remove("hidden");
-		gridEl.classList.add("hidden");
 	}
 
 	function mostrarCatalogoVacio() {

@@ -22,20 +22,20 @@
 						<input id="attendanceDateInput" type="date" class="mt-1 block w-44 rounded-lg border border-gray-300 px-3 py-2 text-gray-800 text-lg font-semibold focus:ring-blue-500 focus:border-blue-500" />
 					</div>
 					<div class="flex items-center gap-2">
-						<button id="markAllPresentBtn" type="button" class="px-4 py-3 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">
-							Marcar todos
-						</button>
-						<button id="clearAllBtn" type="button" class="px-4 py-3 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">
-							Limpiar
+						<button id="markAllPresentBtn" type="button" class="min-h-[44px] px-4 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+							Presentes los que faltan
 						</button>
 					</div>
 				</div>
 
-				<p class="text-xs text-gray-500">Guardado automático activado al marcar o desmarcar.</p>
+				<p class="text-xs text-gray-500">Toca Presente, Falta o Justificada; se guarda al instante. Un alumno sin marcar queda sin registro (no cuenta como falta). Para quitar lo marcado, vuelve a tocarlo. "Presentes los que faltan" marca solo a quienes siguen sin registro.</p>
 
 				<div id="attendanceMessage" class="hidden rounded-lg px-4 py-3 text-sm"></div>
 
-				<div id="attendanceSummary" class="text-sm text-gray-600">Cargando alumnos...</div>
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div id="attendanceSummary" class="text-sm text-gray-600">Cargando alumnos...</div>
+					<span id="attendanceSaveState" class="hidden text-xs font-medium text-gray-500" aria-live="polite"></span>
+				</div>
 
 				<div id="attendanceList" class="grid grid-cols-1 gap-2"></div>
 			</section>
@@ -43,6 +43,7 @@
 	</div>
 
 	<script src="js/supabase.js"></script>
+	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
 	<script src="js/navbar.js"></script>
 	<script src="js/grupo-activo.js"></script>

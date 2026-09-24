@@ -1,4 +1,11 @@
-document.addEventListener("DOMContentLoaded", async function () {
+// Arranque común (js/lectura.js): si el grupo o las sesiones no se pudieron leer, la página
+// se detiene con el aviso "No se pudo cargar" (antes, sin grupo, mostraba las sesiones de
+// todos los grupos)
+document.addEventListener("DOMContentLoaded", function () {
+	window.Lectura.arrancar(iniciarActividades);
+});
+
+async function iniciarActividades() {
 	if (!window.sb) {
 		window.location.href = "index.html";
 		return;
@@ -17,14 +24,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
-	// Solo las sesiones de proyectos del grupo activo
-	let grupoActivoId = null;
-	try {
-		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
-		grupoActivoId = activo.grupo ? activo.grupo.id : null;
-	} catch (e) {
-		console.error("grupo activo:", e);
-	}
+	// Solo las sesiones de proyectos del grupo activo (si su lectura falla, GrupoActivo.cargar
+	// detiene la página él mismo)
+	const activo = await window.GrupoActivo.cargar(window.sb, user.id);
+	const grupoActivoId = activo.grupo ? activo.grupo.id : null;
 
 	// Las sesiones del maestro crecen ciclo con ciclo: se leen por páginas (js/leer-todo.js),
 	// con la consulta armada de nuevo en cada página
@@ -36,15 +39,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (grupoActivoId) q = q.eq("proyectos.grupo_id", grupoActivoId);
 		return q.order("numero_sesion", { ascending: true }).order("id");
 	}
-	let sesiones = null, error = null;
-	try {
-		sesiones = await window.LeerTodo.paginas(consultaSesiones);
-	} catch (e) { error = e; }
-
-	if (error) {
-		estadoEl.textContent = "No se pudieron cargar las actividades. Intenta de nuevo.";
-		return;
-	}
+	// Si falla, lanza: no se dice "Aún no tienes proyectos con sesiones"
+	const sesiones = await window.Lectura.todas(consultaSesiones);
 
 	todasSesiones = sesiones || [];
 
@@ -183,4 +179,4 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.replace(/>/g, "&gt;")
 			.replace(/"/g, "&quot;");
 	}
-});
+}

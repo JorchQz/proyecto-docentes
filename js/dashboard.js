@@ -20,8 +20,11 @@ let alumnos = [];
 let proyectoActivo = null;
 let sesionActiva = null; // la que se está mostrando (los ayudantes de render la leen)
 
-document.addEventListener("DOMContentLoaded", async function () {
-	try {
+// Arranque común (js/lectura.js): si la lista de alumnos o el proyecto activo no se
+// pudieron leer, la página se detiene con el aviso "No se pudo cargar". Antes, con el
+// proyecto en error, Inicio decía "No tienes ningún proyecto activo".
+document.addEventListener("DOMContentLoaded", function () {
+	window.Lectura.arrancar(async function () {
 		const { data: { user: u }, error: userError } = await window.sb.auth.getUser();
 		if (userError || !u) {
 			window.location.href = "index.html";
@@ -32,18 +35,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		await cargarGrupoYAlumnos();
 		if (!grupoId) return;
 
-		const { data: proyectos, error: proyectoError } = await window.sb
+		const proyectos = await window.Lectura.uno(window.sb
 			.from("proyectos")
 			.select("id, titulo, campos_formativos, metodologia, estado")
 			.eq("maestro_id", user.id)
 			.eq("grupo_id", grupoId)
 			.eq("estado", "activo")
 			.order("created_at", { ascending: false })
-			.limit(1);
-		if (proyectoError) {
-			showError("No se pudo cargar el proyecto activo: " + proyectoError.message);
-		}
+			.limit(1));
 		proyectoActivo = proyectos && proyectos.length ? proyectos[0] : null;
+
+		// Las sesiones del proyecto se leen ANTES de dibujar: si fallan, no queda media pantalla
+		const sesiones = proyectoActivo ? await leerSesiones() : null;
 
 		const container = document.getElementById("flowContainer");
 		container.innerHTML = "";
@@ -52,10 +55,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			container.appendChild(crearCardSinProyecto());
 			return;
 		}
-		await renderSesiones(container);
-	} catch (error) {
-		showError("Error inesperado al cargar el inicio: " + (error.message || ""));
-	}
+		renderSesiones(container, sesiones);
+	});
 });
 
 async function inicializarEncabezado() {
@@ -77,29 +78,23 @@ async function inicializarEncabezado() {
 }
 
 async function cargarGrupoYAlumnos() {
-	// Grupo activo: único lugar que lo decide (valida que el guardado sea de este maestro)
-	try {
-		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
-		grupo = activo.grupo;
-		grupoId = grupo ? grupo.id : null;
-	} catch (grupoError) {
-		showError("No se pudo cargar el grupo activo: " + (grupoError.message || "error desconocido"));
-		return;
-	}
+	// Grupo activo: único lugar que lo decide (valida que el guardado sea de este maestro).
+	// Si su lectura falla, GrupoActivo.cargar detiene la página él mismo.
+	const activo = await window.GrupoActivo.cargar(window.sb, user.id);
+	grupo = activo.grupo;
+	grupoId = grupo ? grupo.id : null;
 	if (!grupoId) {
 		window.location.href = "onboarding.html";
 		return;
 	}
-	const { data: als, error: alumnosError } = await window.sb
+	// Sin la lista no se sigue (lanza): "0 alumnos" y todo en verde contradiría a "Hoy"
+	alumnos = (await window.Lectura.uno(window.sb
 		.from("alumnos")
 		.select("id, nombre_completo, grado, num_lista")
 		.eq("grupo_id", grupoId)
 		.eq("estatus", "activo")
 		.order("grado")
-		.order("num_lista");
-	// Sin la lista no se sigue: "0 alumnos" y todo en verde contradiría a "Hoy"
-	if (alumnosError) throw new Error("No se pudo cargar la lista de alumnos (" + alumnosError.message + "). Recarga la página.");
-	alumnos = als || [];
+		.order("num_lista"))) || [];
 	document.getElementById("welcomeSub").textContent = (grupo.nombre || "Grupo") + " · " + alumnos.length + " alumnos";
 }
 
@@ -109,27 +104,30 @@ async function crearCardHoy() {
 	const card = document.createElement("section");
 	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6";
 
-	// Asistencia y cierre del día de hoy
-	// error-revisado-en: sinLeerDia
-	const [asisRes, regRes] = await Promise.all([
-		window.sb.from("asistencias").select("alumno_id, asistencia_estado").eq("grupo_id", grupoId).eq("fecha", hoy),
-		alumnos.length
-			? window.sb.from("registro_diario").select("alumno_id").eq("maestro_id", user.id).eq("fecha", hoy)
-				.in("alumno_id", alumnos.map((a) => a.id))
-			: Promise.resolve({ data: [] }),
-	]);
+	// Asistencia y cierre del día de hoy. Si no se pudieron leer, no se inventa "0 de 8":
+	// esa fila dice que no se pudo leer (el resto de Inicio sigue en pie)
+	let asistenciasHoy = [], registrosHoy = [], sinLeerDia = false;
+	try {
+		[asistenciasHoy, registrosHoy] = await Promise.all([
+			window.Lectura.uno(window.sb.from("asistencias").select("alumno_id, asistencia_estado").eq("grupo_id", grupoId).eq("fecha", hoy)),
+			alumnos.length
+				? window.Lectura.uno(window.sb.from("registro_diario").select("alumno_id").eq("maestro_id", user.id).eq("fecha", hoy)
+					.in("alumno_id", alumnos.map((a) => a.id)))
+				: Promise.resolve([]),
+		]);
+	} catch (e) {
+		console.error("inicio: asistencia/cierre de hoy", e);
+		sinLeerDia = true;
+	}
 	// Solo alumnos activos: uno dado de baja con asistencia de hoy no debe dar "9 de 8"
 	const activos = new Set(alumnos.map((a) => a.id));
-	// Si no se pudo leer la asistencia o el cierre de hoy, no se inventa "0 de 8": se dice
-	const sinLeerDia = !!(asisRes.error || regRes.error);
-	if (sinLeerDia) console.error("inicio: asistencia/cierre de hoy", asisRes.error || regRes.error);
-	const conAsistencia = new Set((asisRes.data || []).map((r) => r.alumno_id).filter((id) => activos.has(id))).size;
+	const conAsistencia = new Set((asistenciasHoy || []).map((r) => r.alumno_id).filter((id) => activos.has(id))).size;
 	// Cierre del día con la misma regla que "Hoy": no se espera de quien faltó
-	const faltaron = new Set((asisRes.data || [])
+	const faltaron = new Set((asistenciasHoy || [])
 		.filter((r) => r.asistencia_estado === "ausente" || r.asistencia_estado === "justificada")
 		.map((r) => r.alumno_id));
 	const esperadosCierre = alumnos.filter((a) => !faltaron.has(a.id));
-	const conRegistro = new Set((regRes.data || []).map((r) => r.alumno_id));
+	const conRegistro = new Set((registrosHoy || []).map((r) => r.alumno_id));
 	const conCierre = esperadosCierre.filter((a) => conRegistro.has(a.id)).length;
 	const cierre = window.AlcanceHoy.resumenCierre(alumnos.length, esperadosCierre.length, conCierre);
 
@@ -141,9 +139,8 @@ async function crearCardHoy() {
 	// Si una lectura falla, Inicio sigue en pie: esos conteos dicen que no se pudieron leer
 	let sinLeer = false;
 	try {
-		const { data: proys, error: errorProys } = await window.sb.from("proyectos").select("id")
-			.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy));
-		if (errorProys) throw errorProys;
+		const proys = await window.Lectura.uno(window.sb.from("proyectos").select("id")
+			.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy)));
 		const proyIds = (proys || []).map((p) => p.id);
 		if (proyIds.length) {
 			// Lecturas sin el tope de 1000 filas de Supabase, igual que "Hoy" (js/alcance-hoy.js)
@@ -224,17 +221,17 @@ function crearCardSinProyecto() {
 }
 
 // ── 2. Sesión de hoy (o la siguiente pendiente) ─────────────────────────────
-async function renderSesiones(container) {
-	const hoy = getLocalDateISO();
-	const { data: sesiones, error } = await window.sb
+// Las sesiones del proyecto activo; si fallan, lanza (Inicio no dice "ya se trabajaron")
+function leerSesiones() {
+	return window.Lectura.uno(window.sb
 		.from("sesiones")
 		.select("*")
 		.eq("proyecto_id", proyectoActivo.id)
-		.order("numero_sesion");
-	if (error) {
-		showError("No se pudieron cargar las sesiones: " + error.message);
-		return;
-	}
+		.order("numero_sesion"));
+}
+
+function renderSesiones(container, sesiones) {
+	const hoy = getLocalDateISO();
 	const deHoy = (sesiones || []).filter((s) => s.fecha === hoy);
 	if (deHoy.length) {
 		deHoy.forEach((s) => container.appendChild(crearCardSesion(s, true)));
@@ -366,13 +363,12 @@ async function terminarSesion(sesionId, notasCierre) {
 		if (updateError) throw updateError;
 
 		// Si ya no queda ninguna por trabajar, el proyecto se da por completado
-		const { count, error: countError } = await window.sb
+		const count = await window.Lectura.contar(window.sb
 			.from("sesiones")
 			.select("id", { count: "exact", head: true })
 			.eq("proyecto_id", proyectoActivo.id)
-			.neq("estado_sesion", "completada");
-		if (countError) throw countError;
-		if (!count) {
+			.neq("estado_sesion", "completada"));
+		if (count === 0) {
 			const { error: proyectoError } = await window.sb
 				.from("proyectos")
 				.update({ estado: "completado", fecha_final: getLocalDateISO() })

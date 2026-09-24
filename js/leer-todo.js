@@ -13,7 +13,9 @@
 
 	Es el mismo patrón que ya usan el motor (`todas()`), js/reporte-datos.js y
 	`AlcanceHoy.leerPorLotes` (Hoy, Tareas e Inicio). Un error de Supabase se lanza, nunca
-	se traga: mejor un mensaje que una pantalla incompleta que parece completa.
+	se traga: mejor un mensaje que una pantalla incompleta que parece completa. El error
+	sale marcado como de lectura (`lectura = true`): si nadie lo atrapa, js/lectura.js
+	detiene la página con su aviso en vez de dejar una excepción suelta.
 */
 
 (function () {
@@ -22,11 +24,16 @@
 	var PAGINA = 1000;
 	var LOTE = 150;
 
+	function marcar(error) {
+		try { error.lectura = true; } catch (e) {}
+		return error;
+	}
+
 	async function paginas(construir) {
 		var filas = [];
 		for (var desde = 0; ; desde += PAGINA) {
 			var res = await construir().range(desde, desde + PAGINA - 1);
-			if (res.error) throw res.error;
+			if (res.error) throw marcar(res.error);
 			var datos = res.data || [];
 			filas = filas.concat(datos);
 			if (datos.length < PAGINA) return filas;

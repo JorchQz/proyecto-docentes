@@ -41,7 +41,8 @@ document.addEventListener("DOMContentLoaded", async function () {
   let trimestreGrupo = null; // grupos.trimestre_actual del grupo destino: default del selector
 
   // Cargar el grupo activo (js/grupo-activo.js): grados y trimestre salen del MISMO
-  // grupo donde se inserta el proyecto
+  // grupo donde se inserta el proyecto. Si la lectura falla, GrupoActivo.cargar detiene la
+  // página él mismo (antes se seguía sin grupo: "No hay grados registrados en tu grupo")
   try {
     if (window.sb) {
       const { data: { session } } = await window.sb.auth.getSession();
@@ -61,7 +62,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
     }
   } catch (e) {
-    console.error('Error cargando grupo:', e);
+    window.Lectura.detenerPagina(e);
+    return;
   }
 
   // Mapa Fase → grados NEM
@@ -1891,13 +1893,15 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (h1) h1.textContent = 'Cargando proyecto...';
 
     try {
-      const { data: proyecto, error } = await window.sb
+      // Si la lectura falla, lanza (la página se detiene); solo si se leyó y no existe se
+      // vuelve a Proyectos
+      const proyecto = await window.Lectura.uno(window.sb
         .from('proyectos')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle());
 
-      if (error || !proyecto) {
+      if (!proyecto) {
         window.location.href = 'planeacion.html';
         return;
       }
@@ -1935,39 +1939,27 @@ document.addEventListener("DOMContentLoaded", async function () {
       // Ocultar banner de borrador
       document.getElementById('borradorBanner')?.classList.add('hidden');
 
-      // Cargar catálogo antes de renderizar sesiones (para PDA selects)
-      // Sin catálogo no se dibujan los PDA de las sesiones: guardar los borraría
-      let catalogoFallo = false;
-      try { await cargarCatalogo(); } catch (e) { console.error('catálogo (edición):', e); catalogoFallo = true; }
-
-      // Cargar sesiones
-      const { data: sesiones, error: errorSesiones } = await window.sb
+      /*
+        Catálogo, sesiones y calificaciones se leen ANTES de dibujar el paso 3: si alguna
+        lectura falla, lanza y la página se detiene con el aviso común. Antes se dibujaba igual
+        (sin sesiones salía una sesión en blanco, como si el proyecto no tuviera ninguna).
+        Guardar en modo edición borra las sesiones y las vuelve a crear; el borrado en
+        cascada se lleva sus productos, calificaciones y evidencias por PDA. Por eso, si el
+        proyecto ya se está trabajando, esta pantalla es solo de consulta.
+      */
+      await cargarCatalogo();
+      const sesiones = (await window.Lectura.uno(window.sb
         .from('sesiones')
         .select('*')
         .eq('proyecto_id', id)
-        .order('numero_sesion');
-
-      /*
-        Guardar en modo edición borra las sesiones y las vuelve a crear; el borrado en
-        cascada se lleva sus productos, calificaciones y evidencias por PDA. Por eso no se
-        guarda si las sesiones no se pudieron leer (se guardaría una lista vacía) ni si el
-        proyecto ya se está trabajando: en ese caso esta pantalla es solo de consulta.
-      */
-      if (catalogoFallo) {
-        edicionBloqueada = 'No se pudo cargar el catálogo de PDA. Recarga la página; mientras tanto no se puede guardar, para no borrar los PDA de las sesiones.';
-      } else if (errorSesiones) {
-        edicionBloqueada = 'No se pudieron cargar las sesiones de este proyecto. Recarga la página; mientras tanto no se puede guardar, para no borrar nada.';
-      } else {
-        const { count: conCalificaciones, error: errorCal } = await window.sb
-          .from('calificaciones').select('id', { count: 'exact', head: true }).eq('proyecto_id', id);
-        const trabajadas = (sesiones || []).some(function (s) {
-          return !!s.fecha || (s.estado_sesion && s.estado_sesion !== 'pendiente');
-        });
-        if (errorCal) {
-          edicionBloqueada = 'No se pudo comprobar si este proyecto ya tiene calificaciones. Recarga la página; mientras tanto no se puede guardar, para no borrar nada.';
-        } else if (conCalificaciones > 0 || trabajadas) {
-          edicionBloqueada = 'Este proyecto ya se está trabajando (tiene sesiones en curso o calificaciones capturadas). Guardarlo desde aquí volvería a crear sus sesiones y borraría lo capturado, así que en un proyecto en curso esta pantalla es solo de consulta.';
-        }
+        .order('numero_sesion'))) || [];
+      const conCalificaciones = await window.Lectura.contar(window.sb
+        .from('calificaciones').select('id', { count: 'exact', head: true }).eq('proyecto_id', id));
+      const trabajadas = sesiones.some(function (s) {
+        return !!s.fecha || (s.estado_sesion && s.estado_sesion !== 'pendiente');
+      });
+      if (conCalificaciones > 0 || trabajadas) {
+        edicionBloqueada = 'Este proyecto ya se está trabajando (tiene sesiones en curso o calificaciones capturadas). Guardarlo desde aquí volvería a crear sus sesiones y borraría lo capturado, así que en un proyecto en curso esta pantalla es solo de consulta.';
       }
       if (edicionBloqueada) {
         const aviso = document.getElementById('mensajePaso2');
@@ -1996,8 +1988,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
     } catch (err) {
-      console.error('Error cargando proyecto:', err);
-      window.location.href = 'planeacion.html';
+      // No se pudo leer el proyecto, su catálogo, sus sesiones o sus calificaciones: aviso
+      // común, sin dibujar nada a medias ni dejar guardar (antes regresaba a Proyectos sin decir nada)
+      window.Lectura.detenerPagina(err);
     }
   }
 

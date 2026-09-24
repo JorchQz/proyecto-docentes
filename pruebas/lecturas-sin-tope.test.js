@@ -36,7 +36,7 @@ const CRECEN = [
 	se busca tal cual en la consulta (un .gte("fecha", …) no pasa por un .eq("fecha", hoy)).
 */
 const ACOTADAS = [
-	["asistencia.js", "asistencias", ".eq(\"fecha\", attendanceDateIso)", "un día de un grupo"],
+	["asistencia.js", "asistencias", ".eq(\"fecha\", fecha)", "un día de un grupo"],
 	["hoy.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
 	["hoy.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
 	["dashboard.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],

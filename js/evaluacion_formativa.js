@@ -1,9 +1,24 @@
-document.addEventListener("DOMContentLoaded", async function () {
-	if (!window.sb) {
-		mostrarError("Supabase no está configurado.");
-		return;
-	}
+/*
+	evaluacion_formativa.js — Semáforo por PDA de una sesión (Afinar evaluación por PDA).
 
+	Lecturas por la capa común (js/lectura.js): si la sesión, los alumnos, lo ya evaluado
+	o los PDA de la sesión no se pudieron leer, la página se detiene con el aviso "No se
+	pudo cargar" (antes decía "Sesión no encontrada" cuando la lectura había fallado).
+
+	Guardado: cada semáforo (alumno + criterio) se guarda en su propia cola en serie y
+	cada guardado manda el estado MÁS RECIENTE de la pantalla, así que dos toques rápidos
+	no llegan en desorden. Volver a tocar el semáforo marcado lo QUITA y se borra en la
+	base (antes solo se quitaba de la pantalla). Si un guardado falla, el semáforo vuelve a
+	lo que tiene la base y se avisa. Salir con algo sin guardar: se guarda antes de salir
+	por un enlace y el navegador pregunta al cerrar o recargar.
+*/
+
+document.addEventListener("DOMContentLoaded", function () {
+	if (!window.sb) return;
+	window.Lectura.arrancar(iniciarEvaluacionFormativa);
+});
+
+async function iniciarEvaluacionFormativa() {
 	// ── elementos del DOM ────────────────────────────────────────────────────
 	var headerTituloEl    = document.getElementById("headerTitulo");
 	var headerMomentoEl   = document.getElementById("headerMomento");
@@ -21,8 +36,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var sesionId    = null;
 	var sesion      = null;
 	var alumnos     = [];
-	var evalMap     = {};   // clave: alumno_id + "||" + criterio → semaforo
+	var evalMap     = {};   // clave: alumno_id + "||" + criterio → semaforo (lo que muestra la pantalla)
 	var obsMap      = {};   // clave: alumno_id + "||" + criterio → observacion
+	var enBase      = {};   // clave → { semaforo, observacion } que tiene la base
 	var userId      = null;
 
 	var CRITERIO_GENERICO = "Participación en la sesión";
@@ -45,8 +61,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		evalMensajeEl.classList.remove("hidden");
 	}
 
+	function mostrarInfo(msg) {
+		if (!evalMensajeEl) return;
+		evalMensajeEl.className = "rounded-lg px-4 py-3 text-sm font-medium bg-blue-50 text-blue-800 border border-blue-200";
+		evalMensajeEl.textContent = msg;
+		evalMensajeEl.classList.remove("hidden");
+	}
+
 	function ocultarMensaje() {
 		if (evalMensajeEl) evalMensajeEl.classList.add("hidden");
+	}
+
+	function vacio(html) {
+		evalListaEl.innerHTML =
+			'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' + html + '</div>';
 	}
 
 	// Etiqueta legible del momento metodológico
@@ -75,32 +103,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 	sesionId   = params.get("sesion_id");
 
 	if (!sesionId) {
-		evalListaEl.innerHTML =
-			'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' +
-			'Sesión no encontrada. <a href="dashboard.html" class="text-blue-600 underline font-medium">Vuelve al Dashboard.</a>' +
-			'</div>';
+		vacio('Sesión no encontrada. <a href="dashboard.html" class="text-blue-600 underline font-medium">Vuelve al Dashboard.</a>');
 		return;
 	}
 
 	// ── cargar sesión + proyecto ──────────────────────────────────────────────
-	try {
-		var sesionRes = await window.sb
-			.from("sesiones")
-			.select("id, numero_sesion, momento, pda_sesion, proyectos(titulo, metodologia, grupo_id)")
-			.eq("id", sesionId)
-			.eq("maestro_id", userId)
-			.single();
+	// Si la lectura falla, lanza (la página se detiene); "no encontrada" es solo cuando la
+	// lectura funcionó y la sesión no existe o no es de este maestro
+	sesion = await window.Lectura.uno(window.sb
+		.from("sesiones")
+		.select("id, numero_sesion, momento, pda_sesion, proyectos(titulo, metodologia, grupo_id)")
+		.eq("id", sesionId)
+		.eq("maestro_id", userId)
+		.maybeSingle());
 
-		if (sesionRes.error || !sesionRes.data) {
-			evalListaEl.innerHTML =
-				'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' +
-				'Sesión no encontrada o sin permiso. <a href="dashboard.html" class="text-blue-600 underline font-medium">Volver al Dashboard.</a>' +
-				'</div>';
-			return;
-		}
-		sesion = sesionRes.data;
-	} catch (e) {
-		mostrarError("Error al cargar la sesión: " + (e.message || "Error desconocido"));
+	if (!sesion) {
+		vacio('Sesión no encontrada o sin permiso. <a href="dashboard.html" class="text-blue-600 underline font-medium">Volver al Dashboard.</a>');
 		return;
 	}
 
@@ -123,52 +141,32 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 
-	try {
-		var alumnosRes = await window.sb
-			.from("alumnos")
-			.select("id, nombre_completo, grado, num_lista")
-			.eq("grupo_id", proyecto.grupo_id)
-			.eq("maestro_id", userId)
-			.eq("estatus", "activo")
-			.order("num_lista", { ascending: true });
-
-		if (alumnosRes.error) throw alumnosRes.error;
-		alumnos = alumnosRes.data || [];
-	} catch (e) {
-		mostrarError("Error al cargar alumnos: " + (e.message || "Error desconocido"));
-		return;
-	}
+	alumnos = (await window.Lectura.uno(window.sb
+		.from("alumnos")
+		.select("id, nombre_completo, grado, num_lista")
+		.eq("grupo_id", proyecto.grupo_id)
+		.eq("maestro_id", userId)
+		.eq("estatus", "activo")
+		.order("num_lista", { ascending: true }))) || [];
 
 	if (!alumnos.length) {
-		evalListaEl.innerHTML =
-			'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' +
-			'No hay alumnos activos en este grupo.' +
-			'</div>';
+		vacio("No hay alumnos activos en este grupo.");
 		return;
 	}
 
 	// ── cargar evaluaciones existentes ────────────────────────────────────────
-	try {
-		var evalRes = await window.sb
-			.from("evaluacion_formativa")
-			.select("alumno_id, criterio, semaforo, observacion")
-			.eq("sesion_id", sesionId)
-			.eq("maestro_id", userId);
-
-		// Sin las evaluaciones guardadas, la cuadrícula saldría vacía y se capturaría encima
-		if (evalRes.error) throw evalRes.error;
-		if (evalRes.data) {
-			evalRes.data.forEach(function (row) {
-				var k = mapKey(row.alumno_id, row.criterio);
-				evalMap[k] = row.semaforo;
-				obsMap[k]  = row.observacion || "";
-			});
-		}
-	} catch (e) {
-		console.error("evaluacion_formativa (lectura):", e);
-		mostrarError("No se pudieron cargar las evaluaciones guardadas de esta sesión. Recarga la página; mientras tanto no se captura nada, para no pisar lo que ya tenías.");
-		return;
-	}
+	// Sin las evaluaciones guardadas la cuadrícula saldría vacía y se capturaría encima: lanza
+	var evaluadas = await window.Lectura.uno(window.sb
+		.from("evaluacion_formativa")
+		.select("alumno_id, criterio, semaforo, observacion")
+		.eq("sesion_id", sesionId)
+		.eq("maestro_id", userId));
+	(evaluadas || []).forEach(function (row) {
+		var k = mapKey(row.alumno_id, row.criterio);
+		evalMap[k] = row.semaforo;
+		obsMap[k]  = row.observacion || "";
+		enBase[k]  = { semaforo: row.semaforo, observacion: row.observacion || "" };
+	});
 
 	// ── obtener criterios por alumno ──────────────────────────────────────────
 	var pdaSesion = Array.isArray(sesion.pda_sesion) ? sesion.pda_sesion : [];
@@ -177,20 +175,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Cada evaluación nueva se liga a la fila exacta de sesiones_pda; si la sesión
 	// es anterior a la trazabilidad, se crean las filas ahora desde el jsonb
 	// pda_sesion (backfill perezoso) para nunca guardar una evaluación sin ID.
-	var sesionesPda = [];
-	try {
-		var spdaRes = await window.sb
-			.from("sesiones_pda")
-			.select("id, pda_id, grado, criterio_aplicado")
-			.eq("sesion_id", sesionId);
-		// Si no se pudo leer, no se hace el backfill: crearía filas repetidas
-		if (spdaRes.error) throw spdaRes.error;
-		sesionesPda = spdaRes.data || [];
-	} catch (e) {
-		console.error("sesiones_pda (lectura):", e);
-		mostrarError("No se pudieron cargar los PDA de esta sesión. Recarga la página para intentarlo de nuevo.");
-		return;
-	}
+	// Si no se pudo leer, lanza: el backfill crearía filas repetidas
+	var sesionesPda = (await window.Lectura.uno(window.sb
+		.from("sesiones_pda")
+		.select("id, pda_id, grado, criterio_aplicado")
+		.eq("sesion_id", sesionId))) || [];
 
 	if (!sesionesPda.length && pdaSesion.length) {
 		var filasBackfill = pdaSesion
@@ -206,19 +195,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 			})
 			.filter(Boolean);
 		if (filasBackfill.length) {
-			try {
-				var insSpda = await window.sb
-					.from("sesiones_pda")
-					.insert(filasBackfill)
-					.select("id, pda_id, grado, criterio_aplicado");
-				if (insSpda.error) throw insSpda.error;
-				sesionesPda = insSpda.data || [];
-			} catch (e) {
+			var insSpda = await window.sb
+				.from("sesiones_pda")
+				.insert(filasBackfill)
+				.select("id, pda_id, grado, criterio_aplicado");
+			if (insSpda.error) {
 				// Sin esas filas las evaluaciones se guardarían sin su PDA: no se captura
-				console.error("Backfill de sesiones_pda:", e);
+				console.error("Backfill de sesiones_pda:", insSpda.error);
 				mostrarError("No se pudieron preparar los PDA de esta sesión. Recarga la página para intentarlo de nuevo.");
 				return;
 			}
+			sesionesPda = insSpda.data || [];
 		}
 	}
 
@@ -277,58 +264,121 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
-	// ── guardar semáforo (upsert inmediato) ───────────────────────────────────
-	async function guardarSemaforo(alumnoId, criterio, semaforo) {
-		var obs = obsMap[mapKey(alumnoId, criterio)] || "";
-		try {
-			var res = await window.sb
-				.from("evaluacion_formativa")
-				.upsert({
-					maestro_id:    userId,
-					sesion_id:     sesionId,
-					alumno_id:     alumnoId,
-					criterio:      criterio,
-					sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
-					semaforo:      semaforo,
-					observacion:   obs,
-					fecha:         getLocalDateISO(),
-					// Lo que el maestro ajusta aquí deja de ser automático: el motor
-					// de propagación (B.5) ya no lo vuelve a pisar.
-					origen:        "maestro"
-				}, { onConflict: "sesion_id,alumno_id,criterio" });
+	// ── guardado en serie por semáforo ────────────────────────────────────────
+	var colaPorClave = {};  // clave → última promesa de su cola
+	var enVuelo = 0;
 
+	/*
+		Guarda el estado ACTUAL de la pantalla para (alumno, criterio): con semáforo, upsert
+		(con su observación); sin semáforo, borra la fila. Devuelve true/false.
+	*/
+	function guardar(alumnoId, criterio) {
+		var k = mapKey(alumnoId, criterio);
+		enVuelo++;
+		var p = (colaPorClave[k] || Promise.resolve(true)).then(function () {
+			return guardarAhora(alumnoId, criterio);
+		});
+		colaPorClave[k] = p;
+		return p.then(function (r) { enVuelo--; return r; });
+	}
+
+	async function guardarAhora(alumnoId, criterio) {
+		var k = mapKey(alumnoId, criterio);
+		var semaforo = evalMap[k] || null;
+		var obs = obsMap[k] || "";
+		var base = enBase[k] || null;
+		// Nada cambió respecto a la base
+		if ((!semaforo && !base) || (base && semaforo === base.semaforo && obs === base.observacion)) return true;
+		try {
+			var res;
+			if (semaforo) {
+				res = await window.sb
+					.from("evaluacion_formativa")
+					.upsert({
+						maestro_id:    userId,
+						sesion_id:     sesionId,
+						alumno_id:     alumnoId,
+						criterio:      criterio,
+						sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
+						semaforo:      semaforo,
+						observacion:   obs,
+						fecha:         getLocalDateISO(),
+						// Lo que el maestro ajusta aquí deja de ser automático: el motor
+						// de propagación (B.5) ya no lo vuelve a pisar.
+						origen:        "maestro"
+					}, { onConflict: "sesion_id,alumno_id,criterio" });
+			} else {
+				// Quitar el semáforo lo quita también de la base
+				res = await window.sb
+					.from("evaluacion_formativa")
+					.delete()
+					.eq("sesion_id", sesionId)
+					.eq("alumno_id", alumnoId)
+					.eq("criterio", criterio)
+					.eq("maestro_id", userId);
+			}
 			if (res.error) throw res.error;
+			if (semaforo) enBase[k] = { semaforo: semaforo, observacion: obs }; else delete enBase[k];
+			return true;
 		} catch (e) {
-			// No se calla: la maestra debe saber que ese semáforo no quedó guardado
+			// No se calla y la pantalla vuelve a lo que tiene la base: nada parece guardado sin estarlo
 			console.error("Error guardando semáforo:", e);
-			mostrarError("No se pudo guardar: " + ((e && e.message) || "error desconocido") + ". Revisa tu conexión y vuelve a tocar el semáforo.");
+			if (base) { evalMap[k] = base.semaforo; } else { delete evalMap[k]; }
+			redibujarAlumno(alumnoId);
+			actualizarContadores();
+			actualizarProgreso();
+			mostrarError("No se pudo guardar: " + ((e && e.message) || "error desconocido") +
+				". Revisa tu conexión; la pantalla muestra lo que sí está guardado.");
+			return false;
 		}
 	}
 
-	// ── guardar observación (upsert al salir del campo) ───────────────────────
-	async function guardarObservacion(alumnoId, criterio, observacion) {
-		var semaforo = evalMap[mapKey(alumnoId, criterio)] || null;
-		if (!semaforo) return; // No guardar obs si no hay semáforo seleccionado
-		try {
-			var resObs = await window.sb
-				.from("evaluacion_formativa")
-				.upsert({
-					maestro_id:    userId,
-					sesion_id:     sesionId,
-					alumno_id:     alumnoId,
-					criterio:      criterio,
-					sesion_pda_id: resolverSesionPdaId(alumnoId, criterio),
-					semaforo:      semaforo,
-					observacion:   observacion,
-					fecha:         getLocalDateISO(),
-					origen:        "maestro"
-				}, { onConflict: "sesion_id,alumno_id,criterio" });
-			if (resObs.error) throw resObs.error;
-		} catch (e) {
-			console.error("Error guardando observación:", e);
-			mostrarError("No se pudo guardar la observación: " + ((e && e.message) || "error desconocido") + ". Revisa tu conexión; el texto sigue en pantalla.");
-		}
+	// Observaciones escritas que aún no se guardan (el cuadro no ha perdido el foco)
+	function sincronizarObservaciones() {
+		var claves = [];
+		evalListaEl.querySelectorAll("textarea[data-obs-alumno]").forEach(function (ta) {
+			var k = mapKey(ta.dataset.obsAlumno, ta.dataset.obsCriterio);
+			var v = ta.value.trim();
+			if (v !== (obsMap[k] || "")) { obsMap[k] = v; claves.push([ta.dataset.obsAlumno, ta.dataset.obsCriterio]); }
+		});
+		return claves;
 	}
+
+	function observacionesSinSemaforo() {
+		return Object.keys(obsMap).some(function (k) { return obsMap[k] && !evalMap[k] && !(enBase[k]); });
+	}
+
+	function hayPendiente() {
+		if (enVuelo > 0) return true;
+		var sucio = false;
+		evalListaEl.querySelectorAll("textarea[data-obs-alumno]").forEach(function (ta) {
+			var k = mapKey(ta.dataset.obsAlumno, ta.dataset.obsCriterio);
+			var guardada = enBase[k] ? enBase[k].observacion : "";
+			if (ta.value.trim() !== guardada) sucio = true;
+		});
+		return sucio;
+	}
+
+	// Guarda todo lo pendiente; true si ya no queda nada sin guardar
+	async function guardarTodo() {
+		sincronizarObservaciones();
+		var claves = Object.keys(obsMap).concat(Object.keys(evalMap)).filter(function (k, i, a) { return a.indexOf(k) === i; });
+		var resultados = await Promise.all(claves.map(function (k) {
+			var partes = k.split("||");
+			return guardar(partes[0], partes.slice(1).join("||"));
+		}));
+		return resultados.every(Boolean) && !observacionesSinSemaforo();
+	}
+
+	window.Lectura.antesDeSalir({
+		pendiente: hayPendiente,
+		guardar: guardarTodo,
+		mensaje: function () {
+			return observacionesSinSemaforo()
+				? "Hay una observación sin semáforo: solo se guarda cuando eliges Logrado, En proceso o Requiere apoyo. ¿Salir de todos modos?"
+				: "No se pudo guardar lo último que capturaste. ¿Salir de todos modos?";
+		},
+	});
 
 	// ── contadores del header ─────────────────────────────────────────────────
 	function actualizarContadores() {
@@ -364,64 +414,75 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
-	// ── renderizar lista de alumnos ───────────────────────────────────────────
+	// ── renderizar ────────────────────────────────────────────────────────────
+	function htmlCriterios(alumno) {
+		return criteriosParaAlumno(alumno).map(function (crit) {
+			var k        = mapKey(alumno.id, crit.key);
+			var actual   = evalMap[k] || null;
+			var obsVal   = obsMap[k] || "";
+
+			function btnClass(valor) {
+				var base = "flex-1 min-h-[48px] rounded-xl text-sm font-semibold transition-colors focus:outline-none active:scale-95 ";
+				if (actual === valor) {
+					if (valor === "logrado")          return base + "bg-emerald-500 text-white shadow-sm";
+					if (valor === "en_proceso")       return base + "bg-amber-400 text-white shadow-sm";
+					if (valor === "requiere_apoyo")   return base + "bg-red-500 text-white shadow-sm";
+				}
+				return base + "bg-gray-100 text-gray-600 hover:bg-gray-200";
+			}
+
+			return (
+				'<div class="flex flex-col gap-2 pb-3 border-b border-gray-100 last:border-0 last:pb-0">' +
+				'<p class="text-xs text-gray-500 leading-snug">' + escHtml(crit.texto) + '</p>' +
+				'<div class="flex gap-2">' +
+				'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="logrado" ' +
+				'class="' + btnClass("logrado") + '">Logrado</button>' +
+				'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="en_proceso" ' +
+				'class="' + btnClass("en_proceso") + '">En proceso</button>' +
+				'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="requiere_apoyo" ' +
+				'class="' + btnClass("requiere_apoyo") + '">Requiere apoyo</button>' +
+				'</div>' +
+				'<textarea data-obs-alumno="' + alumno.id + '" data-obs-criterio="' + escAttr(crit.key) + '" ' +
+				'rows="2" placeholder="Observación opcional..." ' +
+				'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
+				escHtml(obsVal) +
+				'</textarea>' +
+				'</div>'
+			);
+		}).join("");
+	}
+
 	function renderLista() {
 		evalListaEl.innerHTML = "";
 		ocultarMensaje();
 
 		alumnos.forEach(function (alumno) {
-			var criterios  = criteriosParaAlumno(alumno);
 			var gradoLabel = alumno.grado ? alumno.grado + "° grado" : "";
-
-			var criteriosHtml = criterios.map(function (crit) {
-				var k        = mapKey(alumno.id, crit.key);
-				var actual   = evalMap[k] || null;
-				var obsVal   = obsMap[k] || "";
-
-				function btnClass(valor) {
-					var base = "flex-1 min-h-[48px] rounded-xl text-sm font-semibold transition-colors focus:outline-none active:scale-95 ";
-					if (actual === valor) {
-						if (valor === "logrado")          return base + "bg-emerald-500 text-white shadow-sm";
-						if (valor === "en_proceso")       return base + "bg-amber-400 text-white shadow-sm";
-						if (valor === "requiere_apoyo")   return base + "bg-red-500 text-white shadow-sm";
-					}
-					return base + "bg-gray-100 text-gray-600 hover:bg-gray-200";
-				}
-
-				return (
-					'<div class="flex flex-col gap-2 pb-3 border-b border-gray-100 last:border-0 last:pb-0">' +
-					'<p class="text-xs text-gray-500 leading-snug">' + escHtml(crit.texto) + '</p>' +
-					'<div class="flex gap-2">' +
-					'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="logrado" ' +
-					'class="' + btnClass("logrado") + '">Logrado</button>' +
-					'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="en_proceso" ' +
-					'class="' + btnClass("en_proceso") + '">En proceso</button>' +
-					'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="requiere_apoyo" ' +
-					'class="' + btnClass("requiere_apoyo") + '">Requiere apoyo</button>' +
-					'</div>' +
-					'<textarea data-obs-alumno="' + alumno.id + '" data-obs-criterio="' + escAttr(crit.key) + '" ' +
-					'rows="2" placeholder="Observación opcional..." ' +
-					'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
-					escHtml(obsVal) +
-					'</textarea>' +
-					'</div>'
-				);
-			}).join("");
-
 			var card = document.createElement("div");
 			card.className = "bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-3";
+			card.dataset.tarjetaAlumno = alumno.id;
 			card.innerHTML =
 				'<div class="flex items-center gap-2 pb-1 border-b border-gray-100">' +
 				'<span class="text-sm font-bold text-gray-800">' + escHtml(alumno.nombre_completo || "Alumno") + '</span>' +
 				(gradoLabel ? '<span class="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">' + escHtml(gradoLabel) + '</span>' : '') +
 				'</div>' +
-				'<div class="flex flex-col gap-3">' + criteriosHtml + '</div>';
+				'<div class="flex flex-col gap-3" data-criterios>' + htmlCriterios(alumno) + '</div>';
 
 			evalListaEl.appendChild(card);
 		});
 
 		actualizarContadores();
 		actualizarProgreso();
+	}
+
+	// Vuelve a dibujar los semáforos de un alumno (conserva lo escrito en sus observaciones)
+	function redibujarAlumno(alumnoId) {
+		var alumno = alumnos.find(function (a) { return a.id === alumnoId; });
+		var card = evalListaEl.querySelector('[data-tarjeta-alumno="' + alumnoId + '"]');
+		if (!alumno || !card) return;
+		sincronizarObservaciones();
+		var seccion = card.querySelector("[data-criterios]");
+		if (seccion) seccion.innerHTML = htmlCriterios(alumno);
 	}
 
 	// ── escapado básico ───────────────────────────────────────────────────────
@@ -437,7 +498,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// ── delegación de eventos sobre la lista ─────────────────────────────────
-	evalListaEl.addEventListener("click", async function (e) {
+	evalListaEl.addEventListener("click", function (e) {
 		var btn = e.target.closest("button[data-alumno]");
 		if (!btn) return;
 
@@ -446,84 +507,44 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var valor    = btn.dataset.valor;
 		var k        = mapKey(alumnoId, criterio);
 
-		// Toggle: si ya está seleccionado, deseleccionar
+		// Toggle: si ya está seleccionado, se quita (y se borra en la base)
 		if (evalMap[k] === valor) {
 			delete evalMap[k];
 		} else {
 			evalMap[k] = valor;
 		}
 
-		// Re-renderizar solo la tarjeta del alumno afectado
-		var alumno = alumnos.find(function (a) { return a.id === alumnoId; });
-		if (alumno) {
-			var cardVieja = btn.closest(".bg-white.rounded-2xl");
-			if (cardVieja) {
-				// Reconstruir innerHTML de la sección de criterios
-				var criterios  = criteriosParaAlumno(alumno);
-				var criteriosHtml = criterios.map(function (crit) {
-					var ck      = mapKey(alumno.id, crit.key);
-					var actual  = evalMap[ck] || null;
-					var obsVal  = obsMap[ck] || "";
-
-					function btnClass(v) {
-						var base = "flex-1 min-h-[48px] rounded-xl text-sm font-semibold transition-colors focus:outline-none active:scale-95 ";
-						if (actual === v) {
-							if (v === "logrado")          return base + "bg-emerald-500 text-white shadow-sm";
-							if (v === "en_proceso")       return base + "bg-amber-400 text-white shadow-sm";
-							if (v === "requiere_apoyo")   return base + "bg-red-500 text-white shadow-sm";
-						}
-						return base + "bg-gray-100 text-gray-600 hover:bg-gray-200";
-					}
-
-					return (
-						'<div class="flex flex-col gap-2 pb-3 border-b border-gray-100 last:border-0 last:pb-0">' +
-						'<p class="text-xs text-gray-500 leading-snug">' + escHtml(crit.texto) + '</p>' +
-						'<div class="flex gap-2">' +
-						'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="logrado" ' +
-						'class="' + btnClass("logrado") + '">Logrado</button>' +
-						'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="en_proceso" ' +
-						'class="' + btnClass("en_proceso") + '">En proceso</button>' +
-						'<button type="button" data-alumno="' + alumno.id + '" data-criterio="' + escAttr(crit.key) + '" data-valor="requiere_apoyo" ' +
-						'class="' + btnClass("requiere_apoyo") + '">Requiere apoyo</button>' +
-						'</div>' +
-						'<textarea data-obs-alumno="' + alumno.id + '" data-obs-criterio="' + escAttr(crit.key) + '" ' +
-						'rows="2" placeholder="Observación opcional..." ' +
-						'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
-						escHtml(obsVal) +
-						'</textarea>' +
-						'</div>'
-					);
-				}).join("");
-
-				var seccionCriterios = cardVieja.querySelector(".flex.flex-col.gap-3");
-				if (seccionCriterios) seccionCriterios.innerHTML = criteriosHtml;
-			}
-		}
-
+		ocultarMensaje();
+		redibujarAlumno(alumnoId);
 		actualizarContadores();
 		actualizarProgreso();
-
-		// Autosave inmediato
-		if (evalMap[k]) {
-			await guardarSemaforo(alumnoId, criterio, evalMap[k]);
-		}
+		guardar(alumnoId, criterio);
 	});
 
 	// ── guardar observación al perder el foco ─────────────────────────────────
-	evalListaEl.addEventListener("blur", async function (e) {
+	evalListaEl.addEventListener("blur", function (e) {
 		var ta = e.target.closest("textarea[data-obs-alumno]");
 		if (!ta) return;
 		var alumnoId = ta.dataset.obsAlumno;
 		var criterio = ta.dataset.obsCriterio;
-		var obs      = ta.value.trim();
 		var k        = mapKey(alumnoId, criterio);
-		obsMap[k]    = obs;
-		await guardarObservacion(alumnoId, criterio, obs);
+		obsMap[k]    = ta.value.trim();
+		if (!evalMap[k]) {
+			if (obsMap[k]) mostrarInfo("La observación se guarda cuando eliges un semáforo (Logrado, En proceso o Requiere apoyo).");
+			return;
+		}
+		guardar(alumnoId, criterio);
 	}, true); // captura para que blur funcione en delegación
 
 	// ── botón finalizar ───────────────────────────────────────────────────────
 	if (btnFinalizar) {
-		btnFinalizar.addEventListener("click", function () {
+		btnFinalizar.addEventListener("click", async function () {
+			btnFinalizar.disabled = true;
+			var bien = await guardarTodo();
+			btnFinalizar.disabled = false;
+			if (!bien && !window.confirm(observacionesSinSemaforo()
+				? "Hay una observación sin semáforo: solo se guarda cuando eliges un semáforo. ¿Salir de todos modos?"
+				: "No se pudo guardar lo último que capturaste. ¿Salir de todos modos?")) return;
 			window.location.href = "dashboard.html";
 		});
 	}
@@ -542,4 +563,4 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// El header evalHeader ya tiene top-14 (56px navbar), calculamos el offset total
 		contenido.style.paddingTop = (navH + evalH + 8) + "px";
 	})();
-});
+}

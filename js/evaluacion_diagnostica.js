@@ -1,8 +1,16 @@
-document.addEventListener("DOMContentLoaded", async function () {
-	if (!window.sb) {
-		mostrarError("Supabase no está configurado.");
-		return;
-	}
+/*
+	Diagnóstico por alumno (cuaderno, lectura, matemáticas, observaciones) en cada momento.
+
+	Arranque común (js/lectura.js): si el grupo o la lista de alumnos no se pudieron leer,
+	la página se detiene con el aviso "No se pudo cargar". Lo de un alumno que no se pudo
+	leer se dice en su lugar y no se guarda nada encima (cargaFallida).
+*/
+document.addEventListener("DOMContentLoaded", function () {
+	if (!window.sb) return;
+	window.Lectura.arrancar(iniciarDiagnostico);
+});
+
+async function iniciarDiagnostico() {
 
 	// ── criterios: claves estables del catálogo único (js/catalogo-habilidades.js)
 	var CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
@@ -143,43 +151,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 	user = authResult.data.user;
 
 	// ── cargar grupo del maestro ──────────────────────────────────────────────
-	try {
-		var grupoActivo = (await window.GrupoActivo.cargar(window.sb, user.id)).grupo;
-		var grupoRes = { data: grupoActivo, error: null };
-
-		if (!grupoRes.data) {
-			diagCuerpoEl.innerHTML =
-				'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' +
-				'No tienes un grupo configurado. <a href="onboarding.html" class="text-blue-600 underline font-medium">Crear grupo</a>' +
-				'</div>';
-			return;
-		}
-
-		grupoId = grupoRes.data.id;
-		// Elegir momento inicial según trimestre_actual
-		var trimActual = grupoRes.data.trimestre_actual;
-		momentoActual  = TRIMESTRE_A_MOMENTO[trimActual] || "inicio_ciclo";
-	} catch (e) {
-		mostrarError("Error al cargar el grupo: " + (e.message || "Error desconocido"));
+	// Si la lectura falla, GrupoActivo.cargar detiene la página él mismo
+	var grupoActivo = (await window.GrupoActivo.cargar(window.sb, user.id)).grupo;
+	if (!grupoActivo) {
+		diagCuerpoEl.innerHTML =
+			'<div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">' +
+			'No tienes un grupo configurado. <a href="onboarding.html" class="text-blue-600 underline font-medium">Crear grupo</a>' +
+			'</div>';
 		return;
 	}
+	grupoId = grupoActivo.id;
+	// Elegir momento inicial según trimestre_actual
+	momentoActual = TRIMESTRE_A_MOMENTO[grupoActivo.trimestre_actual] || "inicio_ciclo";
 
 	// ── cargar alumnos activos ────────────────────────────────────────────────
-	try {
-		var alumnosRes = await window.sb
-			.from("alumnos")
-			.select("id, nombre_completo, grado, num_lista")
-			.eq("grupo_id", grupoId)
-			.eq("maestro_id", user.id)
-			.eq("estatus", "activo")
-			.order("num_lista", { ascending: true });
-
-		if (alumnosRes.error) throw alumnosRes.error;
-		alumnos = alumnosRes.data || [];
-	} catch (e) {
-		mostrarError("Error al cargar alumnos: " + (e.message || "Error desconocido"));
-		return;
-	}
+	// Si falla, lanza (la página se detiene): no se dice "No hay alumnos"
+	alumnos = (await window.Lectura.uno(window.sb
+		.from("alumnos")
+		.select("id, nombre_completo, grado, num_lista")
+		.eq("grupo_id", grupoId)
+		.eq("maestro_id", user.id)
+		.eq("estatus", "activo")
+		.order("num_lista", { ascending: true }))) || [];
 
 	if (!alumnos.length) {
 		diagCuerpoEl.innerHTML =
@@ -212,20 +205,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── cargar evaluaciones del momento actual (para saber cuáles están evaluados)
 	async function cargarEvaluadosMomento() {
+		evaluadosSet = new Set();
 		try {
-			var res = await window.sb
+			var filas = await window.Lectura.uno(window.sb
 				.from("evaluacion_diagnostica")
 				.select("alumno_id, cuaderno, matematicas, lectura_ppm, lectura_comprension, observaciones")
 				.eq("maestro_id", user.id)
 				.eq("grupo_id", grupoId)
-				.eq("momento", momentoActual);
-
-			evaluadosSet = new Set();
-			// Si falla, el conteo no dice "0 de 8": dice que no se pudo contar
-			conteoFallido = !!res.error;
-			if (res.error) console.error("evaluacion_diagnostica (conteo):", res.error);
+				.eq("momento", momentoActual));
+			conteoFallido = false;
 			// Solo cuenta como evaluado quien tiene algo capturado (una fila vaciada no)
-			else (res.data || []).forEach(function (row) {
+			(filas || []).forEach(function (row) {
 				var algo = (row.cuaderno || []).some(function (c) { return c && c.nivel; }) ||
 					(row.matematicas || []).some(function (c) { return c && c.nivel; }) ||
 					row.lectura_ppm !== null || !!row.lectura_comprension ||
@@ -233,7 +223,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 				if (algo) evaluadosSet.add(row.alumno_id);
 			});
 		} catch (e) {
-			// No bloquear
+			// Si falla, el conteo no dice "0 de 8": dice que no se pudo contar (el conteo no
+			// decide nada que se guarde)
+			console.error("evaluacion_diagnostica (conteo):", e);
+			conteoFallido = true;
 		}
 	}
 
@@ -252,17 +245,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// sobrescribiría todo su diagnóstico con el primer toque
 		cargaFallida = false;
 		try {
-			var res = await window.sb
+			var fila = await window.Lectura.uno(window.sb
 				.from("evaluacion_diagnostica")
 				.select("*")
 				.eq("maestro_id", user.id)
 				.eq("alumno_id", alumno.id)
 				.eq("momento", momentoActual)
-				.maybeSingle();
+				.maybeSingle());
 
-			if (res.error) throw res.error;
-			if (res.data) aplicarFila(res.data);
-			teniaFila = !!res.data;
+			if (fila) aplicarFila(fila);
+			teniaFila = !!fila;
 			alumnoEnPantalla = { id: alumno.id, momento: momentoActual };
 		} catch (e) {
 			console.error("evaluacion_diagnostica (lectura):", e);
@@ -285,12 +277,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// hacen diez guardados en fila que "Siguiente" tendría que esperar)
 	var enVuelo = null, enEspera = null;
 
-	// Salir o recargar con un cambio sin guardar (p. ej. el texto antes de la pausa): pregunta
-	window.addEventListener("beforeunload", function (e) {
-		if (!sucio || cargaFallida) return;
-		guardarAlumno(true);
-		e.preventDefault();
-		e.returnValue = "";
+	// Salir con un cambio sin guardar (p. ej. el texto antes de la pausa de 800 ms): por un
+	// enlace (la barra) primero se guarda y luego se sale; al cerrar o recargar, pregunta
+	window.Lectura.antesDeSalir({
+		pendiente: function () { return sucio && !cargaFallida; },
+		guardar: function () { clearTimeout(debounceTimer); return guardarAlumno(true); },
 	});
 	function guardarAlumno(forzar) {
 		if (cambiando && !forzar) return Promise.resolve(true);
@@ -665,4 +656,4 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Ajustar padding después de que la navbar y la barra de momento están en el DOM
 	setTimeout(ajustarPadding, 100);
 	window.addEventListener("resize", ajustarPadding);
-});
+}

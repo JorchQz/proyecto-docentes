@@ -31,9 +31,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	let toastEl           = null;
 
 	// ── Init ──────────────────────────────────────────────────────────────────
-	await cargarProyectos();
+	// Arranque común (js/lectura.js): si el grupo o la lista no se pudieron leer, la página
+	// se detiene con el aviso "No se pudo cargar" (antes, sin grupo, mostraba los proyectos
+	// de todos los grupos). Tras una acción, una recarga fallida de la lista también la
+	// detiene (el error sale marcado como de lectura).
 	bindFiltros();
 	bindModal();
+	await window.Lectura.arrancar(cargarProyectos);
 
 	// =========================================================================
 	// CARGA DE DATOS
@@ -42,30 +46,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function cargarProyectos() {
 		mostrarCargando();
 
-		// Solo los proyectos del grupo activo: con 2+ grupos no se mezclan
-		let grupoActivoId = null;
-		try {
-			const activo = await window.GrupoActivo.cargar(window.sb, user.id);
-			grupoActivoId = activo.grupo ? activo.grupo.id : null;
-		} catch (e) {
-			console.error("grupo activo:", e);
-		}
+		// Solo los proyectos del grupo activo: con 2+ grupos no se mezclan. Si la lectura del
+		// grupo falla, GrupoActivo.cargar detiene la página él mismo
+		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
+		const grupoActivoId = activo.grupo ? activo.grupo.id : null;
 
-		// error-revisado-en: mostrarError (la consulta se arma aquí y se espera abajo)
 		let consulta = window.sb
 			.from("proyectos")
 			.select("id, titulo, campos_formativos, metodologia, estado, created_at, grados, trimestre, fecha_inicial, sesiones(count)")
 			.eq("maestro_id", user.id);
 		if (grupoActivoId) consulta = consulta.eq("grupo_id", grupoActivoId);
-		// proyectos no tiene updated_at: ordenar por él daba 400 y la lista nunca cargaba
-		const { data, error } = await consulta.order("created_at", { ascending: false });
-
-		if (error) {
-			mostrarError();
-			return;
-		}
-
-		todosLosProyectos = data || [];
+		// proyectos no tiene updated_at: ordenar por él daba 400 y la lista nunca cargaba.
+		// Si falla, lanza: no se dice "Aún no tienes proyectos"
+		todosLosProyectos = (await window.Lectura.uno(consulta.order("created_at", { ascending: false }))) || [];
 		actualizarBannerActivo();
 		aplicarFiltros();
 	}
@@ -345,8 +338,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	async function clonarProyecto(id) {
-		const original = todosLosProyectos.find(function (p) { return p.id === id; });
-		if (!original) { return; }
+		// La lista trae solo lo que se muestra: el proyecto completo (grupo, escenario,
+		// contenidos) se lee aquí. Antes se clonaba sin grupo_id y la base lo rechazaba siempre
+		let original;
+		try {
+			original = await window.Lectura.uno(window.sb.from("proyectos").select("*").eq("id", id).maybeSingle());
+		} catch (e) {
+			console.error("clonar: lectura del proyecto", e);
+			mostrarToast("No se pudo leer el proyecto, así que no se clonó. Revisa tu conexión.", "error");
+			return;
+		}
+		if (!original) {
+			mostrarToast("Ese proyecto ya no existe.", "error");
+			return;
+		}
 
 		// Trimestre: si es 3 queda en 3, si no incrementa
 		const trimOrig = parseInt(original.trimestre, 10) || 1;
@@ -363,6 +368,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			grupo_id:          original.grupo_id   || null,
 			escenario:         original.escenario  || null,
 			contenidos_pda:    original.contenidos_pda || null,
+			fase:                original.fase || null,
+			ejes_articuladores:  original.ejes_articuladores || null,
+			proposito:           original.proposito || null,
+			pregunta_generadora: original.pregunta_generadora || null,
+			es_multigrado:       original.es_multigrado || false,
 		};
 
 		const { error } = await window.sb
@@ -421,13 +431,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		try {
-			// Verificar que tenga sesiones
-			const { count, error: countError } = await window.sb
-				.from("sesiones")
-				.select("id", { count: "exact", head: true })
-				.eq("proyecto_id", proyectoActivoId);
+			// Verificar que tenga sesiones (si no se pudo contar, se dice eso: no "no tiene sesiones")
+			let count;
+			try {
+				count = await window.Lectura.contar(window.sb
+					.from("sesiones")
+					.select("id", { count: "exact", head: true })
+					.eq("proyecto_id", proyectoActivoId));
+			} catch (e) {
+				console.error("iniciar: conteo de sesiones", e);
+				mostrarToast("No se pudieron revisar las sesiones del proyecto, así que no se inició. Revisa tu conexión.", "error");
+				return;
+			}
 
-			if (countError || !count) {
+			if (!count) {
 				mostrarToast("Este proyecto no tiene sesiones. Edítalo para agregarlas.", "error");
 				return;
 			}
@@ -484,14 +501,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		estadoEl.classList.remove("hidden");
 		gridEl.classList.add("hidden");
 		gridEl.innerHTML = "";
-	}
-
-	function mostrarError() {
-		if (!estadoEl || !gridEl) { return; }
-		estadoEl.innerHTML = '<p class="text-red-500 font-medium">Error al cargar proyectos. Intenta de nuevo.</p>';
-		estadoEl.className = "text-center py-16";
-		estadoEl.classList.remove("hidden");
-		gridEl.classList.add("hidden");
 	}
 
 	function mostrarVacio() {

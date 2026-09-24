@@ -217,20 +217,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Cargar ponderación al iniciar
 	async function loadPonderacion() {
 		try {
-			var result = await window.sb
+			var ajustes = await window.Lectura.uno(window.sb
 				.from("maestro_ajustes")
 				.select("*")
 				.eq("maestro_id", currentUser.id)
-				.maybeSingle();
+				.maybeSingle());
 
-			if (result.error) throw result.error;
-
-			if (result.data) {
-				pesoTareasInput.value = pesoGuardado(result.data.peso_tareas, defaultValues.tareas);
-				pesoTrabajosInput.value = pesoGuardado(result.data.peso_trabajos, defaultValues.trabajos);
-				pesoParticipacionInput.value = pesoGuardado(result.data.peso_participacion, defaultValues.participacion);
-				pesoConductaInput.value = pesoGuardado(result.data.peso_conducta, defaultValues.conducta);
-				pesoExamenInput.value = pesoGuardado(result.data.peso_examen, defaultValues.examen);
+			if (ajustes) {
+				pesoTareasInput.value = pesoGuardado(ajustes.peso_tareas, defaultValues.tareas);
+				pesoTrabajosInput.value = pesoGuardado(ajustes.peso_trabajos, defaultValues.trabajos);
+				pesoParticipacionInput.value = pesoGuardado(ajustes.peso_participacion, defaultValues.participacion);
+				pesoConductaInput.value = pesoGuardado(ajustes.peso_conducta, defaultValues.conducta);
+				pesoExamenInput.value = pesoGuardado(ajustes.peso_examen, defaultValues.examen);
 			} else {
 				// Si no hay datos, usar valores por defecto
 				pesoTareasInput.value = defaultValues.tareas;
@@ -243,11 +241,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			ponderacionCargada = true;
 			calcularSuma();
 		} catch (error) {
-			// Sin los pesos guardados, la pantalla mostraría los de fábrica y "Guardar" los pisaría
-			console.error("Error al cargar ponderación:", error);
+			// Sin los pesos guardados, la pantalla mostraría los de fábrica como si fueran los
+			// suyos y "Guardar" los pisaría: la página se detiene con el aviso común
 			ponderacionCargada = false;
 			savePonderacionBtn.disabled = true;
-			showMessage("ponderacionMessage", "error", "No se pudieron cargar tus pesos guardados. Recarga la página; mientras tanto no se puede guardar, para no cambiarlos sin querer.");
+			window.Lectura.detenerPagina(error);
 		}
 	}
 

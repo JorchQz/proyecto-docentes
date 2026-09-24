@@ -45,14 +45,30 @@
 		grupo = null si el maestro todavía no tiene ninguno (la pantalla decide: onboarding).
 		Se consulta una sola vez por página: el selector de la barra y la pantalla
 		comparten la misma respuesta.
+
+		Si la lectura FALLA, la pantalla no recibe nada: aquí mismo se detiene la página con
+		el aviso común (js/lectura.js) y la promesa no se cumple nunca. Antes cada pantalla
+		lo manejaba a su manera y varias seguían sin grupo: mostraban los proyectos de todos
+		los grupos, decían "crea tu grupo" o lanzaban una excepción sin atrapar. Así ninguna
+		pantalla tiene que acordarse: la que espera el grupo simplemente no sigue.
 	*/
 	var enCurso = null, enCursoMaestro = null;
-	function cargar(sb, maestroId) {
+	function compartida(sb, maestroId) {
 		if (enCurso && enCursoMaestro === maestroId) return enCurso;
 		enCursoMaestro = maestroId;
 		enCurso = consultar(sb, maestroId);
 		enCurso.catch(function () { enCurso = null; }); // si falla, el siguiente intento vuelve a consultar
 		return enCurso;
+	}
+
+	function cargar(sb, maestroId) {
+		return compartida(sb, maestroId).then(null, function (error) {
+			// Sin la capa común (una página que no la carga) se conserva el comportamiento
+			// anterior: el error le llega a la pantalla
+			if (!window.Lectura) throw error;
+			window.Lectura.detenerPagina(error);
+			return new Promise(function () {});
+		});
 	}
 
 	async function consultar(sb, maestroId) {
@@ -61,7 +77,7 @@
 			.order("created_at", { ascending: true })
 			// Desempate estable: dos grupos creados en el mismo instante no cambian de orden
 			.order("nombre", { ascending: true }).order("id", { ascending: true });
-		if (res.error) throw res.error;
+		if (res.error) throw window.Lectura ? window.Lectura.errorDeLectura(res.error) : res.error;
 		var grupos = res.data || [];
 		var guardado = leerGuardado();
 		var grupo = null;
@@ -111,12 +127,15 @@
 	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, leerGuardado: leerGuardado };
 
 	// En pantallas que no usan el grupo (Ajustes, Mi cuenta…) el selector de la barra
-	// también debe aparecer: se carga solo, con la misma consulta compartida.
+	// también debe aparecer: se carga solo, con la misma consulta compartida. Si esta
+	// lectura falla no se detiene la página (Ajustes no necesita el grupo): solo falta el
+	// selector. La pantalla que sí lo necesita llama a cargar() y ahí se detiene.
 	document.addEventListener("DOMContentLoaded", function () {
 		if (!window.sb || !window.sb.auth) return;
 		window.sb.auth.getSession().then(function (res) {
 			var sesion = res && res.data ? res.data.session : null;
-			if (sesion) cargar(window.sb, sesion.user.id).catch(function () {});
+			// lectura-opcional: solo el selector de grupo de la barra; la pantalla hace su propia llamada
+			if (sesion) compartida(window.sb, sesion.user.id).catch(function () {});
 		}).catch(function () {});
 	});
 })();

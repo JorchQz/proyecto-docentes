@@ -1,8 +1,16 @@
-document.addEventListener("DOMContentLoaded", async function () {
-	if (!window.sb) {
-		mostrarError("Supabase no está configurado.");
-		return;
-	}
+/*
+	Exámenes: lista de exámenes disponibles y captura de respuestas por alumno.
+
+	Arranque común (js/lectura.js): si el grupo, el examen, sus preguntas, los alumnos o las
+	respuestas guardadas no se pudieron leer, la página se detiene con el aviso "No se pudo
+	cargar" (antes decía "Examen no encontrado" o mostraba los exámenes de todos los grupos).
+*/
+document.addEventListener("DOMContentLoaded", function () {
+	if (!window.sb) return;
+	window.Lectura.arrancar(iniciarExamen);
+});
+
+async function iniciarExamen() {
 
 	// ── elementos del DOM ─────────────────────────────────────────────────────
 	var headerTituloEl = document.getElementById("headerTitulo");
@@ -109,9 +117,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	userId = authResult.data.user.id;
 
 	// ── grupo del maestro ──────────────────────────────────────────────────────
-	try {
-		grupo = (await window.GrupoActivo.cargar(window.sb, userId)).grupo;
-	} catch (e) { /* sin grupo: la vista lista lo maneja */ }
+	// Sin grupo (aún no crea uno): la vista lista lo maneja. Si la lectura falla,
+	// GrupoActivo.cargar detiene la página él mismo (antes se seguía sin grupo y la lista
+	// mostraba los exámenes de todos los grados)
+	grupo = (await window.GrupoActivo.cargar(window.sb, userId)).grupo;
 
 	// ── enrutar ─────────────────────────────────────────────────────────────────
 	var params = new URLSearchParams(window.location.search);
@@ -132,24 +141,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (tabsEl) tabsEl.classList.add("hidden");
 		if (footerEl) footerEl.classList.add("hidden");
 
-		var examenesRes;
-		try {
-			examenesRes = await window.sb
-				.from("examenes")
-				.select("*")
-				.or("maestro_id.eq." + userId + ",maestro_id.is.null")
-				.in("estado", ["publicado", "cerrado"])
-				.order("trimestre", { ascending: true });
-		} catch (e) {
-			mostrarError("Error al cargar exámenes: " + (e.message || "Error desconocido"));
-			return;
-		}
-		if (examenesRes.error) {
-			mostrarError("Error al cargar exámenes: " + (examenesRes.error.message || "Error desconocido"));
-			return;
-		}
-
-		var lista = examenesRes.data || [];
+		// Si falla, lanza: no se dice "Aún no hay exámenes"
+		var lista = (await window.Lectura.uno(window.sb
+			.from("examenes")
+			.select("*")
+			.or("maestro_id.eq." + userId + ",maestro_id.is.null")
+			.in("estado", ["publicado", "cerrado"])
+			.order("trimestre", { ascending: true }))) || [];
 
 		// Filtrar por grados del grupo y trimestre vigente (cuando aplica)
 		var trimestre = trimestreActual();
@@ -246,18 +244,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ══════════════════════════════════════════════════════════════════════════
 	async function cargarExamen() {
 		// Examen
-		var examenRes;
-		try {
-			examenRes = await window.sb.from("examenes").select("*").eq("id", examenId).single();
-		} catch (e) {
-			mostrarError("Error al cargar el examen.");
-			return;
-		}
-		if (examenRes.error || !examenRes.data) {
+		// Si la lectura falla, lanza; "no encontrado" es solo cuando se leyó y no existe
+		examen = await window.Lectura.uno(window.sb.from("examenes").select("*").eq("id", examenId).maybeSingle());
+		if (!examen) {
 			mainEl.innerHTML = emptyState("Examen no encontrado o sin permiso.");
 			return;
 		}
-		examen = examenRes.data;
 
 		// Header
 		if (headerTituloEl) headerTituloEl.textContent = examen.titulo || "Examen";
@@ -284,18 +276,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			);
 			return;
 		}
-		var pregRes;
-		try {
-			pregRes = await window.sb.from("banco_preguntas").select("*").in("id", idsPreg);
-		} catch (e) {
-			mostrarError("Error al cargar las preguntas.");
-			return;
-		}
-		if (pregRes.error) {
-			mostrarError("Error al cargar las preguntas: " + (pregRes.error.message || ""));
-			return;
-		}
-		var crudas = pregRes.data || [];
+		var crudas = (await window.Lectura.uno(window.sb.from("banco_preguntas").select("*").in("id", idsPreg))) || [];
 		preguntas = idsPreg.map(function (id) {
 			return crudas.find(function (p) { return p.id === id; });
 		}).filter(Boolean);
@@ -307,44 +288,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Alumnos del grupo asignado al examen (o del grupo del maestro)
 		var grupoIdExamen = examen.grupo_id || (grupo && grupo.id);
+		// Si falla, lanza (la página se detiene)
 		if (grupoIdExamen) {
-			try {
-				var alRes = await window.sb
-					.from("alumnos")
-					.select("id, nombre_completo, grado, num_lista")
-					.eq("grupo_id", grupoIdExamen)
-					.eq("maestro_id", userId)
-					.eq("estatus", "activo")
-					.order("num_lista", { ascending: true });
-				if (alRes.error) throw alRes.error;
-				alumnos = alRes.data || [];
-			} catch (e) {
-				console.error("examen: alumnos", e);
-				mainEl.innerHTML = emptyState("No se pudo cargar la lista de alumnos. Recarga la página para intentarlo de nuevo.");
-				return;
-			}
+			alumnos = (await window.Lectura.uno(window.sb
+				.from("alumnos")
+				.select("id, nombre_completo, grado, num_lista")
+				.eq("grupo_id", grupoIdExamen)
+				.eq("maestro_id", userId)
+				.eq("estatus", "activo")
+				.order("num_lista", { ascending: true }))) || [];
 		}
 
-		// Respuestas existentes
+		// Respuestas existentes. Sin ellas la captura saldría vacía y se calificaría encima:
+		// si fallan, lanza. Alumnos × preguntas pasa de 1000 en un grupo grande (por páginas)
 		if (alumnos.length) {
-			try {
-				// Alumnos × preguntas pasa de 1000 en un grupo grande (js/leer-todo.js)
-				var rRes = { data: null, error: null };
-				try {
-					rRes.data = await window.LeerTodo.paginas(function () {
-						return window.sb.from("respuestas_examen").select("*").eq("examen_id", examenId).order("id");
-					});
-				} catch (e) { rRes.error = e; }
-				if (rRes.error) throw rRes.error;
-				(rRes.data || []).forEach(function (r) {
-					respMap[rkey(r.alumno_id, r.pregunta_id)] = r;
-				});
-			} catch (e) {
-				// Sin las respuestas guardadas la captura saldría vacía y se calificaría encima
-				console.error("examen: respuestas", e);
-				mainEl.innerHTML = emptyState("No se pudieron cargar las respuestas guardadas de este examen. Recarga la página; mientras tanto no se captura nada.");
-				return;
-			}
+			var respuestas = await window.Lectura.todas(function () {
+				return window.sb.from("respuestas_examen").select("*").eq("examen_id", examenId).order("id");
+			});
+			respuestas.forEach(function (r) {
+				respMap[rkey(r.alumno_id, r.pregunta_id)] = r;
+			});
 		}
 
 		// Pestañas
@@ -616,14 +579,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 			calificada_por: automatico ? "automatico" : "maestro",
 			observacion: observacion || null
 		};
-		respMap[rkey(alumnoId, pregunta.id)] = fila;
+		var clave = rkey(alumnoId, pregunta.id);
+		var anterior = respMap[clave];
+		respMap[clave] = fila;
 		try {
 			var res = await window.sb
 				.from("respuestas_examen")
 				.upsert(fila, { onConflict: "examen_id,alumno_id,pregunta_id" });
 			if (res.error) throw res.error;
 		} catch (e) {
-			// No se calla: esa respuesta no quedó guardada y la calificación saldría sin ella
+			// No se calla, y la tarjeta vuelve a lo que sí está guardado: esa respuesta no
+			// quedó guardada y la calificación saldría sin ella
+			if (respMap[clave] === fila) {
+				if (anterior) respMap[clave] = anterior; else delete respMap[clave];
+			}
 			console.error("Error guardando respuesta:", e);
 			mostrarError("No se pudo guardar una respuesta: " + ((e && e.message) || "error desconocido") +
 				". Revisa tu conexión y vuelve a capturarla.");
@@ -799,4 +768,4 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 	window.addEventListener("resize", ajustarPadding);
 	ajustarPadding();
-});
+}
