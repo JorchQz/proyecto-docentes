@@ -13,3 +13,12 @@ update public.plantillas_sugerencia
        actualizado_en = now()
  where clave = 'lectura_ppm'
    and descripcion is distinct from 'Velocidad lectora (PPM) por debajo de la referencia SEP 2010 de su grado';
+
+-- Descripciones de participación y conducta: desde 2026-09-24 el 1 (normal) y el 2 (destacado)
+-- valen el día completo y la conducta no pondera (solo se informa)
+update public.plantillas_sugerencia
+   set descripcion = 'Participación: menos del 60 % de los días con participación (1 o 2)'
+ where clave = 'participacion' and descripcion like '%(1 de 2)%';
+update public.plantillas_sugerencia
+   set descripcion = 'Conducta (referencia, no pondera): menos del 60 % de los días en 1 o 2'
+ where clave = 'conducta' and descripcion like '%(1 de 2)%';
