@@ -125,12 +125,99 @@
 		};
 	}
 
-	// Calificación que vale para cualquier reporte: solo la confirmada por el maestro
-	function calificacionOficial(filaBoleta) {
+	/*
+		Calificación que vale para cualquier reporte: solo la confirmada por el maestro.
+		Una confirmada que quedó FUERA de la escala del grado de hoy (fueraDeEscala: un 5
+		confirmado en 2° a 6° y después el alumno pasó a 1°) no vale: es "pendiente" hasta
+		que el maestro elija y confirme de nuevo (art. 4 XI: nada numérico sin confirmación
+		explícita). gradoHoy es opcional: si no se da, el que anotó quien leyó la fila.
+	*/
+	function calificacionOficial(filaBoleta, gradoHoy) {
 		if (!filaBoleta || !filaBoleta.calificacion_confirmada || filaBoleta.calificacion === null || filaBoleta.calificacion === undefined) {
 			return { valor: null, confirmada: false, cerrada: false, pendiente: true };
 		}
+		var fuera = fueraDeEscala(filaBoleta, gradoHoy);
+		if (fuera) return { valor: null, confirmada: false, cerrada: false, pendiente: true, fueraDeEscala: fuera };
 		return { valor: Number(filaBoleta.calificacion), confirmada: true, cerrada: !!filaBoleta.cerrada, pendiente: false };
+	}
+
+	/*
+		Grado de HOY del alumno, anotado en sus filas de boleta_trimestral al leerlas
+		(_gradoHoy; solo vive en memoria, nunca se escribe en la base). Con él,
+		calificacionOficial sabe si una confirmada sigue dentro de la escala del grado.
+		filas: una fila, un arreglo o un objeto {campo: fila}.
+	*/
+	function anotarGradoHoy(filas, grado) {
+		if (!filas) return filas;
+		var lista = Array.isArray(filas) ? filas : (filas.campo !== undefined || filas.alumno_id !== undefined ? [filas] : Object.keys(filas).map(function (k) { return filas[k]; }));
+		lista.forEach(function (f) { if (f && typeof f === "object") f._gradoHoy = vacio(grado) ? null : Number(grado); });
+		return filas;
+	}
+
+	/*
+		¿La calificación confirmada de una boleta ABIERTA quedó fuera de la escala del grado
+		de hoy? → null si está bien (o no aplica) o { valor, grado, piso, escala }.
+		Pasa al cambiar el grado del alumno después de confirmar (de 2° a 6° a 1°, donde el
+		mínimo es 6). Lo cerrado no se revisa: se entregó con la escala de su cierre.
+		La base aplica el mismo piso (trigger boleta_trimestral_piso_fase) y rechaza
+		cualquier escritura en esa fila hasta que se confirme dentro de la escala.
+	*/
+	function fueraDeEscala(fila, gradoHoy) {
+		if (!fila || !fila.calificacion_confirmada || fila.cerrada || vacio(fila.calificacion)) return null;
+		var g = gradoHoy !== undefined ? gradoHoy : fila._gradoHoy;
+		if (vacio(g)) return null;
+		var piso = pisoDeGrado(g);
+		if (!piso) return null;
+		var v = Number(fila.calificacion);
+		if (v >= piso && v <= 10) return null;
+		return { valor: v, grado: Number(g), piso: piso, escala: piso + " a 10" };
+	}
+	// "El 5 confirmado no es válido en 1° (escala 6 a 10): elige y confirma de nuevo."
+	function textoFueraDeEscala(fuera) {
+		if (!fuera) return "";
+		return "El " + fuera.valor + " confirmado no es válido en " + fuera.grado + "° (escala " + fuera.escala + "): elige y confirma de nuevo.";
+	}
+
+	/*
+		Defensa del cierre: "Cerrar boleta" manda a cerrar_boleta EXACTAMENTE lo confirmado en
+		la base, nunca un número que la pantalla puso por su cuenta (un selector sin la opción
+		confirmada muestra otra).
+		pantalla:  [{campo, calificacion}] lo que se ve en los selectores
+		filasBase: filas de boleta_trimestral del trimestre, leídas justo antes de cerrar
+		gradoHoy:  el grado del alumno leído también en ese momento
+		→ { ok: true, calificaciones: [{campo, calificacion}] (de la base) } o
+		  { ok: false, motivo } si algún campo no está confirmado, quedó fuera de la escala,
+		  ya está cerrado o no coincide con la pantalla.
+	*/
+	function validarCierre(pantalla, filasBase, gradoHoy) {
+		var enPantalla = {};
+		(pantalla || []).forEach(function (p) { enPantalla[p.campo] = p.calificacion; });
+		var base = {};
+		(filasBase || []).forEach(function (f) { base[f.campo] = f; });
+		var calificaciones = [], problemas = [];
+		CAMPOS.forEach(function (c) {
+			var fila = base[c];
+			var nombre = NOMBRE_CAMPO[c];
+			if (!fila || !fila.calificacion_confirmada || vacio(fila.calificacion)) {
+				problemas.push(nombre + " no tiene calificación confirmada");
+				return;
+			}
+			if (fila.cerrada) { problemas.push(nombre + " ya está cerrada"); return; }
+			var fuera = fueraDeEscala(fila, gradoHoy);
+			if (fuera) {
+				problemas.push(nombre + ": el " + fuera.valor + " confirmado no es válido en " + fuera.grado + "° (escala " + fuera.escala + "), elige y confirma de nuevo");
+				return;
+			}
+			var vista = enPantalla[c];
+			if (vacio(vista) || Number(vista) !== Number(fila.calificacion)) {
+				problemas.push(nombre + ": en pantalla " + (vacio(vista) ? "no hay número elegido" : "dice " + vista) +
+					" y la calificación confirmada es " + Number(fila.calificacion) + " (pulsa «Guardar ajustes» para confirmar lo que elegiste)");
+				return;
+			}
+			calificaciones.push({ campo: c, calificacion: Number(fila.calificacion) });
+		});
+		if (problemas.length) return { ok: false, motivo: problemas.join("; ") + "." };
+		return { ok: true, calificaciones: calificaciones };
 	}
 
 	/*
@@ -407,6 +494,28 @@
 			(camposBajo.length === 1 ? " tiene" : " tienen") + " menos de " + minimoCampo +
 			". Algunas entidades exigen mínimo " + minimoCampo + " en cada campo; confírmalo con tu control escolar.";
 	}
+	/*
+		Boleta imprimible (la ven las familias): "Revisar" y "confírmalo con tu control
+		escolar" son para la maestra. Ahí la acreditación dice que la escuela la confirmará
+		y la explicación usa el nombre completo del campo, sin códigos:
+		"El promedio final es de 6 o más; Saberes y Pensamiento Científico quedó debajo de 6."
+		Las pantallas de la maestra y la exportación siguen con "Revisar".
+	*/
+	var ACREDITACION_REVISAR_FAMILIAS = "la escuela la confirmará con control escolar";
+	function explicacionRevisarFamilias(camposBajo) {
+		if (!camposBajo || !camposBajo.length) return "";
+		var A = reglas().acreditacion;
+		return "El promedio final es de " + A.promedioMinimo + " o más; " +
+			listaCampos(camposBajo.map(function (c) { return NOMBRE_CAMPO[c] || c; })) +
+			(camposBajo.length === 1 ? " quedó" : " quedaron") + " debajo de " + A.campoMinimo + ".";
+	}
+	function reglaAcreditacionTextoFamilias(grado) {
+		var A = reglas().acreditacion;
+		if (Number(grado) === 1 && A.primeroConCursar) return "En 1° se acredita con haber cursado el grado.";
+		return "De 2° a 6° se acredita con un promedio final de grado mínimo de " + A.promedioMinimo +
+			"; si el promedio llega pero algún campo queda debajo de " + A.campoMinimo +
+			", la escuela confirma la acreditación con control escolar.";
+	}
 	function finalCiclo(boletaCiclo, grado) {
 		var ciclo = boletaCiclo || {};
 		var porCampo = {}, faltan = 0;
@@ -512,7 +621,14 @@
 				"<span class='inline-block w-2 h-2 rounded-full mr-1.5 align-middle' style='background:" + COLOR_CAMPO[c] + "'></span>" +
 				"<span class='font-semibold'>" + c + "</span> <span class='hidden sm:inline'>" + esc(NOMBRE_CAMPO[c]) + "</span></th>" +
 				TRIMESTRES.map(function (t) {
-					return celda(calificacionOficial(((boletaCiclo || {})[t] || {})[c]).valor, "", "data-final-trim='" + t + "' data-final-de='" + c + "'");
+					var of = calificacionOficial(((boletaCiclo || {})[t] || {})[c]);
+					var attrs = "data-final-trim='" + t + "' data-final-de='" + c + "'";
+					// Confirmada fuera de la escala del grado de hoy: no vale hasta confirmarla de nuevo
+					if (of.fueraDeEscala) {
+						return "<td class='" + borde + " text-xs italic text-amber-700' " + attrs + " data-fuera-escala='1' title='" + esc(textoFueraDeEscala(of.fueraDeEscala)) + "'>revisar" +
+							"<span class='block not-italic text-[10px] leading-tight'>el " + of.fueraDeEscala.valor + " no es válido en " + of.fueraDeEscala.grado + "°</span></td>";
+					}
+					return celda(of.valor, "", attrs);
 				}).join("") +
 				celda(formatoDecimal(f.porCampo[c]), "bg-gray-50", "data-final-campo='" + c + "'") + "</tr>";
 		}).join("");
@@ -537,8 +653,11 @@
 		Filas de boleta_trimestral del ciclo, por alumno, trimestre y campo:
 		{ alumnoId: { 1: {LEN: fila, ..., GEN: fila}, 2: {...}, 3: {...} } }
 	*/
-	async function boletasCiclo(sb, ctx, alumnoIds) {
+	async function boletasCiclo(sb, ctx, alumnoIds, gradosHoy) {
 		var ids = alumnoIds || ctx.alumnos.map(function (a) { return a.id; });
+		// Grado de hoy de cada alumno (anotarGradoHoy): el que se recibe o el de ctx.alumnos
+		var grados = Object.assign({}, gradosHoy || {});
+		(ctx.alumnos || []).forEach(function (a) { if (!(a.id in grados)) grados[a.id] = a.grado; });
 		var salida = {};
 		ids.forEach(function (id) { salida[id] = { 1: {}, 2: {}, 3: {} }; });
 		if (!ids.length) return salida;
@@ -549,6 +668,7 @@
 		filas.forEach(function (f) {
 			if (!salida[f.alumno_id]) salida[f.alumno_id] = { 1: {}, 2: {}, 3: {} };
 			if (!salida[f.alumno_id][f.trimestre]) salida[f.alumno_id][f.trimestre] = {};
+			if (f.alumno_id in grados) anotarGradoHoy(f, grados[f.alumno_id]);
 			salida[f.alumno_id][f.trimestre][f.campo] = f;
 		});
 		return salida;
@@ -611,7 +731,10 @@
 		if (pdaRes.error) throw pdaRes.error;
 		var avancePda = pdaRes.data || [];
 
-		var boletas = await boletasCiclo(sb, ctx, [alumno.id]);
+		// alumno llega con su grado de hoy: una confirmada fuera de su escala sale "pendiente"
+		var gradoHoy = {};
+		gradoHoy[alumno.id] = alumno.grado;
+		var boletas = await boletasCiclo(sb, ctx, [alumno.id], gradoHoy);
 		var boletaT = (boletas[alumno.id] || {})[trimestre] || {};
 		var cerrada = boletaCerrada(boletaT);
 		var foto = cerrada ? fotoCierre(boletaT.GEN) : null;
@@ -777,6 +900,13 @@
 		esc: esc,
 		contexto: contexto,
 		calificacionOficial: calificacionOficial,
+		anotarGradoHoy: anotarGradoHoy,
+		fueraDeEscala: fueraDeEscala,
+		textoFueraDeEscala: textoFueraDeEscala,
+		validarCierre: validarCierre,
+		ACREDITACION_REVISAR_FAMILIAS: ACREDITACION_REVISAR_FAMILIAS,
+		explicacionRevisarFamilias: explicacionRevisarFamilias,
+		reglaAcreditacionTextoFamilias: reglaAcreditacionTextoFamilias,
 		promedio: promedio,
 		promedioTruncado: promedioTruncado,
 		finalCiclo: finalCiclo,

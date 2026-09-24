@@ -41,9 +41,20 @@
 		return RD && RD.finalCiclo ? RD.finalCiclo(boletaCiclo || {}, grado) : null;
 	}
 
-	function oficial(fila) {
-		if (!fila || !fila.calificacion_confirmada || fila.calificacion === null || fila.calificacion === undefined) return null;
-		return Number(fila.calificacion);
+	/*
+		Calificación oficial de un campo: la de ReporteDatos.calificacionOficial (una
+		confirmada que quedó fuera de la escala del grado de hoy NO vale: sale "revisar",
+		nunca como número oficial). Sin esa capa (pruebas), solo la confirmada.
+		→ { valor: n|null, fuera: {valor, grado, escala}|null }
+	*/
+	function oficialDe(fila) {
+		var RD = typeof window !== "undefined" ? window.ReporteDatos : null;
+		if (RD && RD.calificacionOficial) {
+			var of = RD.calificacionOficial(fila);
+			return { valor: of.confirmada ? of.valor : null, fuera: of.fueraDeEscala || null };
+		}
+		if (!fila || !fila.calificacion_confirmada || fila.calificacion === null || fila.calificacion === undefined) return { valor: null, fuera: null };
+		return { valor: Number(fila.calificacion), fuera: null };
 	}
 
 	function fmt1(v) { return (Math.floor(v * 10 + 1e-9) / 10).toFixed(1); }
@@ -61,17 +72,21 @@
 			var motor = porAlumno[al.id] ? porAlumno[al.id].porCampo || {} : {};
 			var campos = {};
 			var confirmadas = 0;
+			var fueraDeEscala = [];
 			CAMPOS.forEach(function (c) {
-				var of = oficial(boleta[c]);
-				if (of !== null) confirmadas++;
+				var of = oficialDe(boleta[c]);
+				if (of.valor !== null) confirmadas++;
+				if (of.fuera) fueraDeEscala.push(c);
 				var prop = motor[c] && motor[c].calificacionPropuesta !== undefined ? motor[c].calificacionPropuesta : null;
-				campos[c] = { oficial: of, propuesta: prop };
+				campos[c] = { oficial: of.valor, propuesta: prop, fuera: of.fuera };
 			});
 			var completa = confirmadas === CAMPOS.length;
 			return {
 				alumno: al,
 				campos: campos,
 				confirmadas: confirmadas,
+				// Campos con la confirmada fuera de la escala del grado de hoy (hay que volver a confirmar)
+				fueraDeEscala: fueraDeEscala,
 				completa: completa,
 				promedio: completa ? promedio(CAMPOS.map(function (c) { return campos[c].oficial; })) : null,
 				final: finalDe((datos.boletas || {})[al.id], al.grado),
@@ -89,6 +104,11 @@
 	}
 
 	function celda(c) {
+		if (c.fuera) {
+			// Confirmada fuera de la escala del grado de hoy: no es oficial hasta volver a confirmar
+			return "<span class='block text-xs font-semibold text-amber-700' data-fuera-escala='1'>revisar</span>" +
+				"<span class='block text-[11px] text-amber-700 leading-tight'>el " + esc(c.fuera.valor) + " no es válido en " + esc(c.fuera.grado) + "°</span>";
+		}
 		if (c.oficial !== null) {
 			return "<span class='text-base font-bold " + colorCalif(c.oficial) + "'>" + c.oficial + "</span>";
 		}
@@ -99,9 +119,14 @@
 	function avisoConfirmacion(lista) {
 		var completas = lista.filter(function (f) { return f.completa; }).length;
 		var todas = completas === lista.length;
+		var conFuera = lista.filter(function (f) { return f.fueraDeEscala && f.fueraDeEscala.length; });
 		return "<div class='rounded-xl border " + (todas ? "border-green-200 bg-green-50 text-green-900" : "border-amber-200 bg-amber-50 text-amber-900") + " px-4 py-3 text-sm'>" +
 			"<p class='font-semibold'>" + completas + " de " + lista.length + " alumnos con sus 4 calificaciones confirmadas.</p>" +
 			(todas ? "" : "<p class='mt-1'>Lo que dice «pendiente» todavía no está confirmado: confírmalo en la pestaña Boleta. Solo las calificaciones confirmadas son las que van a la boleta oficial (SIGED).</p>") +
+			(conFuera.length
+				? "<p class='mt-1' data-aviso-fuera-escala>Lo que dice «revisar» era una calificación confirmada que ya no es válida en la escala del grado actual del alumno (cambió su grado): " +
+					esc(conFuera.map(function (f) { return f.alumno.nombre_completo; }).join(", ")) + ". Elige y confirma de nuevo en la pestaña Boleta.</p>"
+				: "") +
 			"</div>";
 	}
 
@@ -265,7 +290,10 @@
 				"<ul class='px-4 py-1'>" + pendientes.map(function (f) {
 					return "<li class='flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0'>" +
 						"<span class='text-sm text-gray-800'>" + esc(f.alumno.nombre_completo) + " <span class='text-xs text-gray-400'>" + (f.alumno.grado || "") + "°</span></span>" +
-						"<span class='text-xs text-gray-500'>" + f.confirmadas + " de 4 confirmadas</span></li>";
+						"<span class='text-xs text-gray-500'>" + f.confirmadas + " de 4 confirmadas" +
+						(f.fueraDeEscala && f.fueraDeEscala.length
+							? "<span class='block text-amber-700' data-fuera-escala='1'>revisar " + esc(f.fueraDeEscala.join(", ")) + ": fuera de la escala de " + esc(f.alumno.grado) + "°</span>"
+							: "") + "</span></li>";
 				}).join("") + "</ul></div>"
 			: "";
 

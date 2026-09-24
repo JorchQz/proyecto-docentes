@@ -441,6 +441,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.eq("ciclo", cicloBoleta);
 			if (errorBoleta) { noSePudo("la boleta guardada", errorBoleta); return; }
 			(boletaRows || []).forEach(function (r) {
+				// Grado de hoy en cada fila: una confirmada fuera de su escala no vale (ReporteDatos.fueraDeEscala)
+				window.ReporteDatos.anotarGradoHoy(r, alumno.grado);
 				if (!boletaCicloAlumno[r.trimestre]) boletaCicloAlumno[r.trimestre] = {};
 				boletaCicloAlumno[r.trimestre][r.campo] = r;
 				if (Number(r.trimestre) === trimestre) boletaPorCampo[r.campo] = r;
@@ -497,6 +499,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		*/
 		const fallosPropuesta = [];
 		let errorPropuesta = null;
+		/*
+			Confirmada que quedó FUERA de la escala del grado de hoy (un 5 y el alumno pasó a
+			1°): NO cuenta como confirmada (art. 4 XI). El campo pide "Elige" con su aviso,
+			"Cerrar boleta" queda deshabilitado y no se escribe nada en esa fila: la base
+			rechaza cualquier escritura ahí hasta que el maestro confirme dentro de la escala,
+			y proponer un número encima lo dejaría "confirmado" sin que él lo eligiera.
+		*/
+		const fuerasDeEscala = {};
 		try {
 			const upserts = [];
 			CODIGOS.forEach(function (codigo) {
@@ -507,6 +517,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 				if (fila.cerrada) { oficialPorCampo[codigo] = fila.calificacion; return; }
 				todoCerrado = false;
+				const fuera = RDB.fueraDeEscala(fila);
+				if (fuera) {
+					fuerasDeEscala[codigo] = fuera;
+					todoConfirmado = false;
+					return;
+				}
 				if (fila.calificacion_confirmada) {
 					oficialPorCampo[codigo] = fila.calificacion;
 					if (datos.porcentaje !== null && datos.porcentaje !== undefined) {
@@ -676,6 +692,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const valor = oficialPorCampo[codigo];
 			const propuesta = porCampo[codigo] ? porCampo[codigo].calificacionPropuesta : null;
 			const juicio = RDB.juicioSinEvidencias(boletaPorCampo, codigo, porCampo[codigo]);
+			const fuera = fuerasDeEscala[codigo];
+			if (fuera) {
+				// La confirmada no existe en la escala de hoy: "Elige", sin ningún número puesto
+				// por la pantalla, y el aviso de qué pasó
+				haySelector = true;
+				let opcionesFuera = "<option value='' selected>Elige</option>";
+				for (let n = piso; n <= 10; n++) opcionesFuera += "<option value='" + n + "'>" + n + "</option>";
+				filaCalificacion += "<td class='px-3 py-2 text-center border border-gray-200 bg-amber-50'>" +
+					"<select data-cal-campo='" + codigo + "' data-cal-fuera-escala='" + fuera.valor + "' data-cal-nombre='" + esc(CAMPOS_CORTOS[i]) + "'" +
+					" class='min-h-[44px] w-24 text-center font-bold rounded-lg border border-amber-400 bg-white text-gray-700'>" + opcionesFuera + "</select>" +
+					"<span class='block text-xs text-amber-800 mt-1 leading-snug' data-fuera-escala='" + codigo + "'>" + esc(RDB.textoFueraDeEscala(fuera)) + "</span></td>";
+				return;
+			}
 			if (valor === null || valor === undefined) {
 				/*
 					Campo sin evidencias este trimestre (y sin calificación confirmada): no hay
@@ -743,10 +772,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 					? "<span class='block text-xs mt-1'>Hubo capturas después del cierre: el desglose por criterio muestra los datos de hoy; el porcentaje y la calificación son los del cierre.</span>"
 					: "") + "</div>";
 		} else {
+			// Confirmadas fuera de la escala de hoy: lo primero que se dice (no se puede cerrar)
+			const codigosFuera = CODIGOS.filter(function (c) { return fuerasDeEscala[c]; });
+			const avisoFuera = codigosFuera.length
+				? "<span class='block mb-1 text-amber-800 font-medium' data-aviso-fuera-escala>" +
+					codigosFuera.map(function (c) {
+						const f = fuerasDeEscala[c];
+						return esc(CAMPOS_CORTOS[CODIGOS.indexOf(c)]) + ": el " + f.valor + " confirmado no es válido en " + f.grado + "° (escala " + esc(f.escala) + ")";
+					}).join("; ") +
+					". Cambió el grado del alumno: elige y confirma de nuevo " + (codigosFuera.length === 1 ? "esa calificación" : "esas calificaciones") +
+					" para poder cerrar la boleta. Mientras tanto, sus textos no se guardan.</span>"
+				: "";
 			barraEstado =
-				"<div class='rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>" +
-				"<p class='text-sm text-gray-600'>" +
-				(todoConfirmado
+				"<div class='rounded-xl border " + (codigosFuera.length ? "border-amber-300 bg-amber-50" : "border-gray-200 bg-gray-50") + " px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>" +
+				"<p class='text-sm text-gray-600'>" + avisoFuera +
+				(codigosFuera.length && CODIGOS.every(function (c) { return fuerasDeEscala[c] || RDB.calificacionOficial(boletaPorCampo[c]).confirmada; })
+					? (codigosFuera.length < CODIGOS.length ? "Las demás calificaciones siguen confirmadas." : "")
+					: todoConfirmado
 					? "Calificaciones confirmadas por el docente. Puedes cerrar la boleta."
 					: (hayPropuesta
 					? "El sistema propone estas calificaciones. Revísalas, ajústalas si hace falta y confírmalas: la calificación es tu juicio docente." +
@@ -886,20 +928,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const fila = boletaPorCampo[codigo] || {};
 			const valor = valorTexto(codigo, tipoTexto, generado);
 			const deIa = (fila.texto_autogenerado || {}).visible === "ia" && fila[tipoTexto];
+			// Campo con la confirmada fuera de la escala: la base no deja guardar sus textos
+			// hasta confirmar de nuevo; solo lectura, para que no se escriba algo que se pierda
+			const soloLectura = todoCerrado || !!fuerasDeEscala[codigo];
 			const marca = window.TextosBoleta.esEditado(fila, tipoTexto)
 				? "<span class='text-xs font-normal text-gray-400 ml-1'>(tuyo)</span>"
 				: deIa ? "<span class='text-xs font-normal text-violet-600 ml-1'>(redactado con IA)</span>"
 				: (generado && !boletaYaCerrada ? "<span class='text-xs font-normal text-blue-500 ml-1'>(propuesto)</span>" : "");
 			return "<div><label class='block text-xs font-semibold text-gray-600 mb-1'>" + label + marca + "</label>" +
 				"<textarea data-boleta-campo='" + codigo + "' data-boleta-tipo='" + tipoTexto + "'" +
-				" data-inicial='" + esc(valor) + "' rows='" + renglones(valor) + "'" + (todoCerrado ? " readonly" : "") +
-				" class='" + CLASE_TA + (todoCerrado ? " bg-gray-50 text-gray-700" : "") + "'>" +
+				" data-inicial='" + esc(valor) + "' rows='" + renglones(valor) + "'" + (soloLectura ? " readonly" : "") +
+				" class='" + CLASE_TA + (soloLectura ? " bg-gray-50 text-gray-700" : "") + "'>" +
 				esc(valor) + "</textarea></div>";
 		}
 
 		function bloqueTextos(codigo, titulo, generado) {
 			return "<div class='rounded-xl border border-gray-200 p-3'>" +
 				"<p class='text-sm font-semibold text-gray-700 mb-2'>" + esc(titulo) + "</p>" +
+				(fuerasDeEscala[codigo]
+					? "<p class='text-xs text-amber-800 mb-2' data-textos-fuera-escala='" + codigo + "'>Para editar y guardar estos textos, primero elige y confirma la calificación de este campo.</p>"
+					: "") +
 				"<div class='grid grid-cols-1 sm:grid-cols-3 gap-3'>" +
 				textareaBoleta(codigo, "fortalezas", "Fortalezas", window.TextosBoleta.comoParrafo(generado.fortalezas)) +
 				textareaBoleta(codigo, "areas_oportunidad", "Áreas de oportunidad", window.TextosBoleta.comoParrafo(generado.areas)) +
@@ -947,7 +995,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const soloCalificacion = fallosPropuesta.length === 1 && fallosPropuesta[0] === "la propuesta de calificación";
 			avisoGuardado("No se " + (soloCalificacion ? "pudo" : "pudieron") + " guardar " + fallosPropuesta.join(" ni ") + " de esta boleta: " +
 				((errorPropuesta && errorPropuesta.message) || "error desconocido") +
-				". Lo que ves es la propuesta del sistema, todavía sin guardar. Revisa tu conexión y vuelve a generar la boleta.",
+				". Lo que ves es la propuesta del sistema, todavía sin guardar. " + queHacerGuardado(errorPropuesta, "vuelve a generar la boleta."),
 				"boletaAvisoPropuesta");
 		}
 
@@ -978,7 +1026,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				console.error("boleta_trimestral:", e);
 				btn.disabled = false;
 				btn.textContent = original;
-				window.alert("No se pudo guardar: " + (e.message || "error desconocido"));
+				window.alert("No se pudo guardar: " + (e.message || "error desconocido") + ". " + queHacerGuardado(e, "inténtalo de nuevo."));
 				// Si la boleta se cerró en otra pestaña, la base lo rechaza: se muestra lo que hay
 				await generarBoleta();
 			}
@@ -987,13 +1035,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const confirmarBtn = document.getElementById("boletaConfirmarBtn");
 		if (confirmarBtn) {
 			confirmarBtn.addEventListener("click", function () {
-				const faltan = [];
+				const faltan = [], faltanFuera = [];
 				cont.querySelectorAll("select[data-cal-campo]").forEach(function (sel) {
-					if (sel.value === "") faltan.push(sel.dataset.calNombre || sel.dataset.calCampo);
+					if (sel.value !== "") return;
+					// Confirmada fuera de la escala del grado de hoy, o campo sin evidencias
+					if (sel.dataset.calFueraEscala) faltanFuera.push(sel.dataset.calNombre || sel.dataset.calCampo);
+					else faltan.push(sel.dataset.calNombre || sel.dataset.calCampo);
 				});
-				if (faltan.length) {
-					window.alert("Falta elegir la calificación de: " + faltan.join(", ") +
-						" (sin evidencias este trimestre: el número es tu juicio docente).");
+				if (faltan.length || faltanFuera.length) {
+					window.alert("Falta elegir la calificación de: " + faltan.concat(faltanFuera).join(", ") + " (" +
+						(faltanFuera.length
+							? "su calificación confirmada ya no es válida en el grado actual del alumno" + (faltan.length ? "; las demás no tienen evidencias este trimestre" : "")
+							: "sin evidencias este trimestre") +
+						": el número es tu juicio docente).");
 					return;
 				}
 				const filas = calificacionesEnPantalla();
@@ -1099,10 +1153,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (cerrarBtn) {
 			cerrarBtn.addEventListener("click", async function () {
 				if (!window.confirm("Al cerrar la boleta, las calificaciones, los porcentajes y los textos quedan como están ahora y ya no se pueden cambiar. ¿Continuar?")) return;
-				const filas = calificacionesEnPantalla().map(function (f) {
-					return Object.assign({}, f, { cerrada: true });
-				});
+				const filas = calificacionesEnPantalla();
 				if (!filas.length) return;
+				/*
+					Defensa: se cierra con lo CONFIRMADO en la base, nunca con un número que la
+					pantalla puso por su cuenta (un selector sin la opción confirmada muestra otra).
+					Se leen las filas y el grado de hoy justo ahora; si algún campo no está
+					confirmado, quedó fuera de la escala del grado o no coincide con la pantalla,
+					no se cierra y se dice por qué (ReporteDatos.validarCierre).
+				*/
+				let revision;
+				try {
+					const { data: filasBase, error: errorFilas } = await window.sb.from("boleta_trimestral")
+						.select("campo, calificacion, calificacion_confirmada, cerrada")
+						.eq("maestro_id", userId).eq("alumno_id", alumnoId).eq("ciclo", cicloBoleta).eq("trimestre", trimestre);
+					if (errorFilas) throw errorFilas;
+					const { data: alumnoBase, error: errorAlumno } = await window.sb.from("alumnos")
+						.select("grado").eq("id", alumnoId).eq("maestro_id", userId).maybeSingle();
+					if (errorAlumno) throw errorAlumno;
+					if (!alumnoBase) throw new Error("no se encontró al alumno");
+					revision = RDB.validarCierre(filas, filasBase || [], alumnoBase.grado);
+				} catch (e) {
+					console.error("cerrar boleta (revisión):", e);
+					window.alert("No se cerró la boleta: no se pudo comprobar lo confirmado (" + ((e && e.message) || "error desconocido") +
+						"). Revisa tu conexión e inténtalo de nuevo.");
+					return;
+				}
+				if (!revision.ok) {
+					window.alert("No se cerró la boleta. " + revision.motivo);
+					await generarBoleta(); // lo que hay en la base
+					return;
+				}
 				// Lo que se acaba de escribir entra en lo que se entrega
 				let todoGuardado = true;
 				if (guardarCuadroBoleta) {
@@ -1150,7 +1231,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				try {
 					const { error } = await window.sb.rpc("cerrar_boleta", {
 						p_alumno: alumnoId, p_ciclo: cicloBoleta, p_trimestre: trimestre,
-						p_calificaciones: filas.map(function (f) { return { campo: f.campo, calificacion: f.calificacion }; }),
+						p_calificaciones: revision.calificaciones, // las de la base, no las de la pantalla
 						p_foto: foto,
 					});
 					if (error) throw error;
@@ -1170,9 +1251,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Construir resumen plano para WhatsApp
 		const lineCF = CAMPOS_CORTOS.map(function (corto, i) {
-			const fila = boletaPorCampo[CODIGOS[i]] || {};
-			return corto + ": " + (fila.calificacion_confirmada && fila.calificacion !== null && fila.calificacion !== undefined
-				? fila.calificacion : "pendiente");
+			// Solo la que vale (una confirmada fuera de la escala de hoy es "pendiente")
+			const oficial = RDB.calificacionOficial(boletaPorCampo[CODIGOS[i]]);
+			return corto + ": " + (oficial.confirmada ? oficial.valor : "pendiente");
 		}).join(" | ");
 		const asisTexto = (diasTotal > 0) ? (diasPresente + "/" + diasTotal + " días") : "—";
 		boletaResumenTexto =
@@ -1222,6 +1303,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (!generado) return;
 			const fila = boletaPorCampo[codigo] || {};
 			if (fila.cerrada) return; // boleta cerrada: no se toca
+			// Confirmada fuera de la escala de hoy: la base rechaza toda escritura en esa fila
+			// (y tumbaría el guardado de los demás campos); la boleta lo avisa
+			if (window.ReporteDatos && window.ReporteDatos.fueraDeEscala(fila)) return;
 			// Sin nada que proponer y sin fila previa: no se crea una fila vacía
 			const hayTexto = generado.fortalezas.length || generado.areas.length || generado.sugerencias.length;
 			if (!hayTexto && !fila.id) return;
@@ -1424,6 +1508,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 		};
 	}
 
+	/*
+		Guardado rechazado por la escala del grado (trigger boleta_trimestral_piso_fase:
+		"Calificación 5 inválida para 1 grado"): pasa cuando cambió el grado del alumno
+		después de confirmar. No es la conexión: se dice qué hacer.
+	*/
+	function esRechazoDeEscala(err) {
+		return /inválida para \d+ grado/i.test((err && err.message) || "");
+	}
+	function queHacerGuardado(err, siNo) {
+		if (esRechazoDeEscala(err)) {
+			return "Cambió el grado del alumno y una calificación confirmada ya no es válida en su escala: elige y confirma de nuevo esa calificación en esta boleta.";
+		}
+		return "Revisa tu conexión y " + siNo;
+	}
+
 	// Aviso en la boleta cuando un guardado falla (lo escrito sigue en pantalla y se reintenta).
 	// id: cada tipo de guardado tiene su aviso; el de la propuesta ("boletaAvisoPropuesta") no
 	// lo quita que después se guarde bien un cuadro de texto, solo volver a generar la boleta
@@ -1497,7 +1596,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				}
 				ta.dataset.inicial = inicialAntes;
 				avisoGuardado("No se pudo guardar un cuadro de texto: " + ((err && err.message) || "error desconocido") +
-					". Lo escrito sigue en pantalla; se volverá a intentar al salir del cuadro.");
+					". Lo escrito sigue en pantalla; se volverá a intentar al salir del cuadro." +
+					(esRechazoDeEscala(err) ? " " + queHacerGuardado(err, "") : ""));
 				return false;
 			}
 		};

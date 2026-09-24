@@ -158,11 +158,12 @@ tabla = B.tablaCalificaciones(ciclo([5, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]), 3
 ok("imprimible 4° con 5.9: No acredita", [celda(tabla, "GENERAL", "final"), /data-acreditacion='no_acredita'/.test(tabla)], ["5.9", true]);
 tabla = B.tablaCalificaciones(ciclo([6, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]), 3, null, 1);
 ok("imprimible 1°: explica que se acredita con cursar", tabla.includes("En 1° se acredita con haber cursado el grado."), true);
-// Revisar en la imprimible: etiqueta y explicación
+// "Revisar" en la imprimible (la ven las familias, R7): sin "Revisar" ni códigos ni "confírmalo"
 tabla = B.tablaCalificaciones(ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]), 3, null, 4);
-ok("imprimible 4° con LEN 5.3: Revisar", [/data-acreditacion='revisar'/.test(tabla), tabla.includes(">Revisar<")], [true, true]);
-ok("imprimible: explica el Revisar", tabla.includes("pero LEN tiene menos de 6. Algunas entidades exigen mínimo 6 en cada campo; confírmalo con tu control escolar."), true);
-ok("imprimible: la nota dice cuándo sale Revisar", tabla.includes("dice «Revisar»"), true);
+ok("imprimible 4° con LEN 5.3: la escuela confirmará (no «Revisar»)", [/data-acreditacion='revisar'/.test(tabla), tabla.includes("la escuela la confirmará con control escolar"), tabla.includes("Revisar")], [true, true, false]);
+ok("imprimible: explica con el nombre completo del campo", tabla.includes("El promedio final es de 6 o más; Lenguajes quedó debajo de 6."), true);
+ok("imprimible: sin «confírmalo con tu control escolar» (es para la maestra)", tabla.includes("confírmalo"), false);
+ok("imprimible: la nota dice qué pasa si un campo queda debajo de 6", tabla.includes("la escuela confirma la acreditación con control escolar"), true);
 const hoja = B.renderBoleta({ alumno: { nombre_completo: "H", grado: 4, num_lista: 1 }, trimestre: 3, boletaCiclo: ciclo([5, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]) });
 ok("imprimible: renderBoleta pasa el grado del alumno (4° con 5.9 no acredita)", /data-acreditacion='no_acredita'/.test(hoja), true);
 

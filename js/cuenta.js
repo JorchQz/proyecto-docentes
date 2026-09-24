@@ -75,12 +75,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var name = (teacherNameInput.value || "").trim();
 			var sex = (teacherSexInput && teacherSexInput.value ? teacherSexInput.value : "").trim();
 
-			if (!name || name.length < 3) {
-				showMessage("accountMessage", "error", "Ingresa un nombre valido con al menos 3 caracteres.");
+			/*
+				El nombre no es obligatorio para guardar el estado: una maestra sin nombre puede
+				guardar solo su estado. Vacío = no se toca el nombre guardado. Si escribe uno,
+				se valida como siempre.
+			*/
+			if (name && name.length < 3) {
+				showMessage("accountMessage", "error", "Ingresa un nombre válido con al menos 3 caracteres.");
 				return;
 			}
 
-			if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]+$/.test(name)) {
+			if (name && !/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]+$/.test(name)) {
 				showMessage("accountMessage", "error", "El nombre solo permite letras y espacios.");
 				return;
 			}
@@ -103,34 +108,50 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return;
 			}
 
+			// Solo se guarda lo que cambió. Sin cambios no se dice "Datos actualizados"
+			var datosActuales = datosPerfil(currentUser);
+			var cambiaNombre = !!name && name !== datosActuales.nombre;
+			var cambiaSexo = sex !== datosActuales.sexo;
+			// Entidad (decisión 21): perfiles.estado. Vacío = no se toca lo guardado
+			var cambiaEntidad = !!entidad && entidad !== entidadGuardada;
+			if (!cambiaNombre && !cambiaSexo && !cambiaEntidad) {
+				showMessage("accountMessage", "info", "No hay cambios que guardar.");
+				return;
+			}
+
 			setButtonLoading(saveProfileBtn, true, "Guardando...");
 			clearMessage("accountMessage");
 
 			try {
-				var existingMetadata = currentUser.user_metadata || {};
-				var updateResult = await window.sb.auth.updateUser({
-					data: {
-						nombre_docente: name,
-						full_name: name,
+				var guardoDatos = false;
+				if (cambiaNombre || cambiaSexo) {
+					var existingMetadata = currentUser.user_metadata || {};
+					var datos = {
 						sexo_docente: sex || null,
 						notification_preferences: existingMetadata.notification_preferences || null,
 						avatar_url: existingMetadata.avatar_url || null,
-					},
-				});
+					};
+					if (cambiaNombre) {
+						datos.nombre_docente = name;
+						datos.full_name = name;
+					}
+					var updateResult = await window.sb.auth.updateUser({ data: datos });
 
-				if (updateResult.error) {
-					throw updateResult.error;
+					if (updateResult.error) {
+						throw updateResult.error;
+					}
+
+					currentUser = updateResult.data.user || currentUser;
+					fillUserData(currentUser);
+					guardoDatos = true;
 				}
 
-				currentUser = updateResult.data.user || currentUser;
-				fillUserData(currentUser);
-
-				// Entidad (decisión 21): perfiles.estado. Vacío = no se toca lo guardado
-				if (entidad && entidad !== entidadGuardada) {
+				if (cambiaEntidad) {
 					var resEntidad = await window.Entidades.guardar(window.sb, currentUser.id, entidad);
 					if (resEntidad.error) {
 						console.error("mi-cuenta: entidad", resEntidad.error);
-						showMessage("accountMessage", "error", "Tu nombre se guardó, pero no se pudo guardar tu estado. Revisa tu conexión e intenta de nuevo.");
+						showMessage("accountMessage", "error", (guardoDatos ? "Tus datos se guardaron, pero no" : "No") +
+							" se pudo guardar tu estado. Revisa tu conexión e intenta de nuevo.");
 						return;
 					}
 					entidadGuardada = entidad;
@@ -225,25 +246,32 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	/*
+		Nombre y sexo guardados, con los valores del formulario. Las opciones del selector de
+		sexo son "profesora", "profesor" y "" (antes se ponía "hombre"/"mujer", que no existen
+		en el selector: se veía vacío y al guardar se borraba lo guardado).
+	*/
+	function datosPerfil(user) {
+		var metadata = (user && user.user_metadata) || {};
+		var sex = metadata.sexo_docente || "";
+		var sexo = "";
+		if (sex === "profesor" || sex === "hombre") {
+			sexo = "profesor";
+		} else if (sex === "profesora" || sex === "mujer") {
+			sexo = "profesora";
+		}
+		return { nombre: metadata.nombre_docente || metadata.full_name || metadata.nombre_completo || "", sexo: sexo };
+	}
+
 	function fillUserData(user) {
 		if (!user) {
 			return;
 		}
 
-		var metadata = user.user_metadata || {};
-		var name = metadata.nombre_docente || metadata.full_name || "";
-		var sex = metadata.sexo_docente || "";
-		teacherNameInput.value = name;
+		var datos = datosPerfil(user);
+		teacherNameInput.value = datos.nombre;
 		if (teacherSexInput) {
-			if (sex === "profesor" || sex === "hombre") {
-				teacherSexInput.value = "hombre";
-			} else if (sex === "profesora" || sex === "mujer") {
-				teacherSexInput.value = "mujer";
-			} else if (sex === "prefiero_no_decirlo") {
-				teacherSexInput.value = "prefiero_no_decirlo";
-			} else {
-				teacherSexInput.value = "";
-			}
+			teacherSexInput.value = datos.sexo;
 		}
 		teacherEmailInput.value = user.email || "";
 		teacherCreatedAtInput.value = formatDateTime(user.created_at);
@@ -339,6 +367,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"mt-4 rounded-lg px-4 py-3 text-sm " +
 			(type === "success"
 				? "bg-blue-100 text-blue-800"
+				: type === "info"
+				? "bg-gray-100 text-gray-700"
 				: "bg-red-100 text-red-800");
 	}
 

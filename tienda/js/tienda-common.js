@@ -417,6 +417,67 @@
 		return m.full_name || m.nombre_docente || session.user.email || "";
 	}
 
+	/**
+	 * Deja al comprador con su fila en perfiles (con su nombre), sin agregar pasos.
+	 *
+	 * - Lee su perfil. Si no existe, lo INSERTA con id y nombre_completo (de `datos` o, si no
+	 *   viene, del registro: user_metadata full_name / nombre_docente / nombre_completo).
+	 * - Si existe, hace UPDATE solo de las columnas con datos nuevos no vacíos (nunca id); a
+	 *   un perfil sin nombre le pone el del registro.
+	 * - No es un upsert: authenticated no tiene UPDATE sobre perfiles.id y el upsert de
+	 *   PostgREST pone id en su "do update", así que la base lo rechazaba siempre (y el
+	 *   error se ignoraba). La misma idea que js/entidades.js (guardar).
+	 * - Nunca bloquea: si algo falla, console.warn y el flujo sigue.
+	 *
+	 * Se llama al registrarse con sesión, al iniciar sesión (así se crea para quien
+	 * confirmó su correo después de registrarse) y en el checkout.
+	 *
+	 * @param {object} session sesión de Supabase
+	 * @param {object} [datos] { nombre_completo, escuela, cct } (se ignoran los vacíos)
+	 * @returns {Promise<string>} "creado" | "actualizado" | "sin_cambios" | "error"
+	 */
+	var COLUMNAS_PERFIL = ["nombre_completo", "escuela", "cct"];
+	async function asegurarPerfil(session, datos) {
+		try {
+			var user = session && session.user;
+			if (!user || !user.id || !window.sb) { return "sin_cambios"; }
+			var nuevos = {};
+			COLUMNAS_PERFIL.forEach(function (k) {
+				var v = datos ? datos[k] : null;
+				if (typeof v === "string") { v = v.trim(); }
+				if (v) { nuevos[k] = v; }
+			});
+			var m = user.user_metadata || {};
+			var nombreRegistro = String(m.full_name || m.nombre_docente || m.nombre_completo || "").trim();
+
+			var lectura = await window.sb.from("perfiles").select("id, nombre_completo, escuela, cct").eq("id", user.id).maybeSingle();
+			if (lectura.error) { throw lectura.error; }
+
+			if (!lectura.data) {
+				var fila = Object.assign({ id: user.id }, nuevos);
+				if (!fila.nombre_completo && nombreRegistro) { fila.nombre_completo = nombreRegistro; }
+				var alta = await window.sb.from("perfiles").insert(fila);
+				if (alta.error) { throw alta.error; }
+				return "creado";
+			}
+
+			var cambios = {};
+			Object.keys(nuevos).forEach(function (k) {
+				if (nuevos[k] !== lectura.data[k]) { cambios[k] = nuevos[k]; }
+			});
+			if (!lectura.data.nombre_completo && !cambios.nombre_completo && nombreRegistro) {
+				cambios.nombre_completo = nombreRegistro;
+			}
+			if (!Object.keys(cambios).length) { return "sin_cambios"; }
+			var act = await window.sb.from("perfiles").update(cambios).eq("id", user.id);
+			if (act.error) { throw act.error; }
+			return "actualizado";
+		} catch (e) {
+			console.warn("No se pudo guardar el perfil del comprador:", (e && e.message) || e);
+			return "error";
+		}
+	}
+
 	// Llama a una Edge Function que devuelve un archivo binario y dispara la
 	// descarga en el navegador. Requiere token de sesión.
 	async function descargarArchivo(params, nombreSugerido, session) {
@@ -978,6 +1039,7 @@
 		getAccessToken: getAccessToken,
 		esAdmin: esAdmin,
 		nombreUsuario: nombreUsuario,
+		asegurarPerfil: asegurarPerfil,
 		tieneSaas: tieneSaas,
 		descargarArchivo: descargarArchivo,
 		montarNav: montarNav,

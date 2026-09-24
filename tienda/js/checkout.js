@@ -587,10 +587,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 
 		if (!alta.error && alta.data.session) {
-			await window.sb.from("perfiles").upsert(
-				{ id: alta.data.session.user.id, nombre_completo: nombre },
-				{ onConflict: "id" }
-			);
+			// Perfil con su nombre; si falla, la compra sigue (Tienda.asegurarPerfil)
+			await Tienda.asegurarPerfil(alta.data.session, { nombre_completo: nombre });
 			return alta.data.session;
 		}
 
@@ -605,6 +603,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			);
 			return null;
 		}
+		// Ya tenía cuenta: si le falta el perfil (confirmó su correo después), se crea con
+		// el nombre de su registro; no se cambia el nombre que ya tenga
+		await Tienda.asegurarPerfil(entrada.data.session);
 		return entrada.data.session;
 	}
 

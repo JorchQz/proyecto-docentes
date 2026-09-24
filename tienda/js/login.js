@@ -34,10 +34,6 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	var form = document.getElementById("loginForm");
 	var nombreField = document.getElementById("nombreField");
 	var nombreInput = document.getElementById("nombre");
-	var escuelaField = document.getElementById("escuelaField");
-	var escuelaInput = document.getElementById("escuela");
-	var cctField = document.getElementById("cctField");
-	var cctInput = document.getElementById("cct");
 	var emailInput = document.getElementById("email");
 	var passwordInput = document.getElementById("password");
 	var submitBtn = form.querySelector("button[type='submit']");
@@ -124,8 +120,6 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	form.addEventListener("submit", async function (e) {
 		e.preventDefault();
 		var nombre = (nombreInput.value || "").trim();
-		var escuela = (escuelaInput.value || "").trim();
-		var cct = (cctInput.value || "").trim().toUpperCase();
 		var email = (emailInput.value || "").trim();
 		var password = passwordInput.value;
 
@@ -146,10 +140,6 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 				showMessage("error", "La contraseña debe tener al menos 6 caracteres.");
 				return;
 			}
-			if (cct && !/^[A-Z0-9]{10}$/.test(cct)) {
-				showMessage("error", "El CCT debe tener 10 caracteres (letras y números).");
-				return;
-			}
 		}
 
 		setLoading(true);
@@ -157,7 +147,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 
 		try {
 			if (mode === "register") {
-				await registrar(email, password, nombre, escuela, cct);
+				await registrar(email, password, nombre);
 			} else {
 				await ingresar(email, password);
 			}
@@ -172,7 +162,9 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 		}
 	});
 
-	async function registrar(email, password, nombre, escuela, cct) {
+	// El registro pide solo nombre, correo y contraseña (decisión de Jorge): el CCT y la
+	// escuela se piden en Mi salón. El nombre va en la marca de agua de los materiales.
+	async function registrar(email, password, nombre) {
 		var res = await window.sb.auth.signUp({
 			email: email,
 			password: password,
@@ -189,26 +181,24 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			return;
 		}
 
-		var userId = res.data.session.user.id;
-		// Crear perfil (activo_saas=false por default → solo marketplace).
-		await window.sb.from("perfiles").upsert(
-			{ id: userId, nombre_completo: nombre, escuela: escuela || null, cct: cct || null },
-			{ onConflict: "id" }
-		);
-		location.href = await destino(userId);
+		// Perfil con su nombre (activo_saas=false por default → solo la tienda). Si falla,
+		// no detiene la entrada (Tienda.asegurarPerfil)
+		await Tienda.asegurarPerfil(res.data.session, { nombre_completo: nombre });
+		location.href = await destino(res.data.session.user.id);
 	}
 
 	async function ingresar(email, password) {
 		var res = await window.sb.auth.signInWithPassword({ email: email, password: password });
 		if (res.error) { throw res.error; }
+		// Quien confirmó su correo después de registrarse no tenía sesión al registrarse:
+		// su perfil se crea aquí, con el nombre del registro
+		await Tienda.asegurarPerfil(res.data.session);
 		location.href = await destino(res.data.session.user.id);
 	}
 
 	function updateModeUI() {
 		if (mode === "register") {
 			nombreField.classList.remove("hidden");
-			cctField.classList.remove("hidden");
-			escuelaField.classList.remove("hidden");
 			nombreInput.required = true;
 			submitBtn.textContent = "Crear cuenta";
 			toggleLink.textContent = "Inicia sesión";
@@ -216,8 +206,6 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			document.querySelector("#toggleLink").parentNode.firstChild.textContent = "¿Ya tienes cuenta? ";
 		} else {
 			nombreField.classList.add("hidden");
-			cctField.classList.add("hidden");
-			escuelaField.classList.add("hidden");
 			nombreInput.required = false;
 			submitBtn.textContent = "Iniciar sesión";
 			toggleLink.textContent = "Regístrate";

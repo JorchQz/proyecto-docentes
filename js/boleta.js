@@ -201,16 +201,23 @@
 			celdaValor(g.final, "data-campo='GENERAL' data-trim='final'", false, true) +
 			"</tr></tfoot>";
 
-		var etiquetaAcr = R.ETIQUETA_ACREDITACION[f.acreditacion];
-		var colorAcr = { acredita: "#047857", revisar: "#b45309", no_acredita: "#b91c1c" }[f.acreditacion] || "#6b7280";
+		/*
+			La boleta la ven las familias: en lugar de "Revisar" (ámbar, para la maestra) dice
+			que la escuela confirmará la acreditación con control escolar, y la explicación
+			lleva el nombre completo del campo (ReporteDatos.explicacionRevisarFamilias)
+		*/
+		var revisar = f.acreditacion === "revisar";
+		var etiquetaAcr = revisar ? R.ACREDITACION_REVISAR_FAMILIAS : R.ETIQUETA_ACREDITACION[f.acreditacion];
+		var colorAcr = { acredita: "#047857", revisar: "#1f2937", no_acredita: "#b91c1c" }[f.acreditacion] || "#6b7280";
+		var explicacionAcr = revisar ? R.explicacionRevisarFamilias(f.camposBajoMinimo) : f.explicacion;
 		var acreditacion = "<p class='bol-acreditacion' id='boletaAcreditacion' data-acreditacion='" + f.acreditacion + "'>" +
 			"<span><strong>Promedio final de grado:</strong> <span data-promedio-final>" +
 			esc(f.promedio === null ? "pendiente" : R.formatoDecimal(f.promedio)) + "</span></span>" +
 			"<span><strong>Acreditación:</strong> <span style='font-weight:700;color:" + colorAcr + (f.completo ? "" : ";font-style:italic") + "'>" +
 			esc(etiquetaAcr) + "</span>" +
 			(f.completo ? "" : " <span style='font-size:11px;color:#6b7280'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</span>" +
-			// "Revisar" (decisión 18b): el promedio llega a 6 pero algún campo no
-			(f.explicacion ? "<span class='bol-siged' style='color:#92400e' data-explicacion-acreditacion>" + esc(f.explicacion) + "</span>" : "") +
+			// Decisión 18b: el promedio llega a 6 pero algún campo no
+			(explicacionAcr ? "<span class='bol-siged' style='color:#374151' data-explicacion-acreditacion>" + esc(explicacionAcr) + "</span>" : "") +
 			"<span class='bol-siged' data-nota-siged>" + esc(R.NOTA_FINAL_APOYO) + "</span></p>";
 
 		// En celular la tabla lleva solo el código del campo (para que quepa la columna
@@ -225,7 +232,7 @@
 			"El promedio general de un trimestre aparece cuando están confirmados los cuatro campos formativos. " +
 			"La final de cada campo es el promedio de sus tres calificaciones confirmadas y el promedio final de grado, el de las cuatro finales: " +
 			"con un decimal, sin redondear, y solo cuando están confirmados los tres trimestres. " +
-			R.reglaAcreditacionTexto(f.grado) +
+			R.reglaAcreditacionTextoFamilias(f.grado) +
 			" " + notaConducta(boletaCiclo) + "</p>" +
 			(hayJuicio
 				? "<p class='bol-nota' id='boletaNotaJuicio'><span style='color:#b45309;font-weight:600'>*</span> Calificación asignada por juicio docente: " +
