@@ -65,7 +65,7 @@ Full, verified schema is in `docs/CONTEXTO.md §6`. Quick reference:
 | `proyectos` | `maestro_id`, `grupo_id`, `titulo`, `trimestre`, `metodologia`, `escenario`, `campos_formativos` (array), `estado`, `contenidos_pda` (jsonb), `visible_mercado` |
 | `sesiones` | `proyecto_id`, `numero_sesion`, `momento`, `*_todos`/`*_diferenciado`/`*_actividades`/`cierre_tareas` (jsonb), `pda_sesion`, `estado_sesion` |
 | `sesiones_pda`, `productos_sesion`, `producto_sesion_pda` | structured traceability per session: PDAs-by-grade with criteria, and gradable products; materialized by `js/sesiones-materializar.js` on import/create |
-| `tareas`, `calificaciones`, `evaluacion_formativa` | runtime data materialized as sessions are closed (see CONTEXTO §6.1); `evaluacion_formativa` rows link to `sesiones_pda` via `sesion_pda_id` |
+| `calificaciones`, `evaluacion_formativa`, `tareas` | `calificaciones` is written in "Hoy" as each product is graded; `evaluacion_formativa` is filled by a trigger on grading (plus the teacher's adjustment) and links to `sesiones_pda` via `sesion_pda_id`; `tareas` is deprecated (0 rows, nothing writes it) |
 | `boleta_trimestral`, `registro_diario`, `banco_criterios_pda` | report-card text/grades per campo formativo, daily participation/conduct log, and per-PDA criteria suggestions |
 
 Campo formativo convention: legacy tables store the long name ("Lenguajes", …); new tables (`productos_sesion`, `boleta_trimestral`) store short codes (`LEN`/`SAB`/`ETI`/`DHL`). The mapping lives ONLY in `js/campos-formativos.js` and is applied on write.
