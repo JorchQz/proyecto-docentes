@@ -816,7 +816,13 @@ las 29 suites pasan.
   - **Recorrido corto:** hecho por la interfaz, con 19 porcentajes cuadrados a mano. Las boletas cerradas quedaron idénticas en 38 archivos tras capturar y cambiar el grado.
   - **Humo:** 176 pantallas a 1280 y 390 px, sin errores ni desbordes.
   - **Menores para Jorge:** la asistencia de referencia se muestra con tres redondeos distintos (66.6 %, 67 % y 66.7); la junta puede bajar un punto al cerrar porque promedia la foto truncada; un examen cuyo valor por pregunta no es exacto quedaría un poco por debajo (hoy no ocurre).
-- **Estado:** el cierre del SaaS está aprobado por revisores independientes. Falta aplicar en producción `mi_salon_b9_referencias_propias`, `mi_salon_b9_diagnostica_cascada` y `qa_semilla.sql`; la comprobación previa en producción dio 0 referencias cruzadas y 0 huérfanos. Después, merge rápido a `main` con despliegue automático.
+- **Publicado (2026-09-24, autorizado por Jorge en el momento):**
+  - En producción se aplicaron `mi_salon_b9_referencias_propias`, `mi_salon_b9_diagnostica_cascada` y `qa_semilla.sql`, en una transacción con `.qa/aplicar-migraciones-prod.js`. La comprobación previa había dado 0 referencias cruzadas y 0 huérfanos.
+  - Producción y pruebas quedaron idénticas objeto por objeto; la única diferencia son los paréntesis de un CHECK de cupones.
+  - Datos reales sin cambios: 2 alumnos y 4 asistencias.
+  - Merge directo de `mi-salon-parte-b` a `main` y push.
+  - jissez.com se verificó con `.qa/verificar-jissez.js`: tienda sin sesión igual; login con acceso → portal → Mi Salón y Hoy; la tienda con enlace "Mi Salón" solo para cuentas con acceso; sin errores.
+  - El único aviso de red es el contador de Cloudflare (`static.cloudflareinsights.com`), que no resuelve desde este equipo y no es código del sitio.
 
 ## Bloques detenidos
 

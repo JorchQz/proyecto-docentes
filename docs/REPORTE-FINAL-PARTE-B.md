@@ -1,6 +1,6 @@
 # Mi salón, Parte B — Reporte final
 
-**Para:** Jorge. **Fecha:** 24 de septiembre de 2026. **Rama:** `mi-salon-parte-b`.
+**Para:** Jorge. **Fecha:** 24 de septiembre de 2026. **Publicado:** `mi-salon-parte-b` se unió a `main` (merge directo) y jissez.com se actualizó el 24 de septiembre, con tu autorización; las migraciones de la base se aplicaron antes y producción quedó idéntica a pruebas.
 
 ## En una frase
 
