@@ -1,4 +1,36 @@
-document.addEventListener("DOMContentLoaded", function () {
+// Reglas puras del destino tras autenticar (probadas en pruebas/login-destino.test.js).
+var LoginDestino = (function () {
+	// ?next= a dónde ir tras autenticar. Si viene explícito (p. ej. desde
+	// checkout) se respeta. Si no, el destino depende de activo_saas.
+	//
+	// SEGURIDAD: el valor va directo a location.href, así que solo se aceptan
+	// rutas RELATIVAS a páginas .html locales (p. ej. "anexo.html?aula=3&pr=7"
+	// o "../dashboard.html"). Se rechaza cualquier esquema (javascript:, http:),
+	// "//host" y backslashes, que permitirían XSS (robo de sesión) u open redirect.
+	function nextSeguro(raw) {
+		if (!raw) return null;
+		if (/^[a-z][a-z0-9+.\-]*:/i.test(raw)) return null; // tiene esquema
+		if (/^\s*\/\//.test(raw)) return null;              // //host protocol-relative
+		if (raw.indexOf("\\") !== -1) return null;          // backslash
+		if (/^[.\/]*[a-z0-9_\-\/]+\.html([?#].*)?$/i.test(raw)) return raw;
+		return null;
+	}
+
+	// Sin ?next=: las cuentas con el SaaS van a la pantalla principal de tres
+	// partes (Mi Salón, Tienda, Sala de Maestros); el portal decide después si
+	// Mi Salón abre el panel o el alta del grupo. El resto, al catálogo.
+	// `perf` es la respuesta de perfiles; si la lectura falla se trata como sin
+	// acceso (la tienda funciona igual y el portal no se ofrece).
+	function porPerfil(perf) {
+		var activo = !!(perf && !perf.error && perf.data && perf.data.activo_saas === true);
+		return activo ? "../portal.html" : "catalogo.html";
+	}
+
+	return { nextSeguro: nextSeguro, porPerfil: porPerfil };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = LoginDestino; // pruebas en node
+
+if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", function () {
 	var form = document.getElementById("loginForm");
 	var nombreField = document.getElementById("nombreField");
 	var nombreInput = document.getElementById("nombre");
@@ -17,23 +49,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		return;
 	}
 
-	// ?next= a dónde ir tras autenticar. Si viene explícito (p. ej. desde
-	// checkout) se respeta. Si no, el destino depende de activo_saas.
-	//
-	// SEGURIDAD: el valor va directo a location.href, así que solo se aceptan
-	// rutas RELATIVAS a páginas .html locales (p. ej. "anexo.html?aula=3&pr=7"
-	// o "../dashboard.html"). Se rechaza cualquier esquema (javascript:, http:),
-	// "//host" y backslashes, que permitirían XSS (robo de sesión) u open redirect.
-	function nextSeguro(raw) {
-		if (!raw) return null;
-		if (/^[a-z][a-z0-9+.\-]*:/i.test(raw)) return null; // tiene esquema
-		if (/^\s*\/\//.test(raw)) return null;              // //host protocol-relative
-		if (raw.indexOf("\\") !== -1) return null;          // backslash
-		if (/^[.\/]*[a-z0-9_\-\/]+\.html([?#].*)?$/i.test(raw)) return raw;
-		return null;
-	}
 	var params = new URLSearchParams(location.search);
-	var nextExplicito = nextSeguro(params.get("next"));
+	var nextExplicito = LoginDestino.nextSeguro(params.get("next"));
 
 	var mode = "login"; // 'login' | 'register'
 
@@ -51,12 +68,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			.select("activo_saas")
 			.eq("id", userId)
 			.maybeSingle();
-		var activoSaas = perf && perf.data && perf.data.activo_saas;
-		if (!activoSaas) { return "catalogo.html"; }
-		// Usuario SaaS: dashboard, o onboarding si aún no tiene grupo.
-		var grupo = await window.sb.from("grupos").select("id").eq("maestro_id", userId).limit(1);
-		var tieneGrupo = grupo && grupo.data && grupo.data.length > 0;
-		return tieneGrupo ? "../dashboard.html" : "../onboarding.html";
+		return LoginDestino.porPerfil(perf);
 	}
 
 	toggleLink.addEventListener("click", function (e) {

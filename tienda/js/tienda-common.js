@@ -569,6 +569,10 @@
 			});
 		}
 
+		// Regreso a la pantalla principal: solo para cuentas con el SaaS. Se pinta
+		// aparte, sin esperar, para que a un comprador la barra le llegue igual.
+		if (session) { enlacePortal(header, session, !!anchors); }
+
 		// Cerrar sesión (botón desktop y móvil).
 		header.querySelectorAll("[data-logout]").forEach(function (btn) {
 			btn.addEventListener("click", async function () {
@@ -579,6 +583,62 @@
 		});
 
 		return session;
+	}
+
+	// ¿La cuenta tiene el SaaS (perfiles.activo_saas)? Solo decide si se ofrece el
+	// enlace a la pantalla principal; la protección real es js/saas-guard.js.
+	// Se recuerda en la pestaña para no repetir la lectura en cada página. Si la
+	// lectura falla se contesta "no" sin recordarlo: la barra queda como la de
+	// cualquier comprador y se reintenta en la siguiente página.
+	async function tieneSaas(session) {
+		var uid = session && session.user && session.user.id;
+		if (!uid || !window.sb) { return false; }
+		var clave = "jissez.saas." + uid;
+		try {
+			var guardado = sessionStorage.getItem(clave);
+			if (guardado === "1" || guardado === "0") { return guardado === "1"; }
+		} catch (_) {}
+		var perf = await window.sb.from("perfiles").select("activo_saas").eq("id", uid).maybeSingle();
+		if (perf.error) { return false; }
+		var si = !!(perf.data && perf.data.activo_saas === true);
+		try { sessionStorage.setItem(clave, si ? "1" : "0"); } catch (_) {}
+		return si;
+	}
+
+	// Enlace "Mi Salón" → pantalla principal (portal.html, en la raíz) en la
+	// barra de escritorio y al inicio del menú móvil. En la portada (con anclas) la
+	// barra ya va justa: ahí el enlace ocupa el lugar del correo, que sigue en el menú.
+	function enlacePortal(header, session, enPortada) {
+		tieneSaas(session).then(function (si) {
+			if (!si || header.querySelector("[data-portal]")) { return; }
+			var toggle = header.querySelector("[data-menu-toggle]");
+			var derecha = toggle && toggle.previousElementSibling;
+			if (derecha) {
+				var a = document.createElement("a");
+				a.href = "../portal.html";
+				a.setAttribute("data-portal", "");
+				a.title = "Mi Salón (pantalla principal)";
+				a.setAttribute("aria-label", "Mi Salón");
+				// En la portada, entre lg y xl, solo el icono (cuadro de 44 px): no cabe más
+				a.className = "inline-flex items-center justify-center gap-1.5 h-11 rounded-xl text-[15px] font-semibold text-white border border-white/30 hover:bg-white/10 transition whitespace-nowrap " +
+					(enPortada ? "min-w-[44px] px-2.5 xl:px-3.5" : "px-3.5");
+				a.innerHTML = '<i data-lucide="layout-grid" style="width:17px;height:17px"></i>' +
+					(enPortada ? '<span class="hidden xl:inline">Mi Salón</span>' : "Mi Salón");
+				var correo = derecha.querySelector("span");
+				if (enPortada && correo) { correo.style.display = "none"; }
+				derecha.insertBefore(a, derecha.firstChild);
+			}
+			var movil = header.querySelector("[data-mobile-menu] > div");
+			if (movil) {
+				var m = document.createElement("a");
+				m.href = "../portal.html";
+				m.setAttribute("data-portal", "");
+				m.className = "flex items-center gap-2 h-12 px-3 mb-1 rounded-lg text-[15px] font-semibold text-white bg-white/10 hover:bg-white/15 transition";
+				m.innerHTML = '<i data-lucide="layout-grid" style="width:18px;height:18px"></i>Mi Salón';
+				movil.insertBefore(m, movil.firstChild);
+			}
+			iconos();
+		}).catch(function () {});
 	}
 
 	// Footer claro compartido para páginas internas. Se agrega al final del body.
@@ -918,6 +978,7 @@
 		getAccessToken: getAccessToken,
 		esAdmin: esAdmin,
 		nombreUsuario: nombreUsuario,
+		tieneSaas: tieneSaas,
 		descargarArchivo: descargarArchivo,
 		montarNav: montarNav,
 		montarFooter: montarFooter,

@@ -93,6 +93,14 @@
 		return (
 			'<nav id="app-navbar" class="fixed top-0 left-0 right-0 z-30 bg-blue-800 shadow-md">' +
 			'<div class="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">' +
+			// Regreso a la pantalla principal (Mi Salón, Tienda, Sala de Maestros)
+			'<a id="navPortal" href="portal.html" title="Pantalla principal" aria-label="Pantalla principal" ' +
+			'class="shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-xl text-blue-100 hover:text-white hover:bg-blue-700 transition-colors">' +
+			'<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+			'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' +
+			"</svg>" +
+			"</a>" +
+			'<span class="shrink-0 h-6 w-px bg-blue-600" aria-hidden="true"></span>' +
 			'<div class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">' +
 			navLinksHtml +
 			"</div>" +
