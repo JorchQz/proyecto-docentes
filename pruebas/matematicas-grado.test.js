@@ -76,9 +76,12 @@ function textos(extra) {
 	return TB.generar(Object.assign({ catalogo: CH, corto: window.CamposFormativos.corto, diagnostica: DIAG_VIEJO }, extra));
 }
 let r = textos({ grado: 2 });
-ok("2°: área de división, no de fracciones", r.SAB.areas.join(" ").includes("división") && !r.SAB.areas.join(" ").includes("fracciones"), true);
+// En 2° la división se nombra como se evalúa en la Fase 3 (repartir o agrupar, sin algoritmo)
+ok("2°: área de reparto (no «división») y no de fracciones", r.SAB.areas.join(" ").includes("estrategias para repartir o agrupar") &&
+	!r.SAB.areas.join(" ").includes("división") && !r.SAB.areas.join(" ").includes("fracciones"), true);
 ok("2°: la sugerencia tampoco nombra fracciones", r.SAB.sugerencias.join(" ").includes("fracciones"), false);
-ok("2°: fortaleza de suma y tablas", /suma y tablas de multiplicar/.test(r.SAB.fortalezas.join(" ")), true);
+ok("2°: fortaleza de suma y cálculo mental (nunca «tablas de multiplicar»)", /suma y cálculo mental para multiplicar/.test(r.SAB.fortalezas.join(" ")) &&
+	!/tablas/.test(r.SAB.fortalezas.join(" ")), true);
 r = textos({ grado: 1 });
 ok("1°: sin áreas de matemáticas (división y fracciones no aplican)", r.SAB.areas.length, 0);
 ok("1°: fortaleza solo de suma", r.SAB.fortalezas.join(" ").includes("Resuelve con seguridad: suma.") && !r.SAB.fortalezas.join(" ").includes("tablas"), true);
@@ -103,8 +106,8 @@ const actual = {
 	},
 };
 const sug = J.sugerenciasFrecuentes({ plantillas: {}, bandas: {} }, actual, alumnosJunta).find((s) => s.clave === "matematicas");
-ok("junta: habilidades del grupo sin las que no aplican (suma 1, división 1, fracciones 0)",
-	sug && sug.texto, "Practicar con ejercicios cortos y diarios: suma y división.");
+ok("junta: habilidades del grupo sin las que no aplican (suma 1, reparto de 2° 1, fracciones 0)",
+	sug && sug.texto, "Practicar con ejercicios cortos y diarios: suma y estrategias para repartir o agrupar.");
 
 // ── Reportes: guardado fallido de los textos propuestos ──────────────────────
 const fuente = fs.readFileSync(path.join(__dirname, "..", "js", "reportes.js"), "utf8");

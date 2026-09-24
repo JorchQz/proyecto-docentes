@@ -45,15 +45,31 @@
 		.bol-codigo { font-size: 11px; font-weight: 700; color: #4b5563; }
 		.bol-codigo-tabla { display: block; }
 		.bol-corto { display: none; }
+		.bol-leyenda-campos { display: none; }
+		/*
+			Celular (390 px): la tabla de T1, T2, T3 y Final cabe sin deslizar. El campo va solo
+			con su código (los nombres, en la leyenda de abajo) y las celdas se angostan.
+			Solo en pantalla: la impresión en carta no cambia.
+		*/
 		@media screen and (max-width: 639px) {
 			.bol-largo { display: none; }
 			.bol-corto { display: inline; }
-			.bol-campo { min-width: 120px; }
-			.bol-tabla th, .bol-tabla td { padding: 5px 6px; }
-			.bol-tabla td.num, .bol-tabla td.pendiente { min-width: 52px; }
+			.bol-nombre-campo { display: none; }
+			.bol-campo { min-width: 0; gap: 5px; }
+			.bol-chip { width: 6px; height: 20px; }
+			.bol-tabla { font-size: 12px; table-layout: fixed; }
+			.bol-tabla th, .bol-tabla td { padding: 5px 2px; }
+			.bol-tabla thead th { letter-spacing: 0; }
+			.bol-tabla thead th:first-child { width: 22%; }
+			.bol-tabla td.num, .bol-tabla td.pendiente { min-width: 0; }
+			.bol-tabla td.num { font-size: 14px; }
+			.bol-tabla td.pendiente { font-size: 10px; }
+			.bol-tabla tfoot th { font-size: 11px; line-height: 1.2; }
+			.bol-leyenda-campos { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 11px; color: #4b5563; margin-top: 6px; }
 		}
 		.bol-nota { font-size: 11px; color: #6b7280; margin-top: 6px; }
 		.bol-acreditacion { margin-top: 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 24px; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; background: #f9fafb; }
+		.bol-siged { flex-basis: 100%; font-size: 11px; color: #4b5563; }
 
 		.bol-asistencia { margin-top: 10px; font-size: 13px; border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px 10px; }
 		.bol-asistencia span.ref { display: block; font-size: 11px; color: #6b7280; }

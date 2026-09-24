@@ -54,7 +54,7 @@
 
 			<section id="pesoPonderacion" class="bg-white rounded-2xl shadow-md p-6">
 				<h2 class="text-lg font-bold text-gray-800">Ponderación de calificaciones</h2>
-				<p class="text-sm text-gray-500 mt-1">Define el peso de cada rubro en la calificación trimestral. Cada rubro vale su peso entre la suma de los cuatro: con los de fábrica (28, 28, 6 y 33, que suman 95), las tareas valen 28 de 95. Un rubro en 0 no cuenta.</p>
+				<p class="text-sm text-gray-500 mt-1">Define el peso de cada rubro en la calificación trimestral. <span class="font-medium text-gray-700">Los pesos son relativos: no tienen que sumar 100.</span> Cada rubro vale su peso entre la suma de los rubros que tienen datos en ese campo, y entre todos siempre valen el 100 %. Con los de fábrica (28, 28, 6 y 33, que suman 95), si los cuatro tienen datos las tareas valen 28 de 95, es decir 29.5 %; si un campo no tiene examen, las tareas valen 28 de 62 en ese campo. Un rubro en 0 no cuenta. Reportes muestra cuánto valió cada rubro en cada cálculo.</p>
 
 				<div id="ponderacionMessage" class="mt-4"></div>
 
@@ -81,7 +81,7 @@
 
 					<div class="border-t border-gray-200 pt-4 mt-4">
 						<div class="flex items-center justify-between">
-							<span class="text-sm font-medium text-gray-700">Suma actual:</span>
+							<span class="text-sm font-medium text-gray-700">Suma de los pesos <span class="block text-xs font-normal text-gray-500">No tiene que ser 100: basta con que sea mayor que 0.</span></span>
 							<span id="sumaPonderacion" class="text-lg font-bold text-red-600">0</span>
 						</div>
 					</div>
@@ -139,6 +139,8 @@
 	<script src="js/navbar.js"></script>
 	<script src="js/grupo-activo.js"></script>
 	<script src="js/section-shell.js"></script>
+	<script src="js/alcance-hoy.js"></script>
+	<script src="js/motor-calificacion.js"></script>
 	<script src="js/ajustes.js"></script>
 </body>
 </html>

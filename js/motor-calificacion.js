@@ -582,8 +582,66 @@
 		return salida;
 	}
 
+	/*
+		Peso EFECTIVO (solo presentación; el cálculo no cambia): los pesos de Ajustes son
+		relativos y un rubro sin datos no entra, así que lo que valió cada rubro en un cálculo
+		es su peso entre la suma de los que sí entraron. Con los de fábrica (28, 28, 6 y 33,
+		que suman 95) y los cuatro con datos: 29.5, 29.5, 6.3 y 34.7. Con un decimal y sumando
+		exactamente 100 (resto mayor), para que la maestra nunca vea una suma de 95 o de 99.9.
+
+		repartoEntero({rubro: peso}) → {rubro: porcentaje con un decimal} con los pesos > 0;
+		null si ninguno.
+		pesosEfectivos(rubros) → lo mismo con los rubros de un campo del motor o de la foto
+		del cierre ({rubro: {fraccion, peso}}): cuentan los que tienen datos (fraccion) y peso.
+	*/
+	function repartoEntero(pesos) {
+		var claves = RUBROS.filter(function (r) { return pesos && Number(pesos[r]) > 0; });
+		var suma = claves.reduce(function (a, r) { return a + Number(pesos[r]); }, 0);
+		if (!(suma > 0)) return null;
+		var salida = {}, repartido = 0;
+		var restos = claves.map(function (r) {
+			// En décimas: 1000 décimas = 100 %
+			var exacto = Number(pesos[r]) / suma * 1000;
+			salida[r] = Math.floor(exacto + 1e-9);
+			repartido += salida[r];
+			return { r: r, resto: exacto - salida[r] };
+		});
+		/*
+			Las décimas que faltan para 100 % van a los restos mayores, por grupos de rubros
+			con el MISMO peso: dos rubros con el mismo peso nunca se ven distintos (tareas 45.1
+			y trabajos 45.2) si se puede evitar. Si ningún grupo cabe en lo que falta (tres
+			pesos iguales), va al primero en el orden de RUBROS: la suma manda.
+		*/
+		while (repartido < 1000) {
+			var falta = 1000 - repartido, elegido = null;
+			restos.forEach(function (x) {
+				var grupo = restos.filter(function (y) { return Number(pesos[y.r]) === Number(pesos[x.r]); });
+				if (grupo.length > falta) return;
+				if (!elegido || x.resto > elegido.resto + 1e-9) elegido = { resto: x.resto, grupo: grupo };
+			});
+			if (!elegido) {
+				var mayor = restos.slice().sort(function (a, b) { return (b.resto - a.resto) || (RUBROS.indexOf(a.r) - RUBROS.indexOf(b.r)); })[0];
+				elegido = { grupo: [mayor] };
+			}
+			elegido.grupo.forEach(function (y) { salida[y.r]++; y.resto -= 1; repartido++; });
+		}
+		claves.forEach(function (r) { salida[r] = salida[r] / 10; });
+		return salida;
+	}
+
+	function pesosEfectivos(rubros) {
+		var pesos = {};
+		RUBROS.forEach(function (r) {
+			var x = rubros ? rubros[r] : null;
+			if (x && x.fraccion !== null && x.fraccion !== undefined && !isNaN(x.fraccion) && Number(x.peso) > 0) pesos[r] = Number(x.peso);
+		});
+		return repartoEntero(pesos);
+	}
+
 	var api = {
 		ESCALA_NIVEL: ESCALA_NIVEL,
+		repartoEntero: repartoEntero,
+		pesosEfectivos: pesosEfectivos,
 		RUBROS: RUBROS,
 		RUBROS_REFERENCIA: RUBROS_REFERENCIA,
 		esReferencia: esReferencia,

@@ -376,6 +376,37 @@
 		if (completo) acreditacion = (g === 1 || prom >= 6) ? ACREDITA : NO_ACREDITA;
 		return { porCampo: porCampo, promedio: prom, completo: completo, faltan: faltan, grado: g, acreditacion: acreditacion };
 	}
+	/*
+		Nota que acompaña a toda final y a todo promedio final de grado (boleta imprimible,
+		reporte detallado, pestaña Boleta y Concentrado de Reportes): el número es un cálculo
+		de apoyo; el oficial lo calcula SIGED. Truncar o redondear sigue pendiente de Jorge:
+		aquí solo se dice lo que hace Mi salón hoy.
+	*/
+	var NOTA_FINAL_APOYO = "Cálculo de apoyo: el promedio oficial lo calcula SIGED. Mi salón lo trunca a un decimal.";
+
+	/*
+		Peso con el que la conducta entró a la calificación de una boleta cerrada, según su
+		foto del cierre (texto_autogenerado.cierre de la fila GEN). Las boletas cerradas antes
+		del 2026-09-24 conservan la conducta con peso (5 de fábrica); desde entonces no pondera.
+		Cuenta solo si de verdad entró: con peso Y con datos de conducta en algún campo (un
+		rubro sin datos no entra aunque tenga peso). Una foto sin el desglose por campo: su peso.
+		0 = no ponderó (o no hay foto que diga otra cosa).
+	*/
+	function pesoConductaCierre(filasTrimestre) {
+		if (!boletaCerrada(filasTrimestre)) return 0;
+		var foto = fotoCierre((filasTrimestre || {}).GEN);
+		if (!foto) return 0;
+		if (foto.campos && typeof foto.campos === "object") {
+			var peso = 0;
+			CAMPOS.forEach(function (c) {
+				var r = foto.campos[c] && foto.campos[c].rubros ? foto.campos[c].rubros.conducta : null;
+				if (r && !vacio(r.fraccion) && Number(r.peso) > peso) peso = Number(r.peso);
+			});
+			return peso;
+		}
+		return foto.pesos && Number(foto.pesos.conducta) > 0 ? Number(foto.pesos.conducta) : 0;
+	}
+
 	// 7.6 → "7.6"; 8 → "8.0"; null → null
 	function formatoDecimal(v) { return vacio(v) ? null : (Math.floor(Number(v) * 10 + 1e-9) / 10).toFixed(1); }
 
@@ -421,6 +452,7 @@
 			(f.completo ? "" : " <span class='text-xs text-gray-500'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</p>" +
 			"<p class='mt-1 text-xs text-gray-500 leading-relaxed'>La final de cada campo es el promedio de sus tres calificaciones confirmadas, con un decimal y sin redondear; " +
 			"el promedio final de grado, el de las cuatro finales. Aparecen cuando están confirmados los tres trimestres. " + regla + " (Acuerdo 10/09/23, arts. 7 y 9).</p>" +
+			"<p class='mt-1 text-xs font-medium text-gray-600' data-nota-siged>" + NOTA_FINAL_APOYO + "</p>" +
 			"</div>";
 	}
 
@@ -672,6 +704,8 @@
 		promedioTruncado: promedioTruncado,
 		finalCiclo: finalCiclo,
 		formatoDecimal: formatoDecimal,
+		NOTA_FINAL_APOYO: NOTA_FINAL_APOYO,
+		pesoConductaCierre: pesoConductaCierre,
 		htmlFinalCiclo: htmlFinalCiclo,
 		ETIQUETA_ACREDITACION: ETIQUETA_ACREDITACION,
 		boletasCiclo: boletasCiclo,

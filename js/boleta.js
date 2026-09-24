@@ -148,6 +148,25 @@
 		return salida;
 	}
 
+	/*
+		La conducta ya no pondera (LGE art. 21, decisión de Jorge del 2026-09-24), pero una
+		boleta cerrada antes del cambio conserva en su foto la conducta con peso: en ese
+		trimestre la nota dice lo que pasó de verdad (ReporteDatos.pesoConductaCierre).
+	*/
+	function notaConducta(boletaCiclo) {
+		var conPeso = TRIMESTRES.map(function (t) {
+			return { t: t, peso: RD().pesoConductaCierre((boletaCiclo || {})[t] || null) };
+		}).filter(function (x) { return x.peso > 0; });
+		if (!conPeso.length) return "La conducta se informa en las observaciones: no forma parte de la calificación.";
+		var cuales = conPeso.map(function (x) { return x.t; });
+		var lista = cuales.length === 1 ? "el trimestre " + cuales[0]
+			: "los trimestres " + cuales.slice(0, -1).join(", ") + " y " + cuales[cuales.length - 1];
+		var pesos = conPeso.map(function (x) { return x.peso; }).filter(function (p, i, l) { return l.indexOf(p) === i; });
+		return "En " + lista + ", cerrado" + (cuales.length > 1 ? "s" : "") + " antes de un cambio de criterio, la conducta sí formó parte de la calificación " +
+			"(con peso " + pesos.join(" y ") + ", el que tenía entonces) y ese número no se recalcula." +
+			(cuales.length < TRIMESTRES.length ? " En los demás trimestres la conducta se informa en las observaciones y no forma parte de la calificación." : "");
+	}
+
 	function tablaCalificaciones(boletaCiclo, trimestre, juicioActual, grado) {
 		var R = RD();
 		var resumen = resumenCalificaciones(boletaCiclo, grado);
@@ -163,7 +182,7 @@
 			var v = resumen.porCampo[c];
 			return "<tr><th scope='row' style='font-weight:normal'><span class='bol-campo'>" +
 				"<span class='bol-chip' style='background:" + R.COLOR_CAMPO[c] + "'></span>" +
-				"<span><span class='bol-codigo bol-codigo-tabla'>" + c + "</span> " + esc(R.NOMBRE_CAMPO[c]) + "</span></span></th>" +
+				"<span><span class='bol-codigo bol-codigo-tabla'>" + c + "</span> <span class='bol-nombre-campo'>" + esc(R.NOMBRE_CAMPO[c]) + "</span></span></span></th>" +
 				TRIMESTRES.map(function (t) {
 					var j = juicio[t][c] && v[t] !== null && v[t] !== undefined;
 					if (j) hayJuicio = true;
@@ -189,17 +208,23 @@
 			esc(f.promedio === null ? "pendiente" : R.formatoDecimal(f.promedio)) + "</span></span>" +
 			"<span><strong>Acreditación:</strong> <span style='font-weight:700;color:" + colorAcr + (f.completo ? "" : ";font-style:italic") + "'>" +
 			esc(etiquetaAcr) + "</span>" +
-			(f.completo ? "" : " <span style='font-size:11px;color:#6b7280'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</span></p>";
+			(f.completo ? "" : " <span style='font-size:11px;color:#6b7280'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</span>" +
+			"<span class='bol-siged' data-nota-siged>" + esc(R.NOTA_FINAL_APOYO) + "</span></p>";
 
+		// En celular la tabla lleva solo el código del campo (para que quepa la columna
+		// "Final" sin deslizar): los nombres van en esta leyenda, que no se imprime
+		var leyenda = "<p class='bol-leyenda-campos'>" + R.CAMPOS.map(function (c) {
+			return "<span><strong>" + c + "</strong> " + esc(R.NOMBRE_CAMPO[c]) + "</span>";
+		}).join("") + "</p>";
 		return "<div class='bol-tabla-envoltura'><table class='bol-tabla' id='boletaTablaCalificaciones'>" +
-			cabeza + "<tbody>" + cuerpo + "</tbody>" + pie + "</table></div>" +
+			cabeza + "<tbody>" + cuerpo + "</tbody>" + pie + "</table></div>" + leyenda +
 			acreditacion +
 			"<p class='bol-nota'>«pendiente»: el docente todavía no confirma esa calificación. " +
 			"El promedio general de un trimestre aparece cuando están confirmados los cuatro campos formativos. " +
 			"La final de cada campo es el promedio de sus tres calificaciones confirmadas y el promedio final de grado, el de las cuatro finales: " +
 			"con un decimal, sin redondear, y solo cuando están confirmados los tres trimestres. " +
 			(f.grado === 1 ? "En 1° se acredita con haber cursado el grado." : "De 2° a 6° se acredita con un promedio final de grado mínimo de 6.") +
-			" La conducta se informa en las observaciones: no forma parte de la calificación.</p>" +
+			" " + notaConducta(boletaCiclo) + "</p>" +
 			(hayJuicio
 				? "<p class='bol-nota' id='boletaNotaJuicio'><span style='color:#b45309;font-weight:600'>*</span> Calificación asignada por juicio docente: " +
 					"no hay evidencias registradas de ese campo formativo en el trimestre.</p>"

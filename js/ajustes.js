@@ -268,21 +268,34 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var suma = valores.reduce(function (a, v) { return a + (v || 0); }, 0);
 
 		sumaPonderacionSpan.textContent = String(suma);
-		// Lo que vale de verdad cada rubro en la calificación (su peso entre la suma)
+		/*
+			Lo que vale de verdad cada rubro (peso efectivo) cuando los cuatro tienen datos:
+			su peso entre la suma, con un decimal y sumando 100 (MotorCalificacion.repartoEntero,
+			el mismo reparto que muestran Reportes y el reporte detallado). Un rubro sin datos
+			en un campo no entra, y ahí los demás valen más: por eso "si todos tienen datos".
+		*/
+		var pesos = {};
+		entradas.forEach(function (e, i) { pesos[e.clave] = valores[i] || 0; });
+		var M = window.MotorCalificacion;
+		var efectivos = validos && suma > 0 && M && M.repartoEntero ? M.repartoEntero(pesos) : null;
 		entradas.forEach(function (e, i) {
 			if (!e.efectivo) return;
-			e.efectivo.textContent = validos && suma > 0 && valores[i] > 0
-				? "vale " + (Math.floor(valores[i] / suma * 1000 + 1e-9) / 10).toFixed(1) + " % de la calificación"
-				: (validos && suma > 0 ? "no cuenta" : "");
+			if (!(validos && suma > 0)) { e.efectivo.textContent = ""; return; }
+			var v = efectivos ? efectivos[e.clave] : (valores[i] > 0 ? Math.floor(valores[i] / suma * 1000 + 1e-9) / 10 : undefined);
+			e.efectivo.textContent = valores[i] > 0 && v !== undefined
+				? "vale " + String(v).replace(/.0$/, "") + " % si los cuatro rubros tienen datos"
+				: "no cuenta";
 		});
 
+		// La suma no tiene que ser 100 (los pesos son relativos): no se pinta de verde, que
+		// haría creer que 95 es "correcto" y 80 no. Solo se marca en rojo lo que no se puede
+		// guardar (todos en 0, un cuadro vacío o fuera de 0 a 100).
 		if (validos && suma > 0) {
-			sumaPonderacionSpan.classList.remove("text-red-600");
-			sumaPonderacionSpan.classList.add("text-green-600");
+			sumaPonderacionSpan.classList.remove("text-red-600", "text-green-600");
+			sumaPonderacionSpan.classList.add("text-gray-800");
 			savePonderacionBtn.disabled = !ponderacionCargada;
 		} else {
-			// Todos en 0 o algún cuadro vacío o fuera de 0 a 100
-			sumaPonderacionSpan.classList.remove("text-green-600");
+			sumaPonderacionSpan.classList.remove("text-green-600", "text-gray-800");
 			sumaPonderacionSpan.classList.add("text-red-600");
 			savePonderacionBtn.disabled = true;
 		}

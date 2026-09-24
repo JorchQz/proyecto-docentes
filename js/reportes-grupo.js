@@ -182,7 +182,13 @@
 			"<th class='px-3 py-2 text-center whitespace-nowrap'>Promedio final</th><th class='px-3 py-2 text-center'>Acreditación</th></tr></thead>" +
 			"<tbody class='divide-y divide-gray-100'>" + filasHtml + "</tbody></table></div>" +
 			"<p class='text-xs text-gray-400 mt-1'>Final de cada campo: promedio de sus tres calificaciones confirmadas; promedio final: el de las cuatro finales; " +
-			"con un decimal y sin redondear. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6.</p></div>";
+			"con un decimal y sin redondear. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6.</p>" +
+			"<p class='text-xs font-medium text-gray-600 mt-1' data-nota-siged>" + esc(notaFinalApoyo()) + "</p></div>";
+	}
+	// Misma nota en todos los documentos (ReporteDatos.NOTA_FINAL_APOYO)
+	function notaFinalApoyo() {
+		var RD = typeof window !== "undefined" ? window.ReporteDatos : null;
+		return (RD && RD.NOTA_FINAL_APOYO) || "Cálculo de apoyo: el promedio oficial lo calcula SIGED. Mi salón lo trunca a un decimal.";
 	}
 
 	// Concentrado para el director: niveles por promedio de las 4 calificaciones confirmadas

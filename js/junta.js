@@ -354,19 +354,29 @@
 		// Habilidades de matemáticas más frecuentes en "requiere apoyo" (para {habilidades}).
 		// Cada habilidad cuenta solo a los alumnos de los grados donde aplica (a.grado es el
 		// del cierre si su boleta está cerrada): lo capturado en una que no aplica no cuenta
+		// Cada alumno cuenta con el nombre de la habilidad en SU grado (textoFamilias): en 2°
+		// la división y las tablas son "estrategias para repartir o agrupar" y "cálculo mental
+		// para multiplicar" (Fase 3: sin algoritmo ni memorización); de 3° a 6°, la etiqueta
 		var catalogo = CH();
-		var mates = catalogo.MATEMATICAS.map(function (h, i) { return { h: h, i: i, n: 0 }; });
+		var nombreEn = function (h, grado) {
+			return catalogo.textoFamilias ? catalogo.textoFamilias(h, grado) : h.etiqueta.toLowerCase();
+		};
+		var mates = [];
 		alumnos.forEach(function (a) {
 			var d = (actual.diagnosticas || {})[a.id];
 			if (!d) return;
 			var mapa = catalogo.aMapa(d.matematicas);
-			mates.forEach(function (x) {
-				if (mapa[x.h.clave] === "requiere_apoyo" && catalogo.aplicaMatematica(x.h, a.grado)) x.n++;
+			catalogo.MATEMATICAS.forEach(function (h, i) {
+				if (mapa[h.clave] !== "requiere_apoyo" || !catalogo.aplicaMatematica(h, a.grado)) return;
+				var texto = nombreEn(h, a.grado);
+				var x = mates.filter(function (y) { return y.texto === texto; })[0];
+				if (!x) { x = { texto: texto, i: i, n: 0 }; mates.push(x); }
+				x.n++;
 			});
 		});
-		var habilidades = listaEnTexto(mates.filter(function (x) { return x.n > 0; })
-			.sort(function (a, b) { return (b.n - a.n) || (a.i - b.i); })
-			.slice(0, 3).map(function (x) { return x.h.etiqueta.toLowerCase(); }));
+		var habilidades = listaEnTexto(mates
+			.sort(function (a, b) { return (b.n - a.n) || (a.i - b.i) || (a.texto < b.texto ? -1 : 1); })
+			.slice(0, 3).map(function (x) { return x.texto; }));
 
 		var orden = Object.keys(plantillas);
 		return Object.keys(cuenta)
@@ -756,9 +766,12 @@
 		}).join("");
 		var n = g.fluidez;
 		var conDato = g.alumnos.length - n.sinDato;
-		var resumen = banda
-			? "<strong>" + (n.estandar + n.avanzado) + " de " + conDato + "</strong> alcanzan la referencia de su grado o la superan."
-			: "Sin referencia de palabras por minuto para este grado.";
+		// Sin ningún alumno con lectura registrada no hay proporción que dar ("0 de 0")
+		var resumen = !banda
+			? "Sin referencia de palabras por minuto para este grado."
+			: (conDato > 0
+				? "<strong>" + (n.estandar + n.avanzado) + " de " + conDato + "</strong> alcanzan la referencia de su grado o la superan."
+				: "<span data-sin-datos-ppm>Todavía no hay datos: ningún alumno de este grado tiene registrada su velocidad de lectura.</span>");
 		return "<div class='j-panel-fluidez'>" +
 			"<div class='j-resumen-grado'><span class='j-badge' style='background:" + g.color + "'>" + textoGrado(g.grado) + "</span>" +
 			"<span>" + resumen + "</span>" +

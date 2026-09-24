@@ -28,9 +28,10 @@ const catalogo = window.CatalogoHabilidades;
 // ── Columnas: las de BD_Alumnos de Fanny, en su orden, con DHL ──────────────
 const ESPERADAS = ["Alumno", "Grado"];
 ["LEN", "SAB", "ETI", "DHL"].forEach((c) => {
-	// La conducta no pondera (decisión de Jorge del 2026-09-24): su columna se queda en su
-	// lugar, rotulada como referencia
-	["Tareas", "Trabajos", "Asist.", "Part.", "Cond. (referencia)", "Examen"].forEach((r) => ESPERADAS.push(c + ": " + r));
+	// La conducta no pondera (decisión de Jorge del 2026-09-24), pero su columna se queda en
+	// su lugar y con el encabezado EXACTO de la hoja de Fanny ("LEN: Cond."): ella copia por
+	// encabezado. Que es referencia lo dice la hoja Léeme.
+	["Tareas", "Trabajos", "Asist.", "Part.", "Cond.", "Examen"].forEach((r) => ESPERADAS.push(c + ": " + r));
 });
 ESPERADAS.push(
 	"Cuaderno: Orden/limpieza", "Cuaderno: Fecha", "Cuaderno: Título", "Cuaderno: Letra", "Cuaderno: Mayús/Minús",
@@ -49,7 +50,7 @@ ESPERADAS.push(
 const ENC = E.encabezados();
 ok("encabezados en el orden exacto de la hoja", ENC, ESPERADAS);
 ok("62 columnas (las 54 de la hoja + boleta y juicio + 6 de la evaluación final)", ENC.length, 62);
-ok("las columnas de la hoja de Fanny no se movieron (Cond. sigue en la 7a)", ENC.indexOf("LEN: Cond. (referencia)"), 6);
+ok("las columnas de la hoja de Fanny no se movieron (Cond. sigue en la 7a)", ENC.indexOf("LEN: Cond."), 6);
 ok("las columnas nuevas van al final", ENC.slice(-6), ["LEN: Final", "SAB: Final", "ETI: Final", "DHL: Final", "Promedio final de grado", "Acreditación"]);
 ok("nunca HUM", ENC.some((h) => /HUM/.test(h)), false);
 ok("claves de cuaderno existen en el catálogo",
@@ -146,7 +147,7 @@ ok("grado numérico", fJose[col("Grado")], 1);
 ok("LEN tareas 2.66 → 2.7", fJose[col("LEN: Tareas")], 2.7);
 ok("LEN trabajos 3.7", fJose[col("LEN: Trabajos")], 3.7);
 ok("LEN part. 3.25 → 3.3", fJose[col("LEN: Part.")], 3.3);
-ok("LEN conducta: el dato se sigue exportando como referencia (4 de 4)", fJose[col("LEN: Cond. (referencia)")], 4);
+ok("LEN conducta: el dato se sigue exportando como referencia (4 de 4)", fJose[col("LEN: Cond.")], 4);
 ok("LEN examen 0.667 → 0.67 (dos decimales: con uno, 2/3 se leía 70 %)", fJose[col("LEN: Examen")], 0.67);
 ok("rubro sin evidencias queda vacío (no 0)", fJose[col("SAB: Trabajos")], null);
 ok("obtenido 0 con máximo > 0 sí es 0", fLucia[col("LEN: Tareas")], 0);
@@ -362,11 +363,30 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 	ok("final: 4° con promedio 5.7 no acredita", [fb[col("Promedio final de grado")], fb[col("Acreditación")]], [5.7, "No acredita"]);
 	const csvFinal = parsearCSV(E.aCSV(tf.encabezados, tf.filas).slice(1));
 	ok("CSV: final con punto decimal", csvFinal[1][col("LEN: Final")], "7.6");
-	ok("CSV: 9.0 sale como 9 (número)", csvFinal[1][col("ETI: Final")], "9");
+	ok("CSV: la final entera sale con un decimal (9.0, no 9)", csvFinal[1][col("ETI: Final")], "9.0");
+	ok("CSV: el promedio final con un decimal", csvFinal[1][col("Promedio final de grado")], "7.1");
+	const csv10 = parsearCSV(E.aCSV(tf.encabezados, [tf.filas[0].map((v, i) => (i === col("LEN: Final") || i === col("Promedio final de grado")) ? (i === col("LEN: Final") ? 10 : 6) : v)]).slice(1));
+	ok("CSV: 10 → «10.0» y 6 → «6.0»", [csv10[1][col("LEN: Final")], csv10[1][col("Promedio final de grado")]], ["10.0", "6.0"]);
+	ok("CSV: «pendiente» sigue igual", parsearCSV(E.aCSV(tf.encabezados, [tf.filas[0].map((v, i) => i === col("SAB: Final") ? "pendiente" : v)]).slice(1))[1][col("SAB: Final")], "pendiente");
+	ok("CSV: las demás columnas numéricas no cambian (grado 4, no 4.0)", csvFinal[1][col("Grado")], "4");
+	// XLSX: número con formato 0.0 en finales y promedio (sigue siendo número, no texto)
+	const hojaF = {};
+	const XLSXf = { utils: {
+		book_new: () => ({ SheetNames: [], Sheets: {} }),
+		aoa_to_sheet: (aoa) => { const ws = { "!ref": "A1" }; aoa.forEach((f, r) => f.forEach((v, c) => { if (v === null || v === undefined) return; let col = "", n = c + 1; while (n > 0) { const m = (n - 1) % 26; col = String.fromCharCode(65 + m) + col; n = Math.floor((n - 1) / 26); } ws[col + (r + 1)] = { v, t: typeof v === "number" ? "n" : "s" }; })); return ws; },
+		book_append_sheet: (wb, ws, nombre) => { wb.SheetNames.push(nombre); hojaF[nombre] = ws; },
+	} };
+	E.libroXLSX(XLSXf, tf, {});
+	const celdaDe = (titulo) => Object.entries(hojaF.Concentrado).find(([k, v]) => /^[A-Z]+2$/.test(k) && k.replace(/2$/, "") === letraCol(col(titulo)))[1];
+	function letraCol(c) { let s = "", n = c + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+	ok("XLSX: final con formato 0.0 y número", [celdaDe("ETI: Final").t, celdaDe("ETI: Final").v, celdaDe("ETI: Final").z], ["n", 9, "0.0"]);
+	ok("XLSX: promedio final con formato 0.0", celdaDe("Promedio final de grado").z, "0.0");
+	ok("XLSX: otras columnas sin formato forzado", celdaDe("Grado").z, undefined);
 	ok("Léeme: explica final, promedio final y acreditación",
 		["<Campo>: Final", "Promedio final de grado", "Acreditación"].every((c) => E.hojaLeeme({}).some((f) => f[0] === c)), true);
-	ok("Léeme: dice que la conducta no pondera",
-		E.hojaLeeme({}).some((f) => f[0] === "Conducta" && /NO pondera/.test(f[1])), true);
+	ok("Léeme: dice que la conducta es referencia y no pondera",
+		E.hojaLeeme({}).some((f) => /Cond\./.test(f[0]) && /REFERENCIA/.test(f[1]) && /NO pondera/.test(f[1])), true);
+	ok("Léeme: la final es un cálculo de apoyo (SIGED)", E.hojaLeeme({}).some((f) => f[0] === "<Campo>: Final" && /SIGED/.test(f[1])), true);
 	ok("Léeme: truncado, sin redondear", E.hojaLeeme({}).some((f) => /truncado \(sin redondear\)/.test(f[1] || "")), true);
 }
 

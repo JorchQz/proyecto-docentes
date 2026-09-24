@@ -50,6 +50,13 @@
 	var hasStudentGradeColumn = true;
 	var students = [];
 	var editingStudentId = null;
+	// Trimestre actual (ver guardarTrimestre)
+	var trimestreSelect = document.getElementById("trimestreActualSelect");
+	var trimestreSugerenciaEl = document.getElementById("trimestreSugerencia");
+	var trimestreSugerenciaTexto = document.getElementById("trimestreSugerenciaTexto");
+	var trimestreSugerenciaBtn = document.getElementById("trimestreSugerenciaBtn");
+	var trimestreMensajeEl = document.getElementById("trimestreMensaje");
+	var guardandoTrimestre = false;
 
 	var sessionResult = await window.sb.auth.getSession();
 	if (sessionResult.error || !sessionResult.data.session) {
@@ -186,7 +193,7 @@
 					})
 					.eq("id", currentGroup.id)
 					.eq("maestro_id", userId)
-					.select("id, nombre, tipo_organizacion, grados, escuela, descripcion")
+					.select("id, nombre, tipo_organizacion, grados, escuela, descripcion, trimestre_actual")
 					.single();
 
 				if (updateResult.error) {
@@ -445,6 +452,89 @@
 		});
 	}
 
+	/*
+		Trimestre actual del grupo (grupos.trimestre_actual). Antes solo se elegía en el
+		onboarding: pasado noviembre, Reportes, Diagnóstico y Crear proyecto seguían abriendo
+		en el trimestre 1. Se guarda al elegirlo. La fecha solo SUGIERE (calendario SEP,
+		js/calendario-escolar.js): nunca se cambia sola.
+		El guardado pasa por la capa común (Lectura.uno lanza si la base devuelve error) y se
+		comprueba lo que la base guardó; si falla, se avisa y el selector vuelve a lo guardado.
+	*/
+
+	function trimestreGuardado() {
+		var t = currentGroup ? Number(currentGroup.trimestre_actual) : NaN;
+		return [1, 2, 3].indexOf(t) !== -1 ? t : null;
+	}
+
+	function mensajeTrimestre(tipo, texto) {
+		if (!trimestreMensajeEl) return;
+		if (!texto) { trimestreMensajeEl.textContent = ""; trimestreMensajeEl.className = "mt-3"; return; }
+		trimestreMensajeEl.textContent = texto;
+		trimestreMensajeEl.className = "mt-3 rounded-lg px-3 py-2 text-sm " +
+			(tipo === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200");
+	}
+
+	function renderTrimestreActual() {
+		if (!trimestreSelect || !currentGroup) return;
+		var t = trimestreGuardado();
+		trimestreSelect.value = t ? String(t) : "";
+		trimestreSelect.disabled = guardandoTrimestre;
+		var sug = window.CalendarioEscolar ? window.CalendarioEscolar.trimestreSugerido() : null;
+		if (!sug || !trimestreSugerenciaEl) return;
+		trimestreSugerenciaTexto.textContent = sug.texto + (t === sug.trimestre ? " Ya es el trimestre de tu grupo." : "");
+		trimestreSugerenciaEl.classList.remove("hidden");
+		if (t !== sug.trimestre) {
+			trimestreSugerenciaBtn.textContent = "Cambiar al trimestre " + sug.trimestre;
+			trimestreSugerenciaBtn.dataset.trimestre = String(sug.trimestre);
+			trimestreSugerenciaBtn.classList.remove("hidden");
+		} else {
+			trimestreSugerenciaBtn.classList.add("hidden");
+		}
+		trimestreSugerenciaBtn.disabled = guardandoTrimestre;
+	}
+
+	async function guardarTrimestre(nuevo) {
+		if (!currentGroup || guardandoTrimestre) return;
+		var anterior = trimestreGuardado();
+		if (nuevo === anterior) { renderTrimestreActual(); return; }
+		guardandoTrimestre = true;
+		mensajeTrimestre("", "");
+		renderTrimestreActual();
+		trimestreSelect.value = String(nuevo);
+		try {
+			var fila = await window.Lectura.uno(window.sb
+				.from("grupos")
+				.update({ trimestre_actual: nuevo })
+				.eq("id", currentGroup.id)
+				.eq("maestro_id", userId)
+				.select("id, trimestre_actual")
+				.maybeSingle());
+			if (!fila || Number(fila.trimestre_actual) !== nuevo) throw new Error("la base no confirmó el cambio");
+			currentGroup.trimestre_actual = nuevo;
+			mensajeTrimestre("success", "Guardado: tu grupo está en el trimestre " + nuevo + ". Hoy, Inicio, Reportes, Diagnóstico y Crear proyecto ya abren en él.");
+		} catch (error) {
+			console.error("mi-grupo: trimestre actual", error);
+			mensajeTrimestre("error", "No se pudo guardar el trimestre" + (error && error.message ? " (" + error.message + ")" : "") +
+				". Tu grupo sigue en " + (anterior ? "el trimestre " + anterior : "el trimestre que tenía") + ". Revisa tu conexión e intenta de nuevo.");
+		} finally {
+			guardandoTrimestre = false;
+			renderTrimestreActual();
+		}
+	}
+
+	if (trimestreSelect) {
+		trimestreSelect.addEventListener("change", function () {
+			var t = Number(trimestreSelect.value);
+			if ([1, 2, 3].indexOf(t) !== -1) guardarTrimestre(t);
+		});
+	}
+	if (trimestreSugerenciaBtn) {
+		trimestreSugerenciaBtn.addEventListener("click", function () {
+			var t = Number(trimestreSugerenciaBtn.dataset.trimestre);
+			if ([1, 2, 3].indexOf(t) !== -1) guardarTrimestre(t);
+		});
+	}
+
 	async function loadCurrentGroup() {
 		// Grupo activo (con 2+ grupos se edita el que el maestro eligió en la barra)
 		// Si la lectura del grupo falla, GrupoActivo.cargar detiene la página él mismo
@@ -457,6 +547,7 @@
 		currentGroup = activo.grupo;
 		renderGroupInfo(currentGroup);
 		syncEditForm(currentGroup);
+		renderTrimestreActual();
 		configureStudentGradeSelector();
 		await loadStudents();
 		refreshStudentsCount();

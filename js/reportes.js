@@ -588,21 +588,45 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const camposCols = CAMPOS_CORTOS;
 		const MOTOR = window.MotorCalificacion;
 
+		/*
+			Peso EFECTIVO de cada rubro en cada campo (solo presentación: el cálculo no cambia):
+			los pesos de Ajustes son relativos y un rubro sin datos no entra, así que se muestra
+			cuánto valió cada rubro en ESTE cálculo, sumando 100 % entre los que tienen datos
+			(MotorCalificacion.pesosEfectivos). Antes se mostraban 28, 28, 6 y 33 "%", que suman 95.
+			Si el rubro valió lo mismo en todos los campos, va en su etiqueta; si no, en cada celda.
+		*/
+		const efectivos = {};
+		CODIGOS.forEach(function (codigo) {
+			efectivos[codigo] = MOTOR.pesosEfectivos(porCampoVisible[codigo] ? porCampoVisible[codigo].rubros : null);
+		});
+		const fmtPeso = function (v) { return String(v).replace(/\.0$/, "") + "\u00a0%"; };
+
 		// Con la boleta cerrada (foto completa), el desglose y los pesos del cierre
 		function filaRubro(rubro) {
 			const peso = (pesosVisibles || {})[rubro];
-			let celdas = "";
-			CODIGOS.forEach(function (codigo) {
-				const datos = (porCampoVisible[codigo] && porCampoVisible[codigo].rubros) ? porCampoVisible[codigo].rubros[rubro] : null;
-				celdas += "<td class='px-3 py-2 text-center border border-gray-200'>" + fmtRubro(datos) + "</td>";
-			});
 			// Conducta: se registra y se informa, pero no pondera (LGE art. 21). Una boleta
 			// cerrada antes del cambio conserva el peso con que se entregó.
 			const referencia = rubro === "conducta" && !(peso > 0);
-			return "<tr" + (referencia ? " data-no-pondera='conducta'" : "") + "><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" +
+			const valio = CODIGOS.map(function (c) { return efectivos[c] ? efectivos[c][rubro] : undefined; })
+				.filter(function (v) { return v !== undefined; });
+			const varia = valio.some(function (v) { return v !== valio[0]; });
+			let celdas = "";
+			CODIGOS.forEach(function (codigo) {
+				const datos = (porCampoVisible[codigo] && porCampoVisible[codigo].rubros) ? porCampoVisible[codigo].rubros[rubro] : null;
+				const suyo = efectivos[codigo] ? efectivos[codigo][rubro] : undefined;
+				celdas += "<td class='px-3 py-2 text-center border border-gray-200'" + (suyo !== undefined ? " data-peso-efectivo='" + suyo + "'" : "") + ">" +
+					fmtRubro(datos) +
+					(varia && suyo !== undefined ? "<span class='block text-xs text-gray-500'>pesa " + fmtPeso(suyo) + "</span>" : "") + "</td>";
+			});
+			let etiquetaPeso, clasePeso;
+			if (referencia) { etiquetaPeso = "referencia, no pondera"; clasePeso = "text-gray-500"; }
+			else if (!(peso > 0)) { etiquetaPeso = "sin peso"; clasePeso = "text-gray-300"; }
+			else if (!valio.length) { etiquetaPeso = "sin datos"; clasePeso = "text-gray-300"; }
+			else if (varia) { etiquetaPeso = "pesa según el campo"; clasePeso = "text-gray-500"; }
+			else { etiquetaPeso = fmtPeso(valio[0]); clasePeso = "text-gray-500"; }
+			return "<tr data-rubro='" + rubro + "'" + (referencia ? " data-no-pondera='conducta'" : "") + "><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" +
 				MOTOR.ETIQUETA_RUBRO[rubro] +
-				" <span class='text-xs font-normal " + (peso > 0 ? "text-gray-400" : (referencia ? "text-gray-500" : "text-gray-300")) + "'>" +
-				(peso > 0 ? peso + " %" : (referencia ? "referencia, no pondera" : "sin peso")) + "</span></td>" + celdas + "</tr>";
+				" <span class='text-xs font-normal " + clasePeso + "' data-peso-etiqueta>" + etiquetaPeso + "</span></td>" + celdas + "</tr>";
 		}
 
 		// Fila de porcentaje del campo (lo que el motor convierte a calificación)
@@ -752,6 +776,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			(diasTotal > 0 ? diasPresente + " de " + diasTotal + " días (" + asisPctTexto + ")" : "sin registros en el trimestre") +
 			". <span class='text-xs text-gray-500'>Dato de referencia; no forma parte de la calificación.</span></p>";
 
+		/*
+			La conducta ya no pondera (LGE art. 21), pero una boleta cerrada antes del cambio
+			conserva en su foto la conducta con peso: ahí la nota dice lo que pasó en ELLA.
+		*/
+		const pesoConductaFoto = boletaYaCerrada ? RDB.pesoConductaCierre(boletaPorCampo) : 0;
+		const notaConducta = pesoConductaFoto > 0
+			? "Esta boleta se cerró cuando la conducta todavía ponderaba: en su porcentaje y su calificación la conducta contó con peso " +
+				pesoConductaFoto + " (el de su cierre), y eso no se recalcula. Desde entonces la conducta se informa en las observaciones y no pondera (Ley General de Educación, art. 21)."
+			: "La conducta se registra en el cierre del día y se informa en las observaciones: no pondera en el porcentaje ni en la calificación (Ley General de Educación, art. 21).";
+
 		let seccion1 =
 			"<h3 class='font-bold text-gray-800 mb-2'>1. Desempeño continuo y examen</h3>" +
 			"<div class='overflow-x-auto mb-6'><table class='min-w-full text-sm border-collapse'>" +
@@ -765,8 +799,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<span class='block text-xs font-normal text-gray-500'>" + (faseEtiqueta ? "Fase " + faseEtiqueta + ": " : "") + esc(escalaEtiqueta) + "</span></td>" +
 			filaCalificacion + "</tr>" +
 			"</tbody></table></div>" +
-			"<p class='text-xs text-gray-500 -mt-4 mb-6' data-nota-conducta>La conducta se registra en el cierre del día y se informa en las observaciones: " +
-			"no pondera en el porcentaje ni en la calificación (Ley General de Educación, art. 21). Un rubro sin datos reparte su peso entre los demás.</p>" +
+			"<p class='text-xs text-gray-500 -mt-4 mb-6' data-nota-conducta>" + notaConducta + " " +
+			"El peso de cada rubro es lo que valió en este cálculo: los pesos de Ajustes son relativos y se reparten el 100 % entre los rubros con datos de cada campo.</p>" +
 			asisReferencia + barraEstado + avisosHtml +
 			// Evaluación final del ciclo: una sola función para todos los documentos
 			"<h3 class='font-bold text-gray-800 mb-2'>Evaluación final del ciclo</h3>" +

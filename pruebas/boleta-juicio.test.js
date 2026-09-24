@@ -199,7 +199,7 @@ function opciones(html, campo) {
 	// ── D) Cerrada con la foto completa; después el alumno pasó de 2° a 4° ──
 	const motorCierre = { LEN: { rubros: {
 		tareas: { obtenido: 1, maximo: 2, fraccion: 0.5, peso: 28 }, trabajos: { obtenido: 3, maximo: 3, fraccion: 1, peso: 28 },
-		participacion: { obtenido: 0, maximo: 0, fraccion: null, peso: 6 }, conducta: { obtenido: 0, maximo: 0, fraccion: null, peso: 5 },
+		participacion: { obtenido: 1, maximo: 1, fraccion: 1, peso: 6 }, conducta: { obtenido: 0, maximo: 0, fraccion: null, peso: 5 },
 		examen: { obtenido: 0, maximo: 0, fraccion: null, peso: 33 },
 	}, porcentaje: 75, nivel: "en_proceso" }, SAB: { rubros: {}, porcentaje: 90, nivel: "logrado" },
 	ETI: { rubros: {}, porcentaje: 80, nivel: "logrado" }, DHL: { rubros: {}, porcentaje: null } };
@@ -232,7 +232,10 @@ function opciones(html, campo) {
 	contiene("D: grado del cierre (2°), no el de hoy (4°)", html, "Grado:</span> <span class='font-semibold text-gray-800'>2°");
 	contiene("D: escala del cierre", html, "Fase 3: 6 a 10");
 	noContiene("D: no la de hoy", html, "5 no acredita");
-	contiene("D: pesos del cierre (Tareas 28 %)", html, "28 %");
+	// Peso efectivo con los pesos del cierre (28, 28 y 6 con datos): 45.1, 45.1 y 9.8
+	contiene("D: pesos del cierre (tareas pesa 45.1 %)", html, "data-peso-etiqueta>45.1\u00a0%");
+	// La conducta tenía peso 5 en la foto, pero sin datos: no entró, la nota no dice que ponderó
+	contiene("D: la conducta sin datos no ponderó", html, "no pondera en el porcentaje ni en la calificación");
 	noContiene("D: no los pesos de hoy (50 %)", html, "50 %</span>");
 	contiene("D: desglose del cierre (LEN tareas 1 / 2)", html, "1 / 2");
 	contiene("D: porcentaje del cierre", html, "75.0 %");

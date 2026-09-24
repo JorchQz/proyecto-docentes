@@ -434,9 +434,14 @@
 		var mates = catalogo.aMapa(diag.matematicas);
 		var grado = datos.grado !== undefined && datos.grado !== null ? datos.grado : (datos.banda ? datos.banda.grado : null);
 		var delGrado = catalogo.matematicasDeGrado ? catalogo.matematicasDeGrado(grado) : catalogo.MATEMATICAS;
+		// En 1° y 2° la división y las tablas se nombran como se evalúan en la Fase 3
+		// (repartir o agrupar, cálculo mental), nunca "división" ni "tablas de multiplicar"
+		// (CatalogoHabilidades.textoFamilias). De 3° a 6°, la etiqueta, como antes.
+		var nombre = function (h) {
+			return catalogo.textoFamilias ? catalogo.textoFamilias(h, grado) : h.etiqueta.toLowerCase();
+		};
 		var etiquetas = function (nivel) {
-			return delGrado.filter(function (h) { return mates[h.clave] === nivel; })
-				.map(function (h) { return h.etiqueta.toLowerCase(); });
+			return delGrado.filter(function (h) { return mates[h.clave] === nivel; }).map(nombre);
 		};
 		var matesFlojas = etiquetas("requiere_apoyo");
 		var matesBien = etiquetas("logrado");

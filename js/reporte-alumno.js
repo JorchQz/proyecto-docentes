@@ -346,7 +346,15 @@
 	}
 
 	function tablaRubros(pc) {
+		/*
+			Columna "Peso": lo que valió cada rubro en ESTE cálculo (peso efectivo, suma 100 %
+			entre los rubros con datos; MotorCalificacion.pesosEfectivos). Los pesos de Ajustes
+			son relativos: mostrar 28, 28, 6 y 33 "%" sumaba 95. Solo si el reparto reproduce
+			el porcentaje del motor (pesosAplicados); si no, el peso relativo tal cual.
+		*/
 		var aplicado = pesosAplicados(pc);
+		var M = window.MotorCalificacion;
+		var efectivo = aplicado && M && M.pesosEfectivos ? M.pesosEfectivos(pc.rubros) : null;
 		var sinDatos = [];
 		var filas = RUBROS.map(function (r) {
 			var x = (pc.rubros || {})[r] || { obtenido: 0, maximo: 0, fraccion: null, peso: 0 };
@@ -357,21 +365,23 @@
 			var nombre = "<span class='font-medium text-gray-800'>" + ETIQUETA_RUBRO[r] + "</span>" +
 				(r === "examen" ? " <span class='ml-1 rounded border border-amber-300 bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-800'>aproximado</span>" : "") +
 				(r === "participacion" || r === "conducta" ? "<span class='hidden sm:block text-[11px] text-gray-400 print:hidden'>registro diario repartido</span>" : "");
-			var celdaPeso = peso > 0 ? peso + "\u00a0%"
+			var celdaPeso = peso > 0
+				? (efectivo && efectivo[r] !== undefined
+					? "<span data-peso-efectivo='" + efectivo[r] + "'>" + String(efectivo[r]).replace(/\.0$/, "") + "\u00a0%</span>"
+					: "<span class='text-gray-500'>peso " + peso + "</span>")
 				: (referencia ? "<span class='text-gray-500 text-[11px] leading-tight' data-no-pondera>referencia, no pondera</span>"
 					: "<span class='text-gray-400'>sin peso</span>");
 			if (rubroSinDatos(x)) {
-				if (peso > 0) sinDatos.push(ETIQUETA_RUBRO[r].toLowerCase() + " (" + peso + " %)");
+				if (peso > 0) sinDatos.push(ETIQUETA_RUBRO[r].toLowerCase());
 				return "<tr data-rubro='" + r + "' class='align-top'>" +
 					"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200'>" + nombre + "</td>" +
-					"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200 text-center text-gray-400'>" + celdaPeso +
-					(peso > 0 ? "<span class='block text-[11px]'>se reparte</span>" : "") + "</td>" +
+					"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200 text-center text-gray-400'>" +
+					(peso > 0 ? "no entra<span class='block text-[11px]'>se reparte</span>" : celdaPeso) + "</td>" +
 					"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200 text-center text-gray-300'>—</td>" +
 					"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200 text-center text-gray-300'>—</td>" +
 					"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200 text-center text-gray-400 italic whitespace-nowrap'>sin datos</td></tr>";
 			}
-			var extraPeso = aplicado && aplicado[r] !== undefined && Math.abs(aplicado[r] - peso) > 0.05
-				? "<span class='block sm:whitespace-nowrap text-[11px] leading-tight text-gray-500'>aplica " + fmtPct(aplicado[r]) + "</span>" : "";
+			var extraPeso = "";
 			return "<tr data-rubro='" + r + "' class='align-top'>" +
 				"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200'>" + nombre + "</td>" +
 				"<td class='px-1.5 sm:px-2 py-1.5 border border-gray-200 text-center sm:whitespace-nowrap'>" + celdaPeso + extraPeso + "</td>" +
@@ -383,7 +393,7 @@
 		var explicacion = "";
 		if (sinDatos.length && !vacio(pc.porcentaje)) {
 			explicacion = nota("Sin datos en " + esc(sinDatos.join(", ")) +
-				": ese peso se reparte entre los demás rubros en proporción a sus pesos, así que no sube ni baja el porcentaje del campo.");
+				": su peso se reparte entre los demás rubros en proporción a sus pesos, así que no sube ni baja el porcentaje del campo.");
 		}
 		return "<div class='overflow-x-auto'><table class='w-full text-xs sm:text-sm border-collapse'>" +
 			"<thead><tr class='bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500'>" +
@@ -417,7 +427,12 @@
 		});
 		if (!conductaPondera) {
 			notas.push("La conducta se registra y se informa como referencia: no forma parte del porcentaje ni de la calificación.");
+		} else {
+			// Boleta cerrada antes del cambio: su foto trae la conducta con peso, y así se entregó
+			notas.push("Esta boleta se cerró cuando la conducta todavía ponderaba: en su porcentaje y su calificación la conducta contó con el peso de su cierre, y eso no se recalcula. " +
+				"Desde entonces la conducta se informa aparte y no pondera (Ley General de Educación, art. 21).");
 		}
+		notas.push("La columna «Peso» dice cuánto valió cada rubro en este cálculo: los pesos de Ajustes son relativos y se reparten el 100 % entre los rubros con datos de cada campo.");
 		var escala = window.MotorCalificacion && window.MotorCalificacion.ESCALA_NIVEL;
 		if (escala) {
 			notas[0] = "Cada tarea o trabajo que le tocó a su grado suma 1 al máximo; lo obtenido depende del nivel " +
@@ -458,11 +473,13 @@
 		}).join("");
 
 		var pesos = m.pesos || {};
+		// Los pesos de Ajustes son relativos (28, 28, 6 y 33 suman 95): sin "%", para que
+		// nadie los lea como porcentajes; lo que valió cada rubro va en la columna "Peso"
 		var pesosTexto = RUBROS.filter(function (r) { return r !== "conducta" || conductaPondera; })
-			.map(function (r) { return ETIQUETA_RUBRO[r] + " " + (Number(pesos[r]) || 0) + " %"; }).join(" · ") +
+			.map(function (r) { return ETIQUETA_RUBRO[r] + " " + (Number(pesos[r]) || 0); }).join(" · ") +
 			(conductaPondera ? "" : " · Conducta: referencia, no pondera");
 
-		return "<section class='mb-7'>" + titulo(2, "Desempeño por campo formativo", "Pesos: " + esc(pesosTexto)) +
+		return "<section class='mb-7'>" + titulo(2, "Desempeño por campo formativo", "Pesos relativos: " + esc(pesosTexto)) +
 			"<ul class='bloque mb-3 list-disc pl-5 flex flex-col gap-1 text-xs text-gray-500 leading-relaxed'>" +
 			notas.map(function (n) { return "<li>" + n + "</li>"; }).join("") + "</ul>" +
 			"<div class='grid grid-cols-1 lg:grid-cols-2 print:grid-cols-2 gap-3'>" + tarjetas + "</div></section>";

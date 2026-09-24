@@ -52,6 +52,17 @@
 		boleta cerrada, del grado de la foto del cierre. Ver matematicasDeGrado.
 	*/
 	var TODOS_LOS_GRADOS = [1, 2, 3, 4, 5, 6];
+	/*
+		familias: cómo se nombra la habilidad en los textos para las familias (áreas,
+		fortalezas y sugerencias de la boleta, el reporte y la junta) cuando en ese grado la
+		etiqueta diría otra cosa que lo que se evalúa. En la Fase 3 (1° y 2°) el cuaderno
+		oficial no evalúa la memorización de las tablas (p. 26) ni el algoritmo de la división
+		(p. 25): "Necesita apoyo en: división y tablas de multiplicar" le pediría a la familia
+		justo lo que no toca. De 3° a 6° se usa la etiqueta, como antes.
+		Las frases no llevan " y " para que se puedan juntar en una lista ("a, b y c").
+	*/
+	var FAMILIAS_DIVISION = { 1: "estrategias para repartir o agrupar", 2: "estrategias para repartir o agrupar" };
+	var FAMILIAS_TABLAS = { 1: "cálculo mental para multiplicar", 2: "cálculo mental para multiplicar" };
 	var MATEMATICAS = [
 		{ clave: "mates.suma", etiqueta: "Suma", grados: TODOS_LOS_GRADOS, alcance: {
 			1: "Juntar y agregar hasta dos cifras, sin algoritmo",
@@ -73,7 +84,7 @@
 			4: "Algoritmo de hasta tres por dos cifras",
 			5: "Fracciones y decimales por un natural",
 			6: "Con naturales, decimales y fracciones" } },
-		{ clave: "mates.division", etiqueta: "División", grados: [2, 3, 4, 5, 6], alcance: {
+		{ clave: "mates.division", etiqueta: "División", grados: [2, 3, 4, 5, 6], familias: FAMILIAS_DIVISION, alcance: {
 			2: "Reparto y agrupamiento con divisores menores que 10, sin algoritmo convencional",
 			3: "Reparto y agrupamiento (a ÷ b = c)",
 			4: "Algoritmo: cociente y residuo",
@@ -84,7 +95,7 @@
 			4: "Tercios a décimos; suma y resta",
 			5: "Equivalentes y en notación decimal",
 			6: "Suma, resta y división entre un natural" } },
-		{ clave: "mates.tablas", etiqueta: "Tablas de multiplicar", grados: [2, 3, 4, 5, 6], alcance: {
+		{ clave: "mates.tablas", etiqueta: "Tablas de multiplicar", grados: [2, 3, 4, 5, 6], familias: FAMILIAS_TABLAS, alcance: {
 			2: "Estrategias de cálculo mental para multiplicar números menores que 10, sin memorizar las tablas",
 			3: "Repertorio de factores de una cifra",
 			4: "Uso en operaciones; doble, triple y mitad",
@@ -143,6 +154,17 @@
 		return h.alcance[g] || "";
 	}
 
+	/*
+		Nombre de la habilidad dentro de una frase para las familias, en minúsculas:
+		"cálculo mental para multiplicar" (tablas en 2°) o la etiqueta ("división" en 4°).
+	*/
+	function textoFamilias(claveOHabilidad, grado) {
+		var h = habilidadMates(claveOHabilidad);
+		if (!h) return "";
+		var g = gradoValido(grado);
+		return (g !== null && h.familias && h.familias[g]) || h.etiqueta.toLowerCase();
+	}
+
 	var NIVELES = ["logrado", "en_proceso", "requiere_apoyo"];
 	var ETIQUETA_NIVEL = { logrado: "Logrado", en_proceso: "En proceso", requiere_apoyo: "Requiere apoyo" };
 
@@ -195,6 +217,7 @@
 		matematicasDeGrado: matematicasDeGrado,
 		aplicaMatematica: aplicaMatematica,
 		alcanceMatematica: alcanceMatematica,
+		textoFamilias: textoFamilias,
 		gradoValido: gradoValido,
 		NIVELES: NIVELES,
 		ETIQUETA_NIVEL: ETIQUETA_NIVEL,

@@ -14,9 +14,13 @@
 	    referencia: la asistencia NO pondera (Acuerdo 10/09/23, art. 7).
 	  - Calificación por campo: solo la CONFIRMADA por el maestro
 	    (ReporteDatos.calificacionOficial); lo demás es "pendiente", nunca un número.
-	  - "Cond." es referencia: la conducta no pondera (LGE art. 21). La columna no se mueve.
+	  - "Cond." es referencia: la conducta no pondera (LGE art. 21). La columna no se mueve y
+	    su encabezado es el de la hoja de Fanny ("LEN: Cond."), porque ella copia por
+	    encabezado; la hoja Léeme explica que es referencia.
 	  - Evaluación final del ciclo, al final de la fila (ReporteDatos.finalCiclo): final por
-	    campo, promedio final de grado y acreditación; "pendiente" mientras falte algo.
+	    campo, promedio final de grado y acreditación; "pendiente" mientras falte algo. Las
+	    finales y el promedio siempre con un decimal ("10.0"): en el CSV como texto del
+	    número y en el XLSX como número con formato 0.0.
 	  - Textos: lo guardado en boleta_trimestral o, si no hay, la propuesta de la
 	    Capa 1 (TextosBoleta.generar con los mismos insumos que alumnoTrimestre).
 	  - Matemáticas: siempre las 8 columnas de la hoja; la habilidad que no corresponde
@@ -39,8 +43,9 @@
 		{ clave: "trabajos", titulo: "Trabajos" },
 		{ clave: "asistencia", titulo: "Asist." },
 		{ clave: "participacion", titulo: "Part." },
-		// La conducta no pondera (LGE art. 21): la columna se queda en su lugar, como referencia
-		{ clave: "conducta", titulo: "Cond. (referencia)" },
+		// La conducta no pondera (LGE art. 21): la columna se queda en su lugar, con el
+		// encabezado exacto de la hoja de Fanny (copia por encabezado); la hoja Léeme lo explica
+		{ clave: "conducta", titulo: "Cond." },
 		{ clave: "examen", titulo: "Examen" },
 	];
 
@@ -101,6 +106,16 @@
 		CAMPOS.forEach(function (c) { h.push(colFinal(c)); });
 		h.push(COL_PROMEDIO_FINAL, COL_ACREDITACION);
 		return h;
+	}
+
+	// Columnas de la evaluación final (finales por campo y promedio final de grado): siempre
+	// con un decimal, "10.0" y no "10" (como en la boleta oficial)
+	function esColumnaUnDecimal(titulo) {
+		return titulo === COL_PROMEDIO_FINAL || CAMPOS.some(function (c) { return titulo === colFinal(c); });
+	}
+	// 7.6 → "7.6"; 10 → "10.0" (el valor ya viene truncado de ReporteDatos.finalCiclo)
+	function unDecimal(v) {
+		return (Math.floor(Number(v) * 10 + 1e-9) / 10).toFixed(1);
 	}
 
 	function redondear1(n) {
@@ -297,8 +312,13 @@
 
 	// UTF-8 con BOM, separado por comas, CRLF (lo que Excel en es-MX abre sin preguntar)
 	function aCSV(encabezadosFila, filas) {
-		return "﻿" + [encabezadosFila].concat(filas).map(function (f) {
-			return f.map(celdaCSV).join(",");
+		var unDec = encabezadosFila.map(esColumnaUnDecimal);
+		return "﻿" + [encabezadosFila].concat(filas).map(function (f, i) {
+			return f.map(function (v, j) {
+				// Finales y promedio final de grado: "10.0" (siempre con un decimal), no "10"
+				if (i > 0 && unDec[j] && typeof v === "number" && isFinite(v)) return unDecimal(v);
+				return celdaCSV(v);
+			}).join(",");
 		}).join("\r\n") + "\r\n";
 	}
 
@@ -352,19 +372,19 @@
 			["<Campo>: Tareas", "Obtenido en los productos tipo tarea del campo durante el trimestre, con un decimal. Cada producto vale hasta 1 punto según su semáforo" + textoEscala + " o su puntaje 0-10 dividido entre 10; «no entregó» vale 0. Lo justificado o que no aplica no suma al máximo."],
 			["<Campo>: Trabajos", "Igual que Tareas, con los productos tipo trabajo, producto final u otro."],
 			["<Campo>: Asist.", "Días asistidos del trimestre (presente o justificada) en el periodo de las sesiones del trimestre. Es el mismo número en los cuatro campos, como en la hoja original. Solo referencia: no entra en la calificación. En «" + HOJA_MAXIMOS + "»: días con lista."],
-			["<Campo>: Part. / Cond. (referencia)", "Registro diario de participación y conducta (0, 1 o 2 por día), repartido en partes iguales entre los campos trabajados ese día. Cada día vale 1 punto repartido: 1 (normal) y 2 (destacado) valen el punto completo; 0 vale 0."],
-			["Conducta", "La conducta NO pondera en la calificación: se registra en el cierre del día y se informa aparte, en las observaciones (Ley General de Educación, art. 21). Su columna «Cond. (referencia)» se queda en su lugar como dato. En una boleta cerrada antes de este cambio, su calificación se calculó con el peso de conducta que había entonces y no se recalcula."],
+			["<Campo>: Part. / Cond.", "Registro diario de participación y conducta (0, 1 o 2 por día), repartido en partes iguales entre los campos trabajados ese día. Cada día vale 1 punto repartido: 1 (normal) y 2 (destacado) valen el punto completo; 0 vale 0."],
+			["<Campo>: Cond. (conducta)", "Es solo REFERENCIA: la conducta NO pondera en la calificación. Se registra en el cierre del día y se informa aparte, en las observaciones (Ley General de Educación, art. 21). La columna conserva su lugar y su encabezado de la hoja original para que se pueda copiar igual, pero no debe sumarse a la calificación. En una boleta cerrada antes de este cambio, su calificación se calculó con el peso de conducta que había entonces y no se recalcula."],
 			["<Campo>: Examen", "Fracción de aciertos en las preguntas del campo del examen del trimestre de su grado (1 = todo correcto). Aproximado (ver arriba)."],
 			["Cuaderno / Lectura / Mates", "Evaluación diagnóstica del trimestre: Logrado / En proceso / Requiere apoyo. Lectura: PPM son palabras por minuto."],
-			["Mates: «" + NO_APLICA + "»", "La habilidad no corresponde al grado del alumno según el Programa Sintético de la NEM: 1° evalúa suma, resta, lectura y escritura de cantidades y problemas; 2° agrega multiplicación, división y tablas; de 3° a 6°, las ocho (las fracciones empiezan en 3°)."],
+			["Mates: «" + NO_APLICA + "»", "La habilidad no corresponde al grado del alumno según el Programa Sintético de la NEM: 1° evalúa suma, resta, lectura y escritura de cantidades y problemas; 2° agrega multiplicación, división y tablas (en 2°, «Tablas» evalúa estrategias de cálculo mental para multiplicar, sin memorizar las tablas, y «División», reparto y agrupamiento sin el algoritmo convencional); de 3° a 6°, las ocho (las fracciones empiezan en 3°)."],
 			["Trabajo Diario", "La observación de trabajo diario que guardó el docente; si no hay, la que propone Mi salón a partir de tareas y trabajos."],
 			["Fortalezas / Áreas de Oportunidad", "Textos de la boleta por campo (LEN, SAB, ETI, DHL) y generales: los guardados por el docente o, si no hay, los que propone Mi salón con lo capturado."],
 			[COL_ASISTENCIA_REF, "Porcentaje de días asistidos sobre días con lista (0 a 100). Solo referencia: la asistencia no pondera."],
 			["<Campo>: Calificación", "Calificación confirmada por el docente (1° y 2°: 6 a 10; 3° a 6°: 5 a 10) o «pendiente»."],
 			[COL_BOLETA, "«cerrada»: el docente cerró la boleta; todas las columnas de ese alumno (grado, rubros, asistencia, cuaderno, lectura y textos) son las del cierre, lo que se entregó, aunque después se haya capturado algo o cambiado su grado. «abierta»: lo capturado hasta hoy."],
 			[COL_JUICIO, "Campos cuya calificación asignó el docente por juicio, sin evidencias registradas en el trimestre (por ejemplo, un alumno que llegó tarde). Esos campos no tienen porcentaje ni rubros."],
-			["<Campo>: Final", "Evaluación final del campo formativo en el ciclo (Acuerdo 10/09/23, art. 7): promedio de las calificaciones confirmadas de los trimestres 1, 2 y 3, con un número entero y un decimal, truncado (sin redondear). «pendiente» mientras falte confirmar alguno de los tres. Es la misma en los tres trimestres."],
-			[COL_PROMEDIO_FINAL, "Promedio de las cuatro finales por campo, con un decimal, truncado. «pendiente» mientras falte alguna final."],
+			["<Campo>: Final", "Evaluación final del campo formativo en el ciclo (Acuerdo 10/09/23, art. 7): promedio de las calificaciones confirmadas de los trimestres 1, 2 y 3, siempre con un decimal («10.0»), truncado (sin redondear). Es un cálculo de apoyo: el promedio oficial lo calcula SIGED. «pendiente» mientras falte confirmar alguno de los tres. Es la misma en los tres trimestres."],
+			[COL_PROMEDIO_FINAL, "Promedio de las cuatro finales por campo, siempre con un decimal («6.0»), truncado. «pendiente» mientras falte alguna final. Es un cálculo de apoyo: el promedio oficial lo calcula SIGED."],
 			[COL_ACREDITACION, "Acuerdo 10/09/23, art. 9: 1° se acredita con haber cursado el grado; de 2° a 6°, con un promedio final de grado mínimo de 6. Dice «Acredita» o «No acredita» solo cuando están confirmados los tres trimestres de los cuatro campos; antes, «pendiente»."],
 			["Celda vacía", "Sin evidencias de ese rubro en el trimestre, o sin captura."],
 		];
@@ -382,10 +402,25 @@
 		});
 	}
 
+	// "A1" de la fila y columna (desde 0), como XLSX.utils.encode_cell
+	function direccionCelda(fila, columna) {
+		var letras = "", n = columna + 1;
+		while (n > 0) { var m = (n - 1) % 26; letras = String.fromCharCode(65 + m) + letras; n = Math.floor((n - 1) / 26); }
+		return letras + (fila + 1);
+	}
+
 	function libroXLSX(XLSX, tabla, meta) {
 		var wb = XLSX.utils.book_new();
 		var hoja1 = XLSX.utils.aoa_to_sheet([tabla.encabezados].concat(tabla.filas));
 		hoja1["!cols"] = anchos(tabla.encabezados, tabla.filas);
+		// Finales y promedio final de grado: número con un decimal a la vista ("10.0")
+		tabla.encabezados.forEach(function (titulo, j) {
+			if (!esColumnaUnDecimal(titulo)) return;
+			tabla.filas.forEach(function (f, i) {
+				var celda = hoja1[direccionCelda(i + 1, j)];
+				if (celda && celda.t === "n") celda.z = "0.0";
+			});
+		});
 		if (tabla.filas.length) hoja1["!autofilter"] = { ref: hoja1["!ref"] };
 		XLSX.utils.book_append_sheet(wb, hoja1, HOJA_PRINCIPAL);
 

@@ -165,17 +165,23 @@ ok("desempeño: nunca dice confirmada si no lo está", h1.includes("Confirmada p
 const tarjetaLen = h1.slice(h1.indexOf("data-campo='LEN'"), h1.indexOf("data-campo='SAB'"));
 ok("rubros: los cinco rubros por campo", cuenta(tarjetaLen, /data-rubro='/g), 5);
 ok("rubros: tareas sin datos", /data-rubro='tareas'[\s\S]*?sin datos/.test(tarjetaLen), true);
-ok("rubros: explica que su peso se reparte", tarjetaLen.includes("Sin datos en tareas (28 %)") && tarjetaLen.includes("se reparte entre los demás rubros"), true);
+ok("rubros: explica que su peso se reparte", tarjetaLen.includes("Sin datos en tareas:") && tarjetaLen.includes("se reparte entre los demás rubros"), true);
 // La conducta no pondera (decisión de Jorge del 2026-09-24): el peso de 5 que traen los
-// ajustes se ignora, así que trabajos aplica 28 / (28 + 6 + 33) = 41.79 %
-ok("rubros: peso aplicado de trabajos = 28/67 (truncado; la conducta no pondera)", tarjetaLen.includes("aplica 41.7\u00a0%"), true);
+// ajustes se ignora. Peso EFECTIVO (lo que valió en este cálculo, suma 100): trabajos
+// 28 / (28 + 6 + 33) = 41.79 → 41.8; participación 9; examen 49.2 (resto mayor, suma 100)
+const efLen = [...tarjetaLen.matchAll(/data-peso-efectivo='([\d.]+)'/g)].map((m) => Number(m[1]));
+ok("rubros: peso efectivo de trabajos = 28/67 (la conducta no pondera)", /data-rubro='trabajos'[\s\S]*?data-peso-efectivo='41.8'/.test(tarjetaLen), true);
+ok("rubros: los pesos efectivos del campo suman 100 (no 95)", Math.round(efLen.reduce((a, b) => a + b, 0) * 10) / 10, 100);
+ok("rubros: tareas sin datos no entra", /data-rubro='tareas'[\s\S]*?no entra/.test(tarjetaLen), true);
+ok("rubros: ningún peso relativo con % (28 %)", /28\u00a0%|28 %/.test(tarjetaLen), false);
+ok("rubros: nota de pesos relativos", h1.includes("los pesos de Ajustes son relativos"), true);
 ok("rubros: la conducta se muestra como referencia, sin peso", /data-rubro='conducta'[\s\S]*?referencia, no pondera/.test(tarjetaLen), true);
 ok("rubros: nota de que la conducta no pondera", h1.includes("La conducta se registra y se informa como referencia"), true);
 ok("rubros: obtenido y máximo de trabajos (0.4+0.4+0.7+0 de 4)", /data-rubro='trabajos'[\s\S]*?>1\.5<[\s\S]*?>4<[\s\S]*?37\.5 %/.test(tarjetaLen), true);
 ok("rubros: el examen rotulado aproximado", /data-rubro='examen'[\s\S]*?aproximado/.test(tarjetaLen), true);
 ok("rubros: nota del examen aproximado", h1.includes("Examen aproximado:") && h1.includes("valor total del examen entre número de preguntas"), true);
 ok("rubros: nota del reparto diario de participación y conducta", h1.includes("se registran una vez al día") && h1.includes("se reparten en partes iguales"), true);
-ok("rubros: pesos del maestro visibles", h1.includes("Tareas 28 % · Trabajos 28 % · Participación 6 % · Examen 33 % · Conducta: referencia, no pondera"), true);
+ok("rubros: pesos del maestro visibles, como relativos y sin %", h1.includes("Pesos relativos: Tareas 28 · Trabajos 28 · Participación 6 · Examen 33 · Conducta: referencia, no pondera"), true);
 // En SAB lo justificado no cuenta: 3 tareas en el máximo; en ETI el trabajo justificado sale del máximo
 const tarjetaEti = h1.slice(h1.indexOf("data-campo='ETI'"), h1.indexOf("data-campo='DHL'"));
 ok("rubros: lo justificado no entra al máximo (ETI trabajos 0.4 de 1)", /data-rubro='trabajos'[\s\S]*?>0\.4<[\s\S]*?>1</.test(tarjetaEti), true);
@@ -365,7 +371,7 @@ ok("sin emojis en el render",
 	const hf = RA.render(dFoto, INFO);
 	ok("cerrada con foto: grado y fase del cierre (2°, Fase 3), no los de hoy (4°)", hf.includes("Fase 3") && !hf.includes("Fase 4"), true);
 	ok("cerrada con foto: escala del cierre", hf.includes("enteros de 6 a 10"), true);
-	ok("cerrada con foto: pesos del cierre", hf.includes("Tareas 28 %"), true);
+	ok("cerrada con foto: pesos del cierre", hf.includes("Tareas 28 ·"), true);
 	const sab = atributos(hf, "SAB");
 	ok("cerrada con foto: porcentaje del campo del cierre", sab && sab.pct,
 		(Math.floor(foto.campos.SAB.porcentaje * 10 + 1e-9) / 10).toFixed(1));
