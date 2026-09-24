@@ -801,6 +801,16 @@ las 29 suites pasan.
     - una boleta cerrada con un campo por juicio docente muestra el porcentaje en vivo si después se captura en ese campo (`js/reportes.js`).
   - **Menores:** el onboarding propone el ciclo 2025-2026 en septiembre de 2026; al crear un segundo grupo, Inicio abre el anterior.
   - **Corrección:** a cargo del constructor G; después, un revisor nuevo.
+- **Constructor G** corrigió los dos bloqueantes y los menores de R1 y R2, cada uno con una prueba que falla con el código anterior:
+  - un examen previo al alta no cuenta si el alumno no lo contestó, y los exámenes se filtran por grupo;
+  - un campo cerrado por juicio nunca lee en vivo;
+  - el onboarding propone el ciclo del año en curso y deja activo el grupo nuevo;
+  - el aviso de Asistencia dice qué hacer;
+  - un error de red al comprobar la sesión muestra "No se pudo comprobar tu sesión" con Reintentar, en lugar de sacar a la maestra.
+- **Revisor R3: FAIL** por un solo defecto nuevo, sin relación con los de R2 (`.qa/revisor-cierre-r3/`). En un ensayo de punta a punta con 7 alumnos 1°-2°-4°:
+  - **Lo que pasa:** 14 porcentajes cuadrados a mano, alta tarde con examen previo, juicio docente, boletas cerradas idénticas tras capturar, grado en la foto, junta cuadrada, matemáticas por grado y las correcciones menores (42 casos de sesión sin red).
+  - **El defecto:** el motor mandaba a la función SQL el porcentaje **redondeado**, mientras la pantalla y la boleta lo truncan. Con 49.9964 % se veía "49.9 %" y la propuesta era un 6 que acredita en Fase 4.
+  - **Corrección:** el motor trunca a 2 decimales y el nivel usa el mismo valor. La prueba `pruebas/porcentaje-truncado.test.js` proponía un 6 con el código anterior. Además se corrigió el desborde de Proyectos a 390 px.
 
 ## Bloques detenidos
 
