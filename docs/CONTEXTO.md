@@ -244,8 +244,12 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   se avisa (Diagnóstico, Evaluación formativa, Exámenes, cuadros de la boleta). Diagnóstico
   liga el formulario al alumno cuyos datos muestra: mientras cambia de alumno bloquea los
   controles, y si no pudo guardar al que se deja, no cambia. La retroalimentación de "Hoy"
-  se guarda también mientras se escribe. Marcar una falta en `asistencia.html` también
-  retira el 1 y 1 del cierre de ese día, como en "Hoy". La unidad es el producto, no la
+  se guarda también mientras se escribe. `asistencia.html` marca igual que "Hoy" (Presente,
+  Falta, Justificada; sin marcar = sin registro; cada toque guarda solo a ese alumno) y
+  marcar una falta retira el 1 y 1 del cierre de ese día. Desde 2026-09-24 toda lectura
+  pasa por `js/lectura.js` (lanza el error y el arranque común detiene la página con
+  "No se pudo cargar"), y participación y conducta valen el rubro completo con 1 o 2 por día
+  (0 vale 0). A un alumno dado de alta tarde solo le cuentan los productos desde su alta. La unidad es el producto, no la
   actividad. En multigrado cada
   alumno solo ve los productos cuyos `grados` incluyen el suyo, agrupados por grado.
   Las sesiones de una planeación no traen fecha: "Trabajar hoy" les pone la de hoy (y las
@@ -497,6 +501,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Módulo | Estado | Archivo |
 |---|---|---|
 | Auth (login/registro) | Completo | `index.html` |
+| Portal: pantalla principal de tres partes (Mi Salón, Tienda, Sala de Maestros "Próximamente"); el login lleva ahí a las cuentas con `activo_saas`, el resto va directo a la tienda | Completo (2026-09-24) | `portal.html`, `js/portal.js`, `tienda/js/login.js` |
 | Onboarding (crear grupo + alumnos + ciclo + trimestre) | Completo | `onboarding.html` |
 | Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
 | **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy) | Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
@@ -530,7 +535,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - `dosificacion_proyectos.proposito` no existe en BD — el importador usa `producto_final` como fallback.
 - **Job de enriquecimiento de productos:** los `productos_sesion` con `origen='backfill'` tienen nombre genérico ("Producto — Sesión N · CAMPO"); antes de lanzar Mi salón al público hay que extraer el nombre real del producto de cada sesión (revisar si el texto de `dosificacion_sesiones` permite regex antes de gastar en IA) y actualizar las instrucciones del bot para que llene `dosificacion_sesiones.productos` con el shape de `cierre_tareas`.
 - La **Parte B** está construida en la rama `mi-salon-parte-b` (sin merge: lo decide Jorge). Lo construido y sus diferencias con la especificación: `docs/PRODUCTO-MI-SALON.md`; bitácora, veredictos de los revisores y decisiones pendientes: `docs/PROGRESO-PARTE-B.md` y `docs/REPORTE-FINAL-PARTE-B.md`.
-- **Decisiones de producto pendientes (Jorge):** el 1 diario de participación/conducta cuenta como 50 % del rubro (los textos lo tratan como normal, la calificación no); "retardo" en asistencia; pantalla para editar `plantillas_sugerencia`; criterios propios de cuaderno y habilidades por maestro; activar la IA (secreto y costo).
+- **Decisiones de Jorge del 2026-09-24** (tabla completa en `docs/PROGRESO-PARTE-B.md`): 1 y 2 diarios valen el rubro completo; juicio docente para un alumno sin evidencias; grado y rubros en la foto del cierre; junta y exportación congeladas para boletas cerradas; Asistencia igual que "Hoy"; alta tarde; portal de tres partes (`portal.html`) para cuentas con acceso; Pixel de Meta fuera del SaaS; políticas que exigen referencias propias. **Siguen pendientes:** "retardo" en asistencia; pantalla para editar `plantillas_sugerencia`; criterios propios de cuaderno y habilidades por maestro; activar la IA (secreto y costo).
 - **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe; una tarea sin fecha de entrega vence el siguiente día hábil saltando fines de semana, pero no los días festivos (`dias_no_habiles_extra` no se usa todavía); una boleta cerrada no se puede reabrir desde la interfaz; un proyecto en curso (con sesiones trabajadas o calificaciones) se puede ver en Crear proyecto pero no guardar: guardar vuelve a crear las sesiones y el borrado en cascada se llevaría lo capturado.
 - Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
 - El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.

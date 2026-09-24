@@ -99,12 +99,14 @@ quita lo de Agrega alumnos uno por uno. es repetitivo
 - [ ] Carga la lista de alumnos del grupo
 - [ ] Selector de fecha funciona y carga asistencia del día seleccionado
 - [ ] Cambiar fecha hacia el pasado carga los registros históricos
-- [ ] "Marcar todos" → todos presentes
-- [ ] "Limpiar" → todos desmarcados
-- [ ] Autosave confirma guardado (indicador visible)
+- [ ] Cada alumno tiene Presente, Falta y Justificada, igual que "Hoy"; sin marcar = sin registro (no se guarda como falta)
+- [ ] Cada toque guarda solo a ese alumno; volver a tocar la opción marcada quita su registro de la base
+- [ ] "Presentes los que faltan" marca solo a quienes siguen sin registro (no pisa faltas ni justificadas)
+- [ ] Autosave confirma guardado (indicador visible); si falla, el alumno vuelve a lo guardado y se avisa
 
 **Edge cases:**
 - [ ] Sin asistencia registrada para una fecha → todos sin marcar (no crash)
+- [ ] Cambiar de fecha con un guardado pendiente no manda la lista del día nuevo
 
 ---
 
