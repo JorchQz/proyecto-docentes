@@ -34,7 +34,7 @@ seguir desde el último bloque con PASS.
 | 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
-| 3.10 Ensayo final | corregido, en re-ensayo | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → FAIL #7 310g (borrar y reinsertar lo cerrado: misma causa, 2.º seguido) → 310h SIN VEREDICTO (base de producción caída) | — |
+| 3.10 Ensayo final | **PASS** | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → FAIL #7 310g (borrar y reinsertar lo cerrado: misma causa, 2.º seguido) → 310h SIN VEREDICTO (base de producción caída) → **PASS** revisor 310i (proyecto de pruebas) | ver `git log` |
 
 ## 3.1 Cuenta y datos de QA
 
@@ -630,6 +630,44 @@ la carga de QA lo subió a 1.40-1.44 GB, creció el swap y la CPU se fue a IOwai
 el proyecto y se recuperó (datos reales intactos: 18 alumnos, 404 asistencias). Para no repetirlo
 se creó el proyecto de pruebas (ver arriba) y el QA ya no toca producción. Los restos del octavo
 ensayo en la segunda cuenta de producción se borraron (queda la cuenta y su grupo vacío).
+
+**Noveno ensayo de 3.10: PASS** (revisor 310i, `.qa/revisor-310i/`, 2026-09-24). Primer ensayo en el
+proyecto Supabase de pruebas `docentes-pruebas`: el revisor comprobó el entorno
+(`verificar-proyecto-pruebas.js` en verde, ninguna petición a producción), sin 5xx ni consultas
+lentas y sin excepciones sin capturar en todo el recorrido. Evidencia:
+- **Crear proyecto:** dos proyectos 1°-2° por la interfaz (6 sesiones, PDA y criterio por grado),
+  paso 3 con consola limpia y "Criterios sugeridos" en las 12 combinaciones; un proyecto en curso
+  no se guarda ni quitando el `disabled` a mano.
+- **"Hoy":** 7 días con faltas, justificadas, tareas vencidas y cierre del día, con red normal,
+  retraso fijo de 1.5 s, aleatorio y tramo sin red: 180 marcas iguales entre pantalla y base.
+- **Diagnóstico:** cuatro pasadas (normal, 1.5 s, aleatorio, desmarcar todo): 6 de 6 iguales.
+- **Boleta:** 10 porcentajes a mano, pisos de Fase 3, "Elige" en DHL sin evidencias, edición que
+  sobrevive; cinco boletas cerradas y una "pendiente".
+- **Cierre de todo o nada:** sin red no cambia nada; con la respuesta perdida queda cerrada completa
+  con foto; `cerrar_boleta` rechaza 3 campos, campo repetido, GEN y calificación nula.
+- **Pestañas viejas:** seis pestañas abiertas antes del cierre (texto, "Guardar ajustes", volver a
+  cerrar, "Volver a proponer", trabajo diario, confirmar): la base quedó idéntica por md5 y cada
+  una avisó y se dibujó cerrada.
+- **API con la sesión del maestro:** 25 vías contra una boleta cerrada (UPDATE, DELETE, INSERT
+  cerrada, upsert, cerrar por UPDATE, mover filas, GEN y su foto): rechazadas o sin efecto, 29
+  filas idénticas por md5. IA sin llave: 503 y sin botón.
+- **Después del cierre:** cambiar capturas, asistencia, diagnóstico, pesos y grado: 25 filas cerradas
+  con el mismo md5, imprimible sin una línea distinta en los 5 alumnos, y Reportes, reporte y
+  exportación sin cambios en lo entregado.
+- **Fase 4:** Mateo y Emilio en riesgo con escala 5 a 10, cerrados; cambios después sin efecto.
+- **Casos límite:** T2 vacío, aislamiento multigrado (0 de 329 calificaciones y 0 de 34
+  formativas cruzan de grado), aislamiento entre cuentas (0 filas en 19 tablas y vistas, en los
+  dos sentidos), 390 px sin desbordes, sin emojis.
+- **Junta:** cuadrada a mano (promedios de grupo, por grado, por alumno, LEN de 1°, fluidez).
+- **Datos reales de producción** al inicio y al final: 18 alumnos y 404 asistencias; 0 proyectos,
+  calificaciones, boletas, diagnósticos y registros diarios.
+Anotados para Jorge (REPORTE-FINAL §4, puntos 15 a 19): alumno sin ninguna evidencia no puede
+recibir boleta; cambiar el grado después del cierre cambia la imprimible; las políticas no revisan
+que el alumno sea del maestro (el revisor creó con `cerrar_boleta` filas propias ligadas a un alumno
+de otra cuenta, sin ver ni tocar nada ajeno); alumno dado de alta tarde ve tareas pasadas
+pendientes; trabajo diario de una pestaña vieja se guarda en Diagnóstico; boleta de 3 a 5 s.
+Al terminar se borraron los datos del ensayo en el proyecto de pruebas (segunda cuenta a su grupo
+vacío; cuenta QA resembrada).
 
 ## 3.9 Documentación
 

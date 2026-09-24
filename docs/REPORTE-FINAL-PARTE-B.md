@@ -1,6 +1,6 @@
 # Mi salón, Parte B — Reporte final
 
-**Para:** Jorge. **Fecha:** 23 de septiembre de 2026. **Rama:** `mi-salon-parte-b`
+**Para:** Jorge. **Fecha:** 24 de septiembre de 2026. **Rama:** `mi-salon-parte-b`
 (sin push a `main` ni merge: lo decides tú).
 
 ## En una frase
@@ -9,7 +9,13 @@ La Parte B quedó construida completa. Cada bloque pasó por un revisor independ
 lo probó en navegador real y contra la base. Los datos reales no se tocaron (18 alumnos y
 404 asistencias, igual que al empezar). Quedan decisiones de producto que son tuyas.
 
-<!-- VEREDICTO-310 -->
+**El ensayo final (3.10) pasó** en su noveno intento, el 24 de septiembre. El revisor recorrió
+por la interfaz un trimestre completo de un grupo 1°-2° como el de Fanny y lo esencial de
+Fase 4. Encontró los números cuadrados a mano, 180 marcas de "Hoy" iguales entre pantalla y
+base, las boletas cerradas idénticas por md5 después de cambiarlo todo y 25 vías por API
+contra una boleta cerrada rechazadas. Ese ensayo corrió en un **proyecto de Supabase de
+pruebas**, no en producción (ver §3). El bloque 3.7 quedó detenido y es decisión tuya (ver
+abajo).
 
 ---
 
@@ -31,7 +37,7 @@ está en `docs/PROGRESO-PARTE-B.md` y los scripts y capturas de cada revisor en
 | 3.7 Coherencia y deuda conocida | **DETENIDO** | 8 revisiones; las tres últimas fallaron por la misma causa (lecturas cuyo error se ignora), y la misión manda detener el bloque. Detalle abajo |
 | 3.8 Redacción con IA (Capa 2) | **PASS** (apagada hasta que exista la llave) | a la primera |
 | 3.9 Documentación | **PASS** | FAIL → FAIL → PASS (44 afirmaciones verificadas, ninguna falsa) |
-| 3.10 Ensayo final de punta a punta | <!-- VEREDICTO-310-TABLA --> | — |
+| 3.10 Ensayo final de punta a punta | **PASS** | 7 FAIL (evidencia por PDA, cierre del día, boleta cerrada sin congelar, carreras en Diagnóstico, cierre no atómico, boleta cerrada borrable por API) → 1 sin veredicto (se cayó la base de producción) → PASS en el noveno |
 
 **Bloques detenidos: 3.7.** La regla de la misión es detener un bloque que falla tres veces
 seguidas por la misma causa, y eso pasó: los FAIL #6, #7 y #8 fueron lecturas de Supabase
@@ -72,6 +78,15 @@ hace ese cambio transversal antes del merge.
 - **"Hoy", Inicio y Tareas no decían lo mismo** sobre lo pendiente (proyecto recién
   terminado, cierre del día con faltas o con todo el grupo ausente). Las reglas que
   comparten quedaron en un solo archivo, `js/alcance-hoy.js`.
+- **La boleta cerrada no quedaba cerrada.** Primero se recalculaba en pantalla, luego el
+  cierre podía quedar a medias si se caía la red, y al final la base permitía modificarla,
+  borrarla y volver a insertarla desde otra pestaña o por API. Ahora el cierre es una sola
+  transacción (`cerrar_boleta`) que guarda una foto de lo entregado. La base no deja
+  modificar, borrar ni cerrar por fuera una boleta cerrada, y todos los documentos leen la
+  foto.
+- **Capturas perdidas con red lenta** en "Hoy" y Diagnóstico (recargas sin esperar la cola,
+  guardados que llegaban fuera de orden). Ahora las dos pantallas guardan en serie y avisan
+  si sales con algo pendiente.
 
 ---
 
@@ -116,7 +131,32 @@ responde "no configurada".
 - **Aislamiento entre maestros** con una segunda cuenta real: 0 filas de otro maestro en
   las 16 tablas y vistas de Mi salón; el catálogo global se lee pero no se edita.
 - **Datos reales:** 18 alumnos y 404 asistencias, y 0 proyectos, calificaciones y
-  boletas, al empezar y al terminar cada bloque.
+  boletas, al empezar y al terminar cada bloque (el último conteo, el 24 de septiembre
+  después del ensayo final).
+
+### Incidente del 23 de septiembre y proyecto de pruebas
+
+Ese día **la base de producción se cayó unas horas, y con ella la tienda.** La causa la
+confirmamos con las gráficas que mandaste. La instancia es la más chica (plan gratuito,
+0.5 GB de RAM) y en reposo ya usaba ~1.2 de ~1.26 GB de memoria comprometida. Doce horas de
+revisores con navegador la pasaron del límite: swap, CPU esperando disco y, al final,
+PostgREST y Auth sin responder. Se recuperó cuando reiniciaste el proyecto; los datos
+reales quedaron intactos.
+
+Para que no se repita, el QA ya no toca producción. Creamos el proyecto
+**`docentes-pruebas`** (`raoxdxwgsxbqlzdnndly`) con:
+
+- la misma estructura que producción, comparada objeto por objeto (61 tablas, 61 funciones,
+  117 políticas, 12 triggers, 150 índices, permisos);
+- solo los catálogos: nada de maestros reales, tienda, pedidos ni cupones;
+- las dos cuentas QA;
+- la función de IA sin llave.
+
+El servidor local de QA (`node .qa/servidor.js`) sirve la app apuntando a ese proyecto sin
+tocar los archivos del repo, y el navegador de pruebas bloquea cualquier petición a
+producción. Tu Live Server normal sigue apuntando a producción, como siempre. Los scripts
+para rehacer el proyecto de pruebas están en `.qa/`, y las cadenas de conexión, en
+`.env.local`.
 
 ---
 
@@ -174,6 +214,30 @@ En cada caso se eligió lo más conservador y el sistema funciona así mientras 
     grupo; en "Hoy" un alumno sin marcar queda sin registro. *Hoy:* se dejó como estaba
     (solo se protegió contra lecturas fallidas y el retiro del cierre se limita a faltas
     marcadas). Decide si debe comportarse como "Hoy".
+15. **Alumno sin ninguna evidencia en el trimestre** (por ejemplo, uno que llegó tarde). Sus
+    cuatro campos salen "—" y no se puede confirmar ni cerrar su boleta. En cambio, un solo
+    campo sin evidencias ofrece "Elige" (juicio del docente). *Hoy:* sin cambio. Decide si
+    ese alumno también debe poder recibir la calificación por juicio docente.
+16. **Cambiar el grado de un alumno después de cerrar su boleta** cambia en la imprimible el
+    grado, la fase, la escala y el estándar de PPM. Esos datos se leen en vivo, no de la foto
+    del cierre. Es un caso raro y fuera del criterio del ensayo. *Hoy:* sin cambio.
+17. **Seguridad de datos entre alumnos.** Las políticas de la base revisan que la fila sea
+    del maestro (`maestro_id`), pero no que el alumno también lo sea. Un maestro podría
+    crear, con su propia cuenta, filas ligadas al id de un alumno ajeno (el revisor lo hizo
+    con `cerrar_boleta`). No ve ni cambia nada del otro maestro, pero quedan filas basura, y
+    si la boleta quedó cerrada no se pueden borrar hasta borrar al alumno. Es un patrón de
+    todas las tablas, así que lo propongo como mejora aparte: revisar en cada política que
+    el `alumno_id` sea del mismo maestro.
+18. **Tamaño de la instancia de producción.** En reposo usa casi toda su memoria. Con 4
+    maestros activos en el SaaS y la tienda en la misma base, un pico de uso real podría
+    repetir la caída del 23. Subir el cómputo (requiere el plan Pro de Supabase) es una
+    decisión de costo tuya. Mientras tanto, el QA ya no la carga.
+19. **Detalles que notaría una maestra** (del último ensayo, sin bloquear):
+    - a un alumno dado de alta tarde, "Hoy" le muestra como pendientes todas las tareas
+      pasadas;
+    - un "trabajo diario" escrito en una pestaña vieja se guarda en Diagnóstico, aunque ya
+      no entra a la boleta cerrada;
+    - la boleta tarda de 3 a 5 s en Reportes.
 
 ---
 
@@ -211,4 +275,34 @@ Si quieres ver aislamiento: entra con `qa.aislamiento@jissez.com` (contraseña t
 
 ## 6. Mi opinión: ¿listo para `main`?
 
-<!-- OPINION -->
+**Sí, para un piloto controlado con Fanny, después de que hagas tú la prueba de 10 minutos.
+No para abrirlo a todos todavía.**
+
+**A favor:**
+- El recorrido completo de una maestra de 1°-2°, de crear el proyecto a exportar, pasó una
+  revisión independiente sin excepciones en consola.
+- Los números cuadran a mano.
+- Lo que la ley pide está respetado: la maestra confirma, la asistencia no pondera y los
+  pisos van por fase.
+- Una boleta cerrada ya no cambia por ningún camino.
+- Todas las migraciones ya están en producción y son aditivas, así que el merge solo cambia
+  pantallas.
+
+**Lo que pesaría antes de abrirlo:**
+
+1. **El bloque 3.7 quedó detenido.** Las pantallas que capturan avisan cuando una lectura
+   falla y no escriben encima. Pero varias pantallas secundarias (selector de grupo, Mi
+   grupo, Inicio) todavía pueden mostrar "vacío" en vez de "no se pudo leer". Con buena
+   conexión no se nota; con la red de una escuela rural, sí. Te recomiendo hacer la capa de
+   lectura única antes de sumar más maestros. Para un piloto con Fanny es un riesgo
+   aceptable si ella sabe que un "no hay datos" raro se arregla recargando.
+2. **Un merge a `main` se publica solo en jissez.com** y cambia las pantallas de los 4
+   maestros reales que hoy tienen acceso al SaaS (entre ellas `asistencia.html` y el
+   Inicio). Conviene avisarles o hacerlo en un horario tranquilo.
+3. **Decide antes del merge** el Pixel de Meta en el SaaS (punto 5) y revisa el cambio a
+   `CLAUDE.md` (punto 10).
+4. **La instancia de producción está al límite de memoria** (punto 18). No depende de la
+   Parte B, pero es lo que más probablemente tumbe la tienda otra vez.
+
+Si lo haces así (prueba tuya, avisar a los 4 maestros, piloto con Fanny y después la capa de
+lectura), el riesgo es bajo y el beneficio para Fanny es inmediato.
