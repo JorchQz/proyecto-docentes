@@ -10,7 +10,7 @@ seguir desde el último bloque con PASS.
   `humo.js` (recorre todas las pantallas), `motor-real.js` (motor real contra la base real
   con la sesión de QA).
 - Semilla de QA: `supabase/qa_semilla.sql` (idempotente, solo toca la cuenta QA).
-- Datos reales que no deben cambiar: 18 alumnos y 404 asistencias fuera de la cuenta QA;
+- Datos reales que no deben cambiar (desde el 2026-09-24, ver "Decisiones de Jorge"): 2 alumnos y 4 asistencias fuera de las cuentas QA; antes eran 18 y 404;
   0 proyectos, calificaciones, boletas, diagnósticos y registros diarios reales.
 - **Desde el 2026-09-24 el QA corre contra el proyecto Supabase de pruebas `docentes-pruebas`
   (`raoxdxwgsxbqlzdnndly`)**, no contra producción: misma estructura (61 tablas, 61 funciones,
@@ -749,6 +749,36 @@ de Mi salón; el catálogo global `plantillas_sugerencia` se lee pero no se pued
 6. **Habilidades de matemáticas por grado:** el catálogo (igual que la hoja de Fanny) no
    dice a qué grados aplica cada habilidad; en 1°-2° la boleta muestra multiplicación,
    división, fracciones y tablas como "No evaluada". *Mientras tanto:* se deja así.
+
+## Decisiones de Jorge (2026-09-24) y cierre del SaaS
+
+Jorge respondió las decisiones pendientes (encuesta en la sesión). Quedan como reglas:
+
+| # | Tema | Decisión |
+|---|---|---|
+| 1 | Bloque 3.7 | **Terminarlo ahora** con una sola capa de lectura para todas las páginas (se reabre el bloque) |
+| 2 | Merge a `main` | Lo hace Code al terminar y pasar revisión, en horario tranquilo, verificando jissez.com |
+| 3 | Pixel de Meta | **Fuera del SaaS**; se queda en `tienda/`, `index.html` y `reset-password.html` (hecho, 6e49d69) |
+| 4 | Alumno ajeno | Las políticas deben exigir que el `alumno_id` sea del mismo maestro (migración aditiva, primero en pruebas) |
+| 5 | Alumno sin ninguna evidencia | Juicio docente en los 4 campos, como un campo sin evidencias ("Elige"); la boleta lo indica |
+| 6 | Grado tras el cierre | Grado, fase, escala y estándar de PPM se guardan en la foto del cierre |
+| 7 | Junta y exportación | Para alumnos con boleta cerrada, usan la foto del cierre; los abiertos siguen en vivo |
+| 8 | Asistencia (pantalla vieja) | Igual que "Hoy": sin marcar = sin registro; solo se guarda lo que la maestra toca |
+| 9 | Participación y conducta | 1 (normal) y 2 (destacado) valen 100 % del rubro; 0 vale 0. El 2 se nota en los textos |
+| 10 | Alumno dado de alta tarde | Solo cuentan (pendientes y calificación) las tareas desde su fecha de alta |
+| 11 | IA | Se activa para Fanny con Opus 5; Jorge crea el secreto `ANTHROPIC_API_KEY` |
+| 12 | Pantalla principal | Portal de tres partes (Mi Salón, Tienda, Sala de Maestros "Próximamente") solo para cuentas con acceso al SaaS; el resto entra directo a la tienda |
+| 13 | Matemáticas por grado | Investigación a fondo con los lineamientos NEM antes de decidir qué habilidades aplican por grado |
+| 14 | `CLAUDE.md` | Corregida la frase de `tareas`/`calificaciones`/`evaluacion_formativa` (hecho, 3579d8b) |
+| 15 | Servidor de producción | No se sube por ahora; vigilarlo |
+| 16 | Lanzamiento | El SaaS no sale al público hasta que Fanny lo pruebe al menos 2 semanas. Solo tienen acceso `soporte.jissez@gmail.com`, Fanny (`sarayval034@gmail.com`) y las cuentas QA. Los compradores actuales lo recibirán gratis o con promo más adelante; modelo futuro: suscripción trimestral o por ciclo |
+
+Hecho en producción el 2026-09-24 (con permiso explícito de Jorge): se quitó el acceso a
+`jorgequezadarm@gmail.com` y `jorgequezadarm2@hotmail.com` (sus datos se conservan); se
+respaldaron en `.qa/respaldos/` (fuera de git) y se borraron los datos viejos de Fanny (2
+grupos, 16 alumnos, 400 asistencias de una escuela donde ya no da clases) para que empiece
+desde cero. **Datos reales desde hoy:** 2 alumnos y 4 asistencias (cuenta de Jorge); 0
+proyectos, calificaciones y boletas.
 
 ## Bloques detenidos
 
