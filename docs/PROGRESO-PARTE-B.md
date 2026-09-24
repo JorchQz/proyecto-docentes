@@ -866,6 +866,26 @@ evidencia oficial:
 | 17b | Escala de 2° | **Cambia a 5 a 10** (1° sigue de 6 a 10). Reemplaza a la decisión 17 |
 | 18b | Acreditación de 2° a 6° | "Acredita" si el promedio de grado y los cuatro campos llegan a 6. Si el promedio llega pero algún campo no, dice "Revisar" y explica que depende del criterio de control escolar; nunca "No acredita" solo por eso |
 | 21 | Entidad | Se guarda el estado de cada maestra (onboarding y Mi cuenta; ya existe `perfiles.estado`). Por ahora las reglas son las mismas para todos; si un estado difiere, se activa su variante |
+| 22 | Eliminar cuenta | También desde la tienda (Mis compras); si hay compras, se pide escribir a soporte |
+| 23 | Registro de la tienda | Solo nombre, correo y contraseña; el perfil del comprador se crea al iniciar sesión (antes no se guardaba nunca: un permiso bloqueaba el upsert y el error se ignoraba) |
+
+**Construcción y revisión de la auditoría NEM.**
+- **Constructores:**
+  - H: evaluación final, conducta fuera del número y textos.
+  - I: correcciones de R5, trimestre editable en Mi grupo y pesos efectivos.
+  - J: eliminar cuenta en la tienda.
+  - K: escala por grado, "Revisar" y entidad.
+  - L: correcciones de R7, perfil del comprador y registro corto.
+- **Revisores:**
+  - **R5: FAIL.** El texto para las familias de 2° pedía practicar las tablas de multiplicar.
+  - **R6: FAIL.** Ajustes mostraba "vale  %" por un punto sin escapar en una expresión regular.
+  - **R7: FAIL.** Una calificación confirmada con 5, en un alumno al que después se le cambió el grado a 1°, se cerraba como 6 sin que la maestra la eligiera (art. 4-XI).
+  - En los tres casos se corrigió con una prueba que falla con el código anterior.
+- **Seguridad (fuera de la auditoría):**
+  - "Eliminar cuenta" fallaba para cualquier maestro con onboarding (13 tablas sin cascada; `mi_salon_b10_eliminar_cuenta`).
+  - jissez.com publicaba `docs/`, los SQL, las pruebas, `CLAUDE.md` y `.claude/`; se corrige con `.assetsignore`.
+  - El Pixel de Meta estaba en páginas que reciben el token de recuperación en la URL; se quitó de `index.html` y `reset-password.html`.
+- **Migraciones pendientes para producción, en este orden y antes del JS:** `mi_salon_b10_eliminar_cuenta`, `mi_salon_b10_conducta`, `mi_salon_b10_textos_nem`, `mi_salon_b11_escala_2`.
 
 ## Bloques detenidos
 
