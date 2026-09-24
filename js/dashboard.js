@@ -90,11 +90,13 @@ async function cargarGrupoYAlumnos() {
 	// Sin la lista no se sigue (lanza): "0 alumnos" y todo en verde contradiría a "Hoy"
 	alumnos = (await window.Lectura.uno(window.sb
 		.from("alumnos")
-		.select("id, nombre_completo, grado, num_lista")
+		.select("id, nombre_completo, grado, num_lista, created_at")
 		.eq("grupo_id", grupoId)
 		.eq("estatus", "activo")
 		.order("grado")
 		.order("num_lista"))) || [];
+	// Alta tarde: misma regla que "Hoy" (js/alcance-hoy.js)
+	alumnos.forEach((a) => { a.alta = window.AlcanceHoy.fechaAlta(a.created_at, grupo.created_at); });
 	document.getElementById("welcomeSub").textContent = (grupo.nombre || "Grupo") + " · " + alumnos.length + " alumnos";
 }
 
@@ -164,16 +166,20 @@ async function crearCardHoy() {
 				const revisar = trabajos.concat(tareas);
 				if (revisar.length) {
 					const cals = await leer(revisar.map((p) => p.id), (lote) => window.sb.from("calificaciones")
-						.select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje")
+						.select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje, fecha")
 						.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id"));
 					// Calificado = semáforo, estado de entrega o puntaje (misma regla que "Hoy")
 					const hechas = new Set(cals.filter((c) => c.nivel || c.estado_entrega || (c.puntaje !== null && c.puntaje !== undefined))
 						.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
 					const conTareaRevisada = new Set(cals.filter((c) => c.estado_entrega)
 						.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
+					const calPorClave = new Map(cals.map((c) => [c.alumno_id + "|" + c.producto_sesion_id, c]));
+					// A un alumno dado de alta tarde no se le cuenta lo anterior a su alta (misma regla que "Hoy")
 					const alumnosDe = (p) => {
 						const grados = (p.grados || []).map(Number);
-						return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1);
+						const f = window.AlcanceHoy.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega);
+						return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1 &&
+							window.AlcanceHoy.cuentaDesdeAlta(a.alta, f, calPorClave.get(a.id + "|" + p.id)));
 					};
 					trabajos.forEach((p) => {
 						alumnosDe(p).forEach((a) => { if (!hechas.has(a.id + "|" + p.id)) sinCalificar++; });
