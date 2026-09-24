@@ -1,0 +1,16 @@
+# Lo que NO se publica en jissez.com (Worker "jissez", assets estáticos de Cloudflare).
+# El sitio es solo HTML, JS, CSS e imágenes; todo lo demás del repo es interno.
+.assetsignore
+.git
+.gitignore
+.env*
+.claude
+.qa
+docs
+supabase
+pruebas
+bot
+design_handoff_jissez
+CLAUDE.md
+README.md
+tienda/README-DESPLIEGUE.md
