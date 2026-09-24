@@ -318,7 +318,7 @@
 			["<Campo>: Tareas", "Obtenido en los productos tipo tarea del campo durante el trimestre, con un decimal. Cada producto vale hasta 1 punto según su semáforo" + textoEscala + " o su puntaje 0-10 dividido entre 10; «no entregó» vale 0. Lo justificado o que no aplica no suma al máximo."],
 			["<Campo>: Trabajos", "Igual que Tareas, con los productos tipo trabajo, producto final u otro."],
 			["<Campo>: Asist.", "Días asistidos del trimestre (presente o justificada) en el periodo de las sesiones del trimestre. Es el mismo número en los cuatro campos, como en la hoja original. Solo referencia: no entra en la calificación. En «" + HOJA_MAXIMOS + "»: días con lista."],
-			["<Campo>: Part. / Cond.", "Registro diario de participación y conducta (0, 1 o 2 por día), repartido en partes iguales entre los campos trabajados ese día. Cada día vale 1 punto repartido."],
+			["<Campo>: Part. / Cond.", "Registro diario de participación y conducta (0, 1 o 2 por día), repartido en partes iguales entre los campos trabajados ese día. Cada día vale 1 punto repartido: 1 (normal) y 2 (destacado) valen el punto completo; 0 vale 0."],
 			["<Campo>: Examen", "Fracción de aciertos en las preguntas del campo del examen del trimestre de su grado (1 = todo correcto). Aproximado (ver arriba)."],
 			["Cuaderno / Lectura / Mates", "Evaluación diagnóstica del trimestre: Logrado / En proceso / Requiere apoyo. Lectura: PPM son palabras por minuto."],
 			["Trabajo Diario", "La observación de trabajo diario que guardó el docente; si no hay, la que propone Mi salón a partir de tareas y trabajos."],

@@ -386,7 +386,8 @@
 			"Cada tarea o trabajo que le tocó a su grado suma 1 al máximo; lo obtenido depende del nivel " +
 				"(logrado 1, en proceso 0.7, requiere apoyo 0.4) o del puntaje capturado. Lo justificado no cuenta.",
 			"Participación y conducta se registran una vez al día, en el cierre del día, y se reparten en partes iguales " +
-				"entre los campos trabajados ese día; por eso pueden aparecer fracciones.",
+				"entre los campos trabajados ese día; por eso pueden aparecer fracciones. 1 (normal) y 2 (destacado) " +
+				"valen el día completo; 0 no suma.",
 			"Un rubro sin datos no cuenta: su peso se reparte entre los demás rubros en proporción a sus pesos.",
 		];
 		var escala = window.MotorCalificacion && window.MotorCalificacion.ESCALA_NIVEL;
