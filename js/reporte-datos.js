@@ -634,15 +634,23 @@
 		}).join("");
 		var pie = "<tr class='bg-gray-50'><th scope='row' colspan='4' class='px-2 py-1.5 border border-gray-200 text-left font-semibold text-gray-800'>Promedio final de grado</th>" +
 			celda(formatoDecimal(f.promedio), "", "data-final-promedio") + "</tr>";
-		var colorAcr = COLOR_ACREDITACION_TW[f.acreditacion] || COLOR_ACREDITACION_TW.pendiente;
-		var regla = reglaAcreditacionTexto(f.grado);
+		// Para las familias (reporte detallado): en lugar de "Revisar" y "confírmalo con tu control
+		// escolar", el mismo texto que la boleta imprimible
+		var familias = !!opciones.familias;
+		var revisarFam = familias && f.acreditacion === "revisar";
+		var colorAcr = revisarFam ? "text-gray-800" : (COLOR_ACREDITACION_TW[f.acreditacion] || COLOR_ACREDITACION_TW.pendiente);
+		var etiquetaAcr = revisarFam
+			? ACREDITACION_REVISAR_FAMILIAS.charAt(0).toUpperCase() + ACREDITACION_REVISAR_FAMILIAS.slice(1)
+			: ETIQUETA_ACREDITACION[f.acreditacion];
+		var explicacionAcr = revisarFam ? explicacionRevisarFamilias(f.camposBajoMinimo) : f.explicacion;
+		var regla = familias ? reglaAcreditacionTextoFamilias(f.grado) : reglaAcreditacionTexto(f.grado);
 		return "<div" + (opciones.id ? " id='" + esc(opciones.id) + "'" : "") + " data-final-ciclo>" +
 			"<div class='overflow-x-auto'><table class='w-full text-xs sm:text-sm border-collapse'>" +
 			"<thead>" + cabeza + "</thead><tbody>" + cuerpo + pie + "</tbody></table></div>" +
 			"<p class='mt-2 text-sm'><span class='font-semibold text-gray-700'>Acreditación del grado:</span> " +
-			"<span class='font-bold " + colorAcr + "' data-acreditacion='" + f.acreditacion + "'>" + ETIQUETA_ACREDITACION[f.acreditacion] + "</span>" +
+			"<span class='font-bold " + colorAcr + "' data-acreditacion='" + f.acreditacion + "'>" + esc(etiquetaAcr) + "</span>" +
 			(f.completo ? "" : " <span class='text-xs text-gray-500'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</p>" +
-			(f.explicacion ? "<p class='mt-1 text-xs text-amber-800 leading-relaxed' data-explicacion-acreditacion>" + esc(f.explicacion) + "</p>" : "") +
+			(explicacionAcr ? "<p class='mt-1 text-xs " + (revisarFam ? "text-gray-700" : "text-amber-800") + " leading-relaxed' data-explicacion-acreditacion>" + esc(explicacionAcr) + "</p>" : "") +
 			"<p class='mt-1 text-xs text-gray-500 leading-relaxed'>La final de cada campo es el promedio de sus tres calificaciones confirmadas, con un decimal y sin redondear; " +
 			"el promedio final de grado, el de las cuatro finales. Aparecen cuando están confirmados los tres trimestres. " + regla + " (Acuerdo 10/09/23, arts. 7 y 9).</p>" +
 			"<p class='mt-1 text-xs font-medium text-gray-600' data-nota-siged>" + NOTA_FINAL_APOYO + "</p>" +

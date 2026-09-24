@@ -332,7 +332,8 @@
 		if (!RD() || !RD().htmlFinalCiclo) return "";
 		return "<div class='bloque mt-4 rounded-xl border border-gray-200 p-3' data-seccion='final'>" +
 			"<h3 class='text-sm font-semibold text-gray-800 mb-2'>Evaluación final del ciclo</h3>" +
-			RD().htmlFinalCiclo(datos.boletaCiclo || {}, datos.alumno ? datos.alumno.grado : null, { trimestre: Number(datos.trimestre) }) +
+			// Reporte para el docente y la familia: la acreditación con el texto para familias
+			RD().htmlFinalCiclo(datos.boletaCiclo || {}, datos.alumno ? datos.alumno.grado : null, { trimestre: Number(datos.trimestre), familias: true }) +
 			"</div>";
 	}
 

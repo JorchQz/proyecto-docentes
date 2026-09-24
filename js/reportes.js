@@ -384,6 +384,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		cont.innerHTML = "<p class='text-gray-400 text-sm'>Generando boleta...</p>";
 
+		// El grado pudo cambiar en otra pestaña (Mi grupo) desde que se abrió esta página: con el
+		// de hoy se decide la escala y qué confirmada ya no vale (no se muestra ni se manda por
+		// WhatsApp un número que ya no es válido)
+		const errorEnBoleta = function (texto) { cont.innerHTML = "<p class='text-red-500 text-sm'>" + esc(texto) + "</p>"; };
+		const { data: fresco, error: errGrado } = await window.sb.from("alumnos").select("grado")
+			.eq("id", alumnoId).eq("maestro_id", userId).maybeSingle();
+		if (errGrado) {
+			console.error("boleta: grado del alumno", errGrado);
+			errorEnBoleta("No se pudo leer el grado del alumno. Revisa tu conexión y vuelve a generar la boleta.");
+			return;
+		}
+		if (!fresco) { errorEnBoleta("Alumno no encontrado."); return; }
+		if (fresco.grado) alumno.grado = Number(fresco.grado);
+
 		// 1. Todo el cálculo (rubros, máximos, examen del grado, asistencia de
 		// referencia y calificación propuesta) lo hace el motor único de B.3.
 		let motor;

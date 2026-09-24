@@ -178,6 +178,14 @@ const htmlRev = RD.htmlFinalCiclo(ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]
 ok("htmlFinalCiclo: Revisar", /data-acreditacion='revisar'>Revisar</.test(htmlRev), true);
 ok("htmlFinalCiclo: explicación del Revisar", /data-explicacion-acreditacion>Promedio de 6 o más, pero LEN tiene menos de 6\./.test(htmlRev), true);
 ok("htmlFinalCiclo: Acredita sin explicación", html.includes("data-explicacion-acreditacion"), false);
+// El reporte detallado es para el docente y la familia: mismo texto que la boleta imprimible
+const htmlFam = RD.htmlFinalCiclo(ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]), 4, { familias: true });
+ok("htmlFinalCiclo para familias: «la escuela la confirmará», no «Revisar»",
+	[/data-acreditacion='revisar'>La escuela la confirmará con control escolar</.test(htmlFam), htmlFam.includes(">Revisar<")], [true, false]);
+ok("htmlFinalCiclo para familias: explicación con el nombre completo, sin «confírmalo»",
+	[/data-explicacion-acreditacion>El promedio final es de 6 o más; Lenguajes quedó debajo de 6\./.test(htmlFam), htmlFam.includes("confírmalo")], [true, false]);
+ok("htmlFinalCiclo para familias: una boleta que acredita se ve igual",
+	RD.htmlFinalCiclo(completo, 2, { trimestre: 3, familias: true }).includes("data-acreditacion='acredita'>Acredita<"), true);
 const htmlPend = RD.htmlFinalCiclo(ciclo([7, 6, 9, 8], null, null), 2, {});
 ok("htmlFinalCiclo incompleto: faltan 8 de 12", htmlPend.includes("faltan 8 de 12"), true);
 ok("htmlFinalCiclo incompleto: pendiente", /data-acreditacion='pendiente'>pendiente</.test(htmlPend), true);
