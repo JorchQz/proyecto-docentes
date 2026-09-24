@@ -851,6 +851,22 @@ están en `docs/referencia/oficiales/` y la verificación con citas textuales en
 | 20 | Privacidad | Borrador de aviso de privacidad y consentimiento para revisarlo con un abogado; no se publica sin aprobación de Jorge |
 | — | Textos | "Tablas" en 2° se evalúa como cálculo mental sin memorizar; los ppm se rotulan "referencia SEP 2010" |
 
+**Investigación de Jalisco y otros estados** (`docs/referencia/evaluacion-jalisco-y-estados.md`, local).
+La SEJ no ha publicado reglas propias para la escala, los promedios ni la acreditación. Sí hay
+evidencia oficial:
+- la boleta DGAIR de Jalisco para 2° (2023-2024 y 2024-2025) trae "PROMOVIDA(O) / NO PROMOVIDA(O)", igual que 3° a 6° y a diferencia de 1°;
+- el proyecto de sentencia de la SCJN (AR 419/2025) y las guías de la AEFCM (CDMX) y de SEIEM (Edomex) dicen que de 2° a 6° la escala es de 5 a 10;
+- CDMX, Edomex y Coahuila publican la acreditación como "mínimo 6 en cada uno de los campos";
+- solo Coahuila y la letra del DOF dan 6 a 10 para 2°.
+
+**Decisiones de Jorge (revisan la 17 y la 18):**
+
+| # | Tema | Decisión |
+|---|---|---|
+| 17b | Escala de 2° | **Cambia a 5 a 10** (1° sigue de 6 a 10). Reemplaza a la decisión 17 |
+| 18b | Acreditación de 2° a 6° | "Acredita" si el promedio de grado y los cuatro campos llegan a 6. Si el promedio llega pero algún campo no, dice "Revisar" y explica que depende del criterio de control escolar; nunca "No acredita" solo por eso |
+| 21 | Entidad | Se guarda el estado de cada maestra (onboarding y Mi cuenta; ya existe `perfiles.estado`). Por ahora las reglas son las mismas para todos; si un estado difiere, se activa su variante |
+
 ## Bloques detenidos
 
 ### 3.7 Coherencia y deuda — DETENIDO (2026-09-23)
