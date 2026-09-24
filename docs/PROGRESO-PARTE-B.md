@@ -824,6 +824,33 @@ las 29 suites pasan.
   - jissez.com se verificó con `.qa/verificar-jissez.js`: tienda sin sesión igual; login con acceso → portal → Mi Salón y Hoy; la tienda con enlace "Mi Salón" solo para cuentas con acceso; sin errores.
   - El único aviso de red es el contador de Cloudflare (`static.cloudflareinsights.com`), que no resuelve desde este equipo y no es código del sitio.
 
+## Auditoría normativa NEM (2026-09-24)
+
+Jorge encargó una investigación externa sobre evaluación y reportes en la NEM. Antes de
+cambiar nada, un verificador la contrastó con las fuentes primarias. Los PDF oficiales
+están en `docs/referencia/oficiales/` y la verificación con citas textuales en
+`docs/referencia/verificacion-auditoria-nem.md`; los dos son locales, fuera de git.
+
+**Resultado de la verificación:**
+- **Escala de 2°: no es un error claro.** La tabla del art. 9 del DOF pone 6 a 10 para toda la Fase 3. El boletín 201 no dice lo que citaba la investigación. Las boletas de la DGAIR 2024-2025 ponen "promovido/no promovido" en 2°.
+- **Confirmado:**
+  - la boleta oficial lleva tres parciales y una **final**, con promedios de un decimal (textual en Fases 4 y 5);
+  - en Fase 3 no se memorizan las tablas y la división en 2° no usa el algoritmo convencional;
+  - no hay ninguna norma sobre pesos; el Plan 2022 dice que el juicio "no se elabora sumando… ni sacando promedios", y el art. 21 de la LGE pide informar la conducta aparte de la calificación;
+  - los ppm de 2010 ya no son un estándar vigente;
+  - la LFPDPPP de 2025 pide aviso de privacidad y consentimiento para datos sensibles.
+- **Ya estaba cubierto:** la leyenda de que Mi salón complementa la boleta oficial (SIGED) aparece en la boleta, el reporte, la junta y la exportación.
+
+**Decisiones de Jorge:**
+
+| # | Tema | Decisión |
+|---|---|---|
+| 17 | Escala de 2° | Se mantiene de 6 a 10, por la letra del DOF. Se cambia si el control escolar del estado de Fanny indica otra cosa |
+| 18 | Evaluación final | Se agrega: final por campo (promedio de T1 a T3 confirmados, un decimal, truncado), promedio de grado y acreditación (1° con cursarlo; 2° a 6° con promedio de 6 o más) |
+| 19 | Conducta | Sale del número: se registra y se informa en las observaciones, pero no pondera |
+| 20 | Privacidad | Borrador de aviso de privacidad y consentimiento para revisarlo con un abogado; no se publica sin aprobación de Jorge |
+| — | Textos | "Tablas" en 2° se evalúa como cálculo mental sin memorizar; los ppm se rotulan "referencia SEP 2010" |
+
 ## Bloques detenidos
 
 ### 3.7 Coherencia y deuda — DETENIDO (2026-09-23)
