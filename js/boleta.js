@@ -21,6 +21,8 @@
 	  - Boleta cerrada: grado, fase, escala y banda de lectura del cierre (la foto; si después
 	    cambia el grado del alumno, lo entregado no se mueve). Calificación por juicio docente
 	    sin evidencias: marcada con * y explicada al pie (ReporteDatos.juicioSinEvidencias).
+	  - Matemáticas: solo las habilidades del grado del alumno (el del cierre si está cerrada),
+	    con su alcance (CatalogoHabilidades.matematicasDeGrado); las que no aplican no salen.
 	  - Mi salón es complemento de la boleta oficial (SIGED): no la sustituye.
 
 	Esta página SOLO LEE: no escribe nada en la base de datos.
@@ -269,8 +271,10 @@
 			esc(etiqueta) + "</span>";
 	}
 
-	function renglon(etiqueta, valorHtml, attrs) {
-		return "<div class='bol-renglon' " + (attrs || "") + "><span class='etiqueta'>" + esc(etiqueta) + "</span>" +
+	// detalle (opcional): línea chica bajo la etiqueta (el alcance de una habilidad en su grado)
+	function renglon(etiqueta, valorHtml, attrs, detalle) {
+		return "<div class='bol-renglon' " + (attrs || "") + "><span class='etiqueta'>" + esc(etiqueta) +
+			(detalle ? "<span class='detalle' data-alcance>" + esc(detalle) + "</span>" : "") + "</span>" +
 			"<span class='valor'>" + valorHtml + "</span></div>";
 	}
 
@@ -304,15 +308,20 @@
 		else fluidez = semaforoFluidez(nivelFluidez);
 		if (referencia) fluidez += "<span class='detalle'>" + esc(referencia) + "</span>";
 
+		// Solo las habilidades de su grado (con la boleta cerrada, el grado del cierre), con
+		// el alcance del grado como detalle chico, igual que el estándar de PPM
 		var mates = ch.aMapa(diag ? diag.matematicas : null);
+		var gradoOk = ch.gradoValido(grado);
 		return "<div class='bol-caja bol-bloque' id='boletaHabilidades'><h3>Habilidades básicas</h3>" +
 			"<h4>Lectura</h4>" +
 			renglon("Velocidad lectora", velocidad, "data-clave='lectura.ppm'") +
 			renglon("Fluidez lectora", fluidez, "data-clave='lectura.fluidez'") +
 			renglon("Comprensión lectora", semaforo(diag ? diag.lectura_comprension : null, "No evaluada"), "data-clave='lectura.comprension'") +
 			"<h4>Matemáticas</h4>" +
-			ch.MATEMATICAS.map(function (h) {
-				return renglon(h.etiqueta, semaforo(mates[h.clave], "No evaluada"), "data-clave='" + h.clave + "'");
+			ch.matematicasDeGrado(grado).map(function (h) {
+				var alcance = ch.alcanceMatematica(h, grado);
+				return renglon(h.etiqueta, semaforo(mates[h.clave], "No evaluada"), "data-clave='" + h.clave + "'",
+					alcance ? "Alcance en " + gradoOk + "°: " + alcance : "");
 			}).join("") + "</div>";
 	}
 

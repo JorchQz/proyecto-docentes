@@ -8,7 +8,9 @@
 	    confirmado es "pendiente", nunca un número (Acuerdo 10/09/23, art. 4 XI).
 	  - Textos: los que el maestro dejó en la boleta; si no hay, la propuesta de la
 	    Capa 1 (js/textos-boleta.js).
-	  - Cuaderno, habilidades y PPM: evaluacion_diagnostica + bandas_ppm.
+	  - Cuaderno, habilidades y PPM: evaluacion_diagnostica + bandas_ppm. Las habilidades de
+	    matemáticas que se muestran son las del grado visible (alumnoVisible: el del cierre si
+	    la boleta está cerrada), con CatalogoHabilidades.matematicasDeGrado.
 	  - Boleta cerrada: TODO sale de la foto del cierre (texto_autogenerado.cierre de la fila
 	    GEN): grado, fase, escala, banda de PPM, porcentajes y desglose por rubro, pesos,
 	    avance por PDA, diagnóstico, asistencia y trabajo diario (decisiones de Jorge 6 y 7).
@@ -402,9 +404,10 @@
 		var juicio = {};
 		CAMPOS.forEach(function (c) { juicio[c] = juicioSinEvidencias(boletaT, c, (motorVivo.porCampo || {})[c]); });
 
+		// grado: el del cierre si está cerrada (las habilidades de matemáticas son las de ese grado)
 		var textos = window.TextosBoleta.generar({
 			porCampo: motor.porCampo, avancePda: avancePda, diagnostica: diagnostica, banda: banda,
-			asistencia: motor.asistencia, catalogo: window.CatalogoHabilidades,
+			grado: alumnoV.grado, asistencia: motor.asistencia, catalogo: window.CatalogoHabilidades,
 			corto: window.CamposFormativos.corto, plantillas: ctx.plantillas,
 		});
 

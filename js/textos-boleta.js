@@ -18,7 +18,7 @@
 	    fila general y no se repiten en los cuatro campos. En la calificación 1 y 2 valen
 	    lo mismo; el 2 (destacado) se nota aquí como fortaleza (ver diarioTotal).
 	  - Habilidades básicas: lectura (PPM contra la banda del grado y comprensión) → LEN;
-	    matemáticas → SAB; cuaderno → general.
+	    matemáticas (solo las que aplican a su grado) → SAB; cuaderno → general.
 	  - Asistencia: observación general. Nunca baja la calificación (Acuerdo art. 7).
 
 	Límites: máximo 4 frases por sección, sin repetir la misma idea. Si hay más áreas de
@@ -212,6 +212,8 @@
 			avancePda:   filas de v_avance_pda del alumno en el trimestre,
 			diagnostica: fila de evaluacion_diagnostica (cuaderno, matematicas, ppm, comprensión),
 			banda:       fila de bandas_ppm del grado del alumno,
+			grado:       grado del alumno (el del cierre si la boleta está cerrada); decide qué
+			             habilidades de matemáticas aplican. Sin él, el de la banda; sin los dos, las 8,
 			asistencia:  {presentes, total, porcentaje},
 			catalogo:    window.CatalogoHabilidades,
 			corto:       CamposFormativos.corto,
@@ -423,10 +425,14 @@
 			agregar(secs.LEN.fortalezas, { texto: TEXTOS.comprension_bien, prioridad: PRIORIDAD.lectura });
 		}
 
-		// Matemáticas básicas → SAB (en el orden del catálogo)
+		// Matemáticas básicas → SAB (en el orden del catálogo), solo las del grado del alumno:
+		// lo capturado en una habilidad que no aplica a su grado no se propone ("trabajar
+		// fracciones" a un niño de 2°). Grado: el explícito o el de su banda de PPM.
 		var mates = catalogo.aMapa(diag.matematicas);
+		var grado = datos.grado !== undefined && datos.grado !== null ? datos.grado : (datos.banda ? datos.banda.grado : null);
+		var delGrado = catalogo.matematicasDeGrado ? catalogo.matematicasDeGrado(grado) : catalogo.MATEMATICAS;
 		var etiquetas = function (nivel) {
-			return catalogo.MATEMATICAS.filter(function (h) { return mates[h.clave] === nivel; })
+			return delGrado.filter(function (h) { return mates[h.clave] === nivel; })
 				.map(function (h) { return h.etiqueta.toLowerCase(); });
 		};
 		var matesFlojas = etiquetas("requiere_apoyo");

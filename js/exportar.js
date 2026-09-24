@@ -16,6 +16,8 @@
 	    (ReporteDatos.calificacionOficial); lo demás es "pendiente", nunca un número.
 	  - Textos: lo guardado en boleta_trimestral o, si no hay, la propuesta de la
 	    Capa 1 (TextosBoleta.generar con los mismos insumos que alumnoTrimestre).
+	  - Matemáticas: siempre las 8 columnas de la hoja; la habilidad que no corresponde
+	    al grado del alumno (CatalogoHabilidades.aplicaMatematica) dice "No aplica".
 
 	La parte pura (columnas, filas, CSV, nombre de archivo, hoja Léeme, libro XLSX)
 	se exporta también a node para pruebas/exportar.test.js.
@@ -69,6 +71,7 @@
 	var BOLETA_CERRADA = "cerrada";
 	var BOLETA_ABIERTA = "abierta";
 	var PENDIENTE = "pendiente";
+	var NO_APLICA = "No aplica"; // habilidad de matemáticas que no corresponde al grado del alumno
 	var SEPARADOR_TEXTOS = " | ";
 
 	var HOJA_PRINCIPAL = "Concentrado";
@@ -158,6 +161,10 @@
 		});
 
 		function semaforo(nivel) { return nivel ? (etiquetaNivel[nivel] || null) : null; }
+		// Sin la regla del catálogo (pruebas viejas), todas aplican
+		function aplica(clave, grado) {
+			return deps.catalogo && deps.catalogo.aplicaMatematica ? deps.catalogo.aplicaMatematica(clave, grado) : true;
+		}
 
 		var filas = [], maximos = [];
 		(insumos.alumnos || []).forEach(function (al) {
@@ -196,13 +203,17 @@
 			CUADERNO_COLS.forEach(function (x) { fila.push(semaforo(cuaderno[x.clave])); });
 			var ppm = diag && diag.lectura_ppm !== null && diag.lectura_ppm !== undefined && diag.lectura_ppm !== "" ? Number(diag.lectura_ppm) : null;
 			fila.push(ppm, semaforo(diag && diag.lectura_comprension));
+			// Las 8 columnas de la hoja siempre; la habilidad que no aplica a su grado (el del
+			// cierre si está cerrada) dice "No aplica", para no confundirla con "sin captura"
 			var mates = mapa(diag && diag.matematicas);
-			MATES_COLS.forEach(function (x) { fila.push(semaforo(mates[x.clave])); });
+			MATES_COLS.forEach(function (x) {
+				fila.push(aplica(x.clave, grado) ? semaforo(mates[x.clave]) : NO_APLICA);
+			});
 
 			// Textos: mismos insumos que ReporteDatos.alumnoTrimestre
 			var generado = deps.generar ? deps.generar({
 				porCampo: porCampo, avancePda: pdaPorAlumno[al.id] || [], diagnostica: diag,
-				banda: bandas[al.grado] || null, asistencia: asis, catalogo: deps.catalogo,
+				banda: bandas[al.grado] || null, grado: grado, asistencia: asis, catalogo: deps.catalogo,
 				corto: deps.corto, plantillas: insumos.plantillas || {},
 			}) : {};
 
@@ -321,6 +332,7 @@
 			["<Campo>: Part. / Cond.", "Registro diario de participación y conducta (0, 1 o 2 por día), repartido en partes iguales entre los campos trabajados ese día. Cada día vale 1 punto repartido: 1 (normal) y 2 (destacado) valen el punto completo; 0 vale 0."],
 			["<Campo>: Examen", "Fracción de aciertos en las preguntas del campo del examen del trimestre de su grado (1 = todo correcto). Aproximado (ver arriba)."],
 			["Cuaderno / Lectura / Mates", "Evaluación diagnóstica del trimestre: Logrado / En proceso / Requiere apoyo. Lectura: PPM son palabras por minuto."],
+			["Mates: «" + NO_APLICA + "»", "La habilidad no corresponde al grado del alumno según el Programa Sintético de la NEM: 1° evalúa suma, resta, lectura y escritura de cantidades y problemas; 2° agrega multiplicación, división y tablas; de 3° a 6°, las ocho (las fracciones empiezan en 3°)."],
 			["Trabajo Diario", "La observación de trabajo diario que guardó el docente; si no hay, la que propone Mi salón a partir de tareas y trabajos."],
 			["Fortalezas / Áreas de Oportunidad", "Textos de la boleta por campo (LEN, SAB, ETI, DHL) y generales: los guardados por el docente o, si no hay, los que propone Mi salón con lo capturado."],
 			[COL_ASISTENCIA_REF, "Porcentaje de días asistidos sobre días con lista (0 a 100). Solo referencia: la asistencia no pondera."],
@@ -371,6 +383,7 @@
 		COL_BOLETA: COL_BOLETA,
 		COL_JUICIO: COL_JUICIO,
 		PENDIENTE: PENDIENTE,
+		NO_APLICA: NO_APLICA,
 		HOJA_PRINCIPAL: HOJA_PRINCIPAL,
 		HOJA_MAXIMOS: HOJA_MAXIMOS,
 		HOJA_LEEME: HOJA_LEEME,

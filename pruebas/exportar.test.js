@@ -165,6 +165,13 @@ ok("mates suma", fJose[col("Mates: Suma")], "Logrado");
 ok("problemas matemáticos", fJose[col("Problemas matemáticos")], "En proceso");
 ok("alumno sin diagnóstico: cuaderno, lectura y mates vacíos",
 	fLucia.slice(col("Cuaderno: Orden/limpieza"), col("Trabajo Diario")).every((v) => v === null), true);
+// Matemáticas por grado: las 8 columnas siempre; lo que no corresponde al grado dice "No aplica"
+const MATES_NO_1 = ["Mates: Multiplicación", "Mates: División", "Mates: Fracciones", "Mates: Tablas"];
+ok("1°: multiplicación, división, fracciones y tablas dicen No aplica", MATES_NO_1.map((c) => fJose[col(c)]), ["No aplica", "No aplica", "No aplica", "No aplica"]);
+ok("2° sin diagnóstico: solo fracciones dice No aplica, lo demás vacío",
+	E.MATES_COLS.map((x) => fRaul[col(x.titulo)]), [null, null, null, null, "No aplica", null, null, null]);
+ok("4°: ninguna dice No aplica", E.MATES_COLS.some((x) => fLucia[col(x.titulo)] === "No aplica"), false);
+ok("Léeme: explica No aplica", E.hojaLeeme({}).some((f) => /No aplica/.test(f[0] || "")), true);
 
 // Textos
 ok("trabajo diario: el del maestro", fJose[col("Trabajo Diario")], "Trabaja bien, pero se distrae con \"la tablet\".");
@@ -302,6 +309,7 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 56);
 	const mr = t2.maximos.find((f) => f[0] === RAUL.nombre_completo);
 	ok("cerrada: en su lugar de lista con el grado del cierre (1°, 2°, 4°)", t2.filas.map((f) => f[1]), [1, 2, 4]);
 	ok("cerrada: grado del cierre (2), no el de hoy (3)", r[col("Grado")], 2);
+	ok("cerrada: No aplica según el grado del cierre (2°: fracciones), no el de hoy (3°)", r[col("Mates: Fracciones")], "No aplica");
 	ok("cerrada: rubros del cierre (LEN tareas 1), no los de hoy (5)", r[col("LEN: Tareas")], 1);
 	ok("cerrada: máximo del cierre (2)", mr[col("LEN: Tareas")], 2);
 	ok("cerrada: asistencia del cierre", [r[col("LEN: Asist.")], r[col("Asistencia (referencia, no pondera)")]], [9, 90]);

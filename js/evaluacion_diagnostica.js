@@ -13,8 +13,16 @@ document.addEventListener("DOMContentLoaded", function () {
 async function iniciarDiagnostico() {
 
 	// ── criterios: claves estables del catálogo único (js/catalogo-habilidades.js)
-	var CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
-	var HABILIDADES_MATES  = window.CatalogoHabilidades.MATEMATICAS;
+	/*
+		Matemáticas por grado: cada alumno ve solo las habilidades de SU grado
+		(CatalogoHabilidades.aplicaMatematica). estadoMates guarda siempre las 8 del catálogo
+		con lo que ya tenían, aunque no se muestren: al guardar se mandan todas, así lo que
+		se hubiera capturado en una que no aplica no se borra (tampoco claves que el catálogo
+		ya no tenga: matesExtra).
+	*/
+	var CATALOGO           = window.CatalogoHabilidades;
+	var CRITERIOS_CUADERNO = CATALOGO.CUADERNO;
+	var HABILIDADES_MATES  = CATALOGO.MATEMATICAS;
 
 	var LABEL_MOMENTO = {
 		inicio_ciclo: "Inicio de ciclo",
@@ -54,7 +62,8 @@ async function iniciarDiagnostico() {
 
 	// Datos del alumno actual en pantalla:
 	var estadoCuaderno = [];  // [{clave, nivel}]
-	var estadoMates    = [];  // [{clave, nivel}]
+	var estadoMates    = [];  // [{clave, nivel}] las 8 del catálogo (también las que no aplican al grado)
+	var matesExtra     = [];  // lo guardado con claves que no están en el catálogo: se conserva tal cual
 	var comprension    = null;
 	var ppm            = null;
 	var observaciones  = "";
@@ -79,6 +88,14 @@ async function iniciarDiagnostico() {
 	var teniaFila = false;      // el alumno en pantalla ya tiene fila guardada en este momento
 	var versionCambios = 0;     // sube con cada cambio: uno hecho mientras se guarda sigue pendiente
 	var conteoFallido = false;  // no se pudo leer quiénes ya están evaluados
+
+	// ¿Tiene alguna habilidad de matemáticas de SU grado con nivel? (lo capturado en una que
+	// no aplica no cuenta como evaluado: no se ve en ninguna pantalla)
+	function matesDelGradoConNivel(items, grado) {
+		return (Array.isArray(items) ? items : []).some(function (c) {
+			return c && c.nivel && CATALOGO.aplicaMatematica(c.clave, grado);
+		});
+	}
 
 	// ── helpers ──────────────────────────────────────────────────────────────
 	function getLocalDateISO() {
@@ -122,6 +139,7 @@ async function iniciarDiagnostico() {
 		estadoMates = HABILIDADES_MATES.map(function (h) {
 			return { clave: h.clave, nivel: null };
 		});
+		matesExtra = [];
 		comprension = null;
 		ppm         = null;
 		observaciones = "";
@@ -135,6 +153,9 @@ async function iniciarDiagnostico() {
 		var mapaMates    = window.CatalogoHabilidades.aMapa(fila.matematicas);
 		estadoCuaderno.forEach(function (e) { e.nivel = mapaCuaderno[e.clave] || null; });
 		estadoMates.forEach(function (e) { e.nivel = mapaMates[e.clave] || null; });
+		matesExtra = (Array.isArray(fila.matematicas) ? fila.matematicas : []).filter(function (it) {
+			return it && it.clave && !HABILIDADES_MATES.some(function (h) { return h.clave === it.clave; });
+		});
 		comprension   = fila.lectura_comprension || null;
 		ppm           = fila.lectura_ppm != null ? fila.lectura_ppm : null;
 		observaciones = fila.observaciones || "";
@@ -214,10 +235,12 @@ async function iniciarDiagnostico() {
 				.eq("grupo_id", grupoId)
 				.eq("momento", momentoActual));
 			conteoFallido = false;
+			var gradoDe = {};
+			alumnos.forEach(function (a) { gradoDe[a.id] = a.grado; });
 			// Solo cuenta como evaluado quien tiene algo capturado (una fila vaciada no)
 			(filas || []).forEach(function (row) {
 				var algo = (row.cuaderno || []).some(function (c) { return c && c.nivel; }) ||
-					(row.matematicas || []).some(function (c) { return c && c.nivel; }) ||
+					matesDelGradoConNivel(row.matematicas, gradoDe[row.alumno_id]) ||
 					row.lectura_ppm !== null || !!row.lectura_comprension ||
 					!!(row.observaciones && String(row.observaciones).trim());
 				if (algo) evaluadosSet.add(row.alumno_id);
@@ -255,7 +278,7 @@ async function iniciarDiagnostico() {
 
 			if (fila) aplicarFila(fila);
 			teniaFila = !!fila;
-			alumnoEnPantalla = { id: alumno.id, momento: momentoActual };
+			alumnoEnPantalla = { id: alumno.id, momento: momentoActual, grado: alumno.grado };
 		} catch (e) {
 			console.error("evaluacion_diagnostica (lectura):", e);
 			cargaFallida = true;
@@ -304,7 +327,7 @@ async function iniciarDiagnostico() {
 		var version = versionCambios; // los cambios hechos mientras se guarda lo suben
 
 		var tieneAlgo = estadoCuaderno.some(function (e) { return e.nivel; }) ||
-			estadoMates.some(function (e) { return e.nivel; }) ||
+			matesDelGradoConNivel(estadoMates, objetivo.grado) ||
 			comprension || (ppm !== null && ppm !== "") || observaciones.trim(); // un PPM borrado ("") no es dato
 		// Sin nada marcado y sin fila guardada no hay nada que guardar. Si ya tenía fila y la
 		// maestra lo desmarcó todo, sí se guarda vacío: la base debe decir lo que la pantalla
@@ -327,7 +350,8 @@ async function iniciarDiagnostico() {
 					cuaderno:            estadoCuaderno,
 					lectura_ppm:         ppmVal,
 					lectura_comprension: comprension || null,
-					matematicas:         estadoMates,
+					// Las 8 (también las ocultas, con lo que ya tenían) y las claves fuera del catálogo
+					matematicas:         estadoMates.concat(matesExtra),
 					observaciones:       obs
 				}, { onConflict: "maestro_id,alumno_id,momento" });
 
@@ -409,10 +433,13 @@ async function iniciarDiagnostico() {
 			labels[valor] + '</button>';
 	}
 
-	function buildFilaSemaforo(tipo, itemKey, label, actual) {
+	// detalle (opcional): una línea chica bajo la etiqueta (el alcance de la habilidad en su grado)
+	function buildFilaSemaforo(tipo, itemKey, label, actual, detalle) {
 		return (
 			'<div class="flex flex-col gap-1.5">' +
-			'<p class="text-xs text-gray-600 font-medium leading-snug">' + escHtml(label) + '</p>' +
+			'<p class="text-xs text-gray-600 font-medium leading-snug">' + escHtml(label) +
+			(detalle ? '<span class="block text-[11px] font-normal text-gray-500" data-alcance>' + escHtml(detalle) + '</span>' : '') +
+			'</p>' +
 			'<div class="flex gap-2">' +
 			buildSemaforoBtn(tipo, itemKey, "logrado",          actual) +
 			buildSemaforoBtn(tipo, itemKey, "en_proceso",       actual) +
@@ -467,14 +494,22 @@ async function iniciarDiagnostico() {
 			'</div>';
 
 		// ── Sección Matemáticas ─────────────────────
+		// Solo las del grado del alumno (con su alcance); data-item sigue siendo el índice
+		// en estadoMates, que trae las 8
+		var grado = alumnoEnPantalla ? alumnoEnPantalla.grado : null;
+		var gradoOk = CATALOGO.gradoValido(grado);
 		var matesFilas = estadoMates.map(function (item, idx) {
-			return buildFilaSemaforo("mates", idx, HABILIDADES_MATES[idx].etiqueta, item.nivel);
+			if (!CATALOGO.aplicaMatematica(item.clave, grado)) return "";
+			var alcance = CATALOGO.alcanceMatematica(item.clave, grado);
+			return buildFilaSemaforo("mates", idx, HABILIDADES_MATES[idx].etiqueta, item.nivel,
+				alcance ? "Alcance en " + gradoOk + "°: " + alcance : "");
 		}).join("");
 
 		var matesHtml =
-			'<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-3">' +
+			'<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-3" data-seccion="matematicas">' +
 			'<h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">' +
 			'<span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>Matemáticas' +
+			(gradoOk ? '<span class="text-xs font-normal text-gray-500">de ' + gradoOk + '° grado</span>' : "") +
 			'</h2>' +
 			'<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">' +
 			matesFilas +

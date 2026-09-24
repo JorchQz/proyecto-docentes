@@ -276,8 +276,8 @@ begin
          'cuaderno.orden_limpieza','cuaderno.fecha_completa','cuaderno.titulo_actividad','cuaderno.letra_legible',
          'cuaderno.mayusculas_minusculas','cuaderno.signos_puntuacion','cuaderno.acentuacion','cuaderno.buen_estado',
          'cuaderno.orden_proyecto','cuaderno.respeta_margen']) clave) c),
-      -- En 1° y 2° solo se evalúan las habilidades de su nivel: sin multiplicación,
-      -- división, fracciones ni tablas.
+      -- Solo las habilidades de su grado (js/catalogo-habilidades.js, Programa Sintético NEM):
+      -- 1° sin multiplicación, división, fracciones ni tablas; 2° sin fracciones; 3° y 4°, las 8.
       (select jsonb_agg(jsonb_build_object('clave', m.clave, 'nivel',
           case al.perfil
             when 'sobresaliente' then 'logrado'
@@ -285,7 +285,9 @@ begin
             when 'irregular' then case when m.n % 3 = 0 then 'requiere_apoyo' else 'logrado' end
             else 'logrado' end))
        from (select clave, row_number() over () n from unnest(
-         case when al.grado <= 2 then array['mates.suma','mates.resta','mates.lectura_escritura_cantidades','mates.problemas']
+         case when al.grado = 1 then array['mates.suma','mates.resta','mates.lectura_escritura_cantidades','mates.problemas']
+         when al.grado = 2 then array['mates.suma','mates.resta','mates.multiplicacion','mates.division',
+                    'mates.tablas','mates.lectura_escritura_cantidades','mates.problemas']
          else array['mates.suma','mates.resta','mates.multiplicacion','mates.division','mates.fracciones',
                     'mates.tablas','mates.lectura_escritura_cantidades','mates.problemas'] end) clave) m),
       ppm,

@@ -235,8 +235,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// TAB 4 — BOLETA
 	// ═══════════════════════════════════════════════════════════════
 	// Claves y etiquetas de cuaderno / matemáticas: catálogo único js/catalogo-habilidades.js
+	// (las de matemáticas se piden por grado: CatalogoHabilidades.matematicasDeGrado)
 	const CRITERIOS_CUADERNO = window.CatalogoHabilidades.CUADERNO;
-	const HABILIDADES_MATES  = window.CatalogoHabilidades.MATEMATICAS;
 
 	// Catálogo editable de sugerencias (plantillas_sugerencia), clave → texto. Si la tabla
 	// no tiene una clave, js/textos-boleta.js usa su copia por defecto; si la lectura FALLA,
@@ -476,6 +476,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const pesosVisibles = (porCampoCierre && fotoGen.pesos) || motor.pesos;
 		const alumnoVisible = RDB.alumnoVisible(alumno, fotoGen);
 		const bandaVisible = RDB.bandaVisible(bandas ? bandas[alumnoVisible.grado] || null : null, fotoGen);
+		/*
+			Las propuestas (número y textos) se guardan solas al generar la boleta. Si alguna no se
+			pudo guardar, la pantalla lo dice (aviso rojo, como el resto de los guardados de esta
+			pestaña): lo que se ve es la propuesta sin guardar, no algo que ya quedó en la base.
+		*/
+		const fallosPropuesta = [];
+		let errorPropuesta = null;
 		try {
 			const upserts = [];
 			CODIGOS.forEach(function (codigo) {
@@ -511,6 +518,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (upserts.length) await upsertPorForma("boleta_trimestral", upserts, "maestro_id,alumno_id,ciclo,trimestre,campo");
 		} catch (e) {
 			console.error("boleta_trimestral (numérico):", e);
+			fallosPropuesta.push("la propuesta de calificación");
+			errorPropuesta = errorPropuesta || e;
 		}
 		/*
 			Alumno sin NINGUNA evidencia en el trimestre (por ejemplo, llegó tarde): igual que un
@@ -528,15 +537,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 			avancePda: avancePda,
 			diagnostica: diagnostica,
 			banda: bandaVisible,
+			grado: alumnoVisible.grado, // las habilidades de matemáticas de su grado (el del cierre si está cerrada)
 			asistencia: motor.asistencia,
 			catalogo: window.CatalogoHabilidades,
 			corto: window.CamposFormativos ? window.CamposFormativos.corto : null,
 			plantillas: plantillas,
 		});
 		if (!boletaYaCerrada) {
-			await guardarTextosPropuestos(textos, boletaPorCampo, {
+			const errorTextos = await guardarTextosPropuestos(textos, boletaPorCampo, {
 				alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
 			}, false);
+			if (errorTextos) {
+				fallosPropuesta.push("los textos propuestos");
+				errorPropuesta = errorPropuesta || errorTextos;
+			}
 		}
 
 		const conIa = !todoCerrado && await estadoIa();
@@ -760,9 +774,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"</div>" +
 			"<div class='rounded-xl border border-gray-200 p-4'>" +
 			"<h4 class='font-semibold text-gray-700 mb-2 text-sm'>Matemáticas</h4>";
-		HABILIDADES_MATES.forEach(function (hab) {
-			seccion3 += "<div class='flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0'>" +
-				"<span class='text-gray-600'>" + esc(hab.etiqueta) + "</span>" + semCirculo(matesMap[hab.clave]) + "</div>";
+		// Solo las habilidades de su grado (el del cierre si está cerrada), con su alcance
+		const gradoMates = window.CatalogoHabilidades.gradoValido(alumnoVisible.grado);
+		window.CatalogoHabilidades.matematicasDeGrado(alumnoVisible.grado).forEach(function (hab) {
+			const alcance = window.CatalogoHabilidades.alcanceMatematica(hab, alumnoVisible.grado);
+			seccion3 += "<div class='flex items-center justify-between gap-3 text-sm py-1 border-b border-gray-100 last:border-0' data-habilidad='" + esc(hab.clave) + "'>" +
+				"<span class='text-gray-600'>" + esc(hab.etiqueta) +
+				(alcance ? "<span class='block text-xs text-gray-400' data-alcance>Alcance en " + gradoMates + "°: " + esc(alcance) + "</span>" : "") +
+				"</span><span class='shrink-0 inline-flex'>" + semCirculo(matesMap[hab.clave]) + "</span></div>";
 		});
 		seccion3 += "</div></div>";
 
@@ -850,6 +869,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		acciones.classList.remove("hidden");
 
+		if (fallosPropuesta.length) {
+			const soloCalificacion = fallosPropuesta.length === 1 && fallosPropuesta[0] === "la propuesta de calificación";
+			avisoGuardado("No se " + (soloCalificacion ? "pudo" : "pudieron") + " guardar " + fallosPropuesta.join(" ni ") + " de esta boleta: " +
+				((errorPropuesta && errorPropuesta.message) || "error desconocido") +
+				". Lo que ves es la propuesta del sistema, todavía sin guardar. Revisa tu conexión y vuelve a generar la boleta.",
+				"boletaAvisoPropuesta");
+		}
+
 		// ── Confirmar / cerrar: el número lo valida el maestro antes del cierre ──
 		function calificacionesEnPantalla() {
 			const filas = [];
@@ -912,9 +939,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 					"Hay textos que editaste a mano. Al volver a proponer se reemplazan por los que genera el sistema. ¿Continuar?")) return;
 				regenerarBtn.disabled = true;
 				regenerarBtn.textContent = "Proponiendo...";
-				await guardarTextosPropuestos(textos, boletaPorCampo, {
+				const errorTextos = await guardarTextosPropuestos(textos, boletaPorCampo, {
 					alumnoId: alumnoId, ciclo: cicloBoleta, trimestre: trimestre,
 				}, true);
+				if (errorTextos) {
+					// No se vuelve a dibujar: la pantalla sigue con lo que hay en la base
+					window.alert("No se pudieron volver a proponer los textos: " + (errorTextos.message || "error desconocido") +
+						". No se cambió nada; revisa tu conexión e inténtalo de nuevo.");
+					regenerarBtn.disabled = false;
+					regenerarBtn.textContent = "Volver a proponer";
+					return;
+				}
 				await generarBoleta();
 			});
 		}
@@ -1101,9 +1136,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		escribe los campos visibles cuando el maestro no los ha tocado.
 		`forzar` = el maestro pidió "Volver a proponer": entonces sí se reescribe todo
 		y las filas vuelven a quedar como propuestas.
+		Devuelve null si se guardó (o no había nada que guardar) o el error. Si falla, el
+		estado local vuelve a lo que hay en la base: la pantalla no muestra como guardado lo
+		que no llegó.
 	*/
 	async function guardarTextosPropuestos(textos, boletaPorCampo, ctx, forzar) {
 		const filas = [];
+		const antes = Object.assign({}, boletaPorCampo);
 		CODIGOS.concat([window.TextosBoleta.GENERAL]).forEach(function (codigo) {
 			const generado = textos[codigo];
 			if (!generado) return;
@@ -1139,13 +1178,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 			boletaPorCampo[codigo] = Object.assign({}, fila, payload);
 			filas.push(payload);
 		});
-		if (!filas.length) return;
+		if (!filas.length) return null;
 		try {
 			// Filas con y sin cuadros visibles tienen forma distinta: un upsert por forma,
 			// o PostgREST le pone NULL a los cuadros que una fila no trae
 			await upsertPorForma("boleta_trimestral", filas, "maestro_id,alumno_id,ciclo,trimestre,campo");
+			return null;
 		} catch (e) {
 			console.error("boleta_trimestral (textos):", e);
+			Object.keys(boletaPorCampo).forEach(function (k) { if (!(k in antes)) delete boletaPorCampo[k]; });
+			Object.assign(boletaPorCampo, antes);
+			return e || new Error("error desconocido");
 		}
 	}
 
@@ -1307,15 +1350,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		};
 	}
 
-	// Aviso en la boleta cuando un guardado falla (lo escrito sigue en pantalla y se reintenta)
-	function avisoGuardado(texto) {
+	// Aviso en la boleta cuando un guardado falla (lo escrito sigue en pantalla y se reintenta).
+	// id: cada tipo de guardado tiene su aviso; el de la propuesta ("boletaAvisoPropuesta") no
+	// lo quita que después se guarde bien un cuadro de texto, solo volver a generar la boleta
+	function avisoGuardado(texto, id) {
 		const cont = document.getElementById("boletaContainer");
 		if (!cont) return;
-		let el = document.getElementById("boletaAvisoGuardado");
+		const idAviso = id || "boletaAvisoGuardado";
+		let el = document.getElementById(idAviso);
 		if (!texto) { if (el) el.remove(); return; }
 		if (!el) {
 			el = document.createElement("div");
-			el.id = "boletaAvisoGuardado";
+			el.id = idAviso;
 			el.className = "sticky top-2 z-20 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 no-print";
 			cont.prepend(el);
 		}

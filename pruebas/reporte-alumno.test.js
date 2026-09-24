@@ -184,8 +184,11 @@ ok("asistencia: dato de referencia, no pondera", h1.includes("8 de 12 días") &&
 // Cuaderno y habilidades
 ok("cuaderno: los 10 criterios", cuenta(h1, /data-criterio='/g), 10);
 ok("cuaderno: conteo por nivel", h1.includes("0 logrado · 3 en proceso · 7 requiere apoyo"), true);
-ok("matemáticas: las 8 habilidades", cuenta(h1, /data-habilidad='/g), 8);
-ok("matemáticas: las que faltan dicen no evaluada", cuenta(h1.slice(h1.indexOf("Matemáticas</h3>")), /No evaluada/g), 4);
+// Alumno de 2°: las 7 de su grado (sin fracciones), con el alcance debajo
+ok("matemáticas de 2°: las 7 de su grado", cuenta(h1, /data-habilidad='/g), 7);
+ok("matemáticas de 2°: sin fracciones", h1.includes("data-habilidad='mates.fracciones'"), false);
+ok("matemáticas: las que faltan dicen no evaluada", cuenta(h1.slice(h1.indexOf("Matemáticas</h3>")), /No evaluada/g), 3);
+ok("matemáticas: alcance del grado", h1.includes("Alcance en 2°: Números menores que 1000; usa &lt;, &gt; e ="), true);
 ok("PPM: valor y clasificación contra la banda de su grado", /data-ppm='28' data-fluidez='requiere_apoyo'/.test(h1), true);
 ok("PPM: muestra los rangos de la banda", ["0 a 34", "35 a 59", "60 a 84", "85 o más"].every((t) => h1.includes(t)), true);
 ok("PPM: resalta el tramo donde cae", /font-bold text-gray-900' data-tramo='requiere_apoyo'/.test(h1), true);

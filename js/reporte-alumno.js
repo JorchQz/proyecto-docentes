@@ -543,10 +543,17 @@
 			"<div class='mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-2 text-sm'>" +
 			"<span class='text-gray-700'>Comprensión lectora</span>" + semaforo(diag.lectura_comprension, "No evaluada") + "</div></div>";
 
+		// Solo las habilidades de su grado (datos.alumno trae el grado del cierre si la boleta
+		// está cerrada), con el alcance del grado debajo, como el estándar de PPM
 		var mates = catalogo.aMapa(diag.matematicas);
-		var matesHtml = catalogo.MATEMATICAS.map(function (h) {
+		var gradoOk = catalogo.gradoValido ? catalogo.gradoValido(grado) : null;
+		var listaMates = catalogo.matematicasDeGrado ? catalogo.matematicasDeGrado(grado) : catalogo.MATEMATICAS;
+		var matesHtml = listaMates.map(function (h) {
+			var alcance = catalogo.alcanceMatematica ? catalogo.alcanceMatematica(h, grado) : "";
 			return "<div class='flex items-center justify-between gap-3 border-b border-gray-100 py-1.5 text-sm last:border-0' data-habilidad='" + esc(h.clave) + "'>" +
-				"<span class='text-gray-700'>" + esc(h.etiqueta) + "</span>" + semaforo(mates[h.clave], "No evaluada") + "</div>";
+				"<span class='text-gray-700'>" + esc(h.etiqueta) +
+				(alcance ? "<span class='block text-xs text-gray-500' data-alcance>Alcance en " + gradoOk + "°: " + esc(alcance) + "</span>" : "") +
+				"</span>" + semaforo(mates[h.clave], "No evaluada") + "</div>";
 		}).join("");
 		var matematicas = "<div class='rounded-xl border border-gray-200 p-3'>" +
 			"<h3 class='text-sm font-semibold text-gray-800 mb-1'>Matemáticas</h3>" + matesHtml + "</div>";

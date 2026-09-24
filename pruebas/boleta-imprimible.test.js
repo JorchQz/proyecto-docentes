@@ -276,8 +276,11 @@ contiene("cuaderno: criterio con nivel", hoja2, "data-clave='cuaderno.orden_limp
 contiene("cuaderno: semáforo con texto", hoja2, "Requiere apoyo</span>");
 ok("cuaderno: los 10 criterios", (hoja2.match(/data-clave='cuaderno\./g) || []).length, 10);
 ok("cuaderno: los no capturados dicen No evaluado", (hoja2.match(/No evaluado</g) || []).length, 7);
-ok("matemáticas: las 8 habilidades", (hoja2.match(/data-clave='mates\./g) || []).length, 8);
-ok("matemáticas: las no capturadas dicen No evaluada", (hoja2.match(/No evaluada</g) || []).length, 6);
+// 2°: las 7 de su grado (sin fracciones, que empiezan en 3°), con su alcance
+ok("matemáticas de 2°: las 7 de su grado", (hoja2.match(/data-clave='mates\./g) || []).length, 7);
+ok("matemáticas de 2°: sin fracciones", hoja2.includes("data-clave='mates.fracciones'"), false);
+ok("matemáticas: las no capturadas dicen No evaluada", (hoja2.match(/No evaluada</g) || []).length, 5);
+contiene("matemáticas: alcance del grado como detalle", hoja2, "<span class='detalle' data-alcance>Alcance en 2°: Repartos con divisor menor que 10</span>");
 contiene("lectura: PPM", hoja2, "28 palabras por minuto");
 contiene("lectura: fluidez contra la banda de 2° (28 ≤ 34)", hoja2, "data-fluidez='requiere_apoyo'");
 contiene("lectura: rotulada con ETIQUETA_FLUIDEZ", hoja2, window.CatalogoHabilidades.ETIQUETA_FLUIDEZ.requiere_apoyo);
@@ -293,7 +296,16 @@ contiene("fluidez 4°: 120 PPM es avanzado", hab4b, "Avanzado");
 
 // Sin diagnóstico del trimestre
 const sinDiag = B.cajaHabilidades(null, BANDA_2, 2);
-ok("sin diagnóstico: PPM, fluidez, comprensión y 8 de mates no evaluadas", (sinDiag.match(/No evaluada</g) || []).length, 11);
+ok("sin diagnóstico: PPM, fluidez, comprensión y las 7 de mates de 2° no evaluadas", (sinDiag.match(/No evaluada</g) || []).length, 10);
+// 1°: solo suma, resta, lectura y escritura de cantidades y problemas; lo capturado en una
+// habilidad que no aplica (dato viejo) no aparece
+const hab1 = B.cajaHabilidades({ matematicas: [{ clave: "mates.fracciones", nivel: "requiere_apoyo" }, { clave: "mates.suma", nivel: "logrado" }] }, BANDA_2, 1);
+ok("1°: 4 habilidades", (hab1.match(/data-clave='mates\./g) || []).length, 4);
+ok("1°: sin multiplicación, división, fracciones ni tablas",
+	["multiplicacion", "division", "fracciones", "tablas"].some((k) => hab1.includes("data-clave='mates." + k + "'")), false);
+ok("1°: el dato viejo de fracciones no se pinta", hab1.includes("Requiere apoyo"), false);
+ok("4°: las 8", (B.cajaHabilidades(null, BANDA_4, 4).match(/data-clave='mates\./g) || []).length, 8);
+contiene("4°: alcance de fracciones", B.cajaHabilidades(null, BANDA_4, 4), "Alcance en 4°: Tercios a décimos; suma y resta");
 ok("sin diagnóstico: cuaderno completo no evaluado", (B.cajaCuaderno(null).match(/No evaluado</g) || []).length, 10);
 contiene("PPM sin banda de su grado", B.cajaHabilidades({ lectura_ppm: 50 }, null, 2), "Sin banda de referencia");
 

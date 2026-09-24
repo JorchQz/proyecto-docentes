@@ -333,6 +333,7 @@
 				avancePda: filasPda.filter(function (f) { return f.alumno_id === a.id; }),
 				diagnostica: (actual.diagnosticas || {})[a.id] || null,
 				banda: bandaDe(ctx, actual, a),
+				grado: a.grado, // habilidades de matemáticas de su grado (el del cierre si está cerrada)
 				asistencia: m.asistencia,
 				catalogo: CH(),
 				corto: CF().corto,
@@ -350,14 +351,18 @@
 			Object.keys(vistas).forEach(function (k) { cuenta[k] = (cuenta[k] || 0) + 1; });
 		});
 
-		// Habilidades de matemáticas más frecuentes en "requiere apoyo" (para {habilidades})
+		// Habilidades de matemáticas más frecuentes en "requiere apoyo" (para {habilidades}).
+		// Cada habilidad cuenta solo a los alumnos de los grados donde aplica (a.grado es el
+		// del cierre si su boleta está cerrada): lo capturado en una que no aplica no cuenta
 		var catalogo = CH();
 		var mates = catalogo.MATEMATICAS.map(function (h, i) { return { h: h, i: i, n: 0 }; });
 		alumnos.forEach(function (a) {
 			var d = (actual.diagnosticas || {})[a.id];
 			if (!d) return;
 			var mapa = catalogo.aMapa(d.matematicas);
-			mates.forEach(function (x) { if (mapa[x.h.clave] === "requiere_apoyo") x.n++; });
+			mates.forEach(function (x) {
+				if (mapa[x.h.clave] === "requiere_apoyo" && catalogo.aplicaMatematica(x.h, a.grado)) x.n++;
+			});
 		});
 		var habilidades = listaEnTexto(mates.filter(function (x) { return x.n > 0; })
 			.sort(function (a, b) { return (b.n - a.n) || (a.i - b.i); })
