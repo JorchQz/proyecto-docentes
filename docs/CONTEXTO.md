@@ -100,15 +100,25 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   Nada escribe ya el formato viejo (`calificacion` 5–10 sin producto); si quedara alguna
   fila así, el motor la toma como `calificacion/10` y la boleta lo advierte.
 - **Participación y conducta:** una vez al día por alumno, global (no por campo ni sesión),
-  en `registro_diario` con valores **0 · 1 · 2**.
+  en `registro_diario` con valores **0 · 1 · 2**. **La conducta no pondera** (decisión de
+  Jorge del 2026-09-24; LGE art. 21: la conducta se informa **aparte** de los resultados):
+  se sigue registrando en el cierre del día y aparece en los textos de la boleta (fortalezas
+  y áreas) y en los reportes como dato de referencia, rotulada "no pondera", igual que la
+  asistencia.
 - **Asistencia:** presente / ausente / justificada. **Es solo referencia: nunca pondera**
   (art. 7 I d: "no se considera como un criterio para la acreditación"). La boleta muestra
   el porcentaje de días asistidos aparte.
 
 **Calificación de boleta (oficial)** por campo formativo y trimestre:
-- Ponderación en `maestro_ajustes`: tareas / trabajos / participación / conducta / examen,
-  suman 100 (CHECK en BD), default **28 / 28 / 6 / 5 / 33**. Cualquier peso puede ser 0
-  (p. ej. conducta, si la escuela lo objeta). Rubro sin datos: su peso se renormaliza.
+- Ponderación en `maestro_ajustes`: tareas / trabajos / participación / examen, default
+  **28 / 28 / 6 / 33** (suman 95). Los pesos son relativos: cada rubro vale su peso entre
+  la suma de los rubros con datos (con los cuatro, las tareas valen 28/95). Cualquier peso
+  puede ser 0. Rubro sin datos: su peso se renormaliza. **La conducta no pondera**: el motor
+  le pone peso 0 siempre e ignora `peso_conducta` (la columna se conserva; un peso
+  personalizado viejo no se borra) y Ajustes ya no deja darle peso. Las boletas cerradas
+  antes del cambio conservan su foto con el peso de conducta que tenía; no se recalculan.
+  Migración `supabase/mi_salon_b10_conducta_2026-09.sql` (DEFAULT `peso_conducta` 0; el CHECK
+  `pesos_suman_100` se reemplaza por `pesos_con_valor`: los cuatro pesos suman más de 0).
 - Porcentaje → calificación con **una sola regla**, la función SQL
   `calcular_calificacion_boleta(porcentaje, grado)`: ≥90→10, 80–89→9, 70–79→8, 60–69→7,
   50–59→6, <50→5, con **piso por fase** (art. 9):
@@ -122,14 +132,31 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `puntaje/10` si lo hay; si no `logrado 1 · en_proceso 0.7 · requiere_apoyo 0.4`;
   `incompleto` sin nivel 0.5; `no_entregado` 0; `justificado`/`no_aplica` y lo aún no
   capturado salen del máximo. Participación y conducta se reparten en partes iguales entre
-  los campos con sesión ese día.
+  los campos con sesión ese día (la conducta se cuenta para textos y reportes, no para el
+  porcentaje).
+- **Evaluación final del ciclo** (Acuerdo 10/09/23, arts. 7 III b y 9; formato de las
+  boletas DGAIR 2024-2025): por campo, T1, T2, T3 y una **final** = promedio de las tres
+  calificaciones **confirmadas**, con un entero y un decimal, **truncado, no redondeado**
+  (decisión de Jorge; el Acuerdo no dice cómo cortar, las normas SEP previas dicen "no se
+  deben redondear"). **Promedio final de grado** = promedio de las cuatro finales, truncado.
+  **Acreditación:** 1° con haber cursado el grado; 2° a 6° con promedio final mínimo de 6.
+  Solo con los tres trimestres de los cuatro campos confirmados; antes, "pendiente" (nunca
+  un número parcial como final). Grado: el de la foto del cierre del 3er trimestre si está
+  cerrado. Una sola función: `ReporteDatos.finalCiclo` (`js/reporte-datos.js`), que usan la
+  boleta imprimible (columna Final), el reporte detallado, la pestaña Boleta de Reportes, el
+  Concentrado y la exportación (columnas al final). Los promedios de calificaciones de toda
+  la app (general del trimestre, Concentrado) también truncan a un decimal.
 
 > **Pruebas automáticas (`pruebas/`, se corren con `node`, sin npm):** no son una suite
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (22 suites).
-> - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad.
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (35 suites).
+> - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad;
+>   la conducta no pondera (peso 0 aunque los ajustes traigan otro) y cuadre a mano 28/28/6/33.
+> - `evaluacion-final` — final por campo, promedio final de grado y acreditación
+>   (`ReporteDatos.finalCiclo`): truncado, "pendiente" mientras falte algo, 1° siempre
+>   acredita, 2° a 6° con 6.0 o más; y que boleta imprimible, reporte y Concentrado la usan.
 > - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
 > - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
 > - `hoy-arranque` — **ejecuta `hoy.js` completo** contra un DOM y un Supabase falsos
@@ -368,10 +395,10 @@ común).
 | `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. Se captura en el cierre del día de "Hoy" (valor normal 1); el motor lo reparte entre los campos con sesión ese día (`docs/PRODUCTO-MI-SALON.md` §B.4) |
 | `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb: la propuesta de la Capa 1 + `editados` [cuadros que escribió el maestro] + `ia` [redacción de la Capa 2] + `visible` [`reglas`/`ia`]), `editado_manual` (true = el maestro escribió algo en esa fila), `calificacion_confirmada` + `confirmada_en` (la calificación oficial es solo la confirmada), `cerrada` (true = no se recalcula; exige confirmación), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso de la fase (ver §3) |
 | `plantillas_sugerencia` | Catálogo global de sugerencias para padres (Capa 1): `clave` PK (`tareas`, `trabajos`, `calidad`, `participacion`, `conducta`, `examen`, `lectura_ppm`, `comprension`, `matematicas` con `{habilidades}`, `cuaderno`, `asistencia`, `pda_mejora`, `pda_apoyo`), `texto`, `descripcion`, `activo`. Lectura para `authenticated`; escritura solo `es_admin()`. Sin pantalla de edición todavía |
-| `maestro_ajustes` | PK `maestro_id`; ponderación `peso_tareas`/`peso_trabajos`/`peso_participacion`/`peso_conducta`/`peso_examen`, NOT NULL, DEFAULT 28/28/6/5/33, CHECK `pesos_suman_100`. **Sin peso de asistencia** (Acuerdo 10/09/23 art. 7; ver §3). Onboarding crea la fila solo con `maestro_id` y la BD pone los defaults |
+| `maestro_ajustes` | PK `maestro_id`; ponderación `peso_tareas`/`peso_trabajos`/`peso_participacion`/`peso_examen`, NOT NULL, DEFAULT 28/28/6/33, CHECK `pesos_con_valor` (los cuatro suman más de 0; `NOT VALID`, desde b10). `peso_conducta` se conserva con DEFAULT 0 pero **no se usa**: la conducta no pondera (LGE art. 21; ver §3). **Sin peso de asistencia** (Acuerdo 10/09/23 art. 7). Onboarding crea la fila solo con `maestro_id` y la BD pone los defaults |
 | `examenes` / `respuestas_examen` / `banco_preguntas` | Examen por grupo/trimestre/grado con `preguntas_ids`; cada pregunta de `banco_preguntas` tiene `campo_formativo` → el puntaje del examen se calcula por campo (reportes.js). **Limitación conocida:** `banco_preguntas` no guarda cuánto vale cada pregunta; el máximo por campo se **aproxima** como `valor_total / total_preguntas` por pregunta. No presentarlo como cálculo exacto |
 | `evaluacion_diagnostica` | **Fuente única de cuaderno y habilidades básicas.** `maestro_id`, `alumno_id`, `grupo_id`, `momento` (`inicio_ciclo`/`trimestre_1`/`trimestre_2`/`trimestre_3`), `cuaderno` y `matematicas` (jsonb `[{clave, nivel}]`, claves estables de `js/catalogo-habilidades.js`, nivel `logrado`/`en_proceso`/`requiere_apoyo`; un CHECK valida prefijo y nivel), `lectura_ppm`, `lectura_comprension`, `observaciones`, UNIQUE `(maestro_id, alumno_id, momento)`. La fluidez lectora no se guarda: se deriva de `lectura_ppm` + `bandas_ppm` |
-| `bandas_ppm` | Catálogo de fluidez lectora por grado (Estándares Nacionales de Habilidad Lectora): `grado` PK, `requiere_apoyo_max`, `cercano_max`, `estandar_max` (avanzado = mayor). Lectura para `authenticated`. La regla de clasificación vive en `CatalogoHabilidades.clasificarPPM` |
+| `bandas_ppm` | Catálogo de fluidez lectora por grado, tomado de los Estándares Nacionales de Habilidad Lectora de 2010 (Acuerdo 592, **abrogado**): ya no son estándar vigente, así que la interfaz los rotula **"referencia SEP 2010"** ("Referencia SEP 2010 para 2°: 60 a 84 ppm"; niveles "Requiere apoyo", "Cercano a la referencia", "En la referencia", "Avanzado"). `grado` PK, `requiere_apoyo_max`, `cercano_max`, `estandar_max` (avanzado = mayor); las bandas no cambian. Lectura para `authenticated`. La regla de clasificación y el rótulo viven en `CatalogoHabilidades.clasificarPPM` y `textoReferenciaPPM` |
 
 > **Convención de campos formativos:** las tablas históricas (`calificaciones`,
 > `dosificacion_*`, `banco_preguntas`) guardan el nombre largo (`"Lenguajes"`, …); las

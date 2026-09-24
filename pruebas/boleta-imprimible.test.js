@@ -99,11 +99,17 @@ ok("2°: LEN T2 sin confirmar → pendiente (no el 9 propuesto)", celda(tabla2, 
 ok("2°: DHL T2 sin confirmar → pendiente (no el 10 propuesto)", celda(tabla2, "DHL", 2), "pendiente");
 ok("2°: SAB T2 confirmado", celda(tabla2, "SAB", 2), "8");
 ok("2°: T3 sin filas → pendiente", celda(tabla2, "ETI", 3), "pendiente");
-ok("2°: promedio LEN solo de confirmadas (6.0)", celda(tabla2, "LEN", "promedio"), "6.0");
-ok("2°: promedio SAB (8 y 8 → 8.0)", celda(tabla2, "SAB", "promedio"), "8.0");
+// Final por campo (decisión de Jorge del 2026-09-24): solo con los TRES trimestres
+// confirmados; un promedio de uno o dos trimestres nunca se presenta como final
+ok("2°: final LEN con T2 y T3 sin confirmar → pendiente", celda(tabla2, "LEN", "final"), "pendiente");
+ok("2°: final SAB con T3 sin confirmar → pendiente", celda(tabla2, "SAB", "final"), "pendiente");
+contiene("2°: la columna se llama Final", tabla2, "<th>Final</th>");
+noContiene("2°: ya no hay columna Promedio", tabla2, "<th>Promedio</th>");
 ok("2°: promedio general T1 (6+8+7+9)/4", celda(tabla2, "GENERAL", 1), "7.5");
 ok("2°: promedio general T2 incompleto → pendiente", celda(tabla2, "GENERAL", 2), "pendiente");
-ok("2°: promedio general del ciclo solo con trimestres completos", celda(tabla2, "GENERAL", "promedio"), "7.5");
+ok("2°: promedio final de grado incompleto → pendiente", celda(tabla2, "GENERAL", "final"), "pendiente");
+ok("2°: acreditación pendiente mientras falte algo", /data-acreditacion='pendiente'/.test(tabla2), true);
+contiene("2°: dice cuántas faltan", tabla2, "faltan 7 de 12 calificaciones confirmadas");
 ok("2°: la columna del trimestre elegido se resalta", /actual/.test(claseCelda(tabla2, "LEN", 1)), true);
 ok("2°: la de otro trimestre no", /actual/.test(claseCelda(tabla2, "LEN", 2)), false);
 ok("2°: las cuatro filas de campo con su color NEM",
@@ -113,7 +119,7 @@ contiene("2°: explica qué es pendiente", tabla2, "todavía no confirma");
 
 // Ningún número de propuesta se cuela en la tabla: las celdas numéricas son solo las confirmadas
 const numeros = [...tabla2.matchAll(/class='(?:actual )?num'[^>]*>([^<]*)</g)].map(function (m) { return m[1]; });
-ok("2°: solo hay números de confirmadas y promedios", numeros.join(","), "6,6.0,8,8,8.0,7,7.0,9,9.0,7.5,7.5");
+ok("2°: solo hay números de confirmadas y del promedio del trimestre completo", numeros.join(","), "6,8,8,7,9,7.5");
 
 // ── Alumno de 4° (Fase 4): un 5 confirmado sale como 5 ───────────────────────
 const CICLO_4 = {
@@ -124,7 +130,7 @@ const CICLO_4 = {
 const tabla4 = B.tablaCalificaciones(CICLO_4, 2);
 ok("4°: LEN T1 confirmado con 5", celda(tabla4, "LEN", 1), "5");
 ok("4°: ETI T1 confirmado con 5", celda(tabla4, "ETI", 1), "5");
-ok("4°: promedio general T1 (5+6+5+7)/4 = 5.75 → 5.8", celda(tabla4, "GENERAL", 1), "5.8");
+ok("4°: promedio general T1 (5+6+5+7)/4 = 5.75 → 5.7 (truncado, no redondeado)", celda(tabla4, "GENERAL", 1), "5.7");
 ok("4°: T2 elegido y vacío → pendiente", celda(tabla4, "LEN", 2), "pendiente");
 ok("4°: columna T2 resaltada", /actual/.test(claseCelda(tabla4, "LEN", 2)), true);
 
@@ -136,7 +142,7 @@ noContiene("sin 'null' en pantalla", raro, "null");
 // Sin ninguna confirmada: todo pendiente
 const nada = B.tablaCalificaciones({ 1: {}, 2: {}, 3: {} }, 1);
 ok("sin datos: ninguna celda con número", /class='(?:actual )?num'/.test(nada), false);
-ok("sin datos: 20 celdas pendiente (4 campos + general) × (3 + promedio)", (nada.match(/>pendiente</g) || []).length, 20);
+ok("sin datos: 20 celdas pendiente (4 campos + general) × (3 + final)", (nada.match(/pendiente<\/td>/g) || []).length, 20);
 
 // ── Juicio docente sin evidencias (decisión de Jorge 5) ─────────────────────
 function celdaConMarca(html, campo, trim) {
@@ -280,17 +286,18 @@ ok("cuaderno: los no capturados dicen No evaluado", (hoja2.match(/No evaluado</g
 ok("matemáticas de 2°: las 7 de su grado", (hoja2.match(/data-clave='mates\./g) || []).length, 7);
 ok("matemáticas de 2°: sin fracciones", hoja2.includes("data-clave='mates.fracciones'"), false);
 ok("matemáticas: las no capturadas dicen No evaluada", (hoja2.match(/No evaluada</g) || []).length, 5);
-contiene("matemáticas: alcance del grado como detalle", hoja2, "<span class='detalle' data-alcance>Alcance en 2°: Repartos con divisor menor que 10</span>");
+contiene("matemáticas: alcance del grado como detalle", hoja2, "<span class='detalle' data-alcance>Alcance en 2°: Reparto y agrupamiento con divisores menores que 10, sin algoritmo convencional</span>");
 contiene("lectura: PPM", hoja2, "28 palabras por minuto");
 contiene("lectura: fluidez contra la banda de 2° (28 ≤ 34)", hoja2, "data-fluidez='requiere_apoyo'");
 contiene("lectura: rotulada con ETIQUETA_FLUIDEZ", hoja2, window.CatalogoHabilidades.ETIQUETA_FLUIDEZ.requiere_apoyo);
-contiene("lectura: referencia de la banda", hoja2, "Estándar para 2°: 60 a 84 PPM");
+contiene("lectura: referencia de la banda, rotulada SEP 2010", hoja2, "Referencia SEP 2010 para 2°: 60 a 84 ppm");
+noContiene("lectura: ya no dice estándar", hoja2, "Estándar para");
 
 // La fluidez sale de clasificarPPM con la banda del grado (4°: 90 PPM → cercano)
 const hab4 = B.cajaHabilidades({ lectura_ppm: 90, lectura_comprension: "logrado", matematicas: [] }, BANDA_4, 4);
 contiene("fluidez 4°: 90 PPM es cercano", hab4, "data-fluidez='cercano'");
-contiene("fluidez 4°: etiqueta", hab4, "Cercano al estándar");
-contiene("fluidez 4°: banda", hab4, "Estándar para 4°: 100 a 114 PPM");
+contiene("fluidez 4°: etiqueta", hab4, "Cercano a la referencia");
+contiene("fluidez 4°: banda", hab4, "Referencia SEP 2010 para 4°: 100 a 114 ppm");
 const hab4b = B.cajaHabilidades({ lectura_ppm: 120, lectura_comprension: null, matematicas: [] }, BANDA_4, 4);
 contiene("fluidez 4°: 120 PPM es avanzado", hab4b, "Avanzado");
 

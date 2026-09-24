@@ -42,7 +42,7 @@
 	// Fluidez lectora: cuatro tramos de bandas_ppm (los umbrales viven en la tabla)
 	var COLOR_FLUIDEZ = { requiere_apoyo: "#ef4444", cercano: "#f59e0b", estandar: "#10b981", avanzado: "#047857" };
 	var ETIQUETA_FLUIDEZ_DEFECTO = {
-		requiere_apoyo: "Requiere apoyo", cercano: "Cercano al estándar", estandar: "Estándar", avanzado: "Avanzado",
+		requiere_apoyo: "Requiere apoyo", cercano: "Cercano a la referencia", estandar: "En la referencia", avanzado: "Avanzado",
 	};
 	var MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -315,10 +315,24 @@
 
 		return "<section class='mb-7'>" + titulo(1, "Resumen del trimestre") +
 			"<div class='bloque grid grid-cols-2 sm:grid-cols-4 gap-3'>" + tiles + "</div>" +
+			renderFinal(datos) +
 			"<div class='bloque mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700' data-asistencia>" +
 			"<span class='font-semibold'>Asistencia:</span> " + asistencia +
 			" <span class='block sm:inline text-xs text-gray-500'>Dato de referencia: la asistencia no forma parte de la calificación.</span></div>" +
 			"</section>";
+	}
+
+	/*
+		Evaluación final del ciclo: T1, T2, T3 y final por campo, promedio final de grado y
+		acreditación (ReporteDatos.finalCiclo, la misma función de todos los documentos).
+		Solo con calificaciones confirmadas; lo demás, "pendiente".
+	*/
+	function renderFinal(datos) {
+		if (!RD() || !RD().htmlFinalCiclo) return "";
+		return "<div class='bloque mt-4 rounded-xl border border-gray-200 p-3' data-seccion='final'>" +
+			"<h3 class='text-sm font-semibold text-gray-800 mb-2'>Evaluación final del ciclo</h3>" +
+			RD().htmlFinalCiclo(datos.boletaCiclo || {}, datos.alumno ? datos.alumno.grado : null, { trimestre: Number(datos.trimestre) }) +
+			"</div>";
 	}
 
 	// ── Render: 2. Desempeño por campo ────────────────────────────────────────
@@ -337,10 +351,15 @@
 		var filas = RUBROS.map(function (r) {
 			var x = (pc.rubros || {})[r] || { obtenido: 0, maximo: 0, fraccion: null, peso: 0 };
 			var peso = Number(x.peso) || 0;
+			// Conducta: se registra y se informa, pero no pondera (salvo en una boleta cerrada
+			// antes del cambio, que conserva el peso con que se entregó)
+			var referencia = r === "conducta" && !(peso > 0);
 			var nombre = "<span class='font-medium text-gray-800'>" + ETIQUETA_RUBRO[r] + "</span>" +
 				(r === "examen" ? " <span class='ml-1 rounded border border-amber-300 bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-800'>aproximado</span>" : "") +
 				(r === "participacion" || r === "conducta" ? "<span class='hidden sm:block text-[11px] text-gray-400 print:hidden'>registro diario repartido</span>" : "");
-			var celdaPeso = peso > 0 ? peso + "\u00a0%" : "<span class='text-gray-400'>sin peso</span>";
+			var celdaPeso = peso > 0 ? peso + "\u00a0%"
+				: (referencia ? "<span class='text-gray-500 text-[11px] leading-tight' data-no-pondera>referencia, no pondera</span>"
+					: "<span class='text-gray-400'>sin peso</span>");
 			if (rubroSinDatos(x)) {
 				if (peso > 0) sinDatos.push(ETIQUETA_RUBRO[r].toLowerCase() + " (" + peso + " %)");
 				return "<tr data-rubro='" + r + "' class='align-top'>" +
@@ -390,6 +409,15 @@
 				"valen el día completo; 0 no suma.",
 			"Un rubro sin datos no cuenta: su peso se reparte entre los demás rubros en proporción a sus pesos.",
 		];
+		// La conducta no pondera (LGE, art. 21: se informa aparte de la calificación). Una
+		// boleta cerrada antes del cambio conserva el peso con que se entregó.
+		var conductaPondera = CAMPOS.some(function (c) {
+			var x = porCampo[c] && porCampo[c].rubros ? porCampo[c].rubros.conducta : null;
+			return x && Number(x.peso) > 0;
+		});
+		if (!conductaPondera) {
+			notas.push("La conducta se registra y se informa como referencia: no forma parte del porcentaje ni de la calificación.");
+		}
 		var escala = window.MotorCalificacion && window.MotorCalificacion.ESCALA_NIVEL;
 		if (escala) {
 			notas[0] = "Cada tarea o trabajo que le tocó a su grado suma 1 al máximo; lo obtenido depende del nivel " +
@@ -430,7 +458,9 @@
 		}).join("");
 
 		var pesos = m.pesos || {};
-		var pesosTexto = RUBROS.map(function (r) { return ETIQUETA_RUBRO[r] + " " + (Number(pesos[r]) || 0) + " %"; }).join(" · ");
+		var pesosTexto = RUBROS.filter(function (r) { return r !== "conducta" || conductaPondera; })
+			.map(function (r) { return ETIQUETA_RUBRO[r] + " " + (Number(pesos[r]) || 0) + " %"; }).join(" · ") +
+			(conductaPondera ? "" : " · Conducta: referencia, no pondera");
 
 		return "<section class='mb-7'>" + titulo(2, "Desempeño por campo formativo", "Pesos: " + esc(pesosTexto)) +
 			"<ul class='bloque mb-3 list-disc pl-5 flex flex-col gap-1 text-xs text-gray-500 leading-relaxed'>" +
@@ -481,7 +511,7 @@
 	function bandaPpm(ppm, banda, nivel, grado) {
 		var catalogo = CH();
 		var etiquetas = (catalogo && catalogo.ETIQUETA_FLUIDEZ) || ETIQUETA_FLUIDEZ_DEFECTO;
-		if (!banda) return nota("No hay banda de referencia de PPM para " + esc(grado) + "° grado.");
+		if (!banda) return nota("No hay referencia de palabras por minuto para " + esc(grado) + "° grado.");
 		var tramos = tramosBanda(banda);
 		var es = Number(banda.estandar_max), ce = Number(banda.cercano_max);
 		var tope = es + Math.max(15, es - ce); // el tramo "avanzado" no tiene techo: se dibuja uno razonable
@@ -508,7 +538,7 @@
 		var posEtiqueta = vacio(ppm) ? 0 : Math.max(8, Math.min(92, Math.min(Number(ppm), tope) / (tope + 1) * 100));
 		return "<div class='relative mt-6 mb-2'>" +
 			(!vacio(ppm) ? "<div class='absolute -top-6 text-[11px] font-semibold text-gray-900 whitespace-nowrap' style='left:" +
-				posEtiqueta.toFixed(2) + "%;transform:translateX(-50%)'>" + esc(ppm) + " PPM</div>" : "") +
+				posEtiqueta.toFixed(2) + "%;transform:translateX(-50%)'>" + esc(ppm) + " ppm</div>" : "") +
 			"<div class='flex h-3 w-full overflow-hidden rounded-full'>" + barra + "</div>" + marcador + "</div>" +
 			"<div class='grid grid-cols-2 gap-x-3 gap-y-1 mt-2'>" + leyenda + "</div>";
 	}
@@ -532,14 +562,18 @@
 			fluidezHtml = "<p class='text-sm text-gray-700' data-ppm='" + ppm + "' data-fluidez='" + (nivelPpm || "") + "'>" +
 				"Lee <span class='font-bold text-gray-900'>" + ppm + " palabras por minuto</span>" +
 				(nivelPpm
-					? ". Para " + esc(grado) + "° grado eso es <span class='inline-flex items-center gap-1 font-semibold'>" +
+					? ". Frente a la referencia SEP 2010 para " + esc(grado) + "°: <span class='inline-flex items-center gap-1 font-semibold'>" +
 						"<span class='inline-block w-3 h-3 rounded-full' style='background:" + COLOR_FLUIDEZ[nivelPpm] + "'></span>" +
-						esc(etiquetas[nivelPpm]) + "</span>" + (tramo ? " (" + esc(tramo.rango) + " PPM)." : ".")
+						esc(etiquetas[nivelPpm]) + "</span>" + (tramo ? " (" + esc(tramo.rango) + " ppm)." : ".")
 					: ".") + "</p>";
 		}
 		var lectura = "<div class='rounded-xl border border-gray-200 p-3'>" +
 			"<h3 class='text-sm font-semibold text-gray-800 mb-2'>Lectura</h3>" + fluidezHtml +
 			(ppm !== null || datos.banda ? bandaPpm(ppm, datos.banda, nivelPpm, grado) : "") +
+			(datos.banda && catalogo.textoReferenciaPPM
+				? "<p class='mt-2 text-[11px] text-gray-500 leading-relaxed' data-referencia-ppm>" + esc(catalogo.textoReferenciaPPM(datos.banda, grado)) +
+					". Los rangos de palabras por minuto de 2010 son una referencia, no un estándar vigente.</p>"
+				: "") +
 			"<div class='mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-2 text-sm'>" +
 			"<span class='text-gray-700'>Comprensión lectora</span>" + semaforo(diag.lectura_comprension, "No evaluada") + "</div></div>";
 
@@ -667,7 +701,7 @@
 		}).join("");
 		var cabGen = "<p class='flex items-center gap-2 px-3 py-2 border-b border-gray-200' style='border-left:6px solid #1e40af'>" +
 			"<span class='font-semibold text-gray-800 text-sm'>Generales</span>" +
-			"<span class='text-xs text-gray-500'>hábitos, cuaderno, participación, conducta y asistencia</span></p>";
+			"<span class='text-xs text-gray-500'>hábitos, cuaderno, participación, conducta y asistencia (estas dos no ponderan)</span></p>";
 
 		return "<section class='mb-7' data-seccion='observaciones'>" + titulo(6, "Observaciones") +
 			"<div class='bloque mb-3'>" + nota("<span class='font-semibold text-blue-800'>Del docente:</span> lo escribió o ajustó el docente en la boleta. " +

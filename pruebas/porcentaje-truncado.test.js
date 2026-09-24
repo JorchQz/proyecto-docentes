@@ -22,8 +22,10 @@ require("../js/campos-formativos.js");
 window.AlcanceHoy = require("../js/alcance-hoy.js");
 const M = require("../js/motor-calificacion.js");
 
-// Tareas: no entregó e incompleta; trabajos: incompleto, en proceso y logrado; 8 días de
-// participación (uno en 0) y 7 de conducta (uno en 1): da 49.9964... % en Lenguajes
+// Pesos de fábrica sin conducta (28/28/6/33; la conducta ya no pondera, decisión de Jorge
+// del 2026-09-24). Tarea con puntaje 5.1956, trabajo en "requiere apoyo" (0.4) y 8 días de
+// participación (uno en 0), sin examen: (28 × 0.51956 + 28 × 0.4 + 6 × 0.875) / 62
+// = 49.9962... % en Lenguajes. La conducta de esos días (casi toda en 0) no mueve nada.
 const fechas = [];
 for (let i = 1; i <= 8; i++) fechas.push("2026-09-" + String(i).padStart(2, "0"));
 const DATOS = {
@@ -33,17 +35,11 @@ const DATOS = {
 	sesiones: fechas.map((f, i) => ({ id: "s" + i, fecha: f, campo_formativo: "Lenguajes" })),
 	productos_sesion: [
 		{ id: "t1", sesion_id: "s0", tipo: "tarea", campo: "LEN", grados: ["3"], fecha_entrega: null, activo: true },
-		{ id: "t2", sesion_id: "s1", tipo: "tarea", campo: "LEN", grados: ["3"], fecha_entrega: null, activo: true },
 		{ id: "w1", sesion_id: "s2", tipo: "trabajo", campo: "LEN", grados: ["3"], fecha_entrega: null, activo: true },
-		{ id: "w2", sesion_id: "s3", tipo: "trabajo", campo: "LEN", grados: ["3"], fecha_entrega: null, activo: true },
-		{ id: "w3", sesion_id: "s4", tipo: "trabajo", campo: "LEN", grados: ["3"], fecha_entrega: null, activo: true },
 	],
 	calificaciones: [
-		{ producto_sesion_id: "t1", tipo: "tarea", estado_entrega: "no_entregado" },
-		{ producto_sesion_id: "t2", tipo: "tarea", estado_entrega: "incompleto" },
-		{ producto_sesion_id: "w1", tipo: "trabajo", estado_entrega: "incompleto" },
-		{ producto_sesion_id: "w2", tipo: "trabajo", estado_entrega: "entregado", nivel: "en_proceso" },
-		{ producto_sesion_id: "w3", tipo: "trabajo", estado_entrega: "entregado", nivel: "logrado" },
+		{ producto_sesion_id: "t1", tipo: "tarea", estado_entrega: "entregado", puntaje: 5.1956 },
+		{ producto_sesion_id: "w1", tipo: "trabajo", estado_entrega: "entregado", nivel: "requiere_apoyo" },
 	].map((c) => Object.assign({ alumno_id: "a", proyecto_id: "proy", fecha: "2026-09-01" }, c)),
 	registro_diario: fechas.map((f, i) => ({ alumno_id: "a", fecha: f,
 		participacion: i === 0 ? 0 : 1, conducta: i === 7 ? null : (i === 1 ? 1 : 0) })),

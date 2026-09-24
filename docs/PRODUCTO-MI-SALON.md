@@ -120,9 +120,16 @@ la fórmula: se reporta aparte como referencia.
 
 ### B.3 Motor de calificación (`js/motor-calificacion.js`, único)
 
-- Rubros y pesos por defecto **28 / 28 / 6 / 5 / 33** (tareas, trabajos, participación,
-  conducta, examen), editables por maestro en Ajustes (`maestro_ajustes.peso_*`). Si un
-  rubro no tiene datos, su peso se reparte entre los que sí tienen.
+- Rubros y pesos por defecto **28 / 28 / 6 / 33** (tareas, trabajos, participación,
+  examen), editables por maestro en Ajustes (`maestro_ajustes.peso_*`). Son relativos:
+  cada rubro vale su peso entre la suma de los que tienen datos. Si un rubro no tiene
+  datos, su peso se reparte entre los que sí tienen.
+- **La conducta no pondera** (decisión de Jorge del 2026-09-24; la LGE, art. 21, pide
+  informarla aparte de la calificación). Se sigue registrando en el cierre del día y el
+  motor la cuenta para los textos y los reportes, que la muestran como referencia ("no
+  pondera", como la asistencia); su peso es siempre 0 y un `peso_conducta` guardado se
+  ignora sin borrarse. Ajustes ya no deja darle peso. Las boletas cerradas antes del cambio
+  conservan su foto (con la conducta que tenía) y no se recalculan.
 - Valor de un producto: puntaje/10 si hay puntaje; si no, por nivel (logrado 1,
   en proceso 0.7, requiere apoyo 0.4); incompleto sin nivel 0.5; no entregado 0;
   justificado / no aplica fuera del máximo.
@@ -157,7 +164,8 @@ original le daba 10 %).
 ### B.4 Reparto de participación y conducta
 
 El valor diario del alumno se reparte en partes iguales entre los campos con sesión ese
-día; un día sin sesión o sin registro no entra al máximo.
+día; un día sin sesión o sin registro no entra al máximo. La conducta se reparte igual,
+pero solo como dato de referencia: no entra al porcentaje (B.3).
 
 ### B.5 Evaluación formativa por PDA
 
@@ -176,6 +184,13 @@ Viven en `evaluacion_diagnostica` (momento `trimestre_1..3`): cuaderno y matemá
 listas clave → nivel, PPM y comprensión. La pantalla abre en el trimestre actual del grupo
 ("T1 · boleta"), que es el que lee la boleta; "Inicio de ciclo" queda aparte. Las claves y etiquetas están en un solo lugar
 (`js/catalogo-habilidades.js`); la fluidez se calcula contra `bandas_ppm`, no se captura.
+Las bandas de palabras por minuto vienen de los estándares SEP de 2010 (Acuerdo 592,
+abrogado): no son un estándar vigente y todas las pantallas las rotulan **"referencia SEP
+2010"** ("Referencia SEP 2010 para 2°: 60 a 84 ppm"; niveles "Cercano a la referencia" y
+"En la referencia"). Las bandas no cambiaron. En 2°, "Tablas de multiplicar" evalúa
+estrategias de cálculo mental para multiplicar, sin memorizar las tablas, y la división es
+reparto y agrupamiento con divisores menores que 10, sin algoritmo convencional (cuaderno
+oficial de Matemáticas de Fase 3, pp. 25 y 26).
 
 *Diferencias:* no se crearon `catalogo_habilidades` ni `evaluacion_habilidades`: la
 diagnóstica ya existía y se dejó como fuente única (B.0). El maestro todavía no puede
@@ -192,8 +207,9 @@ agregar criterios propios.
 - **Calidad de lo entregado** (con al menos 2 entregados) y **examen**, por campo. Si la
   misma frase aplicaría a varios campos, va una sola vez en la fila general nombrándolos.
 - Participación y conducta (registro global) solo en la fila general; el valor normal del
-  día (1 de 2) no es área.
-- Lectura (PPM contra la banda del grado, comprensión) → Lenguajes; matemáticas → Saberes;
+  día (1 de 2) no es área. Es el lugar donde la boleta informa la conducta, aparte del
+  número.
+- Lectura (PPM contra la referencia SEP 2010 de su grado, comprensión) → Lenguajes; matemáticas → Saberes;
   cuaderno y asistencia (solo observación) → general.
 - **Trabajo diario** sale de la entrega de tareas y trabajos, nunca de la calidad.
 - Máximo 4 frases por sección, prioridad a lo que habla del aprendizaje, sin repetir la
@@ -220,28 +236,43 @@ la confirmada, textos del maestro o propuesta, diagnóstico y bandas. Colores NE
 `#059669`, SAB `#ea580c`, ETI `#7c3aed`, DHL `#0284c7`. Imprimibles con `@media print`.
 
 1. **Boleta imprimible** (`boleta.html`): datos del alumno y la escuela, campo × T1/T2/T3
-   con la calificación confirmada o "pendiente" y promedio de lo confirmado, asistencia de
+   con la calificación confirmada o "pendiente" y la **Final** de cada campo, promedio
+   general de cada trimestre, **promedio final de grado y acreditación**, asistencia de
    referencia, observaciones y sugerencias por campo, cuaderno y habilidades, firmas.
    Carta vertical.
-2. **Reporte detallado** (`reporte-alumno.html`): rubros con obtenido / máximo / % y peso,
-   calificación confirmada o propuesta rotulada, cuaderno, PPM contra la banda, avance por
+2. **Reporte detallado** (`reporte-alumno.html`): evaluación final del ciclo, rubros con
+   obtenido / máximo / % y peso (la conducta como referencia, sin peso), calificación
+   confirmada o propuesta rotulada, cuaderno, PPM contra la referencia SEP 2010, avance por
    PDA, observaciones y las últimas retroalimentaciones del trimestre.
+
+**Evaluación final del ciclo** (Acuerdo 10/09/23, arts. 7 y 9; como las boletas DGAIR
+2024-2025): final por campo = promedio de las tres calificaciones confirmadas; promedio
+final de grado = promedio de las cuatro finales; los dos con un entero y un decimal,
+**truncados, sin redondear** (decisión de Jorge: el Acuerdo no dice cómo cortar y las normas
+SEP previas dicen "no se deben redondear"). Acreditación: 1° con haber cursado el grado; 2° a
+6° con promedio final mínimo de 6. Todo dice "pendiente" hasta que estén confirmados los
+tres trimestres de los cuatro campos. Una sola función, `ReporteDatos.finalCiclo`, para la
+boleta imprimible, el reporte detallado, la pestaña Boleta de Reportes, el Concentrado y
+la exportación.
 3. **Junta de padres** (`junta.html`): portada, panorama, barras por grado, fluidez contra
-   la banda, promedio por campo y grado, áreas de atención y cierre. Con un solo
+   la referencia SEP 2010, promedio por campo y grado, áreas de atención y cierre. Con un solo
    trimestre no hay deltas. **Privacidad:** en pantalla los alumnos aparecen por número de
    lista y grado (en la lámina de fluidez, sin nombres, ni siquiera el número de lista); los
    nombres solo con un interruptor (apagado por defecto) y las áreas de atención siempre
    agregadas.
 4. **Avance por PDA** (Reportes → "Avance por PDA").
 5. **Exportación** (`exportar.html`): CSV y XLSX con las columnas de `BD_Alumnos` (DHL),
-   la calificación confirmada por campo y la asistencia como referencia. El XLSX trae las
+   la calificación confirmada por campo y la asistencia como referencia; la columna de
+   conducta se queda en su lugar rotulada "Cond. (referencia)", y al final van la final por
+   campo, el promedio final de grado y la acreditación. El XLSX trae las
    hojas "Máximos" y "Léeme" (advierte no recalcular con una plantilla que pondere la
    asistencia).
 
 Además, en `reportes.html`: **Vista Recrea** (calificación confirmada por alumno y campo,
 lista para capturar en SIGED, con "pendiente" en lo no confirmado) y **Concentrado
-Director** (niveles por promedio de las 4 calificaciones confirmadas, pendientes aparte y
-promedio por grado y campo).
+Director** (evaluación final del ciclo por alumno con su acreditación, niveles por
+promedio de las 4 calificaciones confirmadas, pendientes aparte y promedio por grado y
+campo; todos los promedios truncados a un decimal).
 
 ### B.9 Multigrado y grupo activo
 

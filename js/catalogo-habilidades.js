@@ -39,7 +39,12 @@
 		           tablas (cálculo mental con números menores que 10), pero no fracciones,
 		           que empiezan en 3°. De 3° a 6°, las 8.
 		  alcance: una línea por grado que resume los PDA (guía para la maestra y detalle
-		           en boleta y reporte, como el estándar de PPM).
+		           en boleta y reporte, como la referencia de PPM).
+		           2°, según el cuaderno oficial "Desarrollo de habilidades. Matemáticas.
+		           Fase 3" (DGDC, 2024): en "Tablas" se evalúan estrategias de cálculo mental
+		           para multiplicar, no la memorización ("La memorización de 'tablas de
+		           multiplicar' no es interés de esta Fase", p. 26); la división es reparto y
+		           agrupamiento con divisores menores que 10, sin algoritmo convencional (p. 25).
 		Una habilidad que no aplica al grado no se muestra en ninguna pantalla; lo que ya
 		se hubiera capturado en ella se conserva en la base (Diagnóstico no lo borra al
 		guardar) y en la exportación su celda dice "No aplica".
@@ -69,7 +74,7 @@
 			5: "Fracciones y decimales por un natural",
 			6: "Con naturales, decimales y fracciones" } },
 		{ clave: "mates.division", etiqueta: "División", grados: [2, 3, 4, 5, 6], alcance: {
-			2: "Repartos con divisor menor que 10",
+			2: "Reparto y agrupamiento con divisores menores que 10, sin algoritmo convencional",
 			3: "Reparto y agrupamiento (a ÷ b = c)",
 			4: "Algoritmo: cociente y residuo",
 			5: "Entre naturales con cociente decimal",
@@ -80,7 +85,7 @@
 			5: "Equivalentes y en notación decimal",
 			6: "Suma, resta y división entre un natural" } },
 		{ clave: "mates.tablas", etiqueta: "Tablas de multiplicar", grados: [2, 3, 4, 5, 6], alcance: {
-			2: "Multiplicaciones de números menores que 10",
+			2: "Estrategias de cálculo mental para multiplicar números menores que 10, sin memorizar las tablas",
 			3: "Repertorio de factores de una cifra",
 			4: "Uso en operaciones; doble, triple y mitad",
 			5: "Uso en operaciones",
@@ -143,10 +148,24 @@
 
 	var ETIQUETA_FLUIDEZ = {
 		requiere_apoyo: "Requiere apoyo",
-		cercano: "Cercano al estándar",
-		estandar: "Estándar",
+		cercano: "Cercano a la referencia",
+		estandar: "En la referencia",
 		avanzado: "Avanzado",
 	};
+
+	/*
+		Los rangos de palabras por minuto de bandas_ppm salen de los Estándares Nacionales de
+		Habilidad Lectora de 2010 (Acuerdo 592, abrogado): ya no son un estándar vigente y se
+		rotulan "referencia SEP 2010" (auditoría NEM, 2026-09-24). Las bandas no cambian.
+		"Referencia SEP 2010 para 2°: 60 a 84 ppm" (vacío sin banda completa).
+	*/
+	var REFERENCIA_PPM = "Referencia SEP 2010";
+	function textoReferenciaPPM(banda, grado) {
+		if (!banda || banda.cercano_max === null || banda.cercano_max === undefined ||
+			banda.estandar_max === null || banda.estandar_max === undefined) return "";
+		var g = grado !== null && grado !== undefined && grado !== "" ? grado : banda.grado;
+		return REFERENCIA_PPM + " para " + g + "°: " + (Number(banda.cercano_max) + 1) + " a " + Number(banda.estandar_max) + " ppm";
+	}
 
 	// Arreglo jsonb -> { clave: nivel } (ignora claves que ya no existan en el catálogo)
 	function aMapa(items) {
@@ -180,6 +199,8 @@
 		NIVELES: NIVELES,
 		ETIQUETA_NIVEL: ETIQUETA_NIVEL,
 		ETIQUETA_FLUIDEZ: ETIQUETA_FLUIDEZ,
+		REFERENCIA_PPM: REFERENCIA_PPM,
+		textoReferenciaPPM: textoReferenciaPPM,
 		aMapa: aMapa,
 		clasificarPPM: clasificarPPM,
 	};

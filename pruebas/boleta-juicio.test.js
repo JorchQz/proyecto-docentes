@@ -238,7 +238,7 @@ function opciones(html, campo) {
 	contiene("D: porcentaje del cierre", html, "75.0 %");
 	// Hoy ya no coincide, pero todo lo que se ve es lo del cierre: sin aviso (la pantalla no cambia)
 	noContiene("D: sin aviso de capturas después del cierre", html, "Hubo capturas después del cierre");
-	contiene("D: fluidez con la banda del cierre (70 ppm en 2° = Estándar)", html, "Estándar");
+	contiene("D: fluidez con la banda del cierre (70 ppm en 2° = en la referencia)", html, "En la referencia");
 	ok("D: DHL (sin evidencias al cerrar) con la marca de juicio docente", (html.match(/data-juicio='1'/g) || []).length, 1);
 
 	// Reglas compartidas de la foto

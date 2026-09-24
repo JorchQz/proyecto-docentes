@@ -54,41 +54,41 @@
 
 			<section id="pesoPonderacion" class="bg-white rounded-2xl shadow-md p-6">
 				<h2 class="text-lg font-bold text-gray-800">Ponderación de calificaciones</h2>
-				<p class="text-sm text-gray-500 mt-1">Define el peso de cada rubro en la calificación trimestral. La suma debe ser 100%. Un rubro en 0 no cuenta.</p>
+				<p class="text-sm text-gray-500 mt-1">Define el peso de cada rubro en la calificación trimestral. Cada rubro vale su peso entre la suma de los cuatro: con los de fábrica (28, 28, 6 y 33, que suman 95), las tareas valen 28 de 95. Un rubro en 0 no cuenta.</p>
 
 				<div id="ponderacionMessage" class="mt-4"></div>
 
 				<div class="mt-6 space-y-4">
-					<div class="flex items-center justify-between">
-						<label class="text-sm font-medium text-gray-700">Tareas</label>
-						<input id="pesoTareas" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					<div class="flex items-center justify-between gap-3">
+						<label for="pesoTareas" class="text-sm font-medium text-gray-700">Tareas <span id="efectivoTareas" class="block text-xs font-normal text-gray-500"></span></label>
+						<input id="pesoTareas" type="number" inputmode="numeric" min="0" max="100" step="1" class="w-24 min-h-[44px] border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
 					</div>
 
-					<div class="flex items-center justify-between">
-						<label class="text-sm font-medium text-gray-700">Trabajos / Actividades</label>
-						<input id="pesoTrabajos" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					<div class="flex items-center justify-between gap-3">
+						<label for="pesoTrabajos" class="text-sm font-medium text-gray-700">Trabajos / Actividades <span id="efectivoTrabajos" class="block text-xs font-normal text-gray-500"></span></label>
+						<input id="pesoTrabajos" type="number" inputmode="numeric" min="0" max="100" step="1" class="w-24 min-h-[44px] border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
 					</div>
 
-					<div class="flex items-center justify-between">
-						<label class="text-sm font-medium text-gray-700">Participación</label>
-						<input id="pesoParticipacion" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					<div class="flex items-center justify-between gap-3">
+						<label for="pesoParticipacion" class="text-sm font-medium text-gray-700">Participación <span id="efectivoParticipacion" class="block text-xs font-normal text-gray-500"></span></label>
+						<input id="pesoParticipacion" type="number" inputmode="numeric" min="0" max="100" step="1" class="w-24 min-h-[44px] border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
 					</div>
 
-					<div class="flex items-center justify-between">
-						<label class="text-sm font-medium text-gray-700">Conducta</label>
-						<input id="pesoConducata" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
-					</div>
-
-					<div class="flex items-center justify-between">
-						<label class="text-sm font-medium text-gray-700">Examen</label>
-						<input id="pesoExamen" type="number" min="0" max="100" step="1" class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
+					<div class="flex items-center justify-between gap-3">
+						<label for="pesoExamen" class="text-sm font-medium text-gray-700">Examen <span id="efectivoExamen" class="block text-xs font-normal text-gray-500"></span></label>
+						<input id="pesoExamen" type="number" inputmode="numeric" min="0" max="100" step="1" class="w-24 min-h-[44px] border border-gray-300 rounded-lg px-3 py-2 text-center text-lg font-bold">
 					</div>
 
 					<div class="border-t border-gray-200 pt-4 mt-4">
 						<div class="flex items-center justify-between">
 							<span class="text-sm font-medium text-gray-700">Suma actual:</span>
-							<span id="sumaPonderacion" class="text-lg font-bold text-red-600">0%</span>
+							<span id="sumaPonderacion" class="text-lg font-bold text-red-600">0</span>
 						</div>
+					</div>
+
+					<div class="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3" id="ajustesConducta">
+						<p class="text-sm font-medium text-gray-700">Conducta: se informa aparte, no pondera</p>
+						<p class="text-xs text-gray-500 mt-1">La conducta se sigue registrando en el cierre del día y aparece en las observaciones de la boleta, pero no forma parte de la calificación: la Ley General de Educación (art. 21) pide informarla aparte de los resultados.</p>
 					</div>
 
 					<div class="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">

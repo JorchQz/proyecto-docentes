@@ -166,12 +166,16 @@ const tarjetaLen = h1.slice(h1.indexOf("data-campo='LEN'"), h1.indexOf("data-cam
 ok("rubros: los cinco rubros por campo", cuenta(tarjetaLen, /data-rubro='/g), 5);
 ok("rubros: tareas sin datos", /data-rubro='tareas'[\s\S]*?sin datos/.test(tarjetaLen), true);
 ok("rubros: explica que su peso se reparte", tarjetaLen.includes("Sin datos en tareas (28 %)") && tarjetaLen.includes("se reparte entre los demás rubros"), true);
-ok("rubros: peso aplicado de trabajos = 28/72 (truncado)", tarjetaLen.includes("aplica 38.8 %"), true);
+// La conducta no pondera (decisión de Jorge del 2026-09-24): el peso de 5 que traen los
+// ajustes se ignora, así que trabajos aplica 28 / (28 + 6 + 33) = 41.79 %
+ok("rubros: peso aplicado de trabajos = 28/67 (truncado; la conducta no pondera)", tarjetaLen.includes("aplica 41.7\u00a0%"), true);
+ok("rubros: la conducta se muestra como referencia, sin peso", /data-rubro='conducta'[\s\S]*?referencia, no pondera/.test(tarjetaLen), true);
+ok("rubros: nota de que la conducta no pondera", h1.includes("La conducta se registra y se informa como referencia"), true);
 ok("rubros: obtenido y máximo de trabajos (0.4+0.4+0.7+0 de 4)", /data-rubro='trabajos'[\s\S]*?>1\.5<[\s\S]*?>4<[\s\S]*?37\.5 %/.test(tarjetaLen), true);
 ok("rubros: el examen rotulado aproximado", /data-rubro='examen'[\s\S]*?aproximado/.test(tarjetaLen), true);
 ok("rubros: nota del examen aproximado", h1.includes("Examen aproximado:") && h1.includes("valor total del examen entre número de preguntas"), true);
 ok("rubros: nota del reparto diario de participación y conducta", h1.includes("se registran una vez al día") && h1.includes("se reparten en partes iguales"), true);
-ok("rubros: pesos del maestro visibles", h1.includes("Tareas 28 % · Trabajos 28 % · Participación 6 % · Conducta 5 % · Examen 33 %"), true);
+ok("rubros: pesos del maestro visibles", h1.includes("Tareas 28 % · Trabajos 28 % · Participación 6 % · Examen 33 % · Conducta: referencia, no pondera"), true);
 // En SAB lo justificado no cuenta: 3 tareas en el máximo; en ETI el trabajo justificado sale del máximo
 const tarjetaEti = h1.slice(h1.indexOf("data-campo='ETI'"), h1.indexOf("data-campo='DHL'"));
 ok("rubros: lo justificado no entra al máximo (ETI trabajos 0.4 de 1)", /data-rubro='trabajos'[\s\S]*?>0\.4<[\s\S]*?>1</.test(tarjetaEti), true);
@@ -271,7 +275,7 @@ const d5 = datosRiesgo({
 const h5 = RA.render(d5, Object.assign({}, INFO, { grupo: "Grupo 3°-4°" }));
 ok("4°: fase 4 y escala 5 a 10 (mismo texto que la boleta)", h5.includes("Fase 4") && h5.includes("enteros de 5 a 10; 5 no acredita"), true);
 ok("4°: la banda es la de su grado", h5.includes("0 a 84") && h5.includes("115 o más") && /data-ppm='78' data-fluidez='requiere_apoyo'/.test(h5), true);
-ok("sin banda: lo dice sin tronar", RA.render(datosRiesgo({ banda: null }), INFO).includes("No hay banda de referencia de PPM"), true);
+ok("sin banda: lo dice sin tronar", RA.render(datosRiesgo({ banda: null }), INFO).includes("No hay referencia de palabras por minuto"), true);
 
 // ── 5. Reglas de presentación ────────────────────────────────────────────────
 const alterado = JSON.parse(JSON.stringify(motorRiesgo().porCampo.LEN));

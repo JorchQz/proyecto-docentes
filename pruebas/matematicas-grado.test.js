@@ -55,7 +55,12 @@ CH.MATEMATICAS.forEach((h) => {
 	});
 });
 ok("alcance en cada grado donde aplica y solo ahí", alcancesBien, true);
-ok("alcance por clave", CH.alcanceMatematica("mates.division", 2), "Repartos con divisor menor que 10");
+// Cuaderno oficial de Fase 3 (DGDC, 2024), pp. 25 y 26: en 2° la división es reparto y
+// agrupamiento sin algoritmo convencional, y "Tablas" es cálculo mental, no memorización
+ok("alcance por clave", CH.alcanceMatematica("mates.division", 2), "Reparto y agrupamiento con divisores menores que 10, sin algoritmo convencional");
+ok("tablas en 2°: estrategias de cálculo mental, sin memorizar", CH.alcanceMatematica("mates.tablas", 2),
+	"Estrategias de cálculo mental para multiplicar números menores que 10, sin memorizar las tablas");
+ok("tablas en 2°: sigue aplicando (no cambia qué habilidades hay por grado)", CH.aplicaMatematica("mates.tablas", 2), true);
 ok("alcance sin grado: vacío", CH.alcanceMatematica("mates.suma", null), "");
 
 // ── Textos de la Capa 1 ──────────────────────────────────────────────────────

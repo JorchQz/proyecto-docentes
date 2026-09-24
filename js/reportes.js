@@ -426,13 +426,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// 3. boleta_trimestral: observaciones, número confirmado y estado de cierre
 		const cicloBoleta = boletaGrupoInfo.ciclo || "";
 		let boletaPorCampo = {};
+		const boletaCicloAlumno = { 1: {}, 2: {}, 3: {} };
 		{
+			// Los tres trimestres del ciclo: el elegido para la boleta y todos para la evaluación
+			// final (T1, T2, T3 y final por campo, promedio final de grado y acreditación)
 			const { data: boletaRows, error: errorBoleta } = await window.sb
 				.from("boleta_trimestral").select("*")
 				.eq("alumno_id", alumnoId).eq("maestro_id", userId)
-				.eq("ciclo", cicloBoleta).eq("trimestre", trimestre);
+				.eq("ciclo", cicloBoleta);
 			if (errorBoleta) { noSePudo("la boleta guardada", errorBoleta); return; }
-			(boletaRows || []).forEach(function (r) { boletaPorCampo[r.campo] = r; });
+			(boletaRows || []).forEach(function (r) {
+				if (!boletaCicloAlumno[r.trimestre]) boletaCicloAlumno[r.trimestre] = {};
+				boletaCicloAlumno[r.trimestre][r.campo] = r;
+				if (Number(r.trimestre) === trimestre) boletaPorCampo[r.campo] = r;
+			});
 		}
 		let avancePda = [];
 		{
@@ -589,10 +596,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 				const datos = (porCampoVisible[codigo] && porCampoVisible[codigo].rubros) ? porCampoVisible[codigo].rubros[rubro] : null;
 				celdas += "<td class='px-3 py-2 text-center border border-gray-200'>" + fmtRubro(datos) + "</td>";
 			});
-			return "<tr><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" +
+			// Conducta: se registra y se informa, pero no pondera (LGE art. 21). Una boleta
+			// cerrada antes del cambio conserva el peso con que se entregó.
+			const referencia = rubro === "conducta" && !(peso > 0);
+			return "<tr" + (referencia ? " data-no-pondera='conducta'" : "") + "><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" +
 				MOTOR.ETIQUETA_RUBRO[rubro] +
-				" <span class='text-xs font-normal " + (peso > 0 ? "text-gray-400" : "text-gray-300") + "'>" +
-				(peso > 0 ? peso + " %" : "sin peso") + "</span></td>" + celdas + "</tr>";
+				" <span class='text-xs font-normal " + (peso > 0 ? "text-gray-400" : (referencia ? "text-gray-500" : "text-gray-300")) + "'>" +
+				(peso > 0 ? peso + " %" : (referencia ? "referencia, no pondera" : "sin peso")) + "</span></td>" + celdas + "</tr>";
 		}
 
 		// Fila de porcentaje del campo (lo que el motor convierte a calificación)
@@ -755,7 +765,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<span class='block text-xs font-normal text-gray-500'>" + (faseEtiqueta ? "Fase " + faseEtiqueta + ": " : "") + esc(escalaEtiqueta) + "</span></td>" +
 			filaCalificacion + "</tr>" +
 			"</tbody></table></div>" +
-			asisReferencia + barraEstado + avisosHtml;
+			"<p class='text-xs text-gray-500 -mt-4 mb-6' data-nota-conducta>La conducta se registra en el cierre del día y se informa en las observaciones: " +
+			"no pondera en el porcentaje ni en la calificación (Ley General de Educación, art. 21). Un rubro sin datos reparte su peso entre los demás.</p>" +
+			asisReferencia + barraEstado + avisosHtml +
+			// Evaluación final del ciclo: una sola función para todos los documentos
+			"<h3 class='font-bold text-gray-800 mb-2'>Evaluación final del ciclo</h3>" +
+			"<div class='mb-6'>" + RDB.htmlFinalCiclo(boletaCicloAlumno, alumnoVisible.grado, { trimestre: trimestre, id: "boletaFinalCiclo" }) + "</div>";
 
 		// Sección 2: Cuaderno
 		const cuadernoMap = window.CatalogoHabilidades.aMapa(diagnostica && diagnostica.cuaderno);
@@ -783,7 +798,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<div class='rounded-xl border border-gray-200 p-4'>" +
 			"<h4 class='font-semibold text-gray-700 mb-2 text-sm'>Lectura</h4>" +
 			"<div class='flex justify-between text-sm py-1 border-b border-gray-100'><span class='text-gray-600'>Velocidad (PPM)</span><span class='font-semibold'>" + (ppm != null ? ppm : "—") + "</span></div>" +
-			"<div class='flex justify-between text-sm py-1 border-b border-gray-100'><span class='text-gray-600'>Fluidez lectora</span><span class='font-semibold'>" + nivelLect + "</span></div>" +
+			"<div class='flex justify-between gap-3 text-sm py-1 border-b border-gray-100'><span class='text-gray-600'>Fluidez lectora" +
+			(bandaVisible ? "<span class='block text-xs text-gray-400' data-referencia-ppm>" +
+				esc(window.CatalogoHabilidades.textoReferenciaPPM(bandaVisible, alumnoVisible.grado)) + "</span>" : "") +
+			"</span><span class='font-semibold text-right'>" + nivelLect + "</span></div>" +
 			"<div class='flex justify-between items-center text-sm py-1'><span class='text-gray-600'>Comprensión</span>" + semCirculo(compr) + "</div>" +
 			"</div>" +
 			"<div class='rounded-xl border border-gray-200 p-4'>" +
@@ -1066,7 +1084,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					// Cuaderno, lectura y matemáticas tal como se entregan (null = sin diagnóstico)
 					diagnostico: window.ReporteDatos.fotoDiagnostico(diagnostica),
 					asistencia: window.ReporteDatos.fotoAsistencia(asistenciaHoy),
-					// Grado, fase, escala y estándar de PPM de hoy: si después cambia el grado del
+					// Grado, fase, escala y referencia de PPM de hoy: si después cambia el grado del
 					// alumno, lo entregado no se mueve (decisión de Jorge 6)
 					alumno: window.ReporteDatos.fotoAlumno(alumno, bandas ? bandas[alumno.grado] || null : null),
 					// Porcentaje, semáforo y desglose por rubro de cada campo (y si no había

@@ -33,7 +33,7 @@
 	    desglose por grado solo aparece si el grado tiene al menos 3 alumnos con dato.
 
 	Reglas de las áreas de atención (misión §3.5):
-	  - Lectura: PPM "requiere apoyo" o "cercano al estándar" de su grado (mismo criterio
+	  - Lectura: PPM "requiere apoyo" o "cercano a la referencia" SEP 2010 de su grado (mismo criterio
 	    que la Capa 1 para escribir "por debajo de lo esperado").
 	  - Rubros bajo 60 %: tareas, trabajos y examen, con el rubro de todo el trimestre (todos
 	    los campos juntos). Participación y conducta se capturan una vez al día; 1 (normal) y
@@ -638,9 +638,9 @@
 			titulo: "Panorama del grupo",
 			html: encabezado(modelo, "Panorama del grupo") +
 				"<div class='j-cuerpo'><div class='j-panorama'>" + hero + comparativo + grados + boleta + "</div>" +
-				"<p class='j-nota'>Porcentaje de logro: combina tareas, trabajos, participación, conducta y examen de cada campo formativo " +
+				"<p class='j-nota'>Porcentaje de logro: combina tareas, trabajos, participación y examen de cada campo formativo " +
 				"con los pesos que definió el docente (el examen por campo es aproximado). El promedio de cada alumno es el de sus campos con datos; " +
-				"el del grupo, el de sus alumnos. La asistencia no cuenta para la calificación.</p></div>",
+				"el del grupo, el de sus alumnos. La asistencia y la conducta no cuentan para la calificación: la conducta se informa aparte.</p></div>",
 		};
 	}
 
@@ -757,12 +757,12 @@
 		var n = g.fluidez;
 		var conDato = g.alumnos.length - n.sinDato;
 		var resumen = banda
-			? "<strong>" + (n.estandar + n.avanzado) + " de " + conDato + "</strong> leen con la fluidez esperada para su grado o más."
-			: "Sin banda de referencia para este grado.";
+			? "<strong>" + (n.estandar + n.avanzado) + " de " + conDato + "</strong> alcanzan la referencia de su grado o la superan."
+			: "Sin referencia de palabras por minuto para este grado.";
 		return "<div class='j-panel-fluidez'>" +
 			"<div class='j-resumen-grado'><span class='j-badge' style='background:" + g.color + "'>" + textoGrado(g.grado) + "</span>" +
 			"<span>" + resumen + "</span>" +
-			(banda ? "<span class='j-apagado'>Estándar de " + textoGrado(g.grado) + ": " + (banda.cercano_max + 1) + " a " + banda.estandar_max + " ppm</span>" : "") +
+			(banda ? "<span class='j-apagado' data-referencia-ppm>Referencia SEP 2010 para " + textoGrado(g.grado) + ": " + (banda.cercano_max + 1) + " a " + banda.estandar_max + " ppm</span>" : "") +
 			"</div>" + eje + filas + "</div>";
 	}
 
@@ -802,8 +802,8 @@
 			return {
 				titulo: titulo,
 				html: encabezado(modelo, titulo, op.mostrarNombres
-					? "Palabras por minuto de cada alumno frente a lo esperado para su grado, en orden de lista."
-					: "Palabras por minuto de cada alumno frente a lo esperado para su grado, de menor a mayor y sin identificar a nadie.") +
+					? "Palabras por minuto de cada alumno frente a la referencia SEP 2010 de su grado, en orden de lista."
+					: "Palabras por minuto de cada alumno frente a la referencia SEP 2010 de su grado, de menor a mayor y sin identificar a nadie.") +
 					"<div class='j-cuerpo'><div class='j-fluidez" + (op.mostrarNombres ? " j-con-nombres" : "") + "' style='--alto:" + alto.toFixed(2) + "em'>" +
 					pagina.map(function (b) { return panelFluidez(modelo, b.g, b.lista, op); }).join("") +
 					"</div>" + leyenda + "</div>",
@@ -887,7 +887,7 @@
 			html: encabezado(modelo, "Áreas de atención del grupo",
 				"Lo que el grupo necesita reforzar. Son conteos del grupo: no se muestran nombres ni números de lista.") +
 				"<div class='j-cuerpo'>" + cuerpo +
-				"<p class='j-nota'>Reglas: lectura por debajo del estándar de su grado; tareas, trabajos o evaluación escrita por debajo de 60 % en el trimestre; " +
+				"<p class='j-nota'>Reglas: lectura por debajo de la referencia SEP 2010 de su grado; tareas, trabajos o evaluación escrita por debajo de 60 % en el trimestre; " +
 				"participación y convivencia por debajo del valor habitual del día. Cada familia recibe en la boleta el detalle de su hija o hijo.</p></div>",
 		};
 	}

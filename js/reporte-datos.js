@@ -320,11 +320,108 @@
 		return vacio(fila.porcentaje);
 	}
 
-	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal
-	function promedio(valores) {
-		var nums = valores.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
+	/*
+		Promedios de calificaciones: con un número entero y un decimal, TRUNCADO, no
+		redondeado (decisión de Jorge del 2026-09-24). El Acuerdo 10/09/23 (art. 9) pide "los
+		promedios con un número entero y un decimal" sin decir cómo cortar; las normas de
+		control escolar de la SEP anteriores dicen "no se deben redondear", y la app ya trunca
+		el porcentaje. Se cuenta en décimas enteras para que 7.6 no salga 7.5999.
+	*/
+	function decimas(v) { return Math.round(Number(v) * 10); }
+	function promedioTruncado(valores) {
+		var nums = valores.filter(function (v) { return v !== null && v !== undefined && v !== "" && !isNaN(v); });
 		if (!nums.length) return null;
-		return Math.round((nums.reduce(function (a, b) { return a + b; }, 0) / nums.length) * 10) / 10;
+		var suma = nums.reduce(function (a, v) { return a + decimas(v); }, 0);
+		return Math.floor(suma / nums.length + 1e-9) / 10;
+	}
+	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal, truncado
+	function promedio(valores) { return promedioTruncado(valores); }
+
+	/*
+		Evaluación final del ciclo (Acuerdo 10/09/23: art. 7 III b, "tres evaluaciones
+		parciales [...] y una final" por campo formativo; art. 9, acreditación). Como en las
+		boletas oficiales de la DGAIR 2024-2025: por campo, T1, T2, T3 y el promedio final;
+		el promedio final de grado; y si acredita.
+		  - Final por campo: promedio de las tres calificaciones CONFIRMADAS (calificacionOficial;
+		    las cerradas conservan su número), truncado a un decimal. Falta una → null.
+		  - Promedio final de grado: promedio de las cuatro finales, truncado a un decimal.
+		  - Acreditación (art. 9): 1° se acredita con haber cursado el grado; 2° a 6°, con un
+		    promedio final de grado mínimo de 6. Solo con los tres trimestres de los cuatro
+		    campos confirmados; antes, "pendiente": nunca un número parcial como final.
+		  - Grado: el de la foto del cierre del 3er trimestre si está cerrado (lo entregado);
+		    si no, el que da quien llama (el de hoy o el del cierre del trimestre que se ve).
+		boletaCiclo = {1: {LEN: fila, ...}, 2: {...}, 3: {...}}
+		→ { porCampo: {LEN: n|null, ...}, promedio: n|null, completo, faltan (calificaciones
+		    sin confirmar, de 12), grado, acreditacion: "acredita"|"no_acredita"|"pendiente" }
+	*/
+	var TRIMESTRES = [1, 2, 3];
+	var ACREDITA = "acredita", NO_ACREDITA = "no_acredita", PENDIENTE = "pendiente";
+	var ETIQUETA_ACREDITACION = { acredita: "Acredita", no_acredita: "No acredita", pendiente: "pendiente" };
+	function finalCiclo(boletaCiclo, grado) {
+		var ciclo = boletaCiclo || {};
+		var porCampo = {}, faltan = 0;
+		CAMPOS.forEach(function (c) {
+			var valores = TRIMESTRES.map(function (t) { return calificacionOficial((ciclo[t] || {})[c]).valor; });
+			var sin = valores.filter(function (v) { return v === null; }).length;
+			faltan += sin;
+			porCampo[c] = sin ? null : promedioTruncado(valores);
+		});
+		var completo = faltan === 0;
+		var prom = completo ? promedioTruncado(CAMPOS.map(function (c) { return porCampo[c]; })) : null;
+		// Grado del cierre del 3er trimestre (lo entregado), si no el que se recibe
+		var t3 = ciclo[3] || {};
+		var ac = boletaCerrada(t3) ? alumnoCierre(fotoCierre(t3.GEN)) : null;
+		var g = ac ? Number(ac.grado) : (vacio(grado) ? null : Number(grado));
+		var acreditacion = PENDIENTE;
+		if (completo) acreditacion = (g === 1 || prom >= 6) ? ACREDITA : NO_ACREDITA;
+		return { porCampo: porCampo, promedio: prom, completo: completo, faltan: faltan, grado: g, acreditacion: acreditacion };
+	}
+	// 7.6 → "7.6"; 8 → "8.0"; null → null
+	function formatoDecimal(v) { return vacio(v) ? null : (Math.floor(Number(v) * 10 + 1e-9) / 10).toFixed(1); }
+
+	/*
+		Tabla de la evaluación final del ciclo para el reporte detallado y la pestaña Boleta de
+		Reportes (Tailwind). La boleta imprimible tiene la suya, con su propio estilo.
+		opciones = { trimestre (el que se ve, resaltado), id }
+	*/
+	function htmlFinalCiclo(boletaCiclo, grado, opciones) {
+		opciones = opciones || {};
+		var f = finalCiclo(boletaCiclo, grado);
+		var borde = "px-2 py-1.5 border border-gray-200 text-center";
+		var celda = function (v, extra, attrs) {
+			return v === null || v === undefined
+				? "<td class='" + borde + " text-xs italic text-gray-400' " + (attrs || "") + ">pendiente</td>"
+				: "<td class='" + borde + " font-semibold text-gray-900 " + (extra || "") + "' " + (attrs || "") + ">" + esc(v) + "</td>";
+		};
+		var cabeza = "<tr class='bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500'>" +
+			"<th class='px-2 py-1.5 border border-gray-200 text-left'>Campo formativo</th>" +
+			TRIMESTRES.map(function (t) {
+				return "<th class='px-2 py-1.5 border border-gray-200" + (t === opciones.trimestre ? " bg-blue-50 text-blue-800" : "") + "'>T" + t + "</th>";
+			}).join("") + "<th class='px-2 py-1.5 border border-gray-200'>Final</th></tr>";
+		var cuerpo = CAMPOS.map(function (c) {
+			return "<tr><th scope='row' class='px-2 py-1.5 border border-gray-200 text-left font-normal text-gray-700'>" +
+				"<span class='inline-block w-2 h-2 rounded-full mr-1.5 align-middle' style='background:" + COLOR_CAMPO[c] + "'></span>" +
+				"<span class='font-semibold'>" + c + "</span> <span class='hidden sm:inline'>" + esc(NOMBRE_CAMPO[c]) + "</span></th>" +
+				TRIMESTRES.map(function (t) {
+					return celda(calificacionOficial(((boletaCiclo || {})[t] || {})[c]).valor, "", "data-final-trim='" + t + "' data-final-de='" + c + "'");
+				}).join("") +
+				celda(formatoDecimal(f.porCampo[c]), "bg-gray-50", "data-final-campo='" + c + "'") + "</tr>";
+		}).join("");
+		var pie = "<tr class='bg-gray-50'><th scope='row' colspan='4' class='px-2 py-1.5 border border-gray-200 text-left font-semibold text-gray-800'>Promedio final de grado</th>" +
+			celda(formatoDecimal(f.promedio), "", "data-final-promedio") + "</tr>";
+		var colorAcr = f.acreditacion === ACREDITA ? "text-emerald-700" : (f.acreditacion === NO_ACREDITA ? "text-red-700" : "text-gray-500 italic");
+		var regla = f.grado === 1
+			? "En 1° se acredita con haber cursado el grado."
+			: "De 2° a 6° se acredita con un promedio final de grado mínimo de 6.";
+		return "<div" + (opciones.id ? " id='" + esc(opciones.id) + "'" : "") + " data-final-ciclo>" +
+			"<div class='overflow-x-auto'><table class='w-full text-xs sm:text-sm border-collapse'>" +
+			"<thead>" + cabeza + "</thead><tbody>" + cuerpo + pie + "</tbody></table></div>" +
+			"<p class='mt-2 text-sm'><span class='font-semibold text-gray-700'>Acreditación del grado:</span> " +
+			"<span class='font-bold " + colorAcr + "' data-acreditacion='" + f.acreditacion + "'>" + ETIQUETA_ACREDITACION[f.acreditacion] + "</span>" +
+			(f.completo ? "" : " <span class='text-xs text-gray-500'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</p>" +
+			"<p class='mt-1 text-xs text-gray-500 leading-relaxed'>La final de cada campo es el promedio de sus tres calificaciones confirmadas, con un decimal y sin redondear; " +
+			"el promedio final de grado, el de las cuatro finales. Aparecen cuando están confirmados los tres trimestres. " + regla + " (Acuerdo 10/09/23, arts. 7 y 9).</p>" +
+			"</div>";
 	}
 
 	/*
@@ -572,6 +669,11 @@
 		contexto: contexto,
 		calificacionOficial: calificacionOficial,
 		promedio: promedio,
+		promedioTruncado: promedioTruncado,
+		finalCiclo: finalCiclo,
+		formatoDecimal: formatoDecimal,
+		htmlFinalCiclo: htmlFinalCiclo,
+		ETIQUETA_ACREDITACION: ETIQUETA_ACREDITACION,
 		boletasCiclo: boletasCiclo,
 		boletaCerrada: boletaCerrada,
 		fotoCierre: fotoCierre,

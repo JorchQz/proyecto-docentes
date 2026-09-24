@@ -11,9 +11,14 @@
 	Reglas (docs/CONTEXTO.md §3 y docs/PRODUCTO-MI-SALON.md §B.2-B.5):
 	  - La ASISTENCIA no pondera nunca (Acuerdo 10/09/23, art. 7 I d). Se calcula solo
 	    como dato de referencia.
-	  - Pesos en maestro_ajustes (tareas/trabajos/participación/conducta/examen, suman
-	    100). Un peso en 0 es válido y se respeta. Un rubro sin datos no entra y los
-	    demás se renormalizan.
+	  - Pesos en maestro_ajustes (tareas/trabajos/participación/examen). Un peso en 0 es
+	    válido y se respeta. Un rubro sin datos no entra y los demás se renormalizan.
+	  - La CONDUCTA no pondera (decisión de Jorge del 2026-09-24; LGE art. 21: la conducta
+	    se informa aparte de la calificación). Se sigue registrando en el cierre del día y
+	    el motor la sigue contando (obtenido, máximo, días) para los textos y los reportes,
+	    pero su peso es siempre 0: se reparte como el de cualquier rubro sin datos. Un
+	    peso_conducta guardado en maestro_ajustes se ignora (no se borra). Las boletas
+	    cerradas no pasan por aquí: conservan su foto con la conducta que tenía.
 	  - Máximos automáticos: se cuentan los productos que le tocan al grado del alumno;
 	    justificado / no_aplica se descuentan del máximo (no penalizan).
 	  - Porcentaje → calificación SOLO con la función SQL calcular_calificacion_boleta
@@ -41,6 +46,11 @@
 	var VALOR_INCOMPLETO = 0.5; // incompleto sin nivel
 
 	var RUBROS = ["tareas", "trabajos", "participacion", "conducta", "examen"];
+	// Rubros que se registran y se informan, pero no entran al porcentaje (peso siempre 0)
+	var RUBROS_REFERENCIA = ["conducta"];
+	function esReferencia(rubro) { return RUBROS_REFERENCIA.indexOf(rubro) !== -1; }
+	// Pesos de fábrica (los mismos DEFAULT de maestro_ajustes); la conducta ya no pondera
+	var PESOS_DEFECTO = { tareas: 28, trabajos: 28, participacion: 6, conducta: 0, examen: 33 };
 
 	// productos_sesion.tipo → rubro de la fórmula ('examen' como producto no entra:
 	// el rubro de examen sale de la tabla examenes)
@@ -190,9 +200,11 @@
 			var rubros = {}, suma = 0, pesoUsado = 0;
 			RUBROS.forEach(function (r) {
 				var acc = porCampo[campo][r];
-				var peso = Number(datos.pesos[r] || 0);
+				// La conducta nunca pondera, traiga el peso que traiga
+				var peso = esReferencia(r) ? 0 : Number(datos.pesos[r] || 0);
 				var fraccion = acc.maximo > 0 ? acc.obtenido / acc.maximo : null;
 				rubros[r] = { obtenido: acc.obtenido, maximo: acc.maximo, fraccion: fraccion, peso: peso };
+				if (esReferencia(r)) rubros[r].referencia = true;
 				if (acc.entrega) rubros[r].entrega = acc.entrega;
 				if (acc.diario) rubros[r].diario = acc.diario;
 				if (fraccion !== null && peso > 0) { suma += fraccion * peso; pesoUsado += peso; }
@@ -290,14 +302,25 @@
 		// Sin los pesos del maestro no se calcula con los de fábrica: la boleta guardaría una
 		// propuesta con otros pesos sin decirlo
 		if (ajustesRes.error) throw ajustesRes.error;
-		var aj = ajustesRes.data;
-		return {
-			tareas:        Number(aj && aj.peso_tareas        != null ? aj.peso_tareas        : 28),
-			trabajos:      Number(aj && aj.peso_trabajos      != null ? aj.peso_trabajos      : 28),
-			participacion: Number(aj && aj.peso_participacion != null ? aj.peso_participacion : 6),
-			conducta:      Number(aj && aj.peso_conducta      != null ? aj.peso_conducta      : 5),
-			examen:        Number(aj && aj.peso_examen        != null ? aj.peso_examen        : 33),
-		};
+		return pesosDeAjustes(ajustesRes.data);
+	}
+
+	/*
+		Pesos del maestro (fila de maestro_ajustes o null). peso_conducta se ignora: la
+		conducta no pondera. Si solo la conducta tenía peso (los otros cuatro en 0), se
+		usan los de fábrica: con todo en 0 ningún campo tendría porcentaje.
+	*/
+	function pesosDeAjustes(aj) {
+		var pesos = {};
+		["tareas", "trabajos", "participacion", "examen"].forEach(function (r) {
+			var v = aj ? aj["peso_" + r] : null;
+			pesos[r] = Number(v !== null && v !== undefined ? v : PESOS_DEFECTO[r]);
+		});
+		if (!(pesos.tareas + pesos.trabajos + pesos.participacion + pesos.examen > 0)) {
+			pesos = Object.assign({}, PESOS_DEFECTO);
+		}
+		pesos.conducta = 0;
+		return pesos;
 	}
 
 	/*
@@ -562,6 +585,10 @@
 	var api = {
 		ESCALA_NIVEL: ESCALA_NIVEL,
 		RUBROS: RUBROS,
+		RUBROS_REFERENCIA: RUBROS_REFERENCIA,
+		esReferencia: esReferencia,
+		PESOS_DEFECTO: PESOS_DEFECTO,
+		pesosDeAjustes: pesosDeAjustes,
 		ETIQUETA_RUBRO: {
 			tareas: "Tareas", trabajos: "Trabajos", participacion: "Participación",
 			conducta: "Conducta", examen: "Examen",

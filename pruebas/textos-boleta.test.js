@@ -222,7 +222,7 @@ contiene("el cuaderno va a la fila general", r.GEN.areas, "letra legible");
 noContiene("el cuaderno no se mete a un campo formativo", r.LEN.areas, "letra legible");
 
 r = T.generar({ corto: corto, catalogo: catalogo, banda: banda4, diagnostica: { lectura_ppm: 110, lectura_comprension: "logrado" } });
-contiene("PPM en estándar es fortaleza", r.LEN.fortalezas, "fluidez esperada");
+contiene("PPM en la referencia es fortaleza (rotulada SEP 2010)", r.LEN.fortalezas, "alcanza la referencia SEP 2010");
 contiene("comprensión lograda es fortaleza", r.LEN.fortalezas, "Comprende lo que lee");
 
 r = T.generar({ corto: corto, catalogo: catalogo, diagnostica: { cuaderno: [{ clave: "cuaderno.letra_legible", nivel: "logrado" }] } });

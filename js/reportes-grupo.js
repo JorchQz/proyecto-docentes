@@ -26,10 +26,19 @@
 			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 	}
 
+	// Con un decimal, truncado y no redondeado, igual que ReporteDatos.promedio (decisión de
+	// Jorge del 2026-09-24): se cuenta en décimas enteras
 	function promedio(valores) {
 		var nums = valores.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
 		if (!nums.length) return null;
-		return Math.round((nums.reduce(function (a, b) { return a + b; }, 0) / nums.length) * 10) / 10;
+		var suma = nums.reduce(function (a, v) { return a + Math.round(Number(v) * 10); }, 0);
+		return Math.floor(suma / nums.length + 1e-9) / 10;
+	}
+
+	// Evaluación final del ciclo (ReporteDatos.finalCiclo, la misma de todos los documentos)
+	function finalDe(boletaCiclo, grado) {
+		var RD = typeof window !== "undefined" ? window.ReporteDatos : null;
+		return RD && RD.finalCiclo ? RD.finalCiclo(boletaCiclo || {}, grado) : null;
 	}
 
 	function oficial(fila) {
@@ -37,12 +46,13 @@
 		return Number(fila.calificacion);
 	}
 
-	function fmt1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+	function fmt1(v) { return (Math.floor(v * 10 + 1e-9) / 10).toFixed(1); }
 
 	/*
 		Una fila por alumno activo:
-		{ alumno, campos: {LEN: {oficial, propuesta}}, confirmadas, completa, promedio }
+		{ alumno, campos: {LEN: {oficial, propuesta}}, confirmadas, completa, promedio, final }
 		promedio solo cuando los 4 campos están confirmados.
+		final: la evaluación final del ciclo (ReporteDatos.finalCiclo) o null sin esa capa.
 	*/
 	function filas(alumnos, datos, trimestre) {
 		var porAlumno = (datos.motor && datos.motor.porAlumno) || {};
@@ -64,6 +74,7 @@
 				confirmadas: confirmadas,
 				completa: completa,
 				promedio: completa ? promedio(CAMPOS.map(function (c) { return campos[c].oficial; })) : null,
+				final: finalDe((datos.boletas || {})[al.id], al.grado),
 			};
 		}).sort(function (a, b) {
 			return (a.alumno.grado || 0) - (b.alumno.grado || 0) || (a.alumno.num_lista || 0) - (b.alumno.num_lista || 0);
@@ -137,6 +148,43 @@
 		return "﻿" + lineas.join("\r\n");
 	}
 
+	/*
+		Evaluación final del ciclo del grupo (no depende del trimestre elegido): por alumno, la
+		final de cada campo, el promedio final de grado y la acreditación (Acuerdo 10/09/23,
+		arts. 7 y 9). "pendiente" mientras falte confirmar alguno de los 12 números.
+	*/
+	var ETIQUETA_ACR = { acredita: "Acredita", no_acredita: "No acredita", pendiente: "pendiente" };
+	function celdaFinal(v) {
+		return v === null || v === undefined
+			? "<span class='text-xs italic text-gray-400'>pendiente</span>"
+			: "<span class='font-bold " + colorCalif(v) + "'>" + fmt1(v) + "</span>";
+	}
+	function htmlFinalGrupo(lista) {
+		var conFinal = lista.filter(function (f) { return f.final; });
+		if (!conFinal.length) return "";
+		var completos = conFinal.filter(function (f) { return f.final.completo; }).length;
+		var filasHtml = conFinal.map(function (f) {
+			var fin = f.final;
+			var color = fin.acreditacion === "acredita" ? "text-green-700" : (fin.acreditacion === "no_acredita" ? "text-red-700" : "text-gray-400 italic");
+			return "<tr data-final-alumno='" + esc(f.alumno.id) + "'>" +
+				"<td class='px-3 py-2 text-gray-800 whitespace-nowrap'>" + esc(f.alumno.nombre_completo || "Sin nombre") + "</td>" +
+				"<td class='px-3 py-2 text-center'>" + (fin.grado ? fin.grado + "°" : "—") + "</td>" +
+				CAMPOS.map(function (c) { return "<td class='px-3 py-2 text-center' data-final-campo='" + c + "'>" + celdaFinal(fin.porCampo[c]) + "</td>"; }).join("") +
+				"<td class='px-3 py-2 text-center' data-final-promedio>" + celdaFinal(fin.promedio) + "</td>" +
+				"<td class='px-3 py-2 text-center text-sm font-semibold " + color + "' data-acreditacion='" + fin.acreditacion + "'>" + ETIQUETA_ACR[fin.acreditacion] + "</td></tr>";
+		}).join("");
+		return "<div data-final-grupo><h3 class='font-bold text-gray-800 text-sm mb-2'>Evaluación final del ciclo</h3>" +
+			"<p class='text-xs text-gray-500 mb-2'>" + completos + " de " + conFinal.length +
+			" alumnos con los tres trimestres de los cuatro campos confirmados. No depende del trimestre elegido.</p>" +
+			"<div class='overflow-x-auto'><table class='min-w-full text-sm border-collapse'>" +
+			"<thead><tr class='bg-gray-50 text-xs text-gray-500 uppercase'><th class='px-3 py-2 text-left'>Alumno</th><th class='px-3 py-2 text-center'>Grado</th>" +
+			CAMPOS.map(function (c) { return "<th class='px-3 py-2 text-center whitespace-nowrap'>" + CORTO_CAMPO[c] + " final</th>"; }).join("") +
+			"<th class='px-3 py-2 text-center whitespace-nowrap'>Promedio final</th><th class='px-3 py-2 text-center'>Acreditación</th></tr></thead>" +
+			"<tbody class='divide-y divide-gray-100'>" + filasHtml + "</tbody></table></div>" +
+			"<p class='text-xs text-gray-400 mt-1'>Final de cada campo: promedio de sus tres calificaciones confirmadas; promedio final: el de las cuatro finales; " +
+			"con un decimal y sin redondear. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6.</p></div>";
+	}
+
 	// Concentrado para el director: niveles por promedio de las 4 calificaciones confirmadas
 	function htmlConcentrado(lista, trimestre) {
 		if (!lista.length) return "<p class='text-gray-400'>Sin alumnos activos en el grupo.</p>";
@@ -205,6 +253,7 @@
 
 		return "<div class='flex flex-col gap-4'>" +
 			avisoConfirmacion(lista) +
+			htmlFinalGrupo(lista) +
 			bloque("Alto (promedio de 9 a 10)", { borde: "border-green-200", cabecera: "bg-green-50 text-green-800" }, alto) +
 			bloque("Medio (promedio de 7 a 8.9)", { borde: "border-amber-200", cabecera: "bg-amber-50 text-amber-800" }, medio) +
 			bloque("Bajo (promedio menor a 7)", { borde: "border-red-200", cabecera: "bg-red-50 text-red-800" }, bajo) +
@@ -219,5 +268,6 @@
 		htmlVistaRecrea: htmlVistaRecrea,
 		csvVistaRecrea: csvVistaRecrea,
 		htmlConcentrado: htmlConcentrado,
+		htmlFinalGrupo: htmlFinalGrupo,
 	};
 })();

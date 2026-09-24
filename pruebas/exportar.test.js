@@ -28,7 +28,9 @@ const catalogo = window.CatalogoHabilidades;
 // ── Columnas: las de BD_Alumnos de Fanny, en su orden, con DHL ──────────────
 const ESPERADAS = ["Alumno", "Grado"];
 ["LEN", "SAB", "ETI", "DHL"].forEach((c) => {
-	["Tareas", "Trabajos", "Asist.", "Part.", "Cond.", "Examen"].forEach((r) => ESPERADAS.push(c + ": " + r));
+	// La conducta no pondera (decisión de Jorge del 2026-09-24): su columna se queda en su
+	// lugar, rotulada como referencia
+	["Tareas", "Trabajos", "Asist.", "Part.", "Cond. (referencia)", "Examen"].forEach((r) => ESPERADAS.push(c + ": " + r));
 });
 ESPERADAS.push(
 	"Cuaderno: Orden/limpieza", "Cuaderno: Fecha", "Cuaderno: Título", "Cuaderno: Letra", "Cuaderno: Mayús/Minús",
@@ -40,11 +42,15 @@ ESPERADAS.push(
 	"Asistencia (referencia, no pondera)",
 	"LEN: Calificación", "SAB: Calificación", "ETI: Calificación", "DHL: Calificación",
 	// Al final, sin mover las de la hoja de Fanny
-	"Boleta del trimestre", "Juicio docente sin evidencias"
+	"Boleta del trimestre", "Juicio docente sin evidencias",
+	// Evaluación final del ciclo (Acuerdo 10/09/23, arts. 7 y 9), también al final
+	"LEN: Final", "SAB: Final", "ETI: Final", "DHL: Final", "Promedio final de grado", "Acreditación"
 );
 const ENC = E.encabezados();
 ok("encabezados en el orden exacto de la hoja", ENC, ESPERADAS);
-ok("56 columnas (las 54 de la hoja + boleta y juicio)", ENC.length, 56);
+ok("62 columnas (las 54 de la hoja + boleta y juicio + 6 de la evaluación final)", ENC.length, 62);
+ok("las columnas de la hoja de Fanny no se movieron (Cond. sigue en la 7a)", ENC.indexOf("LEN: Cond. (referencia)"), 6);
+ok("las columnas nuevas van al final", ENC.slice(-6), ["LEN: Final", "SAB: Final", "ETI: Final", "DHL: Final", "Promedio final de grado", "Acreditación"]);
 ok("nunca HUM", ENC.some((h) => /HUM/.test(h)), false);
 ok("claves de cuaderno existen en el catálogo",
 	E.CUADERNO_COLS.every((x) => catalogo.CUADERNO.some((c) => c.clave === x.clave)) && E.CUADERNO_COLS.length === catalogo.CUADERNO.length, true);
@@ -133,13 +139,14 @@ const [fJose, fLucia, fRaul] = tabla.filas;
 const [mJose, mLucia, mRaul] = tabla.maximos;
 
 ok("una fila por alumno, en el orden dado", tabla.filas.map((f) => f[0]), [JOSE.nombre_completo, LUCIA.nombre_completo, RAUL.nombre_completo]);
-ok("cada fila tiene 56 celdas", tabla.filas.every((f) => f.length === 56) && tabla.maximos.every((f) => f.length === 56), true);
+ok("cada fila tiene 62 celdas", tabla.filas.every((f) => f.length === 62) && tabla.maximos.every((f) => f.length === 62), true);
 ok("grado numérico", fJose[col("Grado")], 1);
 
 // Rubros: obtenido del motor con 1 decimal
 ok("LEN tareas 2.66 → 2.7", fJose[col("LEN: Tareas")], 2.7);
 ok("LEN trabajos 3.7", fJose[col("LEN: Trabajos")], 3.7);
 ok("LEN part. 3.25 → 3.3", fJose[col("LEN: Part.")], 3.3);
+ok("LEN conducta: el dato se sigue exportando como referencia (4 de 4)", fJose[col("LEN: Cond. (referencia)")], 4);
 ok("LEN examen 0.667 → 0.67 (dos decimales: con uno, 2/3 se leía 70 %)", fJose[col("LEN: Examen")], 0.67);
 ok("rubro sin evidencias queda vacío (no 0)", fJose[col("SAB: Trabajos")], null);
 ok("obtenido 0 con máximo > 0 sí es 0", fLucia[col("LEN: Tareas")], 0);
@@ -194,6 +201,10 @@ ok("SAB con número sin confirmar = pendiente", fJose[col("SAB: Calificación")]
 ok("campo sin fila de boleta = pendiente", fJose[col("ETI: Calificación")], "pendiente");
 ok("Lucía: nada confirmado, todo pendiente",
 	["LEN", "SAB", "ETI", "DHL"].map((c) => fLucia[col(c + ": Calificación")]), ["pendiente", "pendiente", "pendiente", "pendiente"]);
+// Evaluación final: con solo T1 no hay final (nunca un número parcial como final)
+ok("final con solo el T1 confirmado: pendiente en los cuatro campos",
+	["LEN", "SAB", "ETI", "DHL"].map((c) => fJose[col(c + ": Final")]), ["pendiente", "pendiente", "pendiente", "pendiente"]);
+ok("promedio final y acreditación pendientes", [fJose[col("Promedio final de grado")], fJose[col("Acreditación")]], ["pendiente", "pendiente"]);
 ok("otro trimestre no toma la boleta del T1",
 	E.construir({ alumnos: [JOSE], trimestre: 2, motor, diagnosticas: {}, avancePda: [], boletas, bandas }).filas[0][col("LEN: Calificación")], "pendiente");
 
@@ -225,7 +236,7 @@ ok("acentos intactos tras UTF-8", Buffer.from(csv, "utf8").toString("utf8").inde
 const leido = parsearCSV(csv.slice(1));
 ok("CSV: 1 encabezado + 3 alumnos", leido.length, 4);
 ok("CSV: encabezados iguales", leido[0], ESPERADAS);
-ok("CSV: todas las filas con 56 celdas", leido.every((f) => f.length === 56), true);
+ok("CSV: todas las filas con 62 celdas", leido.every((f) => f.length === 62), true);
 ok("CSV: nombre con coma y comillas vuelve igual", leido[1][0], JOSE.nombre_completo);
 ok("CSV: nombre con comillas va entrecomillado y duplicado",
 	csv.indexOf("\"Pérez, José \"\"Pepe\"\" Ñúñez\"") !== -1, true);
@@ -272,7 +283,7 @@ const wb = E.libroXLSX(XLSXFalso, tabla, { grupo: "QA", trimestre: 1 });
 ok("XLSX: tres hojas en orden", wb.SheetNames, ["Concentrado", "Máximos", "Léeme"]);
 ok("XLSX: hoja principal = encabezados + filas", hojas["Concentrado"].aoa.length, 4);
 ok("XLSX: hoja Máximos con los mismos encabezados", hojas["Máximos"].aoa[0], ESPERADAS);
-ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 56);
+ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 
 // ── Boleta cerrada y juicio docente (decisiones de Jorge 5, 6 y 7) ─────────
 {
@@ -322,6 +333,41 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 56);
 	ok("sin juicio: celda vacía", j[col("Juicio docente sin evidencias")], null);
 	ok("Léeme: explica las dos columnas nuevas",
 		["Boleta del trimestre", "Juicio docente sin evidencias"].every((c) => E.hojaLeeme({}).some((f) => f[0] === c)), true);
+}
+
+// ── Evaluación final del ciclo (ReporteDatos.finalCiclo) ───────────────────
+{
+	const conf = (v) => ({ calificacion: v, calificacion_confirmada: true });
+	const ciclo = (t1, t2, t3) => {
+		const salida = { 1: {}, 2: {}, 3: {} };
+		["LEN", "SAB", "ETI", "DHL"].forEach((c, i) => {
+			salida[1][c] = conf(t1[i]); salida[2][c] = conf(t2[i]); salida[3][c] = conf(t3[i]);
+		});
+		return salida;
+	};
+	// Lucía (4°): LEN 7, 8, 8 = 7.66 → 7.6 (truncado); SAB 6, 6, 7 = 6.33 → 6.3;
+	// ETI 9, 9, 9 = 9.0; DHL 5, 6, 6 = 5.66 → 5.6. Promedio (7.6 + 6.3 + 9.0 + 5.6) / 4 = 7.125 → 7.1
+	const bolFinal = { a2: ciclo([7, 6, 9, 5], [8, 6, 9, 6], [8, 7, 9, 6]) };
+	const tf = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: bolFinal, bandas, plantillas: {} });
+	const fl = tf.filas[0];
+	ok("final: LEN 7.66 → 7.6 (truncado, no 7.7)", fl[col("LEN: Final")], 7.6);
+	ok("final: las cuatro", ["LEN", "SAB", "ETI", "DHL"].map((c) => fl[col(c + ": Final")]), [7.6, 6.3, 9, 5.6]);
+	ok("final: promedio final de grado 7.125 → 7.1", fl[col("Promedio final de grado")], 7.1);
+	ok("final: 4° con 7.1 acredita", fl[col("Acreditación")], "Acredita");
+	ok("final: la misma en cualquier trimestre exportado",
+		E.construir({ alumnos: [LUCIA], trimestre: 1, motor, diagnosticas: {}, avancePda: [], boletas: bolFinal, bandas, plantillas: {} }).filas[0][col("Promedio final de grado")], 7.1);
+	// 4° con 5.9: no acredita (5, 6, 6 en tres campos y 6, 6, 6 en uno → 5.6, 5.6, 5.6, 6.0 → 5.7)
+	const bajo = { a2: ciclo([5, 5, 5, 6], [6, 6, 6, 6], [6, 6, 6, 6]) };
+	const fb = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: bajo, bandas, plantillas: {} }).filas[0];
+	ok("final: 4° con promedio 5.7 no acredita", [fb[col("Promedio final de grado")], fb[col("Acreditación")]], [5.7, "No acredita"]);
+	const csvFinal = parsearCSV(E.aCSV(tf.encabezados, tf.filas).slice(1));
+	ok("CSV: final con punto decimal", csvFinal[1][col("LEN: Final")], "7.6");
+	ok("CSV: 9.0 sale como 9 (número)", csvFinal[1][col("ETI: Final")], "9");
+	ok("Léeme: explica final, promedio final y acreditación",
+		["<Campo>: Final", "Promedio final de grado", "Acreditación"].every((c) => E.hojaLeeme({}).some((f) => f[0] === c)), true);
+	ok("Léeme: dice que la conducta no pondera",
+		E.hojaLeeme({}).some((f) => f[0] === "Conducta" && /NO pondera/.test(f[1])), true);
+	ok("Léeme: truncado, sin redondear", E.hojaLeeme({}).some((f) => /truncado \(sin redondear\)/.test(f[1] || "")), true);
 }
 
 // Sin emojis en lo que se exporta

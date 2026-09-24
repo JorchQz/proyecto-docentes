@@ -90,30 +90,32 @@
 	}
 
 	/*
-		resumenCalificaciones(boletaCiclo) → {
-			porCampo: {LEN: {1: n|null, 2, 3, promedio: n|null}, ...},
-			general:  {1: n|null, 2, 3, promedio: n|null}
+		resumenCalificaciones(boletaCiclo, grado) → {
+			porCampo: {LEN: {1: n|null, 2, 3, final: n|null}, ...},
+			general:  {1: n|null, 2, 3, final: n|null},
+			final:    ReporteDatos.finalCiclo (acreditación incluida)
 		}
-		General de un trimestre: solo con los cuatro campos confirmados.
-		General del ciclo: promedio de las calificaciones de los trimestres completos.
+		General de un trimestre: solo con los cuatro campos confirmados (truncado a un decimal).
+		Final de cada campo y promedio final de grado: ReporteDatos.finalCiclo, la misma
+		función de todos los documentos; solo con los tres trimestres confirmados.
 	*/
-	function resumenCalificaciones(boletaCiclo) {
+	function resumenCalificaciones(boletaCiclo, grado) {
 		var campos = RD().CAMPOS;
+		var final = RD().finalCiclo(boletaCiclo, grado);
 		var porCampo = {};
 		campos.forEach(function (c) {
 			var v = confirmadasCampo(boletaCiclo, c);
-			v.promedio = RD().promedio(TRIMESTRES.map(function (t) { return v[t]; }));
+			v.final = final.porCampo[c];
 			porCampo[c] = v;
 		});
-		var general = {}, delCiclo = [];
+		var general = {};
 		TRIMESTRES.forEach(function (t) {
 			var valores = campos.map(function (c) { return porCampo[c][t]; });
 			var completo = valores.every(function (x) { return x !== null && x !== undefined; });
 			general[t] = completo ? RD().promedio(valores) : null;
-			if (completo) delCiclo = delCiclo.concat(valores);
 		});
-		general.promedio = RD().promedio(delCiclo);
-		return { porCampo: porCampo, general: general };
+		general.final = final.promedio;
+		return { porCampo: porCampo, general: general, final: final };
 	}
 
 	// Marca de calificación por juicio docente, sin evidencias registradas (se explica al pie)
@@ -146,16 +148,16 @@
 		return salida;
 	}
 
-	function tablaCalificaciones(boletaCiclo, trimestre, juicioActual) {
+	function tablaCalificaciones(boletaCiclo, trimestre, juicioActual, grado) {
 		var R = RD();
-		var resumen = resumenCalificaciones(boletaCiclo);
+		var resumen = resumenCalificaciones(boletaCiclo, grado);
 		var juicio = juicioCiclo(boletaCiclo, trimestre, juicioActual);
 		var hayJuicio = false;
 		var cabeza = "<thead><tr><th style='text-align:left'>Campo formativo</th>" +
 			TRIMESTRES.map(function (t) {
 				return "<th" + (t === trimestre ? " class='actual'" : "") + "><span class='bol-largo'>Trimestre </span>" +
 					"<span class='bol-corto'>T</span>" + t + "</th>";
-			}).join("") + "<th>Promedio</th></tr></thead>";
+			}).join("") + "<th>Final</th></tr></thead>";
 
 		var cuerpo = R.CAMPOS.map(function (c) {
 			var v = resumen.porCampo[c];
@@ -167,23 +169,37 @@
 					if (j) hayJuicio = true;
 					return celdaValor(v[t], "data-campo='" + c + "' data-trim='" + t + "'", t === trimestre, false, j);
 				}).join("") +
-				celdaValor(v.promedio, "data-campo='" + c + "' data-trim='promedio'", false, true) +
+				celdaValor(v.final, "data-campo='" + c + "' data-trim='final'", false, true) +
 				"</tr>";
 		}).join("");
 
 		var g = resumen.general;
+		var f = resumen.final;
 		var pie = "<tfoot><tr><th scope='row' style='text-align:left'>Promedio general</th>" +
 			TRIMESTRES.map(function (t) {
 				return celdaValor(g[t], "data-campo='GENERAL' data-trim='" + t + "'", t === trimestre, true);
 			}).join("") +
-			celdaValor(g.promedio, "data-campo='GENERAL' data-trim='promedio'", false, true) +
+			celdaValor(g.final, "data-campo='GENERAL' data-trim='final'", false, true) +
 			"</tr></tfoot>";
+
+		var etiquetaAcr = R.ETIQUETA_ACREDITACION[f.acreditacion];
+		var colorAcr = f.acreditacion === "acredita" ? "#047857" : (f.acreditacion === "no_acredita" ? "#b91c1c" : "#6b7280");
+		var acreditacion = "<p class='bol-acreditacion' id='boletaAcreditacion' data-acreditacion='" + f.acreditacion + "'>" +
+			"<span><strong>Promedio final de grado:</strong> <span data-promedio-final>" +
+			esc(f.promedio === null ? "pendiente" : R.formatoDecimal(f.promedio)) + "</span></span>" +
+			"<span><strong>Acreditación:</strong> <span style='font-weight:700;color:" + colorAcr + (f.completo ? "" : ";font-style:italic") + "'>" +
+			esc(etiquetaAcr) + "</span>" +
+			(f.completo ? "" : " <span style='font-size:11px;color:#6b7280'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</span></p>";
 
 		return "<div class='bol-tabla-envoltura'><table class='bol-tabla' id='boletaTablaCalificaciones'>" +
 			cabeza + "<tbody>" + cuerpo + "</tbody>" + pie + "</table></div>" +
+			acreditacion +
 			"<p class='bol-nota'>«pendiente»: el docente todavía no confirma esa calificación. " +
-			"Los promedios consideran solo calificaciones confirmadas; el promedio general de un trimestre " +
-			"aparece cuando están confirmados los cuatro campos formativos.</p>" +
+			"El promedio general de un trimestre aparece cuando están confirmados los cuatro campos formativos. " +
+			"La final de cada campo es el promedio de sus tres calificaciones confirmadas y el promedio final de grado, el de las cuatro finales: " +
+			"con un decimal, sin redondear, y solo cuando están confirmados los tres trimestres. " +
+			(f.grado === 1 ? "En 1° se acredita con haber cursado el grado." : "De 2° a 6° se acredita con un promedio final de grado mínimo de 6.") +
+			" La conducta se informa en las observaciones: no forma parte de la calificación.</p>" +
 			(hayJuicio
 				? "<p class='bol-nota' id='boletaNotaJuicio'><span style='color:#b45309;font-weight:600'>*</span> Calificación asignada por juicio docente: " +
 					"no hay evidencias registradas de ese campo formativo en el trimestre.</p>"
@@ -286,11 +302,10 @@
 			}).join("") + "</div>";
 	}
 
-	// "Estándar para 2°: 60 a 84 PPM" (de la banda del grado)
+	// "Referencia SEP 2010 para 2°: 60 a 84 ppm" (de la banda del grado). Los rangos de
+	// palabras por minuto de 2010 ya no son un estándar vigente: se rotulan como referencia
 	function textoBanda(banda, grado) {
-		if (!banda || banda.cercano_max === null || banda.cercano_max === undefined ||
-			banda.estandar_max === null || banda.estandar_max === undefined) return "";
-		return "Estándar para " + grado + "°: " + (Number(banda.cercano_max) + 1) + " a " + Number(banda.estandar_max) + " PPM";
+		return CH().textoReferenciaPPM(banda, grado);
 	}
 
 	function cajaHabilidades(diag, banda, grado) {
@@ -390,7 +405,7 @@
 		var grado = d.alumno ? d.alumno.grado : null;
 		return encabezado(d) +
 			"<section class='bol-seccion'><h2>1. Calificaciones por campo formativo</h2>" +
-			"<div class='bol-bloque'>" + tablaCalificaciones(d.boletaCiclo || {}, d.trimestre, d.juicio) + "</div>" +
+			"<div class='bol-bloque'>" + tablaCalificaciones(d.boletaCiclo || {}, d.trimestre, d.juicio, grado) + "</div>" +
 			bloqueAsistencia(d.asistencia, d.trimestre) + "</section>" +
 			"<section class='bol-seccion'><h2>2. Observaciones y sugerencias del trimestre " + d.trimestre + "</h2>" +
 			notaObservaciones(d) +

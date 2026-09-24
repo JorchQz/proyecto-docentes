@@ -16,7 +16,8 @@
 	    una sola vez a la fila general nombrando esos campos.
 	  - Participación y conducta: se registran UNA vez al día, globales; por eso van a la
 	    fila general y no se repiten en los cuatro campos. En la calificación 1 y 2 valen
-	    lo mismo; el 2 (destacado) se nota aquí como fortaleza (ver diarioTotal).
+	    lo mismo; el 2 (destacado) se nota aquí como fortaleza (ver diarioTotal). La
+	    conducta ya no pondera en la calificación (LGE art. 21): se informa solo aquí.
 	  - Habilidades básicas: lectura (PPM contra la banda del grado y comprensión) → LEN;
 	    matemáticas (solo las que aplican a su grado) → SAB; cuaderno → general.
 	  - Asistencia: observación general. Nunca baja la calificación (Acuerdo art. 7).
@@ -94,8 +95,10 @@
 	};
 
 	var TEXTOS = {
-		lectura_baja: "Su velocidad de lectura está por debajo de lo esperado para su grado.",
-		lectura_bien: "Lee con la fluidez esperada para su grado.",
+		// Palabras por minuto contra la referencia SEP 2010 (bandas_ppm): ya no es un estándar
+		// vigente, así que se nombra como referencia
+		lectura_baja: "Su velocidad de lectura está por debajo de la referencia SEP 2010 para su grado.",
+		lectura_bien: "Su velocidad de lectura alcanza la referencia SEP 2010 para su grado.",
 		comprension_baja: "Le cuesta explicar lo que lee.",
 		comprension_bien: "Comprende lo que lee y lo explica con sus palabras.",
 		mates_baja: "Necesita apoyo en: ",
