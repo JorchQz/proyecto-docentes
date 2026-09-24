@@ -230,7 +230,12 @@ console.log("\n9. Migración b10 de textos");
 const sqlRuta = path.join(REPO, "supabase", "mi_salon_b10_textos_nem_2026-09.sql");
 const sql = fs.existsSync(sqlRuta) ? fs.readFileSync(sqlRuta, "utf8").replace(/--.*$/gm, "") : "";
 ok("existe", sql.length > 0, true);
-ok("solo actualiza la descripción de lectura_ppm", (sql.match(/\bupdate\b/gi) || []).length === 1 && /where clave = 'lectura_ppm'/.test(sql) && !/\b(delete|drop|insert|alter)\b/i.test(sql), true);
+// Solo descripciones del catálogo: lectura_ppm, y participación y conducta (el 1 ya vale el
+// día completo y la conducta no pondera); nada de borrar, insertar ni cambiar estructura
+const updates = sql.match(/\bupdate\b[\s\S]*?;/gi) || [];
+ok("solo actualiza descripciones de lectura_ppm, participacion y conducta",
+	updates.length === 3 && updates.every((u) => /set\s+descripcion\s*=/i.test(u) && /where clave = '(lectura_ppm|participacion|conducta)'/.test(u)) &&
+	!/\b(delete|drop|insert|alter)\b/i.test(sql), true);
 ok("dice «referencia SEP 2010», no «estándar»", /referencia SEP 2010/.test(sql) && !/est[aá]ndar/i.test(sql), true);
 
 console.log(fallos ? "\n" + fallos + " FALLAS" : "\nTODAS PASAN");
