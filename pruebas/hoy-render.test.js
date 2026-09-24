@@ -23,6 +23,7 @@ function ok(nombre, real, esperado) {
 	console.log((bien ? "OK   " : "FALLA ") + nombre + " → " + real + (bien ? "" : " (esperado " + esperado + ")"));
 }
 
+const ALCANCE = require("../js/alcance-hoy.js");
 const fuente = fs.readFileSync(path.join(__dirname, "..", "js", "hoy.js"), "utf8");
 
 function extraerFuncion(nombre) {
@@ -54,6 +55,7 @@ const calificaciones = {
 };
 
 const cuerpo = [
+	"var window = { AlcanceHoy: ALCANCE };",
 	"var alumnos = ALUMNOS;",
 	"var calificaciones = CALIFICACIONES;",
 	"var detallesAbiertos = DETALLES;",
@@ -69,7 +71,7 @@ const cuerpo = [
 	"return { bloqueProducto: bloqueProducto };",
 ].join("\n");
 
-const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", cuerpo)(alumnos, calificaciones, {});
+const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", cuerpo)(alumnos, calificaciones, {}, ALCANCE);
 
 const producto = { id: "prod-1", nombre: "Cartel del cuento", campo: "LEN", grados: ["2", "3"], tipo: "trabajo" };
 let html = "";
@@ -95,7 +97,7 @@ ok("producto de un grado: un solo alumno", soloTercero.indexOf("ALUMNO DE SEGUND
 ok("producto de un grado: sin encabezado de grado", (soloTercero.match(/° grado/g) || []).length, 0);
 
 // El panel abierto sigue abierto tras redibujar
-const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true });
+const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE);
 const htmlAbierto = api2.bloqueProducto(producto);
 ok("un detalle abierto sobrevive al redibujo",
 	htmlAbierto.indexOf("id='detalle-prod-1-al-3' class='rounded-xl") !== -1, true);

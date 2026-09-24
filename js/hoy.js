@@ -151,7 +151,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (!grupo) { window.location.href = "onboarding.html"; return; }
 
 	var alumnosRes = await window.sb.from("alumnos")
-		.select("id, nombre_completo, num_lista, grado")
+		.select("id, nombre_completo, num_lista, grado, created_at")
 		.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("estatus", "activo")
 		.order("grado").order("num_lista");
 	if (alumnosRes.error) {
@@ -161,6 +161,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return;
 	}
 	alumnos = alumnosRes.data || [];
+	// Fecha de alta de cada alumno (hora de Ciudad de México): js/alcance-hoy.js
+	alumnos.forEach(function (a) { a.alta = window.AlcanceHoy.fechaAlta(a.created_at, grupo.created_at); });
 
 	document.getElementById("hoySubtitulo").textContent =
 		grupo.nombre + " · " + alumnos.length + " alumno" + (alumnos.length === 1 ? "" : "s");
@@ -264,7 +266,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var idsRelevantes = productos.map(function (p) { return p.id; });
 		var califs = await window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
 			return window.sb.from("calificaciones")
-				.select("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion")
+				.select("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, fecha")
 				.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
 		});
 		califs.forEach(function (c) {
@@ -418,9 +420,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"</div><div class='flex flex-wrap gap-2'>" + controles + "</div></div>";
 	}
 
+	/*
+		A quién le toca un producto: a los alumnos de sus grados, y solo si el producto es
+		desde su alta (un alumno que llegó después no ve como pendientes las tareas de
+		antes). La regla es la de js/alcance-hoy.js, la misma de Inicio, Tareas y el motor.
+	*/
 	function alumnosDeProducto(producto) {
 		var grados = (producto.grados || []).map(Number);
-		return alumnos.filter(function (a) { return grados.indexOf(a.grado) !== -1; });
+		var fecha = window.AlcanceHoy.fechaProducto(producto.sesion && producto.sesion.fecha, producto.fecha_entrega);
+		return alumnos.filter(function (a) {
+			if (grados.indexOf(a.grado) === -1) return false;
+			return window.AlcanceHoy.cuentaDesdeAlta(a.alta, fecha, calificaciones[a.id + "|" + producto.id]);
+		});
 	}
 
 	function agruparPorGrado(lista) {

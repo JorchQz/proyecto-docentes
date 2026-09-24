@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tareas = [];
 	var alumnos = [];
 	var revisiones = {}; // producto_sesion_id → { alumno_id: estado_entrega }
+	var calPorClave = {}; // alumno_id|producto_sesion_id → { fecha } (regla del alta)
 	var grupoActual = null;
 
 	function fechaLocalISO() {
@@ -61,10 +62,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			filtroGrado.appendChild(opt);
 		});
 
-		var alRes = await window.sb.from("alumnos").select("id, grado")
+		var alRes = await window.sb.from("alumnos").select("id, grado, created_at")
 			.eq("maestro_id", maestroId).eq("grupo_id", grupo.id).eq("estatus", "activo");
 		if (alRes.error) throw alRes.error;
 		alumnos = alRes.data || [];
+		// Fecha de alta de cada alumno (hora de Ciudad de México): js/alcance-hoy.js
+		alumnos.forEach(function (a) { a.alta = window.AlcanceHoy.fechaAlta(a.created_at, grupo.created_at); });
 
 		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final")
 			.eq("maestro_id", maestroId).eq("grupo_id", grupo.id);
@@ -100,10 +103,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 
 		var cals = await window.AlcanceHoy.leerPorLotes(tareas.map(function (t) { return t.id; }), function (lote) {
-			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, estado_entrega")
+			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, estado_entrega, fecha")
 				.eq("maestro_id", maestroId).in("producto_sesion_id", lote).order("id");
 		});
 		cals.forEach(function (c) {
+			calPorClave[c.alumno_id + "|" + c.producto_sesion_id] = c;
 			if (!c.estado_entrega) return;
 			(revisiones[c.producto_sesion_id] = revisiones[c.producto_sesion_id] || {})[c.alumno_id] = c.estado_entrega;
 		});
@@ -130,9 +134,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return true;
 	}
 
+	// Alumnos a los que les toca la tarea: los de sus grados y solo si la tarea es desde su
+	// alta (misma regla que Hoy, Inicio y el motor: js/alcance-hoy.js)
 	function alumnosDe(t) {
 		var grados = (t.grados || []).map(Number);
-		return alumnos.filter(function (a) { return grados.indexOf(Number(a.grado)) !== -1; });
+		var fecha = window.AlcanceHoy.fechaProducto(t.sesion && t.sesion.fecha, t.fecha_entrega);
+		return alumnos.filter(function (a) {
+			if (grados.indexOf(Number(a.grado)) === -1) return false;
+			return window.AlcanceHoy.cuentaDesdeAlta(a.alta, fecha, calPorClave[a.id + "|" + t.id]);
+		});
 	}
 
 	/*

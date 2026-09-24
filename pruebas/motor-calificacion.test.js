@@ -50,8 +50,10 @@ r = M.calcularPorcentajes({
   camposPorFecha: { '2026-09-21': ['LEN', 'SAB'] },
 });
 ok('participacion repartida 50/50 → maximo 0.5 en LEN', r.LEN.rubros.participacion.maximo, 0.5);
-ok('part 50% + conducta 100% → 75%', r.LEN.porcentaje, 75);
-ok('mismo resultado en SAB', r.SAB.porcentaje, 75);
+// Decisión 9 (2026-09-24): 1 (normal) y 2 (destacado) valen el día completo
+ok('part 1 + conducta 2 → 100% (el 2 no suma de más)', r.LEN.porcentaje, 100);
+ok('mismo resultado en SAB', r.SAB.porcentaje, 100);
+ok('el 2 queda contado como destacado (medio día en LEN)', r.LEN.rubros.conducta.diario.destacados, 0.5);
 
 r = M.calcularPorcentajes({
   campos: ['LEN'], pesos: PESOS, productos: [], calificaciones: {},
@@ -104,6 +106,42 @@ ok('entrega: completos solo entregado', ent.completos, 1);
 ok('entrega: calidad de lo entregado (0.4 + 0.7)', Math.round(ent.sumaEntregados * 10) / 10, 1.1);
 ok('entrega: la calificación no cambia (0.4 + 0 + 0.7 de 3)', Math.round(r.LEN.rubros.trabajos.fraccion * 1000) / 1000, 0.367);
 ok('entrega: participación no lleva conteo de entrega', r.LEN.rubros.participacion.entrega, undefined);
+
+// ── Participación y conducta: 0, 1 y 2 (decisión de Jorge 9, 2026-09-24) ───────
+const P = { tareas: 0, trabajos: 0, participacion: 50, conducta: 50, examen: 0 };
+function diario(valores) {
+  const registros = valores.map(function (v, i) { return { fecha: '2026-09-' + (10 + i), participacion: v, conducta: v }; });
+  const camposPorFecha = {};
+  registros.forEach(function (x) { camposPorFecha[x.fecha] = ['LEN']; });
+  return M.calcularPorcentajes({ campos: ['LEN'], pesos: P, productos: [], calificaciones: {}, registros: registros, camposPorFecha: camposPorFecha });
+}
+r = diario([1, 1, 1, 1]);
+ok('todos los días en 1 → participación 100 %', r.LEN.rubros.participacion.fraccion * 100, 100);
+ok('todos los días en 1 → conducta 100 %', r.LEN.rubros.conducta.fraccion * 100, 100);
+ok('todos en 1: obtenido 4 de 4', r.LEN.rubros.participacion.obtenido + '/' + r.LEN.rubros.participacion.maximo, '4/4');
+ok('todos en 1: ningún destacado', r.LEN.rubros.participacion.diario.destacados, 0);
+r = diario([2, 2, 2, 2]);
+ok('todos en 2 → 100 % (no más)', r.LEN.rubros.participacion.fraccion * 100, 100);
+ok('todos en 2: 4 días destacados', r.LEN.rubros.participacion.diario.destacados, 4);
+r = diario([0, 0, 0, 0]);
+ok('todos en 0 → 0 %', r.LEN.rubros.participacion.fraccion * 100, 0);
+ok('todos en 0: 4 días en cero', r.LEN.rubros.participacion.diario.ceros, 4);
+r = diario([0, 1, 2, 1]);
+ok('0, 1, 2, 1 → 75 % (solo el 0 resta)', r.LEN.rubros.participacion.fraccion * 100, 75);
+ok('0, 1, 2, 1: días 4, destacados 1, ceros 1', JSON.stringify(r.LEN.rubros.participacion.diario), JSON.stringify({ dias: 4, destacados: 1, ceros: 1 }));
+r = M.calcularPorcentajes({ campos: ['LEN'], pesos: P, productos: [], calificaciones: {},
+  registros: [{ fecha: '2026-09-10', participacion: null, conducta: 1 }], camposPorFecha: { '2026-09-10': ['LEN'] } });
+ok('participación sin dato ese día no entra al máximo', r.LEN.rubros.participacion.maximo, 0);
+ok('pero la conducta del día sí', r.LEN.rubros.conducta.maximo, 1);
+// Con los pesos por defecto (28/28/6/5/33): un alumno normal ya no pierde 5.5 puntos
+r = M.calcularPorcentajes({
+  campos: ['LEN'], pesos: PESOS,
+  productos: [{ id: 't', tipo: 'tarea', campo: 'LEN' }, { id: 'w', tipo: 'trabajo', campo: 'LEN' }],
+  calificaciones: { t: { nivel: 'logrado' }, w: { nivel: 'logrado' } },
+  registros: [{ fecha: '2026-09-21', participacion: 1, conducta: 1 }], camposPorFecha: { '2026-09-21': ['LEN'] },
+  examenPorCampo: { LEN: 1 },
+});
+ok('todo logrado, examen perfecto y días normales → 100 %', r.LEN.porcentaje, 100);
 
 console.log(fallos === 0 ? '\nTODAS PASAN' : '\n' + fallos + ' FALLAS');
 process.exit(fallos ? 1 : 0);

@@ -55,5 +55,16 @@ ok("sin alumnos de ese grado: no queda pendiente", s.estado, "revisada");
 ok("un estado desconocido cuenta como revisado sin romper el conteo",
 	T.situacionDe([{ id: "x" }], { x: "otro" }, "2026-09-10", HOY).estado, "revisada");
 
+// ── Alumno dado de alta tarde (decisión de Jorge 10): alumnosDe tal cual está en js/tareas.js
+const hacerAlumnosDe = new Function("alumnos", "window", "calPorClave",
+	extraer(/\n\tfunction alumnosDe\([\s\S]*?\n\t\}/, "alumnosDe") + "\nreturn alumnosDe;");
+const ALCANCE = require("../js/alcance-hoy.js");
+const grupo = [{ id: "viejo", grado: 3, alta: "2026-08-25" }, { id: "nuevo", grado: 3, alta: "2026-09-23" }];
+const alumnosDe = hacerAlumnosDe(grupo, { AlcanceHoy: ALCANCE }, {});
+ok("tarea de antes del alta: solo el alumno de siempre", alumnosDe({ id: "t1", grados: ["3"], sesion: { fecha: "2026-09-15" } }).map((a) => a.id), ["viejo"]);
+ok("tarea desde el alta: los dos", alumnosDe({ id: "t2", grados: ["3"], sesion: { fecha: "2026-09-23" } }).map((a) => a.id), ["viejo", "nuevo"]);
+s = T.situacionDe(alumnosDe({ id: "t1", grados: ["3"], sesion: { fecha: "2026-09-15" } }), { viejo: "entregado" }, "2026-09-16", HOY);
+ok("revisada por el alumno de siempre: ya no queda pendiente por el nuevo", [s.revisados, s.total, s.estado], [1, 1, "revisada"]);
+
 console.log(fallos ? fallos + " FALLAS" : "TODO OK");
 process.exit(fallos ? 1 : 0);

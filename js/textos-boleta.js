@@ -15,7 +15,8 @@
 	    (≥90 % fortaleza, <60 % área). Si la misma frase aplicaría a dos o más campos, va
 	    una sola vez a la fila general nombrando esos campos.
 	  - Participación y conducta: se registran UNA vez al día, globales; por eso van a la
-	    fila general y no se repiten en los cuatro campos.
+	    fila general y no se repiten en los cuatro campos. En la calificación 1 y 2 valen
+	    lo mismo; el 2 (destacado) se nota aquí como fortaleza (ver diarioTotal).
 	  - Habilidades básicas: lectura (PPM contra la banda del grado y comprensión) → LEN;
 	    matemáticas → SAB; cuaderno → general.
 	  - Asistencia: observación general. Nunca baja la calificación (Acuerdo art. 7).
@@ -40,7 +41,10 @@
 	var UMBRAL_FORTALEZA = 90;
 	var UMBRAL_AREA = 60;
 	var MAXIMO_POR_LISTA = 4;
-	var UMBRAL_DIARIO_NORMAL = 50; // participación y conducta: 1 de 2 es lo normal
+	// Participación y conducta (regla del 2026-09-24: 1 y 2 valen el día completo, 0 vale 0):
+	// el porcentaje ya es un rubro como los demás y es área bajo el mismo 60 %. Antes era
+	// 50 % porque el día normal (1 de 2) valía la mitad. La junta usa este mismo umbral.
+	var UMBRAL_DIARIO_NORMAL = UMBRAL_AREA;
 
 	// Prioridad al recortar: primero lo que habla del aprendizaje, luego los hábitos
 	var PRIORIDAD = { pda: 1, lectura: 2, matematicas: 2, calidad: 3, examen: 3, trabajos: 4, tareas: 4, cuaderno: 5,
@@ -331,26 +335,53 @@
 			repartirPorCampos(secs, "areas", flojos, frases.area, frases.prepArea, { sugerencia: sugerencia(r.clave), prioridad: PRIORIDAD[r.clave] });
 		});
 		// Participación y conducta: registro global del día → una sola vez, en general.
-		// Se toma el total repartido entre campos (misma evidencia, sin duplicarla).
+		// Se suma lo repartido entre campos (misma evidencia, sin duplicarla).
 		["participacion", "conducta"].forEach(function (rubro) {
-			var obtenido = 0, maximo = 0;
-			CAMPOS.forEach(function (campo) {
-				var d = porCampo[campo];
-				var r = d && d.rubros ? d.rubros[rubro] : null;
-				if (!r || !(r.maximo > 0)) return;
-				obtenido += r.obtenido; maximo += r.maximo;
-			});
-			if (!(maximo > 0)) return;
-			var pct = obtenido / maximo * 100;
-			// En "Hoy" el valor por defecto del día es 1 de 2 (lo normal; el maestro solo
-			// cambia excepciones), o sea 50 %. Un alumno que se queda en el valor normal
-			// no "participa poco": solo es área si su promedio baja del valor por defecto.
-			if (pct >= UMBRAL_FORTALEZA) {
+			var d = diarioTotal(porCampo, rubro);
+			if (!d) return;
+			if (d.destacadoPct >= UMBRAL_FORTALEZA) {
 				agregar(secs[GENERAL].fortalezas, { texto: RUBROS[rubro].fortaleza, prioridad: PRIORIDAD[rubro] });
-			} else if (pct < UMBRAL_DIARIO_NORMAL) {
+			} else if (d.pct < UMBRAL_DIARIO_NORMAL) {
 				agregar(secs[GENERAL].areas, { texto: RUBROS[rubro].area, sugerencia: sugerencia(rubro), prioridad: PRIORIDAD[rubro] });
 			}
 		});
+	}
+
+	/*
+		Participación o conducta del trimestre, sumando los campos (decisión de Jorge 9,
+		2026-09-24). En la calificación 1 (normal) y 2 (destacado) valen el día completo y
+		0 vale 0, así que el porcentaje del motor es la parte de los días que NO fueron 0:
+		  - área: menos del 60 % de sus días sin 0 (UMBRAL_DIARIO_NORMAL = UMBRAL_AREA);
+		  - fortaleza: el 2 se nota aquí, porque en el número ya no suma de más. Es el
+		    mismo criterio de antes del cambio: el promedio del día (0 a 2) llega al 90 % de
+		    2, o sea casi todos sus días en 2 (con días en 1: al menos 8 de cada 10 en 2).
+		Se necesitan al menos 2 días registrados: nada se afirma con una sola evidencia.
+		→ { dias, pct, destacadoPct } o null sin registros suficientes.
+	*/
+	function diarioTotal(porCampo, rubro) {
+		var obtenido = 0, maximo = 0, dias = 0, destacados = 0, ceros = 0, conConteo = false;
+		CAMPOS.forEach(function (campo) {
+			var d = porCampo[campo];
+			var r = d && d.rubros ? d.rubros[rubro] : null;
+			if (!r || !(r.maximo > 0)) return;
+			obtenido += Number(r.obtenido) || 0;
+			maximo += Number(r.maximo);
+			if (r.diario) {
+				conConteo = true;
+				dias += Number(r.diario.dias) || 0;
+				destacados += Number(r.diario.destacados) || 0;
+				ceros += Number(r.diario.ceros) || 0;
+			}
+		});
+		// Redondeo: los días se reparten en tercios o cuartos entre campos
+		if (!(maximo > 0) || Math.round(maximo * 1000) / 1000 < EVIDENCIAS_MINIMAS) return null;
+		// Sin el conteo de días (una salida del motor anterior) no se puede ver el 2
+		var promedio = conConteo && dias > 0 ? (dias - ceros + destacados) / dias : null;
+		return {
+			dias: maximo,
+			pct: obtenido / maximo * 100,
+			destacadoPct: promedio === null ? null : Math.round(promedio / 2 * 100 * 1000) / 1000,
+		};
 	}
 
 	function porPda(filas, secs, corto, sugerencia) {

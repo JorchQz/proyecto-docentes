@@ -18,6 +18,10 @@
 	    justificado / no_aplica se descuentan del máximo (no penalizan).
 	  - Porcentaje → calificación SOLO con la función SQL calcular_calificacion_boleta
 	    (piso por fase: 6 en 1°-2°, 5 en 3°-6°). El motor nunca redondea por su cuenta.
+	  - Participación y conducta (decisiones de Jorge, 2026-09-24): 1 (normal) y 2
+	    (destacado) valen el día completo; 0 vale 0. El 2 se nota en los textos.
+	  - Alumno dado de alta tarde: solo cuentan los productos con fecha desde su alta
+	    (la regla vive en js/alcance-hoy.js; es la misma de Hoy, Inicio y Tareas).
 
 	Filas viejas: antes de la pantalla "Hoy", la revisión de tareas del Dashboard
 	escribía `calificaciones` sin producto (escala 5-10). Si quedan, se toman en su
@@ -67,6 +71,8 @@
 		RUBROS.forEach(function (r) { acc[r] = { obtenido: 0, maximo: 0 }; });
 		acc.tareas.entrega = entregaVacia();
 		acc.trabajos.entrega = entregaVacia();
+		acc.participacion.diario = { dias: 0, destacados: 0, ceros: 0 };
+		acc.conducta.diario = { dias: 0, destacados: 0, ceros: 0 };
 		return acc;
 	}
 
@@ -98,10 +104,32 @@
 	}
 
 	/*
+		Valor de un día de participación o de conducta (decisión de Jorge del 2026-09-24):
+		1 (normal) y 2 (destacado) valen el día completo; 0 vale 0. El 2 no suma más de
+		100 %: se reconoce en los textos de la boleta (js/textos-boleta.js), no en el número.
+		null = sin dato ese día (no entra al máximo).
+	*/
+	function valorDiario(v) {
+		if (v === null || v === undefined || v === "") return null;
+		return Number(v) >= 1 ? 1 : 0;
+	}
+
+	/*
 		Reparto de participación y conducta a los campos (B.4): el valor diario del
 		alumno se reparte en partes iguales entre los campos con sesión ese día. Un día
 		sin sesión registrada, o sin registro_diario, no entra al máximo.
+		Además se lleva la cuenta de los días (repartidos igual) en 2 y en 0: la
+		calificación no la usa, los textos sí (el 2 se nota como fortaleza).
 	*/
+	function sumarDiario(rubro, crudo, parte) {
+		var valor = valorDiario(crudo);
+		if (valor === null) return;
+		sumar(rubro, valor * parte, parte);
+		rubro.diario.dias += parte;
+		if (Number(crudo) >= 2) rubro.diario.destacados += parte;
+		if (valor === 0) rubro.diario.ceros += parte;
+	}
+
 	function repartirRegistroDiario(registros, camposPorFecha, porCampo) {
 		(registros || []).forEach(function (reg) {
 			var campos = camposPorFecha[reg.fecha];
@@ -109,12 +137,8 @@
 			var parte = 1 / campos.length;
 			campos.forEach(function (campo) {
 				if (!porCampo[campo]) return;
-				if (reg.participacion !== null && reg.participacion !== undefined) {
-					sumar(porCampo[campo].participacion, (Number(reg.participacion) / 2) * parte, parte);
-				}
-				if (reg.conducta !== null && reg.conducta !== undefined) {
-					sumar(porCampo[campo].conducta, (Number(reg.conducta) / 2) * parte, parte);
-				}
+				sumarDiario(porCampo[campo].participacion, reg.participacion, parte);
+				sumarDiario(porCampo[campo].conducta, reg.conducta, parte);
 			});
 		});
 	}
@@ -124,9 +148,9 @@
 
 		datos = {
 		  campos:           ["LEN","SAB","ETI","DHL"],
-		  productos:        [{id, tipo, campo}]            ya filtrados por el grado del alumno
+		  productos:        [{id, tipo, campo}]            ya filtrados por el grado y el alta del alumno
 		  calificaciones:   {producto_sesion_id: {estado_entrega, nivel, puntaje}}
-		  registros:        [{fecha, participacion, conducta}]
+		  registros:        [{fecha, participacion, conducta}]  0, 1 o 2 por día
 		  camposPorFecha:   {"2026-09-22": ["LEN","SAB"]}
 		  examenPorCampo:   {LEN: 0.8}                     fracción 0-1
 		  legacy:           [{rubro: "tareas"|"trabajos", campo, calificacion}]  escala 5-10
@@ -169,6 +193,7 @@
 				var fraccion = acc.maximo > 0 ? acc.obtenido / acc.maximo : null;
 				rubros[r] = { obtenido: acc.obtenido, maximo: acc.maximo, fraccion: fraccion, peso: peso };
 				if (acc.entrega) rubros[r].entrega = acc.entrega;
+				if (acc.diario) rubros[r].diario = acc.diario;
 				if (fraccion !== null && peso > 0) { suma += fraccion * peso; pesoUsado += peso; }
 			});
 			resultado[campo] = {
@@ -195,6 +220,64 @@
 			if (lote.length < PAGINA) return filas;
 			desde += PAGINA;
 		}
+	}
+
+	/*
+		Alumno dado de alta tarde: la regla vive en js/alcance-hoy.js (una sola, la misma
+		de Hoy, Inicio y Tareas). Toda página que carga este motor debe cargar antes
+		js/alcance-hoy.js (lo vigila pruebas/alta-tarde.test.js). Si falta, se calcula
+		sin la regla y se avisa en consola: no se esconde ninguna evidencia.
+	*/
+	var avisoSinAlcance = false;
+	function alcance() {
+		if (typeof window !== "undefined" && window.AlcanceHoy) return window.AlcanceHoy;
+		if (typeof require === "function") {
+			try { return require("./alcance-hoy.js"); } catch (e) { /* navegador sin el script */ }
+		}
+		if (!avisoSinAlcance && typeof console !== "undefined") {
+			avisoSinAlcance = true;
+			console.warn("motor-calificacion: falta js/alcance-hoy.js; se calcula sin la regla del alumno dado de alta tarde");
+		}
+		return null;
+	}
+
+	function cuentaDesdeAlta(alta, fecha, cal) {
+		var A = alcance();
+		return A ? A.cuentaDesdeAlta(alta, fecha, cal) : true;
+	}
+
+	function fechaProductoDe(p, fechaSesion) {
+		var A = alcance();
+		return A ? A.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega) : null;
+	}
+
+	// { alumnoId: "AAAA-MM-DD" | null }. Si quien llama no trae created_at, se lee aquí.
+	// También se lee cuándo se creó el grupo: quien nació con él no es "de alta tarde".
+	async function fechasDeAlta(sb, alumnos, grupoId) {
+		var A = alcance();
+		var salida = {};
+		if (!A || !alumnos.length) return salida;
+		var faltan = alumnos.filter(function (a) { return a.created_at === undefined; });
+		var creado = {};
+		alumnos.forEach(function (a) { if (a.created_at !== undefined) creado[a.id] = a.created_at; });
+		if (faltan.length) {
+			var filas = await todas(function () {
+				return sb.from("alumnos").select("id, created_at")
+					.in("id", faltan.map(function (a) { return a.id; })).order("id");
+			});
+			filas.forEach(function (f) { if (creado[f.id] === undefined) creado[f.id] = f.created_at; });
+		}
+		var grupoCreado = null;
+		var conFecha = alumnos.some(function (a) { return !!creado[a.id]; });
+		if (conFecha && grupoId) {
+			var grupos = await todas(function () {
+				return sb.from("grupos").select("id, created_at").eq("id", grupoId).order("id");
+			});
+			var g = grupos.filter(function (x) { return x.id === grupoId; })[0];
+			grupoCreado = g ? g.created_at : null;
+		}
+		alumnos.forEach(function (a) { salida[a.id] = A.fechaAlta(creado[a.id], grupoCreado); });
+		return salida;
 	}
 
 	async function cargarPesos(sb, maestroId) {
@@ -225,9 +308,10 @@
 	*/
 	async function cargarYCalcularGrupo(sb, ctx) {
 		var campos = ctx.campos || ["LEN", "SAB", "ETI", "DHL"];
-		var alumnos = (ctx.alumnos || []).map(function (a) { return { id: a.id, grado: Number(a.grado) }; });
+		var alumnos = (ctx.alumnos || []).map(function (a) { return { id: a.id, grado: Number(a.grado), created_at: a.created_at }; });
 		var ids = alumnos.map(function (a) { return a.id; });
 		var pesos = await cargarPesos(sb, ctx.maestroId);
+		var alta = await fechasDeAlta(sb, alumnos, ctx.grupoId);
 
 		// Proyectos del trimestre (proyectos.trimestre es la fuente única) y sus sesiones
 		var proyRes = await sb.from("proyectos").select("id")
@@ -244,8 +328,9 @@
 		var sesionIds = sesiones.map(function (s) { return s.id; });
 
 		// Campos trabajados por fecha (para repartir participación y conducta)
-		var camposPorFecha = {};
+		var camposPorFecha = {}, fechaSesion = {};
 		sesiones.forEach(function (s) {
+			fechaSesion[s.id] = s.fecha || null;
 			if (!s.fecha) return;
 			var codigo = window.CamposFormativos ? window.CamposFormativos.corto(s.campo_formativo) : null;
 			if (!codigo) return;
@@ -257,7 +342,7 @@
 		var productos = [];
 		if (sesionIds.length) {
 			productos = await todas(function () {
-				return sb.from("productos_sesion").select("id, tipo, campo, grados, activo")
+				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo")
 					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
@@ -267,7 +352,7 @@
 		if (ids.length && proyIds.length) {
 			califs = await todas(function () {
 				return sb.from("calificaciones")
-					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id")
+					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id, fecha")
 					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids).in("proyecto_id", proyIds).order("id");
 			});
 		}
@@ -292,9 +377,6 @@
 		var porAlumno = {};
 		var pendientes = []; // [alumnoId, campo, porcentaje, grado] para convertir en lote
 		alumnos.forEach(function (a) {
-			var misProductos = productos.filter(function (p) {
-				return (p.grados || []).map(Number).indexOf(a.grado) !== -1;
-			});
 			var calificaciones = {}, legacy = [], usaLegacy = false;
 			califs.forEach(function (c) {
 				if (c.alumno_id !== a.id) return;
@@ -307,6 +389,12 @@
 				if (!codigo) return;
 				usaLegacy = true;
 				legacy.push({ rubro: rubro, campo: codigo, calificacion: c.calificacion });
+			});
+			// Los productos de su grado, y solo los que tienen fecha desde su alta (alumno dado
+			// de alta tarde: js/alcance-hoy.js, la misma regla que Hoy, Inicio y Tareas)
+			var misProductos = productos.filter(function (p) {
+				if ((p.grados || []).map(Number).indexOf(a.grado) === -1) return false;
+				return cuentaDesdeAlta(alta[a.id], fechaProductoDe(p, fechaSesion), calificaciones[p.id]);
 			});
 			var misRegistros = registros.filter(function (r) { return r.alumno_id === a.id; });
 			var examen = examenes[a.id] || { porCampo: {}, aproximado: false };

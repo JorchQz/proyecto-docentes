@@ -85,6 +85,25 @@ function tablaFalsa(filas, registro) {
 	} catch (e) { error = e.message; }
 	ok("un error de Supabase no se traga en silencio", error, "sin red");
 
+	// ── Alumno dado de alta tarde (decisión de Jorge 10, 2026-09-24) ──────────
+	ok("alta en hora de Ciudad de México (UTC-6)", A.fechaAlta("2026-09-24T05:59:00Z"), "2026-09-23");
+	ok("alta a mediodía", A.fechaAlta("2026-09-24T18:00:00+00:00"), "2026-09-24");
+	ok("sin created_at: sin fecha (no se filtra)", A.fechaAlta(null), null);
+	ok("nació con su grupo (mismo instante, semilla QA): sin fecha de alta", A.fechaAlta("2026-09-24T07:43:51.056498+00:00", "2026-09-24T07:43:51.056498+00:00"), null);
+	ok("alta después de crear el grupo: su fecha", A.fechaAlta("2026-09-24T09:18:11+00:00", "2026-09-24T07:43:51+00:00"), "2026-09-24");
+	ok("created_at ilegible: sin fecha", A.fechaAlta("no es fecha"), null);
+	ok("fecha del producto: la de su sesión", A.fechaProducto("2026-09-20", "2026-09-22"), "2026-09-20");
+	ok("sin sesión fechada: la de entrega", A.fechaProducto(null, "2026-09-22"), "2026-09-22");
+	ok("sin ninguna: null", A.fechaProducto(null, null), null);
+	ok("producto anterior al alta: no cuenta", A.cuentaDesdeAlta("2026-09-24", "2026-09-23", null), false);
+	ok("producto del día del alta: cuenta", A.cuentaDesdeAlta("2026-09-24", "2026-09-24", null), true);
+	ok("producto posterior: cuenta", A.cuentaDesdeAlta("2026-09-24", "2026-09-30", null), true);
+	ok("alumno sin fecha de alta: todo cuenta", A.cuentaDesdeAlta(null, "2026-01-01", null), true);
+	ok("producto sin fecha: cuenta", A.cuentaDesdeAlta("2026-09-24", null, null), true);
+	ok("evidencia fechada antes del alta (semilla QA): cuenta", A.cuentaDesdeAlta("2026-09-24", "2026-09-10", { fecha: "2026-09-10" }), true);
+	ok("captura del día del alta sobre algo viejo: no cuenta", A.cuentaDesdeAlta("2026-09-24", "2026-09-10", { fecha: "2026-09-24" }), false);
+	ok("calificación sin fecha: no salva al producto viejo", A.cuentaDesdeAlta("2026-09-24", "2026-09-10", { estado_entrega: "no_entregado" }), false);
+
 	console.log(fallos ? fallos + " FALLAS" : "TODO OK");
 	process.exit(fallos ? 1 : 0);
 })();

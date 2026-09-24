@@ -127,11 +127,64 @@ r = T.generar({
 contiene("participar poco va a la fila general", r.GEN.areas, "Participa poco");
 noContiene("y no se repite en cada campo", r.LEN.areas.concat(r.SAB.areas), "Participa poco");
 
-// El 1 del día (valor por defecto en "Hoy") es lo normal: 50 % no es un área
-r = T.generar({ corto: corto, porCampo: { LEN: campo({ participacion: rubro(0.5, 2), conducta: rubro(0.5, 2) }) } });
-ok("quedarse en el valor normal (1 de 2) no es área", r.GEN.areas.length, 0);
-r = T.generar({ corto: corto, porCampo: { LEN: campo({ conducta: rubro(0.95, 2) }) } });
-contiene("conducta sobresaliente es fortaleza general", r.GEN.fortalezas, "acuerdos de convivencia");
+// ── Participación y conducta con 0, 1 y 2 (decisión de Jorge 9, 2026-09-24) ──
+// Con la salida REAL del motor: 1 y 2 valen el día completo en la calificación; el 2 se
+// nota en los textos como fortaleza; el 0 resta.
+const M = require("../js/motor-calificacion.js");
+function diario(valores, campos) {
+	const registros = valores.map(function (v, i) { return { fecha: "2026-09-" + (10 + i), participacion: v, conducta: v }; });
+	const camposPorFecha = {};
+	registros.forEach(function (x) { camposPorFecha[x.fecha] = campos || ["LEN"]; });
+	return M.calcularPorcentajes({
+		campos: ["LEN", "SAB", "ETI", "DHL"], productos: [], calificaciones: {},
+		registros: registros, camposPorFecha: camposPorFecha,
+		pesos: { tareas: 28, trabajos: 28, participacion: 6, conducta: 5, examen: 33 },
+	});
+}
+function textosDiario(valores, campos) { return T.generar({ corto: corto, porCampo: diario(valores, campos) }).GEN; }
+const FORT_P = "Participa de forma constante", AREA_P = "Participa poco";
+const FORT_C = "Respeta los acuerdos", AREA_C = "Le cuesta seguir los acuerdos";
+
+let g = textosDiario([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+ok("todos los días en 1: ni fortaleza ni área", g.fortalezas.length + g.areas.length, 0);
+ok("todos en 1: el motor da 100 % de participación", diario([1, 1, 1])["LEN"].rubros.participacion.fraccion, 1);
+
+g = textosDiario([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+contiene("todos en 2: participación es fortaleza", g.fortalezas, FORT_P);
+contiene("todos en 2: conducta es fortaleza", g.fortalezas, FORT_C);
+ok("todos en 2: el número es el mismo que con 1 (100 %)", diario([2, 2, 2])["LEN"].rubros.participacion.fraccion, 1);
+
+g = textosDiario([2, 2, 2, 2, 2, 2, 2, 2, 1, 1]);
+contiene("8 de 10 días en 2 (el resto en 1): fortaleza", g.fortalezas, FORT_P);
+g = textosDiario([2, 2, 2, 2, 2, 1, 1, 1, 1, 1]);
+noContiene("la mitad de los días en 2: todavía no es fortaleza", g.fortalezas, FORT_P);
+noContiene("ni área", g.areas, AREA_P);
+g = textosDiario([2, 2, 2, 2, 2, 2, 2, 2, 2, 0]);
+contiene("9 días en 2 y uno en 0: sigue siendo fortaleza", g.fortalezas, FORT_P);
+
+g = textosDiario([2]);
+ok("un solo día en 2 no basta para afirmar nada", g.fortalezas.length + g.areas.length, 0);
+g = textosDiario([0]);
+ok("un solo día en 0 tampoco", g.fortalezas.length + g.areas.length, 0);
+
+g = textosDiario([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+contiene("todos en 0: participación es área", g.areas, AREA_P);
+contiene("todos en 0: conducta es área", g.areas, AREA_C);
+g = textosDiario([0, 0, 0, 0, 0, 0, 1, 1, 2, 2]);
+contiene("6 de 10 días en 0: área (aunque haya días en 2)", g.areas, AREA_P);
+noContiene("y no es fortaleza", g.fortalezas, FORT_P);
+g = textosDiario([0, 0, 0, 0, 0, 1, 1, 1, 2, 2]);
+contiene("la mitad de los días en 0: área (bajo 60 %, como los demás rubros)", g.areas, AREA_P);
+g = textosDiario([0, 0, 0, 0, 1, 1, 1, 1, 1, 1]);
+noContiene("4 de 10 días en 0 (60 %): no es área", g.areas, AREA_P);
+ok("el umbral es el mismo de los demás rubros", T.UMBRAL_DIARIO_NORMAL, T.UMBRAL_AREA);
+
+// Días repartidos entre varios campos: la misma evidencia, sumada una vez
+g = textosDiario([2, 2, 2, 2], ["LEN", "SAB", "ETI"]);
+contiene("días repartidos en tres campos: fortaleza en la fila general", g.fortalezas, FORT_P);
+const porCampo3 = diario([2, 2, 2, 2], ["LEN", "SAB", "ETI"]);
+const t3 = T.generar({ corto: corto, porCampo: porCampo3 });
+noContiene("y no se repite en los campos", t3.LEN.fortalezas.concat(t3.SAB.fortalezas, t3.ETI.fortalezas), FORT_P);
 
 // ── PDA ──────────────────────────────────────────────────────────────────────
 r = T.generar({
