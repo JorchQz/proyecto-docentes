@@ -266,7 +266,7 @@ const d5 = datosRiesgo({
 	fluidez: window.CatalogoHabilidades.clasificarPPM(78, BANDA_4),
 });
 const h5 = RA.render(d5, Object.assign({}, INFO, { grupo: "Grupo 3°-4°" }));
-ok("4°: fase 4 y escala 5 a 10", h5.includes("Fase 4") && h5.includes("enteros de 5 a 10 (5 no es aprobatoria)"), true);
+ok("4°: fase 4 y escala 5 a 10 (mismo texto que la boleta)", h5.includes("Fase 4") && h5.includes("enteros de 5 a 10; 5 no acredita"), true);
 ok("4°: la banda es la de su grado", h5.includes("0 a 84") && h5.includes("115 o más") && /data-ppm='78' data-fluidez='requiere_apoyo'/.test(h5), true);
 ok("sin banda: lo dice sin tronar", RA.render(datosRiesgo({ banda: null }), INFO).includes("No hay banda de referencia de PPM"), true);
 
@@ -307,6 +307,88 @@ ok("sin emojis en el render",
 		hc.includes("data-origen='cierre'") && !hc.includes("data-origen='propuesta'"), true);
 	const abierta = RA.render(datosRiesgo(), INFO);
 	ok("abierta: sin aviso de cierre", abierta.includes("hubo capturas después del cierre"), false);
+}
+
+// ── 5c. Foto completa del cierre (decisiones 6 y 7): grado, escala y desglose del cierre ─
+{
+	const RDx = window.ReporteDatos;
+	// Al cerrar: 2° (Fase 3) con el desglose del motor de ese momento
+	const motorCierre = motorRiesgo();
+	const foto = {
+		trabajo_diario: "TD", trabajo_diario_del_maestro: false,
+		alumno: RDx.fotoAlumno({ grado: 2 }, BANDA_2),
+		campos: RDx.fotoCampos(motorCierre.porCampo),
+		pesos: PESOS, avance_pda: RDx.fotoAvancePda(PDA_RIESGO.map((f) => Object.assign({ maestro_id: "m1", grupo_id: "g1" }, f))),
+	};
+	ok("foto: grado, fase y escala", [foto.alumno.grado, foto.alumno.fase, foto.alumno.escala].join("|"), "2|3|6 a 10");
+	ok("foto: estándar de PPM de su grado", foto.alumno.banda_ppm.estandar_max, 84);
+	ok("foto: porcentaje truncado a 2 decimales", foto.campos.LEN.porcentaje, Math.floor(motorCierre.porCampo.LEN.porcentaje * 100 + 1e-9) / 100);
+	ok("foto: DHL sin evidencias marcado", foto.campos.DHL.sin_evidencias, motorCierre.porCampo.DHL.porcentaje === null);
+	ok("foto: desglose por rubro con obtenido y máximo", foto.campos.SAB.rubros.tareas.maximo, 3);
+	ok("foto: avance por PDA sin ids del maestro ni del grupo", "maestro_id" in foto.avance_pda[0] || "grupo_id" in foto.avance_pda[0], false);
+
+	const filas = {};
+	CAMPOS.forEach((c) => {
+		const pct = foto.campos[c].porcentaje;
+		filas[c] = { campo: c, calificacion: c === "DHL" ? 8 : 6, porcentaje: pct, nivel: foto.campos[c].nivel,
+			calificacion_confirmada: true, cerrada: true, editado_manual: false };
+	});
+	filas.GEN = { campo: "GEN", cerrada: false, texto_autogenerado: { cierre: foto } };
+	// Después del cierre: el alumno pasó a 4° y ya no tiene evidencias (motor de hoy vacío)
+	const motorHoy = { porCampo: {}, pesos: { tareas: 50, trabajos: 50, participacion: 0, conducta: 0, examen: 0 }, asistencia: { presentes: 0, total: 0, porcentaje: null } };
+	CAMPOS.forEach((c) => { motorHoy.porCampo[c] = { rubros: {}, porcentaje: null, calificacionPropuesta: null }; });
+	// Lo que arma ReporteDatos.alumnoTrimestre con la boleta cerrada
+	const boletaT = filas;
+	const pc = RDx.porCampoCierre(foto);
+	const alumnoV = RDx.alumnoVisible({ id: "al-juan", nombre_completo: "ALUMNO EN RIESGO", num_lista: 4, grado: 4 }, foto);
+	ok("alumnoVisible: el grado del cierre", alumnoV.grado, 2);
+	ok("bandaVisible: la del cierre", RDx.bandaVisible(BANDA_4, foto).estandar_max, 84);
+	ok("sin foto del alumno (cerrada antes): el grado de hoy", RDx.alumnoVisible({ grado: 4 }, { trabajo_diario: "x" }).grado, 4);
+	ok("sin foto de campos (cerrada antes): null", RDx.porCampoCierre({ trabajo_diario: "x" }), null);
+	const juicio = {};
+	CAMPOS.forEach((c) => { juicio[c] = RDx.juicioSinEvidencias(boletaT, c, motorHoy.porCampo[c]); });
+	ok("juicio con la foto: solo DHL (aunque hoy ningún campo tenga evidencias)", CAMPOS.filter((c) => juicio[c]).join(","),
+		motorCierre.porCampo.DHL.porcentaje === null ? "DHL" : "");
+	const dFoto = datosRiesgo({
+		alumno: alumnoV, fase: RDx.faseVisible(4, foto), escala: RDx.escalaVisible(4, foto),
+		motor: Object.assign({}, motorHoy, { porCampo: pc, pesos: foto.pesos }), motorVivo: motorHoy, deCierre: true, cerrada: true,
+		banda: RDx.bandaVisible(BANDA_4, foto), avancePda: RDx.avancePdaCierre(foto), juicio: juicio,
+		boletaCiclo: { 1: filas, 2: {}, 3: {} },
+	});
+	const hf = RA.render(dFoto, INFO);
+	ok("cerrada con foto: grado y fase del cierre (2°, Fase 3), no los de hoy (4°)", hf.includes("Fase 3") && !hf.includes("Fase 4"), true);
+	ok("cerrada con foto: escala del cierre", hf.includes("enteros de 6 a 10"), true);
+	ok("cerrada con foto: pesos del cierre", hf.includes("Tareas 28 %"), true);
+	const sab = atributos(hf, "SAB");
+	ok("cerrada con foto: porcentaje del campo del cierre", sab && sab.pct,
+		(Math.floor(foto.campos.SAB.porcentaje * 10 + 1e-9) / 10).toFixed(1));
+	ok("cerrada con foto: el desglose por rubro es el del cierre (SAB tareas 3 de máximo)",
+		/data-campo='SAB'[\s\S]*?data-rubro='tareas'[\s\S]*?<td[^>]*>[^<]*<\/td><td[^>]*>3<\/td>/.test(hf), true);
+	ok("cerrada con foto: avance por PDA del cierre", hf.includes("Escribe su nombre y apellidos"), true);
+	ok("cerrada con foto: no dice que el desglose es de hoy", hf.includes("el desglose por rubro muestra los datos de hoy"), false);
+	// Hoy ya no coincide (el motor de hoy está vacío), pero todo lo mostrado es lo entregado:
+	// el documento no cambia ni con un aviso
+	ok("cerrada con foto: sin aviso de capturas después (el documento no cambia)", hf.includes("hubo capturas después del cierre"), false);
+	if (motorCierre.porCampo.DHL.porcentaje === null) {
+		ok("juicio docente: rotulado en DHL", /data-campo='DHL'[\s\S]*?data-juicio/.test(hf), true);
+		ok("juicio docente: nota explicativa", hf.includes("asignó la calificación por su juicio"), true);
+	}
+}
+
+// ── 5d. Alumno sin NINGUNA evidencia: calificaciones por juicio docente ──────
+{
+	const vacioMotor = { porCampo: {}, pesos: PESOS, asistencia: { presentes: 3, total: 3, porcentaje: 1 }, usaLegacy: false, examenAproximado: false, sinProyectos: false };
+	CAMPOS.forEach((c) => { vacioMotor.porCampo[c] = { rubros: {}, porcentaje: null, calificacionPropuesta: null }; });
+	const filas = {};
+	CAMPOS.forEach((c, i) => { filas[c] = { campo: c, calificacion: 6 + i, porcentaje: null, calificacion_confirmada: true, cerrada: false }; });
+	const juicio = {};
+	CAMPOS.forEach((c) => { juicio[c] = window.ReporteDatos.juicioSinEvidencias(filas, c, vacioMotor.porCampo[c]); });
+	const hj = RA.render(datosRiesgo({ motor: vacioMotor, avancePda: [], diagnostica: null, fluidez: null, juicio: juicio,
+		textos: textos(vacioMotor, null, [], BANDA_2), boletaCiclo: { 1: filas, 2: {}, 3: {} } }), INFO);
+	ok("sin evidencias: se dibuja el reporte (no el estado vacío)", hj.includes("data-estado='vacio'"), false);
+	ok("sin evidencias: las cuatro calificaciones confirmadas", CAMPOS.map((c) => atributos(hj, c).cal).join(","), "6,7,8,9");
+	ok("sin evidencias: las cuatro rotuladas como juicio docente", (hj.match(/data-juicio/g) || []).length, 4 * 2);
+	ok("sin evidencias: sin porcentajes inventados", CAMPOS.every((c) => atributos(hj, c).pct === ""), true);
 }
 
 // ── 6. Estructura de la página ───────────────────────────────────────────────

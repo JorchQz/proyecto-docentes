@@ -38,11 +38,13 @@ ESPERADAS.push(
 	"Mates: Lectura y Escritura Cant", "Problemas matemáticos",
 	"Trabajo Diario", "Fortalezas", "Áreas de Oportunidad",
 	"Asistencia (referencia, no pondera)",
-	"LEN: Calificación", "SAB: Calificación", "ETI: Calificación", "DHL: Calificación"
+	"LEN: Calificación", "SAB: Calificación", "ETI: Calificación", "DHL: Calificación",
+	// Al final, sin mover las de la hoja de Fanny
+	"Boleta del trimestre", "Juicio docente sin evidencias"
 );
 const ENC = E.encabezados();
 ok("encabezados en el orden exacto de la hoja", ENC, ESPERADAS);
-ok("54 columnas", ENC.length, 54);
+ok("56 columnas (las 54 de la hoja + boleta y juicio)", ENC.length, 56);
 ok("nunca HUM", ENC.some((h) => /HUM/.test(h)), false);
 ok("claves de cuaderno existen en el catálogo",
 	E.CUADERNO_COLS.every((x) => catalogo.CUADERNO.some((c) => c.clave === x.clave)) && E.CUADERNO_COLS.length === catalogo.CUADERNO.length, true);
@@ -131,7 +133,7 @@ const [fJose, fLucia, fRaul] = tabla.filas;
 const [mJose, mLucia, mRaul] = tabla.maximos;
 
 ok("una fila por alumno, en el orden dado", tabla.filas.map((f) => f[0]), [JOSE.nombre_completo, LUCIA.nombre_completo, RAUL.nombre_completo]);
-ok("cada fila tiene 54 celdas", tabla.filas.every((f) => f.length === 54) && tabla.maximos.every((f) => f.length === 54), true);
+ok("cada fila tiene 56 celdas", tabla.filas.every((f) => f.length === 56) && tabla.maximos.every((f) => f.length === 56), true);
 ok("grado numérico", fJose[col("Grado")], 1);
 
 // Rubros: obtenido del motor con 1 decimal
@@ -216,7 +218,7 @@ ok("acentos intactos tras UTF-8", Buffer.from(csv, "utf8").toString("utf8").inde
 const leido = parsearCSV(csv.slice(1));
 ok("CSV: 1 encabezado + 3 alumnos", leido.length, 4);
 ok("CSV: encabezados iguales", leido[0], ESPERADAS);
-ok("CSV: todas las filas con 54 celdas", leido.every((f) => f.length === 54), true);
+ok("CSV: todas las filas con 56 celdas", leido.every((f) => f.length === 56), true);
 ok("CSV: nombre con coma y comillas vuelve igual", leido[1][0], JOSE.nombre_completo);
 ok("CSV: nombre con comillas va entrecomillado y duplicado",
 	csv.indexOf("\"Pérez, José \"\"Pepe\"\" Ñúñez\"") !== -1, true);
@@ -263,7 +265,56 @@ const wb = E.libroXLSX(XLSXFalso, tabla, { grupo: "QA", trimestre: 1 });
 ok("XLSX: tres hojas en orden", wb.SheetNames, ["Concentrado", "Máximos", "Léeme"]);
 ok("XLSX: hoja principal = encabezados + filas", hojas["Concentrado"].aoa.length, 4);
 ok("XLSX: hoja Máximos con los mismos encabezados", hojas["Máximos"].aoa[0], ESPERADAS);
-ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 54);
+ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 56);
+
+// ── Boleta cerrada y juicio docente (decisiones de Jorge 5, 6 y 7) ─────────
+{
+	const RD = window.ReporteDatos;
+	// Raúl cerró en 2° con tareas 1 de 2 en LEN y 70 %; después pasó a 3° y se capturó más.
+	// Lucía (abierta) no tiene evidencias en DHL y su DHL está confirmado por juicio.
+	const pcCierre = { LEN: campo({ tareas: rubro(1, 2) }), SAB: campo({}), ETI: campo({}), DHL: campo({}) };
+	pcCierre.LEN.porcentaje = 70;
+	["SAB", "ETI", "DHL"].forEach((c) => { pcCierre[c].porcentaje = null; });
+	const foto = {
+		trabajo_diario: "Del cierre", trabajo_diario_del_maestro: true,
+		diagnostico: { lectura_ppm: 44, lectura_comprension: "logrado", cuaderno: [], matematicas: [] },
+		asistencia: { presentes: 9, total: 10, porcentaje: 0.9 },
+		alumno: RD.fotoAlumno({ grado: 2 }, null), campos: RD.fotoCampos(pcCierre), pesos: {}, avance_pda: [],
+	};
+	const filasRaul = {};
+	["LEN", "SAB", "ETI", "DHL"].forEach((c) => { filasRaul[c] = { campo: c, calificacion: c === "LEN" ? 8 : 7, porcentaje: c === "LEN" ? 70 : null, calificacion_confirmada: true, cerrada: true }; });
+	filasRaul.GEN = { campo: "GEN", texto_autogenerado: { cierre: foto } };
+	const motorHoy = JSON.parse(JSON.stringify(motor));
+	motorHoy.porAlumno.a3.porCampo.LEN = campo({ tareas: rubro(5, 5) }); // capturas después del cierre
+	motorHoy.porAlumno.a2.porCampo.DHL.porcentaje = null;
+	const bol = {
+		a1: boletas.a1,
+		a2: { 1: { DHL: { campo: "DHL", calificacion: 8, porcentaje: null, calificacion_confirmada: true, cerrada: false } }, 2: {}, 3: {} },
+		a3: { 1: filasRaul, 2: {}, 3: {} },
+	};
+	const RAUL_HOY = Object.assign({}, RAUL, { grado: 3 });
+	const datos = RD.congelarCerradas({ alumnos: [JOSE, LUCIA, RAUL_HOY] },
+		{ motor: motorHoy, diagnosticas: { a3: { alumno_id: "a3", lectura_ppm: 99 } }, avancePda: [], boletas: bol }, 1);
+	const t2 = E.construir({ alumnos: datos.alumnos, trimestre: 1, motor: datos.motor, diagnosticas: datos.diagnosticas,
+		avancePda: datos.avancePda, boletas: datos.boletas, bandas, plantillas: {} });
+	const fila = (al) => t2.filas.find((f) => f[0] === al.nombre_completo);
+	const r = fila(RAUL), l = fila(LUCIA), j = fila(JOSE);
+	const mr = t2.maximos.find((f) => f[0] === RAUL.nombre_completo);
+	ok("cerrada: en su lugar de lista con el grado del cierre (1°, 2°, 4°)", t2.filas.map((f) => f[1]), [1, 2, 4]);
+	ok("cerrada: grado del cierre (2), no el de hoy (3)", r[col("Grado")], 2);
+	ok("cerrada: rubros del cierre (LEN tareas 1), no los de hoy (5)", r[col("LEN: Tareas")], 1);
+	ok("cerrada: máximo del cierre (2)", mr[col("LEN: Tareas")], 2);
+	ok("cerrada: asistencia del cierre", [r[col("LEN: Asist.")], r[col("Asistencia (referencia, no pondera)")]], [9, 90]);
+	ok("cerrada: PPM del cierre (44), no el de hoy (99)", r[col("Lectura: PPM")], 44);
+	ok("cerrada: trabajo diario del cierre", r[col("Trabajo Diario")], "Del cierre");
+	ok("cerrada: columna Boleta", r[col("Boleta del trimestre")], "cerrada");
+	ok("abierta: columna Boleta", l[col("Boleta del trimestre")], "abierta");
+	ok("cerrada: juicio según la foto (SAB, ETI y DHL sin evidencias)", r[col("Juicio docente sin evidencias")], "SAB, ETI, DHL");
+	ok("abierta: juicio en DHL (confirmado sin evidencias hoy)", l[col("Juicio docente sin evidencias")], "DHL");
+	ok("sin juicio: celda vacía", j[col("Juicio docente sin evidencias")], null);
+	ok("Léeme: explica las dos columnas nuevas",
+		["Boleta del trimestre", "Juicio docente sin evidencias"].every((c) => E.hojaLeeme({}).some((f) => f[0] === c)), true);
+}
 
 // Sin emojis en lo que se exporta
 ok("sin emojis en el CSV ni en el Léeme",

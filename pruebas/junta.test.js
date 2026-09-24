@@ -67,7 +67,8 @@ function motorAlumno(pcts, fr) {
 	});
 	return { porCampo: porCampo, asistencia: { presentes: 20, total: 20, porcentaje: 1 }, usaLegacy: false, examenAproximado: true };
 }
-const BIEN = { tareas: 0.9, trabajos: 0.9, participacion: 0.5, conducta: 0.5, examen: 0.8 };
+// Participación y conducta: 1 (normal) y 2 valen el día completo (decisión de Jorge 9)
+const BIEN = { tareas: 0.9, trabajos: 0.9, participacion: 1, conducta: 1, examen: 0.8 };
 
 function confirmadaTodo(cal) {
 	const t = {};
@@ -199,8 +200,8 @@ const rubro = (r) => at.rubros.find((x) => x.def.rubro === r);
 ok("tareas bajo 60 % (todo el trimestre)", [rubro("tareas").n, rubro("tareas").total], [2, 5]);
 ok("trabajos: nadie bajo 60 %", rubro("trabajos").n, 0);
 ok("examen bajo 60 %", rubro("examen").n, 1);
-ok("participación: 1 de 2 (50 %) es lo normal; solo cuenta bajo 50 %", rubro("participacion").n, 1);
-ok("conducta en 50 %: no es área", rubro("conducta").n, 0);
+ok("participación: el día normal vale completo; solo cuenta bajo 60 %", rubro("participacion").n, 1);
+ok("conducta al 100 %: no es área", rubro("conducta").n, 0);
 ok("PDA con mayoría en requiere apoyo (≥2 evidencias, ≥2 evaluados)", at.pda.map((p) => [p.grado, p.campo, p.n, p.total]), [[1, "LEN", 2, 3], [2, "ETI", 2, 3]]);
 
 const sNombres = J.diapositivas(m1, { mostrarNombres: true });
@@ -282,6 +283,79 @@ const titulos = sg.map((d) => d.titulo);
 ok("30 alumnos de un grado: dos diapositivas de barras", titulos.filter((t) => /^Desempeño de 3° grado \(\d de 2\)$/.test(t)).length, 2);
 ok("más de 12 filas: dos columnas", /--columnas:2/.test(slide(sg, "Desempeño de 3° grado (1").html), true);
 ok("fluidez partida sin pasarse de 12 por diapositiva", titulos.filter((t) => /^Fluidez lectora/.test(t)).length, 3);
+
+// ── 6. Boletas cerradas: la junta usa la foto del cierre (decisión de Jorge 7) ─
+console.log("\nBoletas cerradas");
+{
+	// b1 cerró en 1° con 70 % en cada campo, tareas al 40 %, 20 ppm contra la banda de 1°;
+	// después le cambiaron el grado a 2° y se capturó más (hoy 80 %, 90 ppm)
+	const d = trimestre1();
+	const pcCierre = motorAlumno({ LEN: 70, SAB: 70, ETI: 70, DHL: 70 }, Object.assign({}, BIEN, { tareas: 0.4 })).porCampo;
+	const foto = {
+		trabajo_diario: "", diagnostico: { lectura_ppm: 20, lectura_comprension: null, cuaderno: [], matematicas: [] },
+		asistencia: { presentes: 18, total: 20, porcentaje: 0.9 },
+		alumno: RD.fotoAlumno({ grado: 1 }, BANDAS[1]),
+		campos: RD.fotoCampos(pcCierre), pesos: {},
+		avance_pda: [{ grado: 1, clave_pda: "P1", campo_formativo: "Lenguajes", pda: "Escribe su nombre y lo compara con otros", evidencias: 2, nivel_predominante: "requiere_apoyo", tendencia: "estable" }],
+	};
+	const filas = {};
+	RD.CAMPOS.forEach((c) => { filas[c] = { calificacion: 7, porcentaje: 70, calificacion_confirmada: true, cerrada: true }; });
+	filas.GEN = { campo: "GEN", texto_autogenerado: { cierre: foto } };
+	d.boletas.b1 = { 1: filas, 2: {}, 3: {} };
+	const cong = RD.congelarCerradas(ctx, d, 1);
+	ok("congelar: b1 con el grado del cierre", cong.alumnos.find((a) => a.id === "b1").grado, 1);
+	ok("congelar: orden de lista con el grado del cierre (b1 con los de 1°)", cong.alumnos.map((a) => a.id), ["a1", "a2", "a3", "b1", "b2", "b3"]);
+	{
+		// a1 cerró en 1° y hoy está en 2° (y la lista llega en otro orden): vuelve a 1°, por su número
+		const alumnosHoy = ctx.alumnos.map((a) => a.id === "a1" ? Object.assign({}, a, { grado: 2, num_lista: 9 }) : a);
+		const fa = { alumno: RD.fotoAlumno({ grado: 1 }, BANDAS[1]), campos: RD.fotoCampos(pcCierre) };
+		const fl = {};
+		RD.CAMPOS.forEach((c) => { fl[c] = { calificacion: 7, porcentaje: 70, calificacion_confirmada: true, cerrada: true }; });
+		fl.GEN = { campo: "GEN", texto_autogenerado: { cierre: fa } };
+		const d2 = trimestre1(); d2.boletas.a1 = { 1: fl, 2: {}, 3: {} };
+		ok("congelar: quien cambió de grado después del cierre vuelve a su lugar de lista",
+			RD.congelarCerradas(Object.assign({}, ctx, { alumnos: alumnosHoy.slice(1, 3).concat(alumnosHoy.slice(3)).concat([alumnosHoy[0]]) }), d2, 1).alumnos.map((a) => a.id),
+			["a2", "a3", "a1", "b1", "b2", "b3"]);
+	}
+	ok("congelar: los abiertos no cambian", cong.alumnos.find((a) => a.id === "b2").grado, 2);
+	ok("congelar: porcentaje del cierre", cong.motor.porAlumno.b1.porCampo.LEN.porcentaje, 70);
+	ok("congelar: el abierto sigue en vivo", cong.motor.porAlumno.b2.porCampo.LEN.porcentaje, 50);
+	ok("congelar: lectura del cierre", cong.diagnosticas.b1.lectura_ppm, 20);
+	ok("congelar: banda del cierre", cong.bandasAlumno.b1.estandar_max, 59);
+	ok("congelar: avance por PDA del cierre (P3 de hoy ya no, P1 del cierre sí)",
+		cong.avancePda.filter((f) => f.alumno_id === "b1").map((f) => f.clave_pda), ["P1"]);
+	ok("congelar: no toca los datos originales", d.motor.porAlumno.b1.porCampo.LEN.porcentaje, 80);
+	ok("congelar: marca cerrados", cong.cerrados, { b1: true });
+
+	const m = J.construirModelo({ ctx: ctx, trimestre: 1, actual: cong });
+	const b1 = m.alumnos.find((a) => a.id === "b1");
+	ok("junta: b1 cuenta en 1° (grado del cierre)", m.grados.find((g) => g.grado === 1).alumnos.map((a) => a.id), ["a1", "a2", "a3", "b1"]);
+	ok("junta: promedio de b1 = el de su boleta cerrada", b1.actual, 70);
+	ok("junta: fluidez contra la banda del cierre (20 ppm en 1° = cercano)", b1.fluidez, "cercano");
+	ok("junta: tareas del cierre (40 %) cuentan en atención", b1.rubros.tareas, 40);
+	// Promedio del grupo a mano: a1 90, a2 60, a3 30, b1 70 (cierre), b2 50 → 300 / 5 = 60
+	ok("junta: promedio del grupo cuadra con la boleta cerrada", Math.round(m.resumen.actual * 10) / 10, 60);
+	ok("junta: 1 de 6 con boleta cerrada", [m.cierre.cerrados, m.cierre.total], [1, 6]);
+	const pan = slide(J.diapositivas(m, {}), "Panorama").html;
+	ok("junta: explica la mezcla de cerrados y abiertos", pan.indexOf("1 de 6 alumnos tienen la boleta cerrada") !== -1, true);
+	ok("textoCierre: todos cerrados", J.textoCierre({ cerrados: 3, total: 3 }), "Todas las boletas del trimestre están cerradas: los datos son los que se entregaron.");
+	ok("textoCierre: ninguno cerrado, sin texto", J.textoCierre({ cerrados: 0, total: 3 }), "");
+	const sinMezcla = slide(J.diapositivas(J.construirModelo({ ctx: ctx, trimestre: 1, actual: RD.congelarCerradas(ctx, trimestre1(), 1) }), {}), "Panorama").html;
+	ok("junta: sin cerradas no hay texto de mezcla", sinMezcla.indexOf("data-junta-cierre") === -1, true);
+
+	// Juicio docente: b3 sin evidencias con sus cuatro calificaciones elegidas
+	const dj = trimestre1();
+	const fj = {};
+	RD.CAMPOS.forEach((c) => { fj[c] = { calificacion: 6, porcentaje: null, calificacion_confirmada: true, cerrada: false }; });
+	dj.boletas.b3 = { 1: fj, 2: {}, 3: {} };
+	const mj = J.construirModelo({ ctx: ctx, trimestre: 1, actual: RD.congelarCerradas(ctx, dj, 1) });
+	ok("junta: cuenta la boleta por juicio como confirmada", mj.confirmadas.alumnos, 2);
+	// a1 también: su DHL confirmado no tiene evidencias hoy (porcentaje null)
+	ok("junta: cuenta 2 alumnos con calificación por juicio docente (b3 y el DHL de a1)", mj.cierre.juicio, 2);
+	ok("junta: lo dice sin nombres", slide(J.diapositivas(mj, {}), "Panorama").html.indexOf("2 alumnos tienen alguna calificación asignada por juicio docente") !== -1, true);
+	ok("junta: sin calificaciones por juicio no lo menciona",
+		slide(J.diapositivas(J.construirModelo({ ctx: grande, trimestre: 1, actual: datosGrande }), {}), "Panorama").html.indexOf("data-junta-juicio") === -1, true);
+}
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

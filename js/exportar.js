@@ -63,6 +63,11 @@
 	];
 
 	var COL_ASISTENCIA_REF = "Asistencia (referencia, no pondera)";
+	// Al final, para no mover las columnas de la hoja de Fanny
+	var COL_BOLETA = "Boleta del trimestre";
+	var COL_JUICIO = "Juicio docente sin evidencias";
+	var BOLETA_CERRADA = "cerrada";
+	var BOLETA_ABIERTA = "abierta";
 	var PENDIENTE = "pendiente";
 	var SEPARADOR_TEXTOS = " | ";
 
@@ -80,6 +85,7 @@
 		MATES_COLS.forEach(function (x) { h.push(x.titulo); });
 		h.push("Trabajo Diario", "Fortalezas", "Áreas de Oportunidad", COL_ASISTENCIA_REF);
 		CAMPOS.forEach(function (c) { h.push(c + ": Calificación"); });
+		h.push(COL_BOLETA, COL_JUICIO);
 		return h;
 	}
 
@@ -110,6 +116,7 @@
 			diagnosticaVisible: w.ReporteDatos && w.ReporteDatos.diagnosticaVisible,
 			asistenciaVisible: w.ReporteDatos && w.ReporteDatos.asistenciaVisible,
 			calificacionOficial: w.ReporteDatos && w.ReporteDatos.calificacionOficial,
+			juicioSinEvidencias: w.ReporteDatos && w.ReporteDatos.juicioSinEvidencias,
 			catalogo: w.CatalogoHabilidades,
 			corto: w.CamposFormativos && w.CamposFormativos.corto,
 		};
@@ -119,7 +126,8 @@
 		construir(insumos, deps) → { encabezados, filas, maximos }
 
 		insumos = {
-			alumnos:      ctx.alumnos ([{id, nombre_completo, grado}], en orden de lista),
+			alumnos:      grupoTrimestre().alumnos (ctx.alumnos, con el grado del cierre si la
+			              boleta está cerrada; [{id, nombre_completo, grado}], en orden de lista),
 			trimestre:    1 | 2 | 3,
 			motor:        grupoTrimestre().motor  ({porAlumno: {id: {porCampo, asistencia}}}),
 			diagnosticas: grupoTrimestre().diagnosticas ({id: fila}),
@@ -128,8 +136,10 @@
 			bandas:       ctx.bandas, plantillas: ctx.plantillas
 		}
 		deps (opcional, para pruebas) = { generar, comoParrafo, textoSeccion,
-		                                   calificacionOficial, catalogo, corto }
+		                                   calificacionOficial, juicioSinEvidencias, catalogo, corto }
 		Celda vacía = null (sin evidencias o sin captura).
+		Boleta cerrada: grupoTrimestre ya trae la foto del cierre (rubros, asistencia,
+		diagnóstico, grado); aquí los textos y el trabajo diario también salen del cierre.
 	*/
 	function construir(insumos, deps) {
 		deps = deps || depsPorDefecto();
@@ -224,6 +234,14 @@
 				fila.push(oficial.pendiente ? PENDIENTE : oficial.valor);
 			});
 
+			// Si la boleta está cerrada (sus columnas son las del cierre) y qué campos se
+			// calificaron por juicio docente, sin evidencias registradas
+			fila.push(cerrada ? BOLETA_CERRADA : BOLETA_ABIERTA);
+			var porJuicio = deps.juicioSinEvidencias ? CAMPOS.filter(function (c) {
+				return deps.juicioSinEvidencias(boletaT, c, porCampo[c]);
+			}) : [];
+			fila.push(porJuicio.length ? porJuicio.join(", ") : null);
+
 			while (maximo.length < fila.length) maximo.push(null);
 			filas.push(fila);
 			maximos.push(maximo);
@@ -307,6 +325,8 @@
 			["Fortalezas / Áreas de Oportunidad", "Textos de la boleta por campo (LEN, SAB, ETI, DHL) y generales: los guardados por el docente o, si no hay, los que propone Mi salón con lo capturado."],
 			[COL_ASISTENCIA_REF, "Porcentaje de días asistidos sobre días con lista (0 a 100). Solo referencia: la asistencia no pondera."],
 			["<Campo>: Calificación", "Calificación confirmada por el docente (1° y 2°: 6 a 10; 3° a 6°: 5 a 10) o «pendiente»."],
+			[COL_BOLETA, "«cerrada»: el docente cerró la boleta; todas las columnas de ese alumno (grado, rubros, asistencia, cuaderno, lectura y textos) son las del cierre, lo que se entregó, aunque después se haya capturado algo o cambiado su grado. «abierta»: lo capturado hasta hoy."],
+			[COL_JUICIO, "Campos cuya calificación asignó el docente por juicio, sin evidencias registradas en el trimestre (por ejemplo, un alumno que llegó tarde). Esos campos no tienen porcentaje ni rubros."],
 			["Celda vacía", "Sin evidencias de ese rubro en el trimestre, o sin captura."],
 		];
 	}
@@ -348,6 +368,8 @@
 		CUADERNO_COLS: CUADERNO_COLS,
 		MATES_COLS: MATES_COLS,
 		COL_ASISTENCIA_REF: COL_ASISTENCIA_REF,
+		COL_BOLETA: COL_BOLETA,
+		COL_JUICIO: COL_JUICIO,
 		PENDIENTE: PENDIENTE,
 		HOJA_PRINCIPAL: HOJA_PRINCIPAL,
 		HOJA_MAXIMOS: HOJA_MAXIMOS,
@@ -485,12 +507,21 @@
 				if (miTurno !== turno) return;
 				sinProyectos = !!(datos.motor && datos.motor.sinProyectos);
 				tabla = construir({
-					alumnos: ctx.alumnos, trimestre: trimestre, motor: datos.motor,
+					// Con la boleta cerrada, el alumno con el grado del cierre
+					alumnos: datos.alumnos || ctx.alumnos, trimestre: trimestre, motor: datos.motor,
 					diagnosticas: datos.diagnosticas, avancePda: datos.avancePda, boletas: datos.boletas,
 					bandas: ctx.bandas, plantillas: ctx.plantillas,
 				});
 				el.estado.textContent = "";
 				renderAviso();
+				// Si se mezclan boletas cerradas y abiertas, decir de dónde sale cada fila
+				var nCerrados = Object.keys(datos.cerrados || {}).length;
+				if (nCerrados > 0) {
+					mensaje("info", nCerrados >= ctx.alumnos.length
+						? "Todas las boletas del trimestre están cerradas: el concentrado es lo que se entregó."
+						: nCerrados + " de " + ctx.alumnos.length + " alumnos tienen la boleta cerrada: sus columnas son las del cierre (lo que se entregó); " +
+							"las de los demás, lo capturado hasta hoy. La columna «" + COL_BOLETA + "» lo indica.");
+				}
 				renderVista();
 				botones(tabla.filas.length > 0);
 			} catch (e) {

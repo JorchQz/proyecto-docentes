@@ -18,6 +18,9 @@
 	  - Textos: lo que el maestro dejó en boleta_trimestral; si está vacío, la propuesta
 	    de la Capa 1 (ReporteDatos.textoSeccion).
 	  - Asistencia: dato de referencia, nunca pondera (art. 7).
+	  - Boleta cerrada: grado, fase, escala y banda de lectura del cierre (la foto; si después
+	    cambia el grado del alumno, lo entregado no se mueve). Calificación por juicio docente
+	    sin evidencias: marcada con * y explicada al pie (ReporteDatos.juicioSinEvidencias).
 	  - Mi salón es complemento de la boleta oficial (SIGED): no la sustituye.
 
 	Esta página SOLO LEE: no escribe nada en la base de datos.
@@ -56,7 +59,7 @@
 	function escala(grado) {
 		var f = fase(grado);
 		if (!f) return "";
-		return f === 3 ? "Enteros de 6 a 10" : "Enteros de 5 a 10; 5 no acredita";
+		return "Enteros de " + RD().escalaDeFase(f);
 	}
 
 	function formatoPromedio(valor) {
@@ -111,18 +114,41 @@
 		return { porCampo: porCampo, general: general };
 	}
 
-	function celdaValor(valor, attrs, actual, esPromedio) {
+	// Marca de calificación por juicio docente, sin evidencias registradas (se explica al pie)
+	var MARCA_JUICIO = "<sup class='bol-juicio' style='font-size:0.7em;color:#b45309;margin-left:1px' aria-label='por juicio docente, sin evidencias'>*</sup>";
+
+	function celdaValor(valor, attrs, actual, esPromedio, juicio) {
 		var clases = (actual ? "actual " : "");
 		if (valor === null || valor === undefined) {
 			return "<td class='" + clases + "pendiente' " + attrs + ">pendiente</td>";
 		}
 		var texto = esPromedio ? formatoPromedio(valor) : String(valor);
-		return "<td class='" + clases + "num' " + attrs + ">" + esc(texto) + "</td>";
+		return "<td class='" + clases + "num' " + attrs + ">" + esc(texto) + (juicio ? MARCA_JUICIO : "") + "</td>";
 	}
 
-	function tablaCalificaciones(boletaCiclo, trimestre) {
+	/*
+		¿Qué calificaciones fueron por juicio docente, sin evidencias? {1: {LEN: bool}, ...}
+		juicioActual: el del trimestre elegido, ya calculado con el motor de hoy o la foto
+		del cierre (alumnoTrimestre); los otros trimestres, con su fila o su foto.
+	*/
+	function juicioCiclo(boletaCiclo, trimestre, juicioActual) {
+		var salida = {};
+		TRIMESTRES.forEach(function (t) {
+			salida[t] = {};
+			RD().CAMPOS.forEach(function (c) {
+				salida[t][c] = t === trimestre && juicioActual
+					? !!juicioActual[c]
+					: RD().juicioSinEvidencias((boletaCiclo || {})[t] || {}, c);
+			});
+		});
+		return salida;
+	}
+
+	function tablaCalificaciones(boletaCiclo, trimestre, juicioActual) {
 		var R = RD();
 		var resumen = resumenCalificaciones(boletaCiclo);
+		var juicio = juicioCiclo(boletaCiclo, trimestre, juicioActual);
+		var hayJuicio = false;
 		var cabeza = "<thead><tr><th style='text-align:left'>Campo formativo</th>" +
 			TRIMESTRES.map(function (t) {
 				return "<th" + (t === trimestre ? " class='actual'" : "") + "><span class='bol-largo'>Trimestre </span>" +
@@ -135,7 +161,9 @@
 				"<span class='bol-chip' style='background:" + R.COLOR_CAMPO[c] + "'></span>" +
 				"<span><span class='bol-codigo bol-codigo-tabla'>" + c + "</span> " + esc(R.NOMBRE_CAMPO[c]) + "</span></span></th>" +
 				TRIMESTRES.map(function (t) {
-					return celdaValor(v[t], "data-campo='" + c + "' data-trim='" + t + "'", t === trimestre, false);
+					var j = juicio[t][c] && v[t] !== null && v[t] !== undefined;
+					if (j) hayJuicio = true;
+					return celdaValor(v[t], "data-campo='" + c + "' data-trim='" + t + "'", t === trimestre, false, j);
 				}).join("") +
 				celdaValor(v.promedio, "data-campo='" + c + "' data-trim='promedio'", false, true) +
 				"</tr>";
@@ -153,7 +181,11 @@
 			cabeza + "<tbody>" + cuerpo + "</tbody>" + pie + "</table></div>" +
 			"<p class='bol-nota'>«pendiente»: el docente todavía no confirma esa calificación. " +
 			"Los promedios consideran solo calificaciones confirmadas; el promedio general de un trimestre " +
-			"aparece cuando están confirmados los cuatro campos formativos.</p>";
+			"aparece cuando están confirmados los cuatro campos formativos.</p>" +
+			(hayJuicio
+				? "<p class='bol-nota' id='boletaNotaJuicio'><span style='color:#b45309;font-weight:600'>*</span> Calificación asignada por juicio docente: " +
+					"no hay evidencias registradas de ese campo formativo en el trimestre.</p>"
+				: "");
 	}
 
 	// Asistencia: SOLO referencia, nunca parte de la calificación (art. 7)
@@ -286,9 +318,12 @@
 
 	// ── Encabezado y firmas ───────────────────────────────────────────────────
 
+	// Boleta cerrada: grado, fase y escala del cierre (d.fase y d.escala vienen de la foto,
+	// ReporteDatos.alumnoTrimestre); si no, los del grado de hoy
 	function encabezado(d) {
 		var a = d.alumno || {};
-		var f = fase(a.grado);
+		var f = d.fase || fase(a.grado);
+		var textoEscala = d.escala ? "Enteros de " + d.escala : escala(a.grado);
 		function dato(etiqueta, valor, clase) {
 			return "<div" + (clase ? " class='" + clase + "'" : "") + "><dt>" + etiqueta + "</dt><dd>" +
 				(valor !== null && valor !== undefined && String(valor) !== "" ? esc(valor) : "—") + "</dd></div>";
@@ -308,7 +343,7 @@
 			dato("Grupo", d.grupoNombre) +
 			dato("Docente", d.maestroNombre) +
 			dato("Fase", f ? "Fase " + f : null) +
-			dato("Escala", escala(a.grado)) +
+			dato("Escala", textoEscala) +
 			"</dl>" +
 			"</header>";
 	}
@@ -327,8 +362,10 @@
 			alumno: {id, nombre_completo, grado, num_lista}, trimestre: 1|2|3,
 			boletaCiclo: {1: {LEN: fila, ..., GEN: fila}, 2: {...}, 3: {...}},
 			textos: salida de TextosBoleta.generar, diagnostica: fila|null,
-			banda: fila de bandas_ppm|null, asistencia: {presentes, total, porcentaje}
+			banda: fila de bandas_ppm|null, asistencia: {presentes, total, porcentaje},
+			fase, escala (opcionales: los del cierre), juicio: {LEN: bool, ...} (opcional)
 		}
+		Con la boleta cerrada, alumno.grado, fase, escala y banda son los de la foto del cierre.
 	*/
 	// Nota solo en pantalla: qué significa la marca de propuesta, o que la boleta ya se cerró
 	function notaObservaciones(d) {
@@ -344,7 +381,7 @@
 		var grado = d.alumno ? d.alumno.grado : null;
 		return encabezado(d) +
 			"<section class='bol-seccion'><h2>1. Calificaciones por campo formativo</h2>" +
-			"<div class='bol-bloque'>" + tablaCalificaciones(d.boletaCiclo || {}, d.trimestre) + "</div>" +
+			"<div class='bol-bloque'>" + tablaCalificaciones(d.boletaCiclo || {}, d.trimestre, d.juicio) + "</div>" +
 			bloqueAsistencia(d.asistencia, d.trimestre) + "</section>" +
 			"<section class='bol-seccion'><h2>2. Observaciones y sugerencias del trimestre " + d.trimestre + "</h2>" +
 			notaObservaciones(d) +
@@ -491,7 +528,9 @@
 				el.hoja.innerHTML = renderBoleta({
 					escuela: ctx.escuela, ciclo: ctx.ciclo, grupoNombre: ctx.grupo.nombre,
 					maestroNombre: ctx.maestroNombre, fecha: new Date(),
-					alumno: alumno, trimestre: trimestre,
+					// Con la boleta cerrada, el alumno con el grado del cierre
+					alumno: datos.alumno || alumno, trimestre: trimestre,
+					fase: datos.fase, escala: datos.escala, juicio: datos.juicio,
 					boletaCiclo: datos.boletaCiclo, textos: datos.textos,
 					diagnostica: datos.diagnostica, banda: datos.banda,
 					asistencia: datos.motor ? datos.motor.asistencia : null,

@@ -9,6 +9,12 @@
 	  - Textos: los que el maestro dejó en la boleta; si no hay, la propuesta de la
 	    Capa 1 (js/textos-boleta.js).
 	  - Cuaderno, habilidades y PPM: evaluacion_diagnostica + bandas_ppm.
+	  - Boleta cerrada: TODO sale de la foto del cierre (texto_autogenerado.cierre de la fila
+	    GEN): grado, fase, escala, banda de PPM, porcentajes y desglose por rubro, pesos,
+	    avance por PDA, diagnóstico, asistencia y trabajo diario (decisiones de Jorge 6 y 7).
+	    alumnoTrimestre y grupoTrimestre ya la aplican; las cerradas antes de que la foto
+	    guardara algo caen, dato por dato, a lo de hoy.
+	  - Juicio docente sin evidencias (decisión 5): juicioSinEvidencias.
 
 	Requiere (en este orden): supabase.js, grupo-activo.js, campos-formativos.js,
 	catalogo-habilidades.js, motor-calificacion.js, textos-boleta.js.
@@ -153,6 +159,140 @@
 		return foto;
 	}
 
+	function vacio(v) { return v === null || v === undefined || v === "" || (typeof v === "number" && isNaN(v)); }
+	function tiene(obj, k) { return !!obj && Object.prototype.hasOwnProperty.call(obj, k); }
+
+	/*
+		Fase y escala (Acuerdo 10/09/23, art. 9). Solo rotulan: el piso lo garantiza la base
+		(piso_calificacion_boleta + trigger boleta_trimestral_piso_fase) y la conversión de
+		porcentaje a número es solo calcular_calificacion_boleta.
+	*/
+	function faseDeGrado(grado) {
+		var g = Number(grado);
+		if (!(g >= 1 && g <= 6)) return null;
+		return g <= 2 ? 3 : (g <= 4 ? 4 : 5);
+	}
+	function escalaDeFase(fase) {
+		if (!fase) return "";
+		return Number(fase) === 3 ? "6 a 10" : "5 a 10; 5 no acredita";
+	}
+
+	/*
+		Foto del cierre, segunda parte (decisiones de Jorge 6 y 7, 2026-09-24). Además del
+		trabajo diario, el diagnóstico y la asistencia, al cerrar se guardan:
+		  alumno:     grado, fase, escala y banda de PPM de su grado (estándar de lectura)
+		  campos:     por campo, porcentaje (truncado a 2 decimales, igual que la fila),
+		              semáforo, desglose por rubro y si no había evidencias (juicio docente)
+		  pesos:      los pesos con que se calculó
+		  avance_pda: el avance por PDA del alumno
+		Todo documento de una boleta cerrada lee esto; si después cambia el grado, las
+		capturas o los pesos, lo entregado no se mueve. Las boletas cerradas antes de esta
+		foto no traen estas claves: entonces cada dato cae a lo de hoy, sin romperse.
+	*/
+	function truncar2(p) {
+		return vacio(p) ? null : Math.floor(Number(p) * 100 + 1e-9) / 100;
+	}
+	function fotoAlumno(alumno, banda) {
+		var grado = alumno && !vacio(alumno.grado) ? Number(alumno.grado) : null;
+		var fase = faseDeGrado(grado);
+		return {
+			grado: grado, fase: fase, escala: escalaDeFase(fase),
+			banda_ppm: banda ? {
+				grado: banda.grado === undefined ? grado : banda.grado,
+				requiere_apoyo_max: banda.requiere_apoyo_max, cercano_max: banda.cercano_max, estandar_max: banda.estandar_max,
+			} : null,
+		};
+	}
+	function fotoCampos(porCampo) {
+		var salida = {};
+		CAMPOS.forEach(function (c) {
+			var pc = (porCampo && porCampo[c]) || {};
+			// Todo lo que el motor da por rubro (obtenido, máximo, fracción, peso y los conteos
+			// que usa la Capa 1, como entrega y días del registro diario), copiado tal cual
+			var rubros = {};
+			Object.keys(pc.rubros || {}).forEach(function (r) {
+				var x = pc.rubros[r] || {};
+				rubros[r] = JSON.parse(JSON.stringify(x));
+				if (rubros[r].fraccion === undefined) rubros[r].fraccion = null;
+			});
+			var pct = truncar2(pc.porcentaje);
+			salida[c] = { porcentaje: pct, nivel: pc.nivel || null, sin_evidencias: pct === null, rubros: rubros };
+		});
+		return salida;
+	}
+	function fotoAvancePda(filas) {
+		return (filas || []).map(function (f) {
+			var copia = Object.assign({}, f);
+			delete copia.maestro_id;
+			delete copia.grupo_id;
+			return copia;
+		});
+	}
+
+	// Lo que la foto guardó del alumno (null en boletas cerradas antes de guardarlo)
+	function alumnoCierre(foto) {
+		return foto && foto.alumno && typeof foto.alumno === "object" && !vacio(foto.alumno.grado) ? foto.alumno : null;
+	}
+	// El alumno como se entregó: con el grado de la foto
+	function alumnoVisible(alumno, foto) {
+		var a = alumnoCierre(foto);
+		return a ? Object.assign({}, alumno, { grado: Number(a.grado) }) : alumno;
+	}
+	// Banda de PPM como se entregó (la foto puede decir que no había banda: null)
+	function bandaVisible(banda, foto) {
+		var a = alumnoCierre(foto);
+		return a && tiene(a, "banda_ppm") ? a.banda_ppm : banda;
+	}
+	function faseVisible(grado, foto) {
+		var a = alumnoCierre(foto);
+		return a && a.fase ? Number(a.fase) : faseDeGrado(grado);
+	}
+	function escalaVisible(grado, foto) {
+		var a = alumnoCierre(foto);
+		return a && a.escala ? String(a.escala) : escalaDeFase(faseDeGrado(grado));
+	}
+	// porCampo como el del motor, pero del cierre (null si la foto no lo guardó)
+	function porCampoCierre(foto) {
+		if (!foto || !foto.campos || typeof foto.campos !== "object") return null;
+		var salida = {};
+		CAMPOS.forEach(function (c) {
+			var x = foto.campos[c] || {};
+			salida[c] = {
+				rubros: x.rubros || {},
+				porcentaje: vacio(x.porcentaje) ? null : Number(x.porcentaje),
+				nivel: x.nivel || null,
+				calificacionPropuesta: null, // cerrada: la calificación es la confirmada
+				sinEvidencias: !!x.sin_evidencias,
+			};
+		});
+		return salida;
+	}
+	function avancePdaCierre(foto) {
+		return foto && Array.isArray(foto.avance_pda) ? foto.avance_pda : null;
+	}
+
+	/*
+		¿La calificación confirmada de este campo fue por juicio docente, sin evidencias
+		registradas? (decisión de Jorge 5: el maestro la elige con "Elige", dentro de la
+		escala de su fase). Nunca se inventa un porcentaje: se dice que no lo hubo.
+		  - boleta cerrada con la foto completa: lo que dice la foto
+		  - boleta cerrada antes de esa foto: la fila sin porcentaje
+		  - abierta con el motor de hoy (pcVivo): el campo sin porcentaje hoy
+		  - abierta sin motor (otro trimestre): la fila sin porcentaje (al generar la boleta
+		    se guarda el porcentaje de todo campo con evidencias)
+	*/
+	function juicioSinEvidencias(boletaT, campo, pcVivo) {
+		var fila = boletaT ? boletaT[campo] : null;
+		if (!calificacionOficial(fila).confirmada) return false;
+		if (boletaCerrada(boletaT)) {
+			var foto = fotoCierre(boletaT.GEN);
+			if (foto && foto.campos && foto.campos[campo]) return !!foto.campos[campo].sin_evidencias;
+			return vacio(fila.porcentaje);
+		}
+		if (pcVivo && typeof pcVivo === "object") return vacio(pcVivo.porcentaje);
+		return vacio(fila.porcentaje);
+	}
+
 	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal
 	function promedio(valores) {
 		var nums = valores.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
@@ -221,7 +361,7 @@
 		Todo lo de un alumno en un trimestre, listo para boleta o reporte detallado.
 	*/
 	async function alumnoTrimestre(sb, ctx, alumno, trimestre) {
-		var motor = await window.MotorCalificacion.cargarYCalcular(sb, {
+		var motorVivo = await window.MotorCalificacion.cargarYCalcular(sb, {
 			maestroId: ctx.maestroId, grupoId: ctx.grupo.id, alumnoId: alumno.id,
 			grado: alumno.grado, trimestre: trimestre, campos: CAMPOS,
 		});
@@ -241,11 +381,26 @@
 		var boletas = await boletasCiclo(sb, ctx, [alumno.id]);
 		var boletaT = (boletas[alumno.id] || {})[trimestre] || {};
 		var cerrada = boletaCerrada(boletaT);
+		var foto = cerrada ? fotoCierre(boletaT.GEN) : null;
 		diagnostica = diagnosticaVisible(diagnostica, boletaT.GEN, cerrada);
-		motor = Object.assign({}, motor, { asistencia: asistenciaVisible(motor.asistencia, boletaT.GEN, cerrada) });
+		// Boleta cerrada: desglose, porcentajes, pesos y avance por PDA de la foto del cierre
+		// (motorVivo queda para avisar si hubo capturas después)
+		var pcCierre = porCampoCierre(foto);
+		var motor = Object.assign({}, motorVivo, { asistencia: asistenciaVisible(motorVivo.asistencia, boletaT.GEN, cerrada) },
+			pcCierre ? {
+				porCampo: pcCierre,
+				pesos: foto.pesos || motorVivo.pesos,
+				examenAproximado: tiene(foto, "examen_aproximado") ? !!foto.examen_aproximado : motorVivo.examenAproximado,
+				usaLegacy: tiene(foto, "usa_legacy") ? !!foto.usa_legacy : motorVivo.usaLegacy,
+			} : {});
+		avancePda = avancePdaCierre(foto) || avancePda;
 
-		var banda = ctx.bandas[alumno.grado] || null;
+		// Grado, fase, escala y banda de lectura como se entregaron
+		var alumnoV = alumnoVisible(alumno, foto);
+		var banda = bandaVisible(ctx.bandas[alumnoV.grado] || null, foto);
 		var fluidez = window.CatalogoHabilidades.clasificarPPM(diagnostica ? diagnostica.lectura_ppm : null, banda);
+		var juicio = {};
+		CAMPOS.forEach(function (c) { juicio[c] = juicioSinEvidencias(boletaT, c, (motorVivo.porCampo || {})[c]); });
 
 		var textos = window.TextosBoleta.generar({
 			porCampo: motor.porCampo, avancePda: avancePda, diagnostica: diagnostica, banda: banda,
@@ -256,12 +411,73 @@
 		var retro = await retroalimentaciones(sb, ctx, alumno.id, trimestre, 5);
 
 		return {
-			alumno: alumno, trimestre: trimestre, motor: motor,
+			alumno: alumnoV, trimestre: trimestre, motor: motor, motorVivo: motorVivo,
+			cerrada: cerrada, deCierre: !!pcCierre,
+			fase: faseVisible(alumnoV.grado, foto), escala: escalaVisible(alumnoV.grado, foto),
 			diagnostica: diagnostica, banda: banda, fluidez: fluidez,
-			avancePda: avancePda, textos: textos,
+			avancePda: avancePda, textos: textos, juicio: juicio,
 			boletaCiclo: boletas[alumno.id] || { 1: {}, 2: {}, 3: {} },
 			retroalimentaciones: retro,
 		};
+	}
+
+	/*
+		Grupo con las boletas cerradas congeladas (decisión de Jorge 7): para cada alumno con
+		la boleta del trimestre cerrada, porcentajes y rubros, asistencia, diagnóstico, avance
+		por PDA, grado y banda de lectura salen de la foto del cierre; los abiertos siguen en
+		vivo. Así la junta, la exportación y los concentrados cuadran con lo entregado.
+		Devuelve una copia de datos con además:
+		  alumnos       ctx.alumnos con el grado del cierre
+		  cerrados      {alumnoId: true} (boleta cerrada)
+		  bandasAlumno  {alumnoId: banda|null} de la foto (solo si la foto la guardó)
+	*/
+	function congelarCerradas(ctx, datos, trimestre) {
+		var porAlumno = Object.assign({}, (datos.motor && datos.motor.porAlumno) || {});
+		var diagnosticas = Object.assign({}, datos.diagnosticas || {});
+		var avancePda = datos.avancePda || [];
+		var cerrados = {}, bandasAlumno = {}, pdaCambio = false;
+		var alumnos = (ctx.alumnos || []).map(function (a) {
+			var boletaT = ((datos.boletas || {})[a.id] || {})[trimestre] || {};
+			if (!boletaCerrada(boletaT)) return a;
+			var foto = fotoCierre(boletaT.GEN);
+			cerrados[a.id] = true;
+			var diag = diagnosticaVisible(diagnosticas[a.id] || null, boletaT.GEN, true);
+			if (diag) diagnosticas[a.id] = diag; else delete diagnosticas[a.id];
+			var m = porAlumno[a.id] || { porCampo: {}, asistencia: { presentes: 0, total: 0, porcentaje: null } };
+			var pc = porCampoCierre(foto);
+			porAlumno[a.id] = Object.assign({}, m, { asistencia: asistenciaVisible(m.asistencia, boletaT.GEN, true) },
+				pc ? {
+					porCampo: pc,
+					examenAproximado: tiene(foto, "examen_aproximado") ? !!foto.examen_aproximado : m.examenAproximado,
+					usaLegacy: tiene(foto, "usa_legacy") ? !!foto.usa_legacy : m.usaLegacy,
+				} : {});
+			var pda = avancePdaCierre(foto);
+			if (pda) {
+				avancePda = avancePda.filter(function (f) { return f.alumno_id !== a.id; })
+					.concat(pda.map(function (f) { return Object.assign({}, f, { alumno_id: a.id }); }));
+				pdaCambio = true;
+			}
+			var ac = alumnoCierre(foto);
+			if (ac && tiene(ac, "banda_ppm")) bandasAlumno[a.id] = ac.banda_ppm;
+			return alumnoVisible(a, foto);
+		});
+		// Orden de lista con el grado del cierre (grado y número de lista, como la consulta de
+		// alumnos): si cambió el grado de alguien después de cerrar, sigue donde se entregó
+		alumnos = alumnos.map(function (a, i) { return { a: a, i: i }; }).sort(function (x, y) {
+			return (Number(x.a.grado) || 0) - (Number(y.a.grado) || 0) ||
+				(Number(x.a.num_lista) || 0) - (Number(y.a.num_lista) || 0) || x.i - y.i;
+		}).map(function (x) { return x.a; });
+		if (pdaCambio) {
+			// El mismo orden que la consulta (alumno, PDA)
+			avancePda = avancePda.slice().sort(function (x, y) {
+				return String(x.alumno_id).localeCompare(String(y.alumno_id)) || String(x.clave_pda).localeCompare(String(y.clave_pda));
+			});
+		}
+		return Object.assign({}, datos, {
+			motor: Object.assign({}, datos.motor || {}, { porAlumno: porAlumno }),
+			diagnosticas: diagnosticas, avancePda: avancePda,
+			alumnos: alumnos, cerrados: cerrados, bandasAlumno: bandasAlumno,
+		});
 	}
 
 	// Últimas retroalimentaciones no vacías del trimestre, con su producto
@@ -315,7 +531,8 @@
 			});
 		}
 		var boletas = await boletasCiclo(sb, ctx, ids);
-		return { motor: motor, diagnosticas: diagnosticas, avancePda: avancePda, boletas: boletas };
+		// Alumnos con la boleta cerrada: como se entregó
+		return congelarCerradas(ctx, { motor: motor, diagnosticas: diagnosticas, avancePda: avancePda, boletas: boletas }, trimestre);
 	}
 
 	window.ReporteDatos = {
@@ -334,6 +551,21 @@
 		asistenciaVisible: asistenciaVisible,
 		fotoAsistencia: fotoAsistencia,
 		fotoDiagnostico: fotoDiagnostico,
+		faseDeGrado: faseDeGrado,
+		escalaDeFase: escalaDeFase,
+		truncar2: truncar2,
+		fotoAlumno: fotoAlumno,
+		fotoCampos: fotoCampos,
+		fotoAvancePda: fotoAvancePda,
+		alumnoCierre: alumnoCierre,
+		alumnoVisible: alumnoVisible,
+		bandaVisible: bandaVisible,
+		faseVisible: faseVisible,
+		escalaVisible: escalaVisible,
+		porCampoCierre: porCampoCierre,
+		avancePdaCierre: avancePdaCierre,
+		juicioSinEvidencias: juicioSinEvidencias,
+		congelarCerradas: congelarCerradas,
 		textoSeccion: textoSeccion,
 		trabajoDiario: trabajoDiario,
 		alumnoTrimestre: alumnoTrimestre,

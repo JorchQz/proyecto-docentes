@@ -11,6 +11,10 @@
 	  - Medida de las gráficas: el porcentaje de logro del motor por campo (el mismo que
 	    alimenta la boleta). Promedio del alumno = promedio de sus campos con datos.
 	    Promedio del grupo (o del grado) = promedio de sus alumnos.
+	  - Alumnos con la boleta del trimestre cerrada: porcentajes, rubros, lectura, avance por
+	    PDA, grado y banda de lectura salen de la foto del cierre (ReporteDatos.grupoTrimestre
+	    ya los congela); los abiertos, en vivo. Así los totales cuadran con lo entregado. Si se
+	    mezclan cerrados y abiertos, el panorama lo dice.
 	  - La calificación de boleta NO se mezcla con porcentajes: solo se cuenta cuántos
 	    alumnos la tienen confirmada ("X de Y"). Nunca se muestra una propuesta.
 	  - Fluidez lectora: evaluacion_diagnostica.lectura_ppm contra bandas_ppm del grado
@@ -32,8 +36,9 @@
 	  - Lectura: PPM "requiere apoyo" o "cercano al estándar" de su grado (mismo criterio
 	    que la Capa 1 para escribir "por debajo de lo esperado").
 	  - Rubros bajo 60 %: tareas, trabajos y examen, con el rubro de todo el trimestre (todos
-	    los campos juntos). Participación y conducta se capturan una vez al día con 1 de 2
-	    como valor normal (50 %): cuentan solo si bajan de ese valor, como en la Capa 1.
+	    los campos juntos). Participación y conducta se capturan una vez al día; 1 (normal) y
+	    2 valen el día completo y 0 vale 0: cuentan bajo el umbral de la Capa 1
+	    (TextosBoleta.UMBRAL_DIARIO_NORMAL, hoy el mismo 60 %).
 	  - PDA: los del grado donde la mayoría (más de la mitad) de los alumnos con al menos 2
 	    evidencias quedó en "requiere apoyo"; mínimo 2 alumnos evaluados.
 
@@ -49,7 +54,7 @@
 	// textos-boleta.js no está cargado (pruebas en node)
 	var CAPA1 = (typeof window !== "undefined" && window.TextosBoleta) || {};
 	var UMBRAL_RUBRO = CAPA1.UMBRAL_AREA || 60;           // % (misión §3.5)
-	var UMBRAL_DIARIO = CAPA1.UMBRAL_DIARIO_NORMAL || 50; // % participación y conducta: 1 de 2 es lo normal
+	var UMBRAL_DIARIO = CAPA1.UMBRAL_DIARIO_NORMAL || UMBRAL_RUBRO; // % participación y conducta (el de la Capa 1)
 	var MIN_EVIDENCIAS = CAPA1.EVIDENCIAS_MINIMAS || 2;
 	var MIN_ALUMNOS_PDA = 2;     // un PDA con un solo alumno evaluado no es "la mayoría del grado"
 	var MIN_DESGLOSE = 3;        // no se desglosa por grado un conteo de menos de 3 alumnos
@@ -278,6 +283,13 @@
 			});
 	}
 
+	// Banda de lectura del alumno: con la boleta cerrada, la guardada al cerrar; si no, la de su grado
+	function bandaDe(ctx, datos, a) {
+		var fotos = datos && datos.bandasAlumno;
+		if (fotos && Object.prototype.hasOwnProperty.call(fotos, a.id)) return fotos[a.id] || null;
+		return (ctx.bandas || {})[a.grado] || null;
+	}
+
 	// Plantillas efectivas: las de la BD encima de las de la Capa 1 (mismo orden que generar)
 	function plantillasEfectivas(ctx) {
 		var p = {};
@@ -320,7 +332,7 @@
 				porCampo: m.porCampo,
 				avancePda: filasPda.filter(function (f) { return f.alumno_id === a.id; }),
 				diagnostica: (actual.diagnosticas || {})[a.id] || null,
-				banda: (ctx.bandas || {})[a.grado] || null,
+				banda: bandaDe(ctx, actual, a),
 				asistencia: m.asistencia,
 				catalogo: CH(),
 				corto: CF().corto,
@@ -369,7 +381,9 @@
 	function construirModelo(e) {
 		var ctx = e.ctx, t = Number(e.trimestre), actual = e.actual || null;
 		var CAMPOS = RD().CAMPOS;
-		var alumnosCtx = (ctx.alumnos || []).map(function (a) {
+		// actual.alumnos: los alumnos con la boleta cerrada van con el grado del cierre
+		// (ReporteDatos.congelarCerradas), para que cada uno cuente donde se entregó
+		var alumnosCtx = ((actual && actual.alumnos) || ctx.alumnos || []).map(function (a) {
 			return { id: a.id, nombre: a.nombre_completo || "", num: a.num_lista, grado: Number(a.grado) };
 		});
 
@@ -401,6 +415,7 @@
 		var porAlumnoP = comparacion ? anterior.motor.porAlumno : {};
 		var diags = actual.diagnosticas || {};
 		var boletas = actual.boletas || {};
+		var cerrados = actual.cerrados || {};
 
 		modelo.alumnos = alumnosCtx.map(function (a) {
 			var mA = porAlumnoA[a.id] || null, mP = porAlumnoP[a.id] || null;
@@ -413,7 +428,7 @@
 			var promAnt = mP ? promedioAlumno(mP.porCampo) : null;
 			var diag = diags[a.id] || null;
 			var ppm = diag && esNumero(diag.lectura_ppm) ? Number(diag.lectura_ppm) : null;
-			var banda = (ctx.bandas || {})[a.grado] || null;
+			var banda = bandaDe(ctx, actual, a);
 			var boletaT = boletas[a.id] && boletas[a.id][t] ? boletas[a.id][t] : {};
 			var rubros = {};
 			RUBROS_ATENCION.forEach(function (r) { rubros[r.rubro] = mA ? fraccionRubro(mA.porCampo, r.rubro) : null; });
@@ -430,6 +445,12 @@
 				rubros: rubros,
 				// Boleta completa confirmada por el docente (los cuatro campos)
 				confirmada: CAMPOS.every(function (c) { return RD().calificacionOficial(boletaT[c]).confirmada; }),
+				// Boleta cerrada: sus datos son los del cierre (lo entregado)
+				cerrada: !!cerrados[a.id],
+				// Algún campo con calificación por juicio docente, sin evidencias registradas
+				juicio: CAMPOS.some(function (c) {
+					return RD().juicioSinEvidencias(boletaT, c, mA && mA.porCampo ? mA.porCampo[c] : undefined);
+				}),
 			};
 		});
 
@@ -440,6 +461,11 @@
 		modelo.resumen = resumir(modelo.alumnos, comparacion);
 		modelo.porCampo = promediosPorCampo(modelo.alumnos, comparacion);
 		modelo.confirmadas = { alumnos: modelo.alumnos.filter(function (a) { return a.confirmada; }).length, total: modelo.alumnos.length };
+		modelo.cierre = {
+			cerrados: modelo.alumnos.filter(function (a) { return a.cerrada; }).length,
+			total: modelo.alumnos.length,
+			juicio: modelo.alumnos.filter(function (a) { return a.juicio; }).length,
+		};
 		modelo.grados = grados.map(function (g) {
 			var lista = modelo.alumnos.filter(function (a) { return a.grado === g; });
 			var niveles = { requiere_apoyo: 0, cercano: 0, estandar: 0, avanzado: 0, sinDato: 0 };
@@ -541,6 +567,17 @@
 		};
 	}
 
+	/*
+		Qué datos se ven cuando hay boletas cerradas: las cerradas, como se entregaron (foto
+		del cierre); las abiertas, lo capturado hasta hoy. Solo se explica si hay alguna cerrada.
+	*/
+	function textoCierre(ci) {
+		if (!ci || !(ci.cerrados > 0)) return "";
+		if (ci.cerrados >= ci.total) return "Todas las boletas del trimestre están cerradas: los datos son los que se entregaron.";
+		return ci.cerrados + " de " + ci.total + " alumnos tienen la boleta cerrada: sus datos son los que se entregaron; " +
+			"los de los demás son lo capturado hasta hoy y todavía pueden cambiar.";
+	}
+
 	function diapositivaPanorama(modelo) {
 		var r = modelo.resumen;
 		var hero = "<div class='j-tile j-tile-hero'>" +
@@ -580,10 +617,16 @@
 			: "";
 
 		var c = modelo.confirmadas;
+		var ci = modelo.cierre || { cerrados: 0, total: 0, juicio: 0 };
 		var boleta = "<div class='j-tile j-tile-boleta'>" +
 			"<p class='j-tile-etq'>Boleta del trimestre</p>" +
 			"<p class='j-tile-linea'><strong>" + c.alumnos + " de " + c.total + "</strong> alumnos con calificación confirmada por el docente.</p>" +
+			(ci.juicio > 0
+				? "<p class='j-tile-sub' data-junta-juicio>" + ci.juicio + (ci.juicio === 1 ? " alumno tiene" : " alumnos tienen") +
+					" alguna calificación asignada por juicio docente, sin evidencias registradas en el trimestre.</p>"
+				: "") +
 			"<p class='j-tile-sub'>La calificación de la boleta es un juicio del docente; esta presentación muestra porcentajes de logro, no calificaciones.</p>" +
+			(textoCierre(ci) ? "<p class='j-tile-sub' data-junta-cierre>" + esc(textoCierre(ci)) + "</p>" : "") +
 			"</div>";
 
 		return {
@@ -939,6 +982,7 @@
 		pdaConMayoriaApoyo: pdaConMayoriaApoyo,
 		clavePlantilla: clavePlantilla,
 		sugerenciasFrecuentes: sugerenciasFrecuentes,
+		textoCierre: textoCierre,
 		construirModelo: construirModelo,
 		diapositivas: diapositivas,
 		montar: montar,

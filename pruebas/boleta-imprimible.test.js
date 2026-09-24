@@ -49,7 +49,9 @@ function claseCelda(html, campo, trim) {
 
 function fila(campo, calificacion, confirmada, extra) {
 	return Object.assign({
-		campo: campo, calificacion: calificacion, calificacion_confirmada: confirmada, cerrada: false,
+		// Toda fila con evidencias trae su porcentaje (lo guarda Reportes al generar la boleta);
+		// una confirmada SIN porcentaje es juicio docente sin evidencias (se prueba abajo)
+		campo: campo, calificacion: calificacion, calificacion_confirmada: confirmada, cerrada: false, porcentaje: 80,
 		fortalezas: null, areas_oportunidad: null, sugerencias: null, editado_manual: false,
 	}, extra || {});
 }
@@ -135,6 +137,54 @@ noContiene("sin 'null' en pantalla", raro, "null");
 const nada = B.tablaCalificaciones({ 1: {}, 2: {}, 3: {} }, 1);
 ok("sin datos: ninguna celda con número", /class='(?:actual )?num'/.test(nada), false);
 ok("sin datos: 20 celdas pendiente (4 campos + general) × (3 + promedio)", (nada.match(/>pendiente</g) || []).length, 20);
+
+// ── Juicio docente sin evidencias (decisión de Jorge 5) ─────────────────────
+function celdaConMarca(html, campo, trim) {
+	const m = html.match(new RegExp("data-campo='" + campo + "' data-trim='" + trim + "'>([^<]*)(<sup[^>]*>\\*</sup>)?</td>"));
+	return m ? m[1] + (m[2] ? "*" : "") : null;
+}
+const CICLO_J = {
+	// T1 abierta: LEN elegido por juicio (confirmada y sin porcentaje), el resto con evidencias
+	1: { LEN: fila("LEN", 7, true, { porcentaje: null }), SAB: fila("SAB", 8, true), ETI: fila("ETI", 8, true), DHL: fila("DHL", 9, true) },
+	// T2 cerrada con la foto completa: la foto dice cuál fue sin evidencias (DHL), no la fila
+	2: {
+		LEN: fila("LEN", 8, true, { cerrada: true, porcentaje: null }), SAB: fila("SAB", 8, true, { cerrada: true }),
+		ETI: fila("ETI", 8, true, { cerrada: true }), DHL: fila("DHL", 6, true, { cerrada: true }),
+		GEN: fila("GEN", null, false, { texto_autogenerado: { cierre: { campos: {
+			LEN: { porcentaje: 80, sin_evidencias: false }, SAB: { porcentaje: 80, sin_evidencias: false },
+			ETI: { porcentaje: 80, sin_evidencias: false }, DHL: { porcentaje: null, sin_evidencias: true } } } } }),
+	},
+	3: {},
+};
+const tablaJ = B.tablaCalificaciones(CICLO_J, 3);
+ok("juicio: T1 LEN confirmado sin porcentaje lleva la marca", celdaConMarca(tablaJ, "LEN", 1), "7*");
+ok("juicio: T1 SAB con evidencias no", celdaConMarca(tablaJ, "SAB", 1), "8");
+ok("juicio: T2 cerrada, DHL según la foto", celdaConMarca(tablaJ, "DHL", 2), "6*");
+ok("juicio: T2 cerrada, LEN según la foto (aunque la fila no traiga porcentaje)", celdaConMarca(tablaJ, "LEN", 2), "8");
+contiene("juicio: nota al pie", tablaJ, "juicio docente: no hay evidencias registradas");
+noContiene("sin juicio: sin nota al pie", tabla2, "boletaNotaJuicio");
+// El trimestre elegido usa lo calculado con el motor de hoy (datos.juicio), no la fila
+const tablaJ2 = B.tablaCalificaciones(CICLO_J, 1, { LEN: false, SAB: true, ETI: false, DHL: false });
+ok("juicio del trimestre elegido: el del motor (LEN no)", celdaConMarca(tablaJ2, "LEN", 1), "7");
+ok("juicio del trimestre elegido: el del motor (SAB sí)", celdaConMarca(tablaJ2, "SAB", 1), "8*");
+ok("un pendiente nunca lleva marca",
+	celdaConMarca(B.tablaCalificaciones({ 1: { LEN: fila("LEN", 7, false, { porcentaje: null }) }, 2: {}, 3: {} }, 1), "LEN", 1), "pendiente");
+
+// Alumno sin NINGUNA evidencia: los cuatro campos por juicio
+const CICLO_NADA = { 1: {}, 2: {}, 3: {} };
+["LEN", "SAB", "ETI", "DHL"].forEach(function (c, i) { CICLO_NADA[1][c] = fila(c, 6 + i, true, { porcentaje: null }); });
+const tablaNada = B.tablaCalificaciones(CICLO_NADA, 1, { LEN: true, SAB: true, ETI: true, DHL: true });
+ok("sin ninguna evidencia: las cuatro con marca",
+	["LEN", "SAB", "ETI", "DHL"].map(function (c) { return celdaConMarca(tablaNada, c, 1); }).join(","), "6*,7*,8*,9*");
+ok("sin ninguna evidencia: promedio general del trimestre (6+7+8+9)/4", celda(tablaNada, "GENERAL", 1), "7.5");
+
+// Grado del cierre: el encabezado usa fase y escala de la foto aunque el grado de hoy sea otro
+const encCierre = B.encabezado({ trimestre: 1, alumno: { nombre_completo: "X", grado: 2, num_lista: 1 }, fase: 4, escala: "5 a 10; 5 no acredita" });
+contiene("cierre: fase de la foto", encCierre, "Fase 4");
+contiene("cierre: escala de la foto", encCierre, "Enteros de 5 a 10; 5 no acredita");
+const encVivo = B.encabezado({ trimestre: 1, alumno: { nombre_completo: "X", grado: 2, num_lista: 1 } });
+contiene("abierta: fase del grado", encVivo, "Fase 3");
+contiene("abierta: escala del grado", encVivo, "Enteros de 6 a 10");
 
 // ── Asistencia: solo referencia ─────────────────────────────────────────────
 const asis = B.bloqueAsistencia({ presentes: 18, total: 20, porcentaje: 0.9 }, 1);

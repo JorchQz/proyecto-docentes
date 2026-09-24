@@ -92,8 +92,17 @@
 		return 5;
 	}
 
+	// Mismo texto que la boleta imprimible (ReporteDatos.escalaDeFase)
 	function escalaDeGrado(grado) {
-		return Number(grado) <= 2 ? "enteros de 6 a 10" : "enteros de 5 a 10 (5 no es aprobatoria)";
+		return "enteros de " + RD().escalaDeFase(faseDeGrado(grado));
+	}
+
+	// Fase y escala como se entregaron (foto del cierre, ReporteDatos.alumnoTrimestre)
+	function faseDe(datos) {
+		return datos.fase || faseDeGrado(datos.alumno ? datos.alumno.grado : 3);
+	}
+	function escalaDe(datos) {
+		return datos.escala ? "enteros de " + datos.escala : escalaDeGrado(datos.alumno ? datos.alumno.grado : 3);
 	}
 
 	function colorCampo(c) { return (RD() && RD().COLOR_CAMPO[c]) || "#6b7280"; }
@@ -146,19 +155,24 @@
 
 	/*
 		El campo como se muestra: el del motor, salvo que la boleta esté cerrada; entonces el
-		porcentaje es el guardado al cerrar (igual que en Reportes). El desglose por rubro
-		sigue siendo el de hoy; cambioTrasCierre avisa si ya no coincide.
+		porcentaje es el guardado al cerrar (igual que en Reportes). Con la foto completa del
+		cierre (datos.deCierre), datos.motor ya trae el desglose por rubro del cierre; en
+		boletas cerradas antes de esa foto, el desglose es el de hoy. cambioTrasCierre avisa si
+		lo de hoy (datos.motorVivo) ya no coincide con lo entregado.
 	*/
 	function campoVisible(datos, campo) {
 		var pc = (datos.motor && datos.motor.porCampo && datos.motor.porCampo[campo]) || { rubros: {}, porcentaje: null };
 		var fila = filaBoleta(datos, campo);
 		if (!cerradaDe(datos) || !fila || vacio(fila.porcentaje)) return pc;
 		var guardado = Number(fila.porcentaje);
+		var vivo = datos.motorVivo && datos.motorVivo.porCampo && datos.motorVivo.porCampo[campo]
+			? datos.motorVivo.porCampo[campo].porcentaje : pc.porcentaje;
 		return Object.assign({}, pc, {
 			porcentaje: guardado,
 			// El semáforo del campo también es el del cierre
 			nivel: fila.nivel || pc.nivel,
-			cambioTrasCierre: !vacio(pc.porcentaje) && Math.abs(Number(pc.porcentaje) - guardado) >= 0.05,
+			// También si hoy ya no hay evidencias (se borraron productos o capturas)
+			cambioTrasCierre: vacio(vivo) || Math.abs(Number(vivo) - guardado) >= 0.05,
 		});
 	}
 
@@ -170,7 +184,10 @@
 	*/
 	function calificacionCampo(datos, campo) {
 		var oficial = RD().calificacionOficial(filaBoleta(datos, campo));
-		if (oficial.confirmada) return { tipo: "confirmada", valor: oficial.valor, cerrada: oficial.cerrada };
+		if (oficial.confirmada) {
+			// juicio: el docente la eligió sin evidencias registradas (ReporteDatos.juicioSinEvidencias)
+			return { tipo: "confirmada", valor: oficial.valor, cerrada: oficial.cerrada, juicio: !!(datos.juicio && datos.juicio[campo]) };
+		}
 		var pc = datos.motor && datos.motor.porCampo ? datos.motor.porCampo[campo] : null;
 		var propuesta = pc ? pc.calificacionPropuesta : null;
 		if (!vacio(propuesta)) return { tipo: "propuesta", valor: Number(propuesta) };
@@ -239,10 +256,10 @@
 			"<dd class='text-base font-bold text-gray-900 break-words'>" + esc(al.nombre_completo || "—") +
 			(al.num_lista ? " <span class='text-xs font-normal text-gray-500'>No. de lista " + esc(al.num_lista) + "</span>" : "") +
 			(info.baja ? " <span class='text-xs font-semibold text-red-600'>(dado de baja)</span>" : "") + "</dd></div>" +
-			dato("Grado y fase", chipGrado(al.grado) + " <span class='ml-1'>Fase " + faseDeGrado(al.grado) + "</span>") +
+			dato("Grado y fase", chipGrado(al.grado) + " <span class='ml-1'>Fase " + faseDe(datos) + "</span>") +
 			dato("Grupo", esc(info.grupo || "—")) +
 			dato("Docente", esc(info.docente || "—")) +
-			dato("Escala de calificación", esc(escalaDeGrado(al.grado))) +
+			dato("Escala de calificación", esc(escalaDe(datos))) +
 			"</dl>" +
 			"<p class='mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900 leading-relaxed'>" +
 			"Reporte interno para el docente y la familia. Complementa la boleta oficial (SIGED): no la sustituye " +
@@ -257,7 +274,9 @@
 		if (cal.tipo === "confirmada") {
 			return "<div><p class='" + tam + " font-bold text-gray-900 leading-none'>" + esc(cal.valor) + "</p>" +
 				"<p class='mt-1 text-[11px] font-semibold text-emerald-700'>Confirmada por el docente" +
-				(cal.cerrada ? " · boleta cerrada" : "") + "</p></div>";
+				(cal.cerrada ? " · boleta cerrada" : "") + "</p>" +
+				(cal.juicio ? "<p class='mt-0.5 text-[11px] font-semibold text-amber-800' data-juicio>Por juicio docente, sin evidencias registradas</p>" : "") +
+				"</div>";
 		}
 		if (cal.tipo === "propuesta") {
 			// En pantalla el docente ve la propuesta rotulada; impreso (puede llegar a la
@@ -381,9 +400,16 @@
 				"de cada pregunta, así que el puntaje por campo se estima como valor total del examen entre número de preguntas. " +
 				"Tómalo como referencia, no como un resultado exacto.");
 		}
-		if (CAMPOS.some(function (c) { return campoVisible(datos, c).cambioTrasCierre; })) {
+		// Con la foto completa del cierre todo lo de este reporte es lo entregado: no hay nada
+		// que avisar y el documento sale idéntico aunque después cambien capturas o el grado.
+		// En boletas cerradas antes de esa foto el desglose es el de hoy y se dice.
+		if (!datos.deCierre && CAMPOS.some(function (c) { return campoVisible(datos, c).cambioTrasCierre; })) {
 			notas.push("<span class='font-semibold text-gray-800'>Boleta cerrada:</span> hubo capturas después del cierre. " +
 				"El porcentaje y la calificación de cada campo son los del cierre; el desglose por rubro muestra los datos de hoy.");
+		}
+		if (CAMPOS.some(function (c) { return calificacionCampo(datos, c).juicio; })) {
+			notas.push("<span class='font-semibold text-amber-800'>Juicio docente:</span> en los campos sin evidencias registradas " +
+				"en el trimestre, el docente asignó la calificación por su juicio, dentro de la escala de la fase; no hay porcentaje ni desglose que mostrar.");
 		}
 		if (m.usaLegacy) {
 			notas.push("Incluye calificaciones capturadas con el formato anterior (revisión de tareas del Dashboard, escala 5 a 10).");
@@ -669,7 +695,7 @@
 	function renderPie(datos, info) {
 		return "<footer class='bloque mt-6 border-t border-gray-200 pt-3 text-[11px] text-gray-500 leading-relaxed'>" +
 			"<p>Semáforo del campo: logrado con 80 % o más, en proceso de 60 % a 79.9 %, requiere apoyo debajo de 60 %. " +
-			"Escala de su fase: " + esc(escalaDeGrado(datos.alumno ? datos.alumno.grado : 3)) +
+			"Escala de su fase: " + esc(escalaDe(datos)) +
 			". El sistema propone la calificación y el docente la confirma.</p>" +
 			"<p class='mt-1'>Generado el " + fmtFecha(info.hoy || fechaHoyISO()) + " con Mi salón. Reporte interno; complementa la boleta oficial.</p>" +
 			"</footer>";

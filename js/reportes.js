@@ -162,7 +162,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function filasGrupo(trimestre) {
 		if (!ctxReportes) ctxReportes = await window.ReporteDatos.contexto(window.sb);
 		const datos = await window.ReporteDatos.grupoTrimestre(window.sb, ctxReportes, trimestre);
-		return window.ReportesGrupo.filas(ctxReportes.alumnos, datos, trimestre);
+		// datos.alumnos: con boleta cerrada, el grado del cierre (lo entregado no se mueve)
+		return window.ReportesGrupo.filas(datos.alumnos || ctxReportes.alumnos, datos, trimestre);
 	}
 
 	async function pintarGrupo(contId, trimestre, render) {
@@ -335,11 +336,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return '<span class="inline-block w-4 h-4 rounded-full ' + semColorClass(semaforo) + '"></span>';
 	}
 
-	function nivelVelocidad(grado, ppm, bandas) {
-		const nivel = window.CatalogoHabilidades.clasificarPPM(ppm, bandas && bandas[grado]);
-		return nivel ? window.CatalogoHabilidades.ETIQUETA_FLUIDEZ[nivel] : "—";
-	}
-
 	// Piso de la fase, para acotar el selector con el que el maestro ajusta el número
 	function pisoFase(grado) {
 		return (grado >= 1 && grado <= 2) ? 6 : 5;
@@ -468,6 +464,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		diasPresente = motor.asistencia.presentes;
 		diasTotal = motor.asistencia.total;
 		asistenciaPct = motor.asistencia.porcentaje;
+		/*
+			Foto del cierre (decisiones de Jorge 6 y 7): con la boleta cerrada, grado, fase,
+			escala, banda de lectura, desglose por rubro y pesos son los del cierre. Boletas
+			cerradas antes de guardar eso: lo de hoy (porCampoCierre y alumnoCierre dan null).
+		*/
+		const RDB = window.ReporteDatos;
+		const fotoGen = boletaYaCerrada ? RDB.fotoCierre(boletaPorCampo[window.TextosBoleta.GENERAL]) : null;
+		const porCampoCierre = RDB.porCampoCierre(fotoGen);
+		const porCampoVisible = porCampoCierre || porCampo;
+		const pesosVisibles = (porCampoCierre && fotoGen.pesos) || motor.pesos;
+		const alumnoVisible = RDB.alumnoVisible(alumno, fotoGen);
+		const bandaVisible = RDB.bandaVisible(bandas ? bandas[alumnoVisible.grado] || null : null, fotoGen);
 		try {
 			const upserts = [];
 			CODIGOS.forEach(function (codigo) {
@@ -504,9 +512,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (e) {
 			console.error("boleta_trimestral (numérico):", e);
 		}
-		// Sin propuesta y sin cierre no hay nada que confirmar; una boleta cerrada sigue cerrada
-		// aunque después ya no haya evidencias
-		if (!hayPropuesta && !boletaYaCerrada) { todoConfirmado = false; todoCerrado = false; }
+		/*
+			Alumno sin NINGUNA evidencia en el trimestre (por ejemplo, llegó tarde): igual que un
+			campo sin evidencias, cada campo ofrece "Elige" y el maestro decide por juicio docente
+			(decisión de Jorge 5, art. 4 XI). todoConfirmado ya es false mientras falte confirmar
+			algún campo; si los cuatro están confirmados por juicio, se puede cerrar.
+			Sin proyectos en el trimestre no hay nada que calificar todavía: no se ofrece.
+		*/
+		const ofrecerJuicio = !motor.sinProyectos;
 
 		// ── Capa 1: textos propuestos por reglas (B.7) ──
 
@@ -514,7 +527,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			porCampo: porCampo,
 			avancePda: avancePda,
 			diagnostica: diagnostica,
-			banda: bandas ? bandas[alumno.grado] : null,
+			banda: bandaVisible,
 			asistencia: motor.asistencia,
 			catalogo: window.CatalogoHabilidades,
 			corto: window.CamposFormativos ? window.CamposFormativos.corto : null,
@@ -543,7 +556,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"</div>" +
 			"<div class='mt-3 flex flex-wrap gap-x-8 gap-y-1 text-sm'>" +
 			"<p><span class='text-gray-500'>Alumno:</span> <span class='font-semibold text-gray-800'>" + esc(alumno.nombre_completo) + "</span></p>" +
-			"<p><span class='text-gray-500'>Grado:</span> <span class='font-semibold text-gray-800'>" + (alumno.grado ? alumno.grado + "°" : "—") + "</span></p>" +
+			"<p><span class='text-gray-500'>Grado:</span> <span class='font-semibold text-gray-800'>" + (alumnoVisible.grado ? alumnoVisible.grado + "°" : "—") + "</span></p>" +
 			"<p><span class='text-gray-500'>No. lista:</span> <span class='font-semibold text-gray-800'>" + (alumno.num_lista || "—") + "</span></p>" +
 			"</div>" +
 			"</div>";
@@ -552,11 +565,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const camposCols = CAMPOS_CORTOS;
 		const MOTOR = window.MotorCalificacion;
 
+		// Con la boleta cerrada (foto completa), el desglose y los pesos del cierre
 		function filaRubro(rubro) {
-			const peso = motor.pesos[rubro];
+			const peso = (pesosVisibles || {})[rubro];
 			let celdas = "";
 			CODIGOS.forEach(function (codigo) {
-				const datos = (porCampo[codigo] && porCampo[codigo].rubros) ? porCampo[codigo].rubros[rubro] : null;
+				const datos = (porCampoVisible[codigo] && porCampoVisible[codigo].rubros) ? porCampoVisible[codigo].rubros[rubro] : null;
 				celdas += "<td class='px-3 py-2 text-center border border-gray-200'>" + fmtRubro(datos) + "</td>";
 			});
 			return "<tr><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>" +
@@ -573,31 +587,41 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const fila = boletaPorCampo[codigo] || {};
 			// Campo cerrado: el porcentaje del cierre, no el de las capturas de hoy
 			const guardado = fila.cerrada && fila.porcentaje !== null && fila.porcentaje !== undefined ? Number(fila.porcentaje) : null;
-			if (guardado !== null && vivo !== null && Math.abs(guardado - vivo) >= 0.05) cambioTrasCierre = true;
+			// También si hoy ya no hay evidencias en un campo que las tenía al cerrar
+			if (guardado !== null && (vivo === null || vivo === undefined || Math.abs(guardado - vivo) >= 0.05)) cambioTrasCierre = true;
 			const pct = guardado !== null ? guardado : vivo;
 			filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(pct) + "</td>";
 		});
 
 		// Fila de calificación: selector para que el maestro ajuste antes de confirmar
+		// El piso del selector es el de la fase de hoy (la base lo vuelve a revisar con el
+		// grado de hoy: trigger boleta_trimestral_piso_fase); cerrada, la escala del cierre
 		const piso = pisoFase(alumno.grado);
+		const faseEtiqueta = RDB.faseVisible(alumnoVisible.grado, fotoGen);
+		const escalaEtiqueta = RDB.escalaVisible(alumnoVisible.grado, fotoGen);
+		// "juicio docente, sin evidencias": la calificación confirmada no sale de evidencias
+		const marcaJuicio = "<span class='block text-xs text-amber-700 mt-1' data-juicio='1'>juicio docente, sin evidencias</span>";
 		let filaCalificacion = "";
+		let haySelector = false;
 		const camposSinEvidencia = [];
 		CODIGOS.forEach(function (codigo, i) {
 			const fila = boletaPorCampo[codigo] || {};
 			const valor = oficialPorCampo[codigo];
 			const propuesta = porCampo[codigo] ? porCampo[codigo].calificacionPropuesta : null;
+			const juicio = RDB.juicioSinEvidencias(boletaPorCampo, codigo, porCampo[codigo]);
 			if (valor === null || valor === undefined) {
 				/*
 					Campo sin evidencias este trimestre (y sin calificación confirmada): no hay
 					propuesta, pero la boleta oficial necesita el número de los cuatro campos.
 					Lo decide el maestro (juicio docente, art. 4 XI): selector sin valor
-					elegido, dentro de la escala de la fase. Si todo el trimestre está vacío,
-					no se ofrece nada.
+					elegido, dentro de la escala de la fase. Vale también si NINGÚN campo tiene
+					evidencias (alumno que llegó tarde). Sin proyectos en el trimestre, nada.
 				*/
-				if (!hayPropuesta || todoCerrado || fila.cerrada) {
+				if (!ofrecerJuicio || todoCerrado || fila.cerrada) {
 					filaCalificacion += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-300'>—</td>";
 					return;
 				}
+				haySelector = true;
 				camposSinEvidencia.push(CAMPOS_CORTOS[i]);
 				let opcionesSin = "<option value=''>Elige</option>";
 				for (let n = piso; n <= 10; n++) opcionesSin += "<option value='" + n + "'>" + n + "</option>";
@@ -609,9 +633,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 			if (todoCerrado || fila.cerrada) {
 				filaCalificacion += "<td class='px-3 py-2 text-center font-bold border border-gray-200 " +
-					colorCalif(valor) + "'>" + valor + "</td>";
+					colorCalif(valor) + "'>" + valor + (juicio ? marcaJuicio : "") + "</td>";
 				return;
 			}
+			haySelector = true;
 			let opciones = "";
 			for (let n = piso; n <= 10; n++) {
 				opciones += "<option value='" + n + "'" + (n === valor ? " selected" : "") + ">" + n + "</option>";
@@ -629,6 +654,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					? "<span data-cal-aviso='" + codigo + "' class='block text-xs text-amber-600 mt-1" +
 						(ajustada ? "" : " hidden") + "'>propuesta: " + propuesta + "</span>"
 					: "") +
+				(juicio ? marcaJuicio : "") +
 				"</td>";
 		});
 
@@ -643,7 +669,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (todoCerrado) {
 			barraEstado = "<div class='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 mb-6'>" +
 				"Boleta cerrada. Las calificaciones ya no se recalculan." +
-				(cambioTrasCierre
+				// Con la foto completa todo lo que se ve es lo del cierre (aunque después cambien
+				// capturas o el grado): no hay nada que avisar. Cerradas antes de esa foto: el
+				// desglose es el de hoy y se dice.
+				(cambioTrasCierre && !porCampoCierre
 					? "<span class='block text-xs mt-1'>Hubo capturas después del cierre: el desglose por criterio muestra los datos de hoy; el porcentaje y la calificación son los del cierre.</span>"
 					: "") + "</div>";
 		} else {
@@ -659,10 +688,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 								(camposSinEvidencia.length === 1 ? " no tiene" : " no tienen") +
 								" evidencias este trimestre: elige su calificación para poder confirmar y cerrar.</span>"
 							: "")
-					: "Todavía no hay evidencias en este trimestre para proponer calificaciones.")) +
+					: (camposSinEvidencia.length
+					? "<span class='text-amber-800'>Este alumno no tiene evidencias registradas en este trimestre. Elige la calificación de cada campo por juicio docente, " +
+						"dentro de la escala de su fase, para poder confirmar y cerrar.</span> La boleta indicará que esas calificaciones no salen de evidencias."
+					: "Todavía no hay evidencias en este trimestre para proponer calificaciones."))) +
 				"</p>" +
 				"<div class='flex gap-2 shrink-0'>" +
-				"<button id='boletaConfirmarBtn' type='button' " + (hayPropuesta ? "" : "disabled ") +
+				"<button id='boletaConfirmarBtn' type='button' " + (haySelector ? "" : "disabled ") +
 				"class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed'>" +
 				(todoConfirmado ? "Guardar ajustes" : "Confirmar calificaciones") + "</button>" +
 				"<button id='boletaCerrarBtn' type='button' " + (todoConfirmado ? "" : "disabled ") +
@@ -692,7 +724,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			MOTOR.RUBROS.map(filaRubro).join("") +
 			"<tr class='bg-gray-50'><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>Porcentaje del campo</td>" + filaPorcentaje + "</tr>" +
 			"<tr class='bg-blue-50'><td class='px-3 py-2 font-bold text-gray-800 border border-gray-200'>Calificación" +
-			"<span class='block text-xs font-normal text-gray-500'>" + (piso === 6 ? "1°-2°: 6 a 10" : "3°-6°: 5 a 10") + "</span></td>" +
+			"<span class='block text-xs font-normal text-gray-500'>" + (faseEtiqueta ? "Fase " + faseEtiqueta + ": " : "") + esc(escalaEtiqueta) + "</span></td>" +
 			filaCalificacion + "</tr>" +
 			"</tbody></table></div>" +
 			asisReferencia + barraEstado + avisosHtml;
@@ -712,7 +744,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Sección 3: Habilidades básicas
 		const ppm = (diagnostica && diagnostica.lectura_ppm != null) ? diagnostica.lectura_ppm : null;
 		const compr = (diagnostica && diagnostica.lectura_comprension) ? diagnostica.lectura_comprension : null;
-		const nivelLect = nivelVelocidad(alumno.grado, ppm, bandas);
+		// Contra la banda del grado como se entregó (foto del cierre) o la de hoy si está abierta
+		const nivelLectClave = window.CatalogoHabilidades.clasificarPPM(ppm, bandaVisible);
+		const nivelLect = nivelLectClave ? window.CatalogoHabilidades.ETIQUETA_FLUIDEZ[nivelLectClave] : "—";
 		const matesMap = window.CatalogoHabilidades.aMapa(diagnostica && diagnostica.matematicas);
 
 		let seccion3 =
@@ -983,6 +1017,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 					// Cuaderno, lectura y matemáticas tal como se entregan (null = sin diagnóstico)
 					diagnostico: window.ReporteDatos.fotoDiagnostico(diagnostica),
 					asistencia: window.ReporteDatos.fotoAsistencia(asistenciaHoy),
+					// Grado, fase, escala y estándar de PPM de hoy: si después cambia el grado del
+					// alumno, lo entregado no se mueve (decisión de Jorge 6)
+					alumno: window.ReporteDatos.fotoAlumno(alumno, bandas ? bandas[alumno.grado] || null : null),
+					// Porcentaje, semáforo y desglose por rubro de cada campo (y si no había
+					// evidencias: juicio docente), pesos y avance por PDA, para que Reportes, el
+					// reporte, la junta y la exportación usen lo del cierre (decisión de Jorge 7)
+					campos: window.ReporteDatos.fotoCampos(porCampo),
+					pesos: Object.assign({}, motor.pesos || {}),
+					avance_pda: window.ReporteDatos.fotoAvancePda(avancePda),
+					examen_aproximado: !!motor.examenAproximado,
+					usa_legacy: !!motor.usaLegacy,
 					en: new Date().toISOString(),
 				};
 				/*
