@@ -67,9 +67,12 @@ ok("fase 4°", B.fase(4), 4);
 ok("fase 5°", B.fase(5), 5);
 ok("fase 6°", B.fase(6), 5);
 ok("fase de un grado inválido", B.fase(9), null);
-ok("escala Fase 3", B.escala(2), "Enteros de 6 a 10");
-ok("escala Fase 4", B.escala(4), "Enteros de 5 a 10; 5 no acredita");
-ok("escala Fase 5", B.escala(6), "Enteros de 5 a 10; 5 no acredita");
+// La escala va por GRADO, no por fase (decisión 17b): la Fase 3 tiene 1° de 6 a 10 y 2° de 5 a 10
+ok("escala 1°", B.escala(1), "Enteros de 6 a 10; 1° se acredita con haberlo cursado");
+ok("escala 2° (Fase 3, pero de 5 a 10)", B.escala(2), "Enteros de 5 a 10; 5 no es aprobatoria");
+ok("escala 4°", B.escala(4), "Enteros de 5 a 10; 5 no es aprobatoria");
+ok("escala 6°", B.escala(6), "Enteros de 5 a 10; 5 no es aprobatoria");
+ok("escala de un grado inválido", B.escala(9), "");
 
 // ── Alumno de 2° (Fase 3): T1 confirmado con un 6; T2 con propuestas sin confirmar ─
 const CICLO_2 = {
@@ -190,7 +193,11 @@ contiene("cierre: fase de la foto", encCierre, "Fase 4");
 contiene("cierre: escala de la foto", encCierre, "Enteros de 5 a 10; 5 no acredita");
 const encVivo = B.encabezado({ trimestre: 1, alumno: { nombre_completo: "X", grado: 2, num_lista: 1 } });
 contiene("abierta: fase del grado", encVivo, "Fase 3");
-contiene("abierta: escala del grado", encVivo, "Enteros de 6 a 10");
+contiene("abierta: escala del grado (2°: 5 a 10)", encVivo, "Enteros de 5 a 10; 5 no es aprobatoria");
+// Boleta de 2° cerrada antes de la decisión 17b: su foto guardó "6 a 10" y así se sigue viendo
+const encCierre2 = B.encabezado({ trimestre: 1, alumno: { nombre_completo: "X", grado: 2, num_lista: 1 }, fase: 3, escala: "6 a 10" });
+contiene("2° cerrada con la escala vieja: la de su cierre", encCierre2, "Enteros de 6 a 10</dd>");
+noContiene("2° cerrada con la escala vieja: no la de hoy", encCierre2, "5 no es aprobatoria");
 
 // ── Asistencia: solo referencia ─────────────────────────────────────────────
 const asis = B.bloqueAsistencia({ presentes: 18, total: 20, porcentaje: 0.9 }, 1);
@@ -248,7 +255,7 @@ contiene("encabezado: ciclo", hoja2, "Ciclo escolar 2026-2027");
 contiene("encabezado: grupo", hoja2, "QA 1°-2° (Fase 3)");
 contiene("encabezado: docente", hoja2, "Maestra QA");
 contiene("encabezado: fase", hoja2, "Fase 3");
-contiene("encabezado: escala Fase 3", hoja2, "Enteros de 6 a 10");
+contiene("encabezado: escala de 2°", hoja2, "Enteros de 5 a 10; 5 no es aprobatoria");
 contiene("encabezado: número de lista", hoja2, "<dt>Número de lista</dt><dd>4</dd>");
 contiene("encabezado: grado", hoja2, "<dt>Grado</dt><dd>2°</dd>");
 contiene("nombre escapado", hoja2, "QA JUAN &lt;b&gt;MENA&lt;/b&gt;");
@@ -329,7 +336,7 @@ const hoja4 = B.renderBoleta({
 	trimestre: 2, boletaCiclo: CICLO_4, textos: window.TextosBoleta.generar({}), diagnostica: null, banda: BANDA_4,
 	asistencia: { presentes: 0, total: 0, porcentaje: null },
 });
-contiene("4°: escala con 5 no acredita", hoja4, "Enteros de 5 a 10; 5 no acredita");
+contiene("4°: escala con 5 no aprobatoria", hoja4, "Enteros de 5 a 10; 5 no es aprobatoria");
 contiene("4°: Fase 4", hoja4, "Fase 4");
 contiene("4°: el 5 confirmado de T1 aparece", hoja4, "data-campo='LEN' data-trim='1'>5</td>");
 contiene("4°: trimestre elegido en el título", hoja4, "Trimestre 2");

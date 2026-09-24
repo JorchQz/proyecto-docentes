@@ -149,7 +149,15 @@ const h1 = RA.render(d1, INFO);
 ok("encabezado: alumno, grado, fase, grupo, ciclo, trimestre y docente",
 	["ALUMNO EN RIESGO", "2°", "Fase 3", "Grupo 1°-2°", "2026-2027", "Trimestre 1", "Maestra de prueba"].every((t) => h1.includes(t)), true);
 ok("encabezado: reporte interno, complemento de la boleta oficial", h1.includes("Complementa la boleta oficial (SIGED)"), true);
-ok("encabezado: escala de la fase 3", h1.includes("enteros de 6 a 10"), true);
+// La escala va por grado (decisión 17b): 2° es Fase 3, pero de 5 a 10
+ok("encabezado: escala de 2° (5 a 10)", h1.includes("enteros de 5 a 10; 5 no es aprobatoria"), true);
+ok("encabezado: ya no dice «6 a 10» en 2°", h1.includes("6 a 10"), false);
+ok("1°: escala de 6 a 10", RA.render(datosRiesgo({ alumno: { id: "al-1", nombre_completo: "ALUMNA DE PRIMERO", num_lista: 1, grado: 1 } }), INFO)
+	.includes("enteros de 6 a 10; 1° se acredita con haberlo cursado"), true);
+// Sección de habilidades en 2°: el nombre con que se evalúa en la Fase 3 (sin cambiar la clave)
+ok("2°: «Tablas» se llama «Cálculo mental para multiplicar»", /data-habilidad='mates.tablas'><span[^>]*>Cálculo mental para multiplicar/.test(h1), true);
+ok("2°: «División» se llama «Estrategias para repartir o agrupar»", /data-habilidad='mates.division'><span[^>]*>Estrategias para repartir o agrupar/.test(h1), true);
+ok("2°: ni «Tablas de multiplicar» ni «División» en los renglones", /data-habilidad='mates.(tablas|division)'><span[^>]*>(Tablas de multiplicar|División)/.test(h1), false);
 
 CAMPOS.forEach((c) => {
 	const a = atributos(h1, c);
@@ -279,7 +287,8 @@ const d5 = datosRiesgo({
 	fluidez: window.CatalogoHabilidades.clasificarPPM(78, BANDA_4),
 });
 const h5 = RA.render(d5, Object.assign({}, INFO, { grupo: "Grupo 3°-4°" }));
-ok("4°: fase 4 y escala 5 a 10 (mismo texto que la boleta)", h5.includes("Fase 4") && h5.includes("enteros de 5 a 10; 5 no acredita"), true);
+ok("4°: fase 4 y escala 5 a 10 (mismo texto que la boleta)", h5.includes("Fase 4") && h5.includes("enteros de 5 a 10; 5 no es aprobatoria"), true);
+ok("4°: «Tablas de multiplicar» con su nombre de siempre", /data-habilidad='mates.tablas'><span[^>]*>Tablas de multiplicar/.test(h5), true);
 ok("4°: la banda es la de su grado", h5.includes("0 a 84") && h5.includes("115 o más") && /data-ppm='78' data-fluidez='requiere_apoyo'/.test(h5), true);
 ok("sin banda: lo dice sin tronar", RA.render(datosRiesgo({ banda: null }), INFO).includes("No hay referencia de palabras por minuto"), true);
 
@@ -333,7 +342,9 @@ ok("sin emojis en el render",
 		campos: RDx.fotoCampos(motorCierre.porCampo),
 		pesos: PESOS, avance_pda: RDx.fotoAvancePda(PDA_RIESGO.map((f) => Object.assign({ maestro_id: "m1", grupo_id: "g1" }, f))),
 	};
-	ok("foto: grado, fase y escala", [foto.alumno.grado, foto.alumno.fase, foto.alumno.escala].join("|"), "2|3|6 a 10");
+	ok("foto: grado, fase y escala", [foto.alumno.grado, foto.alumno.fase, foto.alumno.escala].join("|"), "2|3|5 a 10; 5 no es aprobatoria");
+	// Una boleta de 2° cerrada antes de la decisión 17b guardó "6 a 10": se sigue viendo así
+	foto.alumno.escala = "6 a 10";
 	ok("foto: estándar de PPM de su grado", foto.alumno.banda_ppm.estandar_max, 84);
 	ok("foto: porcentaje truncado a 2 decimales", foto.campos.LEN.porcentaje, Math.floor(motorCierre.porCampo.LEN.porcentaje * 100 + 1e-9) / 100);
 	ok("foto: DHL sin evidencias marcado", foto.campos.DHL.sin_evidencias, motorCierre.porCampo.DHL.porcentaje === null);
@@ -382,6 +393,31 @@ ok("sin emojis en el render",
 	// Hoy ya no coincide (el motor de hoy está vacío), pero todo lo mostrado es lo entregado:
 	// el documento no cambia ni con un aviso
 	ok("cerrada con foto: sin aviso de capturas después (el documento no cambia)", hf.includes("hubo capturas después del cierre"), false);
+	ok("cerrada con foto: no muestra la escala de hoy", hf.includes("5 no es aprobatoria"), false);
+
+	// Conducta (revisor R6): con peso pero SIN datos no entró; misma regla que pesoConductaCierre
+	const conConducta = (fraccion) => {
+		const f2 = JSON.parse(JSON.stringify(foto));
+		CAMPOS.forEach((c) => { f2.campos[c].rubros.conducta = { obtenido: 0, maximo: fraccion === null ? 0 : 2, fraccion: fraccion, peso: 5 }; });
+		const filas2 = JSON.parse(JSON.stringify(filas));
+		filas2.GEN.texto_autogenerado.cierre = f2;
+		return RA.render(datosRiesgo({
+			alumno: alumnoV, fase: 3, escala: "6 a 10",
+			motor: Object.assign({}, motorHoy, { porCampo: RDx.porCampoCierre(f2), pesos: f2.pesos }), motorVivo: motorHoy, deCierre: true, cerrada: true,
+			banda: BANDA_2, avancePda: [], juicio: juicio, boletaCiclo: { 1: filas2, 2: {}, 3: {} },
+		}), INFO);
+	};
+	const sinDatos = conConducta(null);
+	ok("conducta con peso sin datos en la foto: no dice que ponderó", sinDatos.includes("todavía ponderaba"), false);
+	ok("conducta con peso sin datos en la foto: dice que es referencia", sinDatos.includes("no forma parte del porcentaje ni de la calificación"), true);
+	ok("conducta con peso y con datos en la foto: sí ponderó", conConducta(0.5).includes("todavía ponderaba"), true);
+	ok("pesoConductaCierre coincide (sin datos 0, con datos 5)",
+		[RDx.pesoConductaCampos(RDx.porCampoCierre(foto)), RDx.pesoConductaCampos({ LEN: { rubros: { conducta: { peso: 5, fraccion: 0.5 } } } })].join(","), "0,5");
+	// Abierta con un motor que trajera conducta con peso y sin datos: tampoco la cuenta
+	const motorAbierto = JSON.parse(JSON.stringify(motorRiesgo()));
+	CAMPOS.forEach((c) => { if (motorAbierto.porCampo[c]) motorAbierto.porCampo[c].rubros = Object.assign({}, motorAbierto.porCampo[c].rubros, { conducta: { obtenido: 0, maximo: 0, fraccion: null, peso: 5 } }); });
+	ok("abierta: conducta con peso sin datos no pondera", RA.render(datosRiesgo({ motor: motorAbierto }), INFO).includes("todavía ponderaba"), false);
+
 	if (motorCierre.porCampo.DHL.porcentaje === null) {
 		ok("juicio docente: rotulado en DHL", /data-campo='DHL'[\s\S]*?data-juicio/.test(hf), true);
 		ok("juicio docente: nota explicativa", hf.includes("asignó la calificación por su juicio"), true);
@@ -415,7 +451,7 @@ ok("usa la capa de datos compartida", fuente.includes("window.ReporteDatos.alumn
 
 const html = fs.readFileSync(path.join(__dirname, "..", "reporte-alumno.html"), "utf8");
 const orden = ["js/supabase.js", "js/saas-guard.js", "js/navbar.js", "js/grupo-activo.js", "js/campos-formativos.js",
-	"js/catalogo-habilidades.js", "js/motor-calificacion.js", "js/textos-boleta.js", "js/reporte-datos.js", "js/reporte-alumno.js"];
+	"js/catalogo-habilidades.js", "js/motor-calificacion.js", "js/textos-boleta.js", "js/reglas-entidad.js", "js/reporte-datos.js", "js/reporte-alumno.js"];
 const posiciones = orden.map((s) => html.indexOf('src="' + s + '"'));
 ok("scripts en el orden de la capa compartida", posiciones.every((p, i) => p !== -1 && (i === 0 || p > posiciones[i - 1])), true);
 ok("impresión: carta, sin barra ni controles", /@page \{ size: letter/.test(html) && /#app-navbar, \.no-print \{ display: none/.test(html), true);

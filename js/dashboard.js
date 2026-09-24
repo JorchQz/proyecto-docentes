@@ -60,10 +60,10 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 async function inicializarEncabezado() {
-	// lectura-opcional: solo el nombre del saludo; si falla, saluda sin nombre y no se guarda nada
-	const { data: perfil } = await window.sb
+	// lectura-opcional: solo el nombre del saludo y el aviso de la entidad; si falla, saluda sin nombre, no muestra el aviso y no se guarda nada
+	const { data: perfil, error: errorPerfil } = await window.sb
 		.from("perfiles")
-		.select("nombre_completo")
+		.select("nombre_completo, estado")
 		.eq("id", user.id)
 		.maybeSingle();
 
@@ -75,6 +75,11 @@ async function inicializarEncabezado() {
 		weekday: "long", year: "numeric", month: "long", day: "numeric",
 	});
 	document.getElementById("welcomeSub").textContent = "Inicio";
+
+	// Entidad (decisión 21): si la cuenta es de antes y no la eligió, un aviso discreto que
+	// invita a elegirla en Mi cuenta. No bloquea nada. Solo si la lectura sí respondió.
+	const aviso = document.getElementById("avisoEntidad");
+	if (aviso && !errorPerfil && perfil && !String(perfil.estado || "").trim()) aviso.classList.remove("hidden");
 }
 
 async function cargarGrupoYAlumnos() {

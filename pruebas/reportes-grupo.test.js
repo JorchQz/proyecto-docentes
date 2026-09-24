@@ -74,7 +74,16 @@ ok("CSV comillas escapadas", lineas[3], "1,\"BETO, \"\"el de 4°\"\"\",4,5,6,7,6
 
 const conc = R.htmlConcentrado(filas, 1);
 ok("Concentrado: Ana en Alto", /Alto[\s\S]*ANA PÉREZ[\s\S]*Bajo/.test(conc), true);
-ok("Concentrado: Beto en Bajo con campo no acreditado", /Bajo[\s\S]*BETO[\s\S]*con campo no acreditado/.test(conc), true);
+ok("Concentrado: Beto en Bajo con campo no aprobatorio", /Bajo[\s\S]*BETO[\s\S]*>con campo no aprobatorio</.test(conc), true);
+// Decisión 17b: en 2° el 5 tampoco es aprobatorio (escala de 5 a 10); en 1° no hay 5
+{
+	const al2 = [{ id: "d", nombre_completo: "DANI DE SEGUNDO", num_lista: 3, grado: 2 }];
+	const d2 = { motor: { porAlumno: {} }, boletas: { d: { 1: { LEN: bol(5, true), SAB: bol(8, true), ETI: bol(8, true), DHL: bol(8, true) }, 2: {}, 3: {} } } };
+	const conc2 = R.htmlConcentrado(R.filas(al2, d2, 1), 1);
+	ok("Concentrado: 2° con un 5 lleva «con campo no aprobatorio»", /DANI DE SEGUNDO[\s\S]*?>con campo no aprobatorio</.test(conc2), true);
+	const d2b = { motor: { porAlumno: {} }, boletas: { d: { 1: { LEN: bol(6, true), SAB: bol(8, true), ETI: bol(8, true), DHL: bol(8, true) }, 2: {}, 3: {} } } };
+	ok("Concentrado: 2° sin 5 no lo lleva", R.htmlConcentrado(R.filas(al2, d2b, 1), 1).includes(">con campo no aprobatorio</span>"), false);
+}
 ok("Concentrado: Carla en pendientes (1 de 4)", /Pendientes de confirmar[\s\S]*CARLA RUIZ[\s\S]*1 de 4 confirmadas/.test(conc), true);
 ok("Concentrado: sin bloque Medio vacío", conc.includes("Medio (promedio"), false);
 ok("Concentrado: tabla por grado usa solo confirmadas (2° LEN = 8.0)", /<td class='px-3 py-2 font-medium'>2°<\/td><td[^>]*><b[^>]*>8\.0<\/b>/.test(conc), true);

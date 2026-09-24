@@ -336,9 +336,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return '<span class="inline-block w-4 h-4 rounded-full ' + semColorClass(semaforo) + '"></span>';
 	}
 
-	// Piso de la fase, para acotar el selector con el que el maestro ajusta el número
-	function pisoFase(grado) {
-		return (grado >= 1 && grado <= 2) ? 6 : 5;
+	/*
+		Piso del GRADO (no de la fase: la Fase 3 tiene 1° de 6 a 10 y 2° de 5 a 10, decisión
+		17b), para acotar el selector con el que el maestro ajusta el número. La regla vive en
+		js/reglas-entidad.js (ReporteDatos.pisoDeGrado) y la base aplica la misma
+		(piso_calificacion_boleta). Sin grado válido, 5: la base revisa de todos modos.
+	*/
+	function pisoGrado(grado) {
+		return window.ReporteDatos.pisoDeGrado(grado) || 5;
 	}
 
 	// Un decimal y truncado, no redondeado: 49.86 % se veía "50 %" junto a un 5 (la
@@ -656,9 +661,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 
 		// Fila de calificación: selector para que el maestro ajuste antes de confirmar
-		// El piso del selector es el de la fase de hoy (la base lo vuelve a revisar con el
+		// El piso del selector es el del grado de hoy (la base lo vuelve a revisar con el
 		// grado de hoy: trigger boleta_trimestral_piso_fase); cerrada, la escala del cierre
-		const piso = pisoFase(alumno.grado);
+		const piso = pisoGrado(alumno.grado);
 		const faseEtiqueta = RDB.faseVisible(alumnoVisible.grado, fotoGen);
 		const escalaEtiqueta = RDB.escalaVisible(alumnoVisible.grado, fotoGen);
 		// "juicio docente, sin evidencias": la calificación confirmada no sale de evidencias
@@ -676,7 +681,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					Campo sin evidencias este trimestre (y sin calificación confirmada): no hay
 					propuesta, pero la boleta oficial necesita el número de los cuatro campos.
 					Lo decide el maestro (juicio docente, art. 4 XI): selector sin valor
-					elegido, dentro de la escala de la fase. Vale también si NINGÚN campo tiene
+					elegido, dentro de la escala de su grado. Vale también si NINGÚN campo tiene
 					evidencias (alumno que llegó tarde). Sin proyectos en el trimestre, nada.
 				*/
 				if (!ofrecerJuicio || todoCerrado || fila.cerrada) {
@@ -752,7 +757,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 							: "")
 					: (camposSinEvidencia.length
 					? "<span class='text-amber-800'>Este alumno no tiene evidencias registradas en este trimestre. Elige la calificación de cada campo por juicio docente, " +
-						"dentro de la escala de su fase, para poder confirmar y cerrar.</span> La boleta indicará que esas calificaciones no salen de evidencias."
+						"dentro de la escala de su grado, para poder confirmar y cerrar.</span> La boleta indicará que esas calificaciones no salen de evidencias."
 					: "Todavía no hay evidencias en este trimestre para proponer calificaciones."))) +
 				"</p>" +
 				"<div class='flex gap-2 shrink-0'>" +
@@ -796,7 +801,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			MOTOR.RUBROS.map(filaRubro).join("") +
 			"<tr class='bg-gray-50'><td class='px-3 py-2 font-medium text-gray-700 border border-gray-200'>Porcentaje del campo</td>" + filaPorcentaje + "</tr>" +
 			"<tr class='bg-blue-50'><td class='px-3 py-2 font-bold text-gray-800 border border-gray-200'>Calificación" +
-			"<span class='block text-xs font-normal text-gray-500'>" + (faseEtiqueta ? "Fase " + faseEtiqueta + ": " : "") + esc(escalaEtiqueta) + "</span></td>" +
+			// Escala del grado (decisión 17b), con su fase: "2° · Fase 3: enteros de 5 a 10; 5 no es aprobatoria"
+			"<span class='block text-xs font-normal text-gray-500' data-escala>" + (alumnoVisible.grado ? esc(alumnoVisible.grado) + "° · " : "") +
+			(faseEtiqueta ? "Fase " + faseEtiqueta + ": " : "") + (escalaEtiqueta ? "enteros de " + esc(escalaEtiqueta) : "") + "</span></td>" +
 			filaCalificacion + "</tr>" +
 			"</tbody></table></div>" +
 			"<p class='text-xs text-gray-500 -mt-4 mb-6' data-nota-conducta>" + notaConducta + " " +
@@ -845,7 +852,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		window.CatalogoHabilidades.matematicasDeGrado(alumnoVisible.grado).forEach(function (hab) {
 			const alcance = window.CatalogoHabilidades.alcanceMatematica(hab, alumnoVisible.grado);
 			seccion3 += "<div class='flex items-center justify-between gap-3 text-sm py-1 border-b border-gray-100 last:border-0' data-habilidad='" + esc(hab.clave) + "'>" +
-				"<span class='text-gray-600'>" + esc(hab.etiqueta) +
+				// En 1° y 2°, el nombre con que se evalúa (Fase 3): CatalogoHabilidades.etiquetaDeGrado
+				"<span class='text-gray-600'>" + esc(window.CatalogoHabilidades.etiquetaDeGrado(hab, alumnoVisible.grado)) +
 				(alcance ? "<span class='block text-xs text-gray-400' data-alcance>Alcance en " + gradoMates + "°: " + esc(alcance) + "</span>" : "") +
 				"</span><span class='shrink-0 inline-flex'>" + semCirculo(matesMap[hab.clave]) + "</span></div>";
 		});

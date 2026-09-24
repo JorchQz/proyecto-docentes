@@ -153,7 +153,14 @@
 		final de cada campo, el promedio final de grado y la acreditación (Acuerdo 10/09/23,
 		arts. 7 y 9). "pendiente" mientras falte confirmar alguno de los 12 números.
 	*/
-	var ETIQUETA_ACR = { acredita: "Acredita", no_acredita: "No acredita", pendiente: "pendiente" };
+	// Etiquetas y colores de ReporteDatos (decisión 18b: "Revisar" si el promedio llega a 6
+	// pero algún campo no); los de aquí solo si esa capa no está (pruebas)
+	var ETIQUETA_ACR = { acredita: "Acredita", revisar: "Revisar", no_acredita: "No acredita", pendiente: "pendiente" };
+	var COLOR_ACR = { acredita: "text-green-700", revisar: "text-amber-700", no_acredita: "text-red-700", pendiente: "text-gray-400 italic" };
+	function etiquetaAcr(a) {
+		var RD = typeof window !== "undefined" ? window.ReporteDatos : null;
+		return (RD && RD.ETIQUETA_ACREDITACION && RD.ETIQUETA_ACREDITACION[a]) || ETIQUETA_ACR[a] || ETIQUETA_ACR.pendiente;
+	}
 	function celdaFinal(v) {
 		return v === null || v === undefined
 			? "<span class='text-xs italic text-gray-400'>pendiente</span>"
@@ -165,13 +172,16 @@
 		var completos = conFinal.filter(function (f) { return f.final.completo; }).length;
 		var filasHtml = conFinal.map(function (f) {
 			var fin = f.final;
-			var color = fin.acreditacion === "acredita" ? "text-green-700" : (fin.acreditacion === "no_acredita" ? "text-red-700" : "text-gray-400 italic");
+			var color = COLOR_ACR[fin.acreditacion] || COLOR_ACR.pendiente;
 			return "<tr data-final-alumno='" + esc(f.alumno.id) + "'>" +
 				"<td class='px-3 py-2 text-gray-800 whitespace-nowrap'>" + esc(f.alumno.nombre_completo || "Sin nombre") + "</td>" +
 				"<td class='px-3 py-2 text-center'>" + (fin.grado ? fin.grado + "°" : "—") + "</td>" +
 				CAMPOS.map(function (c) { return "<td class='px-3 py-2 text-center' data-final-campo='" + c + "'>" + celdaFinal(fin.porCampo[c]) + "</td>"; }).join("") +
 				"<td class='px-3 py-2 text-center' data-final-promedio>" + celdaFinal(fin.promedio) + "</td>" +
-				"<td class='px-3 py-2 text-center text-sm font-semibold " + color + "' data-acreditacion='" + fin.acreditacion + "'>" + ETIQUETA_ACR[fin.acreditacion] + "</td></tr>";
+				"<td class='px-3 py-2 text-center text-sm font-semibold " + color + "' data-acreditacion='" + fin.acreditacion + "'>" + etiquetaAcr(fin.acreditacion) +
+					// "Revisar": la explicación corta, la misma de todos los documentos
+					(fin.explicacion ? "<span class='block max-w-[16rem] mx-auto text-[11px] font-normal text-amber-800 leading-snug mt-0.5' data-explicacion-acreditacion>" + esc(fin.explicacion) + "</span>" : "") +
+					"</td></tr>";
 		}).join("");
 		return "<div data-final-grupo><h3 class='font-bold text-gray-800 text-sm mb-2'>Evaluación final del ciclo</h3>" +
 			"<p class='text-xs text-gray-500 mb-2'>" + completos + " de " + conFinal.length +
@@ -182,7 +192,8 @@
 			"<th class='px-3 py-2 text-center whitespace-nowrap'>Promedio final</th><th class='px-3 py-2 text-center'>Acreditación</th></tr></thead>" +
 			"<tbody class='divide-y divide-gray-100'>" + filasHtml + "</tbody></table></div>" +
 			"<p class='text-xs text-gray-400 mt-1'>Final de cada campo: promedio de sus tres calificaciones confirmadas; promedio final: el de las cuatro finales; " +
-			"con un decimal y sin redondear. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6.</p>" +
+			"con un decimal y sin redondear. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6 y cada campo en 6 o más " +
+			"(si el promedio llega pero algún campo no, dice «Revisar»: algunas entidades exigen 6 en cada campo).</p>" +
 			"<p class='text-xs font-medium text-gray-600 mt-1' data-nota-siged>" + esc(notaFinalApoyo()) + "</p></div>";
 	}
 	// Misma nota en todos los documentos (ReporteDatos.NOTA_FINAL_APOYO)
@@ -216,11 +227,12 @@
 				"<span class='font-bold text-sm'>" + titulo + "</span>" +
 				"<span class='text-sm font-semibold'>" + l.length + " alumno" + (l.length !== 1 ? "s" : "") + "</span></div>" +
 				"<ul class='px-4 py-1'>" + l.map(function (f) {
-					var noAcredita = Number(f.alumno.grado) >= 3 && CAMPOS.some(function (c) { return f.campos[c].oficial === 5; });
+					// Un 5 no es aprobatorio de 2° a 6° (escala por grado, decisión 17b; en 1° no hay 5)
+					var noAprobatorio = Number(f.alumno.grado) >= 2 && CAMPOS.some(function (c) { return f.campos[c].oficial !== null && f.campos[c].oficial < 6; });
 					return "<li class='py-2 border-b border-gray-100 last:border-0'>" +
 						"<div class='flex justify-between items-center gap-3'>" +
 						"<span class='text-sm text-gray-800'>" + esc(f.alumno.nombre_completo) + " <span class='text-xs text-gray-400'>" + (f.alumno.grado || "") + "°</span>" +
-						(noAcredita ? " <span class='ml-1 text-[11px] font-semibold text-red-700 border border-red-200 rounded px-1'>con campo no acreditado</span>" : "") + "</span>" +
+						(noAprobatorio ? " <span class='ml-1 text-[11px] font-semibold text-red-700 border border-red-200 rounded px-1'>con campo no aprobatorio</span>" : "") + "</span>" +
 						"<span class='text-sm font-bold " + colorCalif(f.promedio) + "'>" + fmt1(f.promedio) + "</span></div>" +
 						"<div class='text-xs text-gray-500 mt-0.5'>" + detalleCampos(f) + "</div></li>";
 				}).join("") + "</ul></div>";
@@ -265,7 +277,7 @@
 			bloque("Bajo (promedio menor a 7)", { borde: "border-red-200", cabecera: "bg-red-50 text-red-800" }, bajo) +
 			listaPendientes +
 			"<div><h3 class='font-bold text-gray-800 text-sm mb-2'>Promedio por grado y campo formativo</h3>" + tabla + "</div>" +
-			"<p class='text-xs text-gray-400'>Trimestre " + esc(trimestre) + ". Los niveles usan el promedio de los 4 campos confirmados. En 3° a 6°, un 5 en un campo significa que ese campo no se acreditó.</p>" +
+			"<p class='text-xs text-gray-400'>Trimestre " + esc(trimestre) + ". Los niveles usan el promedio de los 4 campos confirmados. De 2° a 6° la escala es de 5 a 10 y el 5 no es aprobatorio: se marca «con campo no aprobatorio». En 1° el mínimo es 6.</p>" +
 			"</div>";
 	}
 

@@ -13,8 +13,10 @@
 	  - Promedios: ReporteDatos.promedio, solo sobre calificaciones confirmadas. El
 	    promedio general de un trimestre aparece cuando los cuatro campos están
 	    confirmados (un promedio de dos campos se leería como si fuera el del trimestre).
-	  - Pisos por fase: los garantiza la BD (trigger boleta_trimestral_piso_fase); aquí
-	    solo se rotula la escala que aplica. Nada se convierte de porcentaje a número.
+	  - Escala por grado (decisión 17b: 1° de 6 a 10; 2° a 6° de 5 a 10, con 5 no
+	    aprobatorio; js/reglas-entidad.js): el piso lo garantiza la BD (trigger
+	    boleta_trimestral_piso_fase); aquí solo se rotula. Nada se convierte de porcentaje
+	    a número.
 	  - Textos: lo que el maestro dejó en boleta_trimestral; si está vacío, la propuesta
 	    de la Capa 1 (ReporteDatos.textoSeccion).
 	  - Asistencia: dato de referencia, nunca pondera (art. 7).
@@ -51,17 +53,15 @@
 		{ columna: "sugerencias", clave: "sugerencias", titulo: "Sugerencias" },
 	];
 
-	// ── Fase y escala (Acuerdo 10/09/23, art. 9) ──────────────────────────────
+	// ── Fase y escala (Acuerdo 10/09/23, art. 9; escala por grado, decisión 17b) ──
 	function fase(grado) {
-		var g = Number(grado);
-		if (!(g >= 1 && g <= 6)) return null;
-		return g <= 2 ? 3 : (g <= 4 ? 4 : 5);
+		return RD().faseDeGrado(grado);
 	}
 
+	// "Enteros de 5 a 10; 5 no es aprobatoria" (2°) — la escala va por grado, no por fase
 	function escala(grado) {
-		var f = fase(grado);
-		if (!f) return "";
-		return "Enteros de " + RD().escalaDeFase(f);
+		var e = RD().escalaDeGrado(grado);
+		return e ? "Enteros de " + e : "";
 	}
 
 	function formatoPromedio(valor) {
@@ -202,13 +202,15 @@
 			"</tr></tfoot>";
 
 		var etiquetaAcr = R.ETIQUETA_ACREDITACION[f.acreditacion];
-		var colorAcr = f.acreditacion === "acredita" ? "#047857" : (f.acreditacion === "no_acredita" ? "#b91c1c" : "#6b7280");
+		var colorAcr = { acredita: "#047857", revisar: "#b45309", no_acredita: "#b91c1c" }[f.acreditacion] || "#6b7280";
 		var acreditacion = "<p class='bol-acreditacion' id='boletaAcreditacion' data-acreditacion='" + f.acreditacion + "'>" +
 			"<span><strong>Promedio final de grado:</strong> <span data-promedio-final>" +
 			esc(f.promedio === null ? "pendiente" : R.formatoDecimal(f.promedio)) + "</span></span>" +
 			"<span><strong>Acreditación:</strong> <span style='font-weight:700;color:" + colorAcr + (f.completo ? "" : ";font-style:italic") + "'>" +
 			esc(etiquetaAcr) + "</span>" +
 			(f.completo ? "" : " <span style='font-size:11px;color:#6b7280'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</span>" +
+			// "Revisar" (decisión 18b): el promedio llega a 6 pero algún campo no
+			(f.explicacion ? "<span class='bol-siged' style='color:#92400e' data-explicacion-acreditacion>" + esc(f.explicacion) + "</span>" : "") +
 			"<span class='bol-siged' data-nota-siged>" + esc(R.NOTA_FINAL_APOYO) + "</span></p>";
 
 		// En celular la tabla lleva solo el código del campo (para que quepa la columna
@@ -223,7 +225,7 @@
 			"El promedio general de un trimestre aparece cuando están confirmados los cuatro campos formativos. " +
 			"La final de cada campo es el promedio de sus tres calificaciones confirmadas y el promedio final de grado, el de las cuatro finales: " +
 			"con un decimal, sin redondear, y solo cuando están confirmados los tres trimestres. " +
-			(f.grado === 1 ? "En 1° se acredita con haber cursado el grado." : "De 2° a 6° se acredita con un promedio final de grado mínimo de 6.") +
+			R.reglaAcreditacionTexto(f.grado) +
 			" " + notaConducta(boletaCiclo) + "</p>" +
 			(hayJuicio
 				? "<p class='bol-nota' id='boletaNotaJuicio'><span style='color:#b45309;font-weight:600'>*</span> Calificación asignada por juicio docente: " +
@@ -360,7 +362,8 @@
 			"<h4>Matemáticas</h4>" +
 			ch.matematicasDeGrado(grado).map(function (h) {
 				var alcance = ch.alcanceMatematica(h, grado);
-				return renglon(h.etiqueta, semaforo(mates[h.clave], "No evaluada"), "data-clave='" + h.clave + "'",
+				// En 1° y 2° la división y las tablas se nombran como se evalúan (Fase 3)
+				return renglon(ch.etiquetaDeGrado(h, grado), semaforo(mates[h.clave], "No evaluada"), "data-clave='" + h.clave + "'",
 					alcance ? "Alcance en " + gradoOk + "°: " + alcance : "");
 			}).join("") + "</div>";
 	}

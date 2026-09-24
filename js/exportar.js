@@ -84,7 +84,9 @@
 	var BOLETA_CERRADA = "cerrada";
 	var BOLETA_ABIERTA = "abierta";
 	var PENDIENTE = "pendiente";
-	var ETIQUETA_ACREDITACION = { acredita: "Acredita", no_acredita: "No acredita", pendiente: PENDIENTE };
+	// Las mismas etiquetas que ReporteDatos.ETIQUETA_ACREDITACION (decisión 18b: "Revisar"
+	// cuando el promedio llega a 6 pero algún campo no); aquí, para las pruebas sin esa capa
+	var ETIQUETA_ACREDITACION = { acredita: "Acredita", revisar: "Revisar", no_acredita: "No acredita", pendiente: PENDIENTE };
 	var NO_APLICA = "No aplica"; // habilidad de matemáticas que no corresponde al grado del alumno
 	var SEPARADOR_TEXTOS = " | ";
 
@@ -289,7 +291,7 @@
 				fila.push(v === null || v === undefined ? PENDIENTE : v);
 			});
 			fila.push(fin && fin.promedio !== null ? fin.promedio : PENDIENTE);
-			fila.push(fin ? ETIQUETA_ACREDITACION[fin.acreditacion] : PENDIENTE);
+			fila.push(fin ? (ETIQUETA_ACREDITACION[fin.acreditacion] || PENDIENTE) : PENDIENTE);
 
 			while (maximo.length < fila.length) maximo.push(null);
 			filas.push(fila);
@@ -361,6 +363,7 @@
 			["Generado el", meta.fecha || ""],
 			[],
 			["IMPORTANTE"],
+			["Campos formativos", "LEN = Lenguajes; SAB = Saberes y Pensamiento Científico; ETI = Ética, Naturaleza y Sociedades; DHL = De lo Humano y lo Comunitario, que en la hoja original se llama «HUM»: las columnas «DHL: …» son las «HUM: …» de esa hoja."],
 			["Calificación válida", "La calificación que vale es la CONFIRMADA por el docente en Mi salón. Las columnas «LEN/SAB/ETI/DHL: Calificación» muestran solo esa calificación; si dicen «pendiente», el docente todavía no la confirma. Este archivo no trae calificaciones propuestas."],
 			["Asistencia", "La asistencia no es criterio de acreditación (Acuerdo 10/09/23, art. 7). Por eso NO debe usarse esta exportación para recalcular calificaciones con una plantilla que pondere la asistencia (por ejemplo, una que le dé 10 % a la asistencia). Las columnas de asistencia son solo dato de referencia."],
 			["Examen", "El examen por campo es APROXIMADO: el banco de preguntas no guarda el valor de cada pregunta, así que el máximo de cada campo se estima como valor total del examen entre número de preguntas."],
@@ -380,12 +383,12 @@
 			["Trabajo Diario", "La observación de trabajo diario que guardó el docente; si no hay, la que propone Mi salón a partir de tareas y trabajos."],
 			["Fortalezas / Áreas de Oportunidad", "Textos de la boleta por campo (LEN, SAB, ETI, DHL) y generales: los guardados por el docente o, si no hay, los que propone Mi salón con lo capturado."],
 			[COL_ASISTENCIA_REF, "Porcentaje de días asistidos sobre días con lista (0 a 100). Solo referencia: la asistencia no pondera."],
-			["<Campo>: Calificación", "Calificación confirmada por el docente (1° y 2°: 6 a 10; 3° a 6°: 5 a 10) o «pendiente»."],
+			["<Campo>: Calificación", "Calificación confirmada por el docente o «pendiente». Escala por grado: en 1°, enteros de 6 a 10 (1° se acredita con haberlo cursado); de 2° a 6°, enteros de 5 a 10, y 5 no es aprobatoria. Una boleta cerrada antes de este cambio conserva la escala con que se cerró (en 2°, de 6 a 10)."],
 			[COL_BOLETA, "«cerrada»: el docente cerró la boleta; todas las columnas de ese alumno (grado, rubros, asistencia, cuaderno, lectura y textos) son las del cierre, lo que se entregó, aunque después se haya capturado algo o cambiado su grado. «abierta»: lo capturado hasta hoy."],
 			[COL_JUICIO, "Campos cuya calificación asignó el docente por juicio, sin evidencias registradas en el trimestre (por ejemplo, un alumno que llegó tarde). Esos campos no tienen porcentaje ni rubros."],
 			["<Campo>: Final", "Evaluación final del campo formativo en el ciclo (Acuerdo 10/09/23, art. 7): promedio de las calificaciones confirmadas de los trimestres 1, 2 y 3, siempre con un decimal («10.0»), truncado (sin redondear). Es un cálculo de apoyo: el promedio oficial lo calcula SIGED. «pendiente» mientras falte confirmar alguno de los tres. Es la misma en los tres trimestres."],
 			[COL_PROMEDIO_FINAL, "Promedio de las cuatro finales por campo, siempre con un decimal («6.0»), truncado. «pendiente» mientras falte alguna final. Es un cálculo de apoyo: el promedio oficial lo calcula SIGED."],
-			[COL_ACREDITACION, "Acuerdo 10/09/23, art. 9: 1° se acredita con haber cursado el grado; de 2° a 6°, con un promedio final de grado mínimo de 6. Dice «Acredita» o «No acredita» solo cuando están confirmados los tres trimestres de los cuatro campos; antes, «pendiente»."],
+			[COL_ACREDITACION, "Acuerdo 10/09/23, art. 9: 1° se acredita con haber cursado el grado. De 2° a 6°: «Acredita» si el promedio final de grado y las cuatro finales por campo llegan a 6; «Revisar» si el promedio llega a 6 pero algún campo tiene menos de 6 (algunas entidades exigen mínimo 6 en cada campo; confírmalo con tu control escolar; las columnas «<Campo>: Final» dicen cuál); «No acredita» si el promedio final de grado es menor que 6. Solo cuando están confirmados los tres trimestres de los cuatro campos; antes, «pendiente»."],
 			["Celda vacía", "Sin evidencias de ese rubro en el trimestre, o sin captura."],
 		];
 	}

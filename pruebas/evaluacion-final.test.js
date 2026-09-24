@@ -97,7 +97,32 @@ f = RD.finalCiclo(ciclo([6, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 7]), 6);
 ok("6° con 6.0 (6.3 en DHL): acredita", [f.promedio, f.acreditacion], [6, "acredita"]);
 f = RD.finalCiclo(ciclo([5, 5, 5, 5], [5, 5, 5, 5], [6, 6, 6, 6]), 3);
 ok("3° con 5.3: no acredita", [f.promedio, f.acreditacion], [5.3, "no_acredita"]);
-ok("etiquetas", RD.ETIQUETA_ACREDITACION, { acredita: "Acredita", no_acredita: "No acredita", pendiente: "pendiente" });
+ok("etiquetas", RD.ETIQUETA_ACREDITACION, { acredita: "Acredita", revisar: "Revisar", no_acredita: "No acredita", pendiente: "pendiente" });
+
+// ── Decisión 18b: promedio en 6 o más con algún campo debajo de 6 → "Revisar" ──
+// 4°: LEN 5, 5, 6 = 5.3; SAB 8, 8, 8; ETI 7, 7, 7; DHL 6, 6, 6 → (5.3 + 8 + 7 + 6) / 4 = 6.575 → 6.5
+f = RD.finalCiclo(ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]), 4);
+ok("4° con 6.5 y LEN 5.3: revisar (nunca no acredita por eso)", [f.promedio, f.acreditacion, f.camposBajoMinimo], [6.5, "revisar", ["LEN"]]);
+ok("revisar: la explicación corta", f.explicacion,
+	"Promedio de 6 o más, pero LEN tiene menos de 6. Algunas entidades exigen mínimo 6 en cada campo; confírmalo con tu control escolar.");
+// 2° (escala de 5 a 10 desde la decisión 17b): dos campos debajo de 6
+f = RD.finalCiclo(ciclo([5, 5, 9, 9], [5, 6, 9, 9], [6, 5, 9, 9]), 2);
+ok("2° con 7.1 y LEN y SAB en 5.3: revisar", [f.promedio, f.acreditacion, f.camposBajoMinimo], [7.1, "revisar", ["LEN", "SAB"]]);
+ok("revisar con dos campos: «tienen»", f.explicacion.startsWith("Promedio de 6 o más, pero LEN y SAB tienen menos de 6."), true);
+// 5.9 en un campo con promedio justo en 6.0: revisar (el campo trunca, 5.96 → 5.9)
+f = RD.finalCiclo(ciclo([6, 6, 6, 6], [6, 6, 6, 6], [5, 7, 6, 6]), 5);
+ok("5°: LEN 5.6, SAB 6.3 → promedio 5.9: no acredita (el promedio manda)", [f.promedio, f.acreditacion], [5.9, "no_acredita"]);
+f = RD.finalCiclo(ciclo([6, 7, 6, 6], [6, 7, 6, 6], [5, 7, 6, 6]), 5);
+ok("5°: LEN 5.6 y SAB 7.0 → promedio 6.1: revisar", [f.promedio, f.acreditacion, f.camposBajoMinimo], [6.1, "revisar", ["LEN"]]);
+ok("no acredita: sin explicación de revisar", RD.finalCiclo(ciclo([5, 5, 5, 5], [5, 5, 5, 5], [6, 6, 6, 6]), 3).explicacion, "");
+ok("acredita: sin campos bajos ni explicación", [RD.finalCiclo(ciclo([6, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]), 2).camposBajoMinimo, RD.finalCiclo(ciclo([6, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]), 2).explicacion], [[], ""]);
+f = RD.finalCiclo(ciclo([5, 9, 9, 9], [5, 9, 9, 9], [5, 9, 9, 9]), 1);
+ok("1° con un campo en 5 (no debería pasar): acredita igual, sin revisar", [f.acreditacion, f.camposBajoMinimo, f.explicacion], ["acredita", [], ""]);
+ok("pendiente: sin revisar mientras falte algo", RD.finalCiclo(ciclo([5, 9, 9, 9], [5, 9, 9, 9], null), 4).acreditacion, "pendiente");
+// Los umbrales salen de la regla nacional (js/reglas-entidad.js)
+const REGLA = require("../js/reglas-entidad.js").regla("Jalisco");
+ok("regla de Jalisco = nacional (sin variantes)", REGLA.clave, "nacional");
+ok("regla nacional: 6 de promedio y 6 por campo; 1° con cursar", REGLA.acreditacion, { primeroConCursar: true, promedioMinimo: 6, campoMinimo: 6 });
 
 // ── Boletas cerradas: conservan su número; el grado sale del cierre del T3 ──
 const cerrado = ciclo([7, 7, 7, 7], [7, 7, 7, 7], [5, 5, 5, 5]);
@@ -133,6 +158,11 @@ tabla = B.tablaCalificaciones(ciclo([5, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]), 3
 ok("imprimible 4° con 5.9: No acredita", [celda(tabla, "GENERAL", "final"), /data-acreditacion='no_acredita'/.test(tabla)], ["5.9", true]);
 tabla = B.tablaCalificaciones(ciclo([6, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]), 3, null, 1);
 ok("imprimible 1°: explica que se acredita con cursar", tabla.includes("En 1° se acredita con haber cursado el grado."), true);
+// Revisar en la imprimible: etiqueta y explicación
+tabla = B.tablaCalificaciones(ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]), 3, null, 4);
+ok("imprimible 4° con LEN 5.3: Revisar", [/data-acreditacion='revisar'/.test(tabla), tabla.includes(">Revisar<")], [true, true]);
+ok("imprimible: explica el Revisar", tabla.includes("pero LEN tiene menos de 6. Algunas entidades exigen mínimo 6 en cada campo; confírmalo con tu control escolar."), true);
+ok("imprimible: la nota dice cuándo sale Revisar", tabla.includes("dice «Revisar»"), true);
 const hoja = B.renderBoleta({ alumno: { nombre_completo: "H", grado: 4, num_lista: 1 }, trimestre: 3, boletaCiclo: ciclo([5, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]) });
 ok("imprimible: renderBoleta pasa el grado del alumno (4° con 5.9 no acredita)", /data-acreditacion='no_acredita'/.test(hoja), true);
 
@@ -143,6 +173,10 @@ ok("htmlFinalCiclo: promedio final", /data-final-promedio>7\.9</.test(html), tru
 ok("htmlFinalCiclo: acreditación", /data-acreditacion='acredita'>Acredita</.test(html), true);
 ok("htmlFinalCiclo: los 12 números del ciclo", (html.match(/data-final-trim='\d'/g) || []).length, 12);
 ok("htmlFinalCiclo: no usa data-campo (el reporte busca sus tarjetas por data-campo)", html.includes("data-campo="), false);
+const htmlRev = RD.htmlFinalCiclo(ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]), 4, {});
+ok("htmlFinalCiclo: Revisar", /data-acreditacion='revisar'>Revisar</.test(htmlRev), true);
+ok("htmlFinalCiclo: explicación del Revisar", /data-explicacion-acreditacion>Promedio de 6 o más, pero LEN tiene menos de 6\./.test(htmlRev), true);
+ok("htmlFinalCiclo: Acredita sin explicación", html.includes("data-explicacion-acreditacion"), false);
 const htmlPend = RD.htmlFinalCiclo(ciclo([7, 6, 9, 8], null, null), 2, {});
 ok("htmlFinalCiclo incompleto: faltan 8 de 12", htmlPend.includes("faltan 8 de 12"), true);
 ok("htmlFinalCiclo incompleto: pendiente", /data-acreditacion='pendiente'>pendiente</.test(htmlPend), true);
@@ -152,6 +186,7 @@ const alumnos = [
 	{ id: "a", nombre_completo: "H ANA", num_lista: 1, grado: 1 },
 	{ id: "b", nombre_completo: "H BETO", num_lista: 1, grado: 4 },
 	{ id: "c", nombre_completo: "H CARLA", num_lista: 1, grado: 2 },
+	{ id: "d", nombre_completo: "H DORA", num_lista: 2, grado: 2 },
 ];
 const datos = {
 	motor: { porAlumno: {} },
@@ -159,6 +194,7 @@ const datos = {
 		a: ciclo([6, 6, 6, 6], [7, 7, 7, 7], [6, 6, 6, 6]),
 		b: ciclo([5, 6, 6, 6], [6, 6, 6, 6], [6, 6, 6, 6]),
 		c: ciclo([8, 8, 8, 8], [9, 9, 9, 9], null),
+		d: ciclo([5, 8, 7, 6], [5, 8, 7, 6], [6, 8, 7, 6]),
 	},
 };
 const filas = RG.filas(alumnos, datos, 3);
@@ -171,7 +207,9 @@ const conc = RG.htmlConcentrado(filas, 3);
 ok("Concentrado: sección de evaluación final", conc.includes("data-final-grupo"), true);
 ok("Concentrado: No acredita de Beto", /data-final-alumno='b'[\s\S]*?data-acreditacion='no_acredita'>No acredita</.test(conc), true);
 ok("Concentrado: final DHL de Ana 6.3 (6, 7, 6)", /data-final-alumno='a'[\s\S]*?data-final-campo='DHL'><span[^>]*>6\.3</.test(conc), true);
-ok("Concentrado: 2 de 3 completos (Carla sin T3)", conc.includes("2 de 3 alumnos con los tres trimestres"), true);
+ok("Concentrado: 3 de 4 completos (Carla sin T3)", conc.includes("3 de 4 alumnos con los tres trimestres"), true);
+ok("Concentrado: 2° con LEN 5.3 → Revisar", [porId.d.final.promedio, porId.d.final.acreditacion], [6.5, "revisar"]);
+ok("Concentrado: Revisar de Dora con su explicación", /data-final-alumno='d'[\s\S]*?data-acreditacion='revisar'>Revisar<span[^>]*data-explicacion-acreditacion>Promedio de 6 o más, pero LEN tiene menos de 6/.test(conc), true);
 // El promedio del trimestre del Concentrado también trunca: 5, 6, 6, 6 → 5.75 → 5.7
 ok("Concentrado: promedio del trimestre truncado (5.75 → 5.7)", RG.filas(alumnos, datos, 1).filter((x) => x.alumno.id === "b")[0].promedio, 5.7);
 

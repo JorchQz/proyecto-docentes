@@ -354,7 +354,12 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 	ok("final: LEN 7.66 → 7.6 (truncado, no 7.7)", fl[col("LEN: Final")], 7.6);
 	ok("final: las cuatro", ["LEN", "SAB", "ETI", "DHL"].map((c) => fl[col(c + ": Final")]), [7.6, 6.3, 9, 5.6]);
 	ok("final: promedio final de grado 7.125 → 7.1", fl[col("Promedio final de grado")], 7.1);
-	ok("final: 4° con 7.1 acredita", fl[col("Acreditación")], "Acredita");
+	// Decisión 18b: el promedio llega a 6 pero DHL (5.6) no → "Revisar", nunca "No acredita" por eso
+	ok("final: 4° con 7.1 pero DHL 5.6 → Revisar", fl[col("Acreditación")], "Revisar");
+	// Los cuatro campos en 6 o más → "Acredita" (LEN 7.6, SAB 6.3, ETI 9.0, DHL 6.0 → 7.2)
+	const todos6 = { a2: ciclo([7, 6, 9, 6], [8, 6, 9, 6], [8, 7, 9, 6]) };
+	const fa = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: todos6, bandas, plantillas: {} }).filas[0];
+	ok("final: 4° con 7.2 y los cuatro campos en 6 o más → Acredita", [fa[col("DHL: Final")], fa[col("Promedio final de grado")], fa[col("Acreditación")]], [6, 7.2, "Acredita"]);
 	ok("final: la misma en cualquier trimestre exportado",
 		E.construir({ alumnos: [LUCIA], trimestre: 1, motor, diagnosticas: {}, avancePda: [], boletas: bolFinal, bandas, plantillas: {} }).filas[0][col("Promedio final de grado")], 7.1);
 	// 4° con 5.9: no acredita (5, 6, 6 en tres campos y 6, 6, 6 en uno → 5.6, 5.6, 5.6, 6.0 → 5.7)
@@ -387,6 +392,15 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 	ok("Léeme: dice que la conducta es referencia y no pondera",
 		E.hojaLeeme({}).some((f) => /Cond\./.test(f[0]) && /REFERENCIA/.test(f[1]) && /NO pondera/.test(f[1])), true);
 	ok("Léeme: la final es un cálculo de apoyo (SIGED)", E.hojaLeeme({}).some((f) => f[0] === "<Campo>: Final" && /SIGED/.test(f[1])), true);
+	// Decisiones 17b y 18b y el aviso de R6 sobre DHL
+	const leeme = E.hojaLeeme({});
+	const fila = (t) => (leeme.find((f) => f[0] === t) || [])[1] || "";
+	ok("Léeme: la escala va por grado (1° de 6 a 10; 2° a 6° de 5 a 10)",
+		/1°, enteros de 6 a 10/.test(fila("<Campo>: Calificación")) && /de 2° a 6°, enteros de 5 a 10, y 5 no es aprobatoria/.test(fila("<Campo>: Calificación")), true);
+	ok("Léeme: ya no dice «1° y 2°: 6 a 10»", leeme.some((f) => /1° y 2°: 6 a 10/.test(f[1] || "")), false);
+	ok("Léeme: explica «Revisar»", /«Revisar» si el promedio llega a 6 pero algún campo tiene menos de 6/.test(fila("Acreditación")), true);
+	ok("Léeme: «Revisar» nunca es «No acredita»", /«No acredita» si el promedio final de grado es menor que 6/.test(fila("Acreditación")), true);
+	ok("Léeme: DHL es lo que la hoja de Fanny llama HUM", /DHL = De lo Humano y lo Comunitario, que en la hoja original se llama «HUM»/.test(fila("Campos formativos")), true);
 	ok("Léeme: truncado, sin redondear", E.hojaLeeme({}).some((f) => /truncado \(sin redondear\)/.test(f[1] || "")), true);
 }
 

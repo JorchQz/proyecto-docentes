@@ -121,11 +121,23 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `pesos_suman_100` se reemplaza por `pesos_con_valor`: los cuatro pesos suman más de 0).
 - Porcentaje → calificación con **una sola regla**, la función SQL
   `calcular_calificacion_boleta(porcentaje, grado)`: ≥90→10, 80–89→9, 70–79→8, 60–69→7,
-  50–59→6, <50→5, con **piso por fase** (art. 9):
-  - **Fase 3 (1°–2°): enteros 6–10.** Nunca baja de 6.
-  - **Fases 4–5 (3°–6°): enteros 5–10; 5 es reprobatorio.**
+  50–59→6, <50→5, con **piso por grado** (art. 9; decisión 17b de Jorge, 2026-09-24, que
+  reemplaza a la 17):
+  - **1°: enteros 6–10.** Nunca baja de 6 (1° se acredita con haberlo cursado).
+  - **2° a 6°: enteros 5–10; 5 no es aprobatorio.** Antes 2° usaba 6–10 por ser Fase 3; la
+    escala ya **no** va por fase (la boleta DGAIR de 2°, la AEFCM, SEIEM y el proyecto de
+    sentencia de la SCJN AR 419/2025 dan 5–10 en 2°).
   El trigger `boleta_trimestral_piso_fase` impide guardar un número bajo el piso, venga del
-  motor o de un ajuste manual.
+  motor o de un ajuste manual (`piso_calificacion_boleta`: migración
+  `supabase/mi_salon_b11_escala_2_2026-09.sql`). En el código la misma regla vive en
+  `js/reglas-entidad.js` (selector "Elige", rótulos "Enteros de 5 a 10; 5 no es
+  aprobatoria" / "Enteros de 6 a 10; 1° se acredita con haberlo cursado"). Las boletas de 2°
+  cerradas antes del cambio no se tocan y siguen mostrando la escala de su foto (6 a 10).
+- **Reglas por entidad** (decisión 21): el estado de la maestra se guarda en
+  `perfiles.estado` (nombre de `js/entidades.js`, las 32 entidades; obligatorio en el
+  onboarding, editable en Mi cuenta; Inicio avisa si falta, sin bloquear). `js/reglas-entidad.js`
+  es el punto único donde se activaría la variante de un estado; hoy todas usan la regla
+  nacional (escala por grado, acreditación, promedios truncados a un decimal).
 - **Motor único: `js/motor-calificacion.js`** (B.3, 2026-09-22; reemplazó a `calcCF`).
   Lee `productos_sesion` + `calificaciones` (grano nuevo) + `registro_diario` + el examen
   **del grado del alumno**. No hay otra fórmula en ningún `.js`. Valor de un producto:
@@ -139,8 +151,12 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   calificaciones **confirmadas**, con un entero y un decimal, **truncado, no redondeado**
   (decisión de Jorge; el Acuerdo no dice cómo cortar, las normas SEP previas dicen "no se
   deben redondear"). **Promedio final de grado** = promedio de las cuatro finales, truncado.
-  **Acreditación:** 1° con haber cursado el grado; 2° a 6° con promedio final mínimo de 6.
-  Solo con los tres trimestres de los cuatro campos confirmados; antes, "pendiente" (nunca
+  **Acreditación** (decisión 18b): 1° con haber cursado el grado. De 2° a 6°, **"Acredita"**
+  si el promedio final de grado y las cuatro finales por campo llegan a 6.0; **"Revisar"** si
+  el promedio llega a 6.0 pero algún campo no (con la explicación "Promedio de 6 o más, pero
+  {campo} tiene menos de 6. Algunas entidades exigen mínimo 6 en cada campo; confírmalo con
+  tu control escolar"; nunca "No acredita" solo por eso); **"No acredita"** si el promedio
+  es menor que 6.0. Solo con los tres trimestres de los cuatro campos confirmados; antes, "pendiente" (nunca
   un número parcial como final). Grado: el de la foto del cierre del 3er trimestre si está
   cerrado. Una sola función: `ReporteDatos.finalCiclo` (`js/reporte-datos.js`), que usan la
   boleta imprimible (columna Final), el reporte detallado, la pestaña Boleta de Reportes, el
@@ -151,12 +167,18 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (35 suites).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (39 suites).
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad;
 >   la conducta no pondera (peso 0 aunque los ajustes traigan otro) y cuadre a mano 28/28/6/33.
 > - `evaluacion-final` — final por campo, promedio final de grado y acreditación
 >   (`ReporteDatos.finalCiclo`): truncado, "pendiente" mientras falte algo, 1° siempre
->   acredita, 2° a 6° con 6.0 o más; y que boleta imprimible, reporte y Concentrado la usan.
+>   acredita, 2° a 6° "Acredita" / "Revisar" (algún campo debajo de 6) / "No acredita"
+>   (promedio debajo de 6); y que boleta imprimible, reporte y Concentrado la usan.
+> - `reglas-entidad` — escala por grado (1° de 6 a 10, 2° a 6° de 5 a 10) igual que la
+>   migración b11, nada decide la escala por fase, las 32 entidades, el selector del
+>   onboarding y de Mi cuenta, el aviso de Inicio y los renglones de matemáticas de 2°.
+> - `ajustes-peso-efectivo` — la línea "vale X %" de Ajustes (10, 20… 100 ya no salen
+>   vacíos) y la frase con los rubros que tienen peso.
 > - `aviso-propuesta` — el aviso "propuesta: N" de la boleta.
 > - `hoy-filtros`, `hoy-render` — filtros y render multigrado de la pantalla "Hoy".
 > - `hoy-arranque` — **ejecuta `hoy.js` completo** contra un DOM y un Supabase falsos
@@ -233,7 +255,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `exportar.html`, y en `reportes.html` la Vista Recrea y el Concentrado
   (`js/reportes-grupo.js`). Lo no confirmado es "pendiente" en todos.
 - **El maestro confirma el número antes de cerrar** (art. 4 XI): la boleta muestra la
-  calificación propuesta en un selector acotado al piso de la fase; `boleta_trimestral`
+  calificación propuesta en un selector acotado al piso del grado; `boleta_trimestral`
   guarda `calificacion_confirmada` y `confirmada_en`, y el trigger
   `boleta_trimestral_confirmacion` impide `cerrada = true` sin confirmación. Una vez
   confirmada, el motor solo refresca `porcentaje`: no pisa el número del maestro.
@@ -393,7 +415,8 @@ común).
 | `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas) |
 | `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
 | `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. Se captura en el cierre del día de "Hoy" (valor normal 1); el motor lo reparte entre los campos con sesión ese día (`docs/PRODUCTO-MI-SALON.md` §B.4) |
-| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb: la propuesta de la Capa 1 + `editados` [cuadros que escribió el maestro] + `ia` [redacción de la Capa 2] + `visible` [`reglas`/`ia`]), `editado_manual` (true = el maestro escribió algo en esa fila), `calificacion_confirmada` + `confirmada_en` (la calificación oficial es solo la confirmada), `cerrada` (true = no se recalcula; exige confirmación), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso de la fase (ver §3) |
+| `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb: la propuesta de la Capa 1 + `editados` [cuadros que escribió el maestro] + `ia` [redacción de la Capa 2] + `visible` [`reglas`/`ia`]), `editado_manual` (true = el maestro escribió algo en esa fila), `calificacion_confirmada` + `confirmada_en` (la calificación oficial es solo la confirmada), `cerrada` (true = no se recalcula; exige confirmación), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso del grado (1° 6; 2° a 6° 5; ver §3) |
+| `perfiles` | `id` (= `auth.users.id`), `nombre_completo`, `escuela`, `cct`, `zona`, **`estado`** (text: la entidad federativa de la maestra, con el nombre de `js/entidades.js`; decisión 21), `municipio`, `sexo_docente`, `grados_asignados`, `activo_saas` (acceso a Mi salón). RLS: cada quien la suya |
 | `plantillas_sugerencia` | Catálogo global de sugerencias para padres (Capa 1): `clave` PK (`tareas`, `trabajos`, `calidad`, `participacion`, `conducta`, `examen`, `lectura_ppm`, `comprension`, `matematicas` con `{habilidades}`, `cuaderno`, `asistencia`, `pda_mejora`, `pda_apoyo`), `texto`, `descripcion`, `activo`. Lectura para `authenticated`; escritura solo `es_admin()`. Sin pantalla de edición todavía |
 | `maestro_ajustes` | PK `maestro_id`; ponderación `peso_tareas`/`peso_trabajos`/`peso_participacion`/`peso_examen`, NOT NULL, DEFAULT 28/28/6/33, CHECK `pesos_con_valor` (los cuatro suman más de 0; `NOT VALID`, desde b10). `peso_conducta` se conserva con DEFAULT 0 pero **no se usa**: la conducta no pondera (LGE art. 21; ver §3). **Sin peso de asistencia** (Acuerdo 10/09/23 art. 7). Onboarding crea la fila solo con `maestro_id` y la BD pone los defaults |
 | `examenes` / `respuestas_examen` / `banco_preguntas` | Examen por grupo/trimestre/grado con `preguntas_ids`; cada pregunta de `banco_preguntas` tiene `campo_formativo` → el puntaje del examen se calcula por campo (reportes.js). **Limitación conocida:** `banco_preguntas` no guarda cuánto vale cada pregunta; el máximo por campo se **aproxima** como `valor_total / total_preguntas` por pregunta. No presentarlo como cálculo exacto |

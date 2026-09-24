@@ -163,8 +163,9 @@ function opciones(html, campo) {
 	let html = await boletaCon(base(al2), "al-2");
 	ok("A: sin errores en consola", errores.length === 0 ? "sin errores" : errores[0], "sin errores");
 	ok("A: los cuatro campos ofrecen «Elige»", selectoresSinEvidencia(html), 4);
-	ok("A: escala de Fase 3 (6 a 10) en el selector", opciones(html, "LEN"), ",6,7,8,9,10");
-	contiene("A: rotula la escala de la fase", html, "Fase 3: 6 a 10");
+	// La escala va por grado (decisión 17b): 2° es Fase 3, pero de 5 a 10
+	ok("A: escala de 2° (5 a 10) en el selector", opciones(html, "LEN"), ",5,6,7,8,9,10");
+	contiene("A: rotula la escala del grado", html, "2° · Fase 3: enteros de 5 a 10; 5 no es aprobatoria");
 	contiene("A: explica que es juicio docente", html, "no tiene evidencias registradas en este trimestre");
 	ok("A: «Confirmar» habilitado", /id='boletaConfirmarBtn' type='button' disabled/.test(html), false);
 	ok("A: «Cerrar boleta» deshabilitado hasta confirmar", /id='boletaCerrarBtn' type='button' disabled/.test(html), true);
@@ -177,7 +178,14 @@ function opciones(html, campo) {
 	html = await boletaCon(base(al4), "al-4");
 	ok("B: los cuatro campos ofrecen «Elige»", selectoresSinEvidencia(html), 4);
 	ok("B: escala de Fase 4 (5 a 10)", opciones(html, "DHL"), ",5,6,7,8,9,10");
-	contiene("B: rotula la escala de la fase", html, "Fase 4: 5 a 10; 5 no acredita");
+	contiene("B: rotula la escala del grado", html, "4° · Fase 4: enteros de 5 a 10; 5 no es aprobatoria");
+
+	// ── B1) 1° sin ninguna evidencia: el mínimo sigue en 6 ──
+	const al1 = { id: "al-1", nombre_completo: "B1 PRIMERO SIN EVIDENCIAS", num_lista: 1, grado: 1 };
+	html = await boletaCon(base(al1), "al-1");
+	ok("B1: 1° ofrece «Elige» en los cuatro campos", selectoresSinEvidencia(html), 4);
+	ok("B1: escala de 1° (6 a 10) en el selector", opciones(html, "SAB"), ",6,7,8,9,10");
+	contiene("B1: rotula la escala de 1°", html, "1° · Fase 3: enteros de 6 a 10; 1° se acredita con haberlo cursado");
 
 	// ── C) Sin proyectos en el trimestre: no se ofrece nada ──
 	html = await boletaCon(base(al2, { proyectos: [], sesiones: [], productos_sesion: [] }), "al-2");
@@ -207,7 +215,8 @@ function opciones(html, campo) {
 		trabajo_diario: "TD del cierre", trabajo_diario_del_maestro: false,
 		diagnostico: { lectura_ppm: 70, lectura_comprension: "logrado", cuaderno: [], matematicas: [] },
 		asistencia: { presentes: 5, total: 5, porcentaje: 1 },
-		alumno: RD.fotoAlumno({ grado: 2 }, BANDA_2),
+		// Cerrada en 2° antes de la decisión 17b: su foto guardó la escala de entonces (6 a 10)
+		alumno: Object.assign(RD.fotoAlumno({ grado: 2 }, BANDA_2), { escala: "6 a 10" }),
 		campos: RD.fotoCampos(motorCierre),
 		pesos: { tareas: 28, trabajos: 28, participacion: 6, conducta: 5, examen: 33 },
 		avance_pda: [], en: "2026-09-23T00:00:00Z",
@@ -230,8 +239,8 @@ function opciones(html, campo) {
 	ok("D: sin errores en consola", errores.length === 0 ? "sin errores" : errores[0], "sin errores");
 	ok("D: nada se vuelve a guardar", (guardado.boleta_trimestral || []).length, 0);
 	contiene("D: grado del cierre (2°), no el de hoy (4°)", html, "Grado:</span> <span class='font-semibold text-gray-800'>2°");
-	contiene("D: escala del cierre", html, "Fase 3: 6 a 10");
-	noContiene("D: no la de hoy", html, "5 no acredita");
+	contiene("D: escala del cierre (la de su foto, 6 a 10)", html, "2° · Fase 3: enteros de 6 a 10<");
+	noContiene("D: no la de hoy", html, "5 no es aprobatoria");
 	// Peso efectivo con los pesos del cierre (28, 28 y 6 con datos): 45.1, 45.1 y 9.8
 	contiene("D: pesos del cierre (tareas pesa 45.1 %)", html, "data-peso-etiqueta>45.1\u00a0%");
 	// La conducta tenía peso 5 en la foto, pero sin datos: no entró, la nota no dice que ponderó
@@ -245,7 +254,9 @@ function opciones(html, campo) {
 	ok("D: DHL (sin evidencias al cerrar) con la marca de juicio docente", (html.match(/data-juicio='1'/g) || []).length, 1);
 
 	// Reglas compartidas de la foto
-	ok("fotoAlumno: 4° es Fase 4 con 5 no acredita", RD.fotoAlumno({ grado: 4 }, BANDA_4).escala, "5 a 10; 5 no acredita");
+	ok("fotoAlumno: 4° es Fase 4 con 5 no aprobatoria", RD.fotoAlumno({ grado: 4 }, BANDA_4).escala, "5 a 10; 5 no es aprobatoria");
+	ok("fotoAlumno: 2° es Fase 3 con 5 a 10", RD.fotoAlumno({ grado: 2 }, BANDA_2).fase + "|" + RD.fotoAlumno({ grado: 2 }, BANDA_2).escala, "3|5 a 10; 5 no es aprobatoria");
+	ok("fotoAlumno: 1° es Fase 3 con 6 a 10", RD.fotoAlumno({ grado: 1 }, null).escala, "6 a 10; 1° se acredita con haberlo cursado");
 	ok("fotoCampos: sin evidencias = porcentaje null y marcado", JSON.stringify(RD.fotoCampos(motorCierre).DHL), JSON.stringify({ porcentaje: null, nivel: null, sin_evidencias: true, rubros: {} }));
 	ok("fotoCampos: el porcentaje se trunca a 2 decimales (igual que la fila)", RD.fotoCampos({ LEN: { porcentaje: 49.996, rubros: {} } }).LEN.porcentaje, 49.99);
 

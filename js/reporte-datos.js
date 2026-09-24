@@ -19,7 +19,9 @@
 	  - Juicio docente sin evidencias (decisión 5): juicioSinEvidencias.
 
 	Requiere (en este orden): supabase.js, grupo-activo.js, campos-formativos.js,
-	catalogo-habilidades.js, motor-calificacion.js, textos-boleta.js.
+	catalogo-habilidades.js, motor-calificacion.js, textos-boleta.js, reglas-entidad.js.
+	Escala, piso y acreditación salen de js/reglas-entidad.js (regla nacional; punto único
+	para variantes por estado, decisión 21).
 */
 
 (function () {
@@ -36,6 +38,20 @@
 	var COLOR_CAMPO = { LEN: "#059669", SAB: "#ea580c", ETI: "#7c3aed", DHL: "#0284c7" };
 	// Badge por grado en reportes multigrado
 	var COLOR_GRADO = { 1: "#0891b2", 2: "#16a34a", 3: "#ca8a04", 4: "#d97706", 5: "#2563eb", 6: "#059669" };
+
+	/*
+		Reglas de evaluación (escala por grado, acreditación, decimales): js/reglas-entidad.js.
+		Hoy la regla nacional para todas las entidades; ver ahí cómo activar una variante.
+		Sin ese script no se inventa una escala: se avisa y se lanza.
+	*/
+	function reglas() {
+		var R = typeof window !== "undefined" ? window.ReglasEntidad : null;
+		if (!R && typeof require === "function") {
+			try { R = require("./reglas-entidad.js"); } catch (e) { /* navegador sin el script */ }
+		}
+		if (!R) throw new Error("reporte-datos: falta js/reglas-entidad.js (escala y acreditación)");
+		return R.regla();
+	}
 
 	var PAGINA = 1000;
 	async function todas(construir) {
@@ -77,7 +93,7 @@
 			alumnos = alRes.data || [];
 		}
 
-		var perfilRes = await sb.from("perfiles").select("nombre_completo, escuela").eq("id", maestroId).maybeSingle();
+		var perfilRes = await sb.from("perfiles").select("nombre_completo, escuela, estado").eq("id", maestroId).maybeSingle();
 		// Un error se lanza: la página dice que no pudo, en vez de imprimir sin escuela ni
 		// docente, o sin bandas de lectura y sugerencias
 		if (perfilRes.error) throw perfilRes.error;
@@ -101,6 +117,9 @@
 			alumnos: alumnos,
 			ciclo: grupo ? (grupo.ciclo_escolar || "") : "",
 			escuela: (grupo && grupo.escuela) || perfil.escuela || "",
+			// Entidad de la maestra (decisión 21). Hoy no cambia ninguna regla
+			// (js/reglas-entidad.js); queda aquí para cuando se active una variante
+			estado: perfil.estado || "",
 			bandas: bandas,
 			plantillas: plantillas,
 		};
@@ -165,19 +184,22 @@
 	function tiene(obj, k) { return !!obj && Object.prototype.hasOwnProperty.call(obj, k); }
 
 	/*
-		Fase y escala (Acuerdo 10/09/23, art. 9). Solo rotulan: el piso lo garantiza la base
-		(piso_calificacion_boleta + trigger boleta_trimestral_piso_fase) y la conversión de
-		porcentaje a número es solo calcular_calificacion_boleta.
+		Fase y escala. La fase es la del Plan de estudio (1° y 2° Fase 3, 3° y 4° Fase 4, 5°
+		y 6° Fase 5). La escala va por GRADO, no por fase (decisión 17b: 1° de 6 a 10; 2° a
+		6° de 5 a 10, con 5 no aprobatorio) y sale de js/reglas-entidad.js. Solo rotulan: el
+		piso lo garantiza la base (piso_calificacion_boleta + trigger
+		boleta_trimestral_piso_fase) y la conversión de porcentaje a número es solo
+		calcular_calificacion_boleta.
 	*/
 	function faseDeGrado(grado) {
 		var g = Number(grado);
 		if (!(g >= 1 && g <= 6)) return null;
 		return g <= 2 ? 3 : (g <= 4 ? 4 : 5);
 	}
-	function escalaDeFase(fase) {
-		if (!fase) return "";
-		return Number(fase) === 3 ? "6 a 10" : "5 a 10; 5 no acredita";
-	}
+	// 1°: "6 a 10; 1° se acredita con haberlo cursado"; 2° a 6°: "5 a 10; 5 no es aprobatoria"
+	function escalaDeGrado(grado) { return reglas().escalaDeGrado(grado); }
+	// Calificación mínima que se puede elegir en la boleta: 6 en 1°, 5 de 2° a 6°
+	function pisoDeGrado(grado) { return reglas().pisoDeGrado(grado); }
 
 	/*
 		Foto del cierre, segunda parte (decisiones de Jorge 6 y 7, 2026-09-24). Además del
@@ -198,7 +220,7 @@
 		var grado = alumno && !vacio(alumno.grado) ? Number(alumno.grado) : null;
 		var fase = faseDeGrado(grado);
 		return {
-			grado: grado, fase: fase, escala: escalaDeFase(fase),
+			grado: grado, fase: fase, escala: escalaDeGrado(grado),
 			banda_ppm: banda ? {
 				grado: banda.grado === undefined ? grado : banda.grado,
 				requiere_apoyo_max: banda.requiere_apoyo_max, cercano_max: banda.cercano_max, estandar_max: banda.estandar_max,
@@ -251,7 +273,9 @@
 	}
 	function escalaVisible(grado, foto) {
 		var a = alumnoCierre(foto);
-		return a && a.escala ? String(a.escala) : escalaDeFase(faseDeGrado(grado));
+		// Boletas cerradas: la escala que guardó su foto (una de 2° cerrada antes de la
+		// decisión 17b sigue diciendo "6 a 10"); si no la guardó, la del grado
+		return a && a.escala ? String(a.escala) : escalaDeGrado(grado);
 	}
 	// porCampo como el del motor, pero del cierre (null si la foto no lo guardó)
 	function porCampoCierre(foto) {
@@ -345,18 +369,44 @@
 		  - Final por campo: promedio de las tres calificaciones CONFIRMADAS (calificacionOficial;
 		    las cerradas conservan su número), truncado a un decimal. Falta una → null.
 		  - Promedio final de grado: promedio de las cuatro finales, truncado a un decimal.
-		  - Acreditación (art. 9): 1° se acredita con haber cursado el grado; 2° a 6°, con un
-		    promedio final de grado mínimo de 6. Solo con los tres trimestres de los cuatro
-		    campos confirmados; antes, "pendiente": nunca un número parcial como final.
+		  - Acreditación (art. 9 y decisión 18b; umbrales en js/reglas-entidad.js). Solo con
+		    los tres trimestres de los cuatro campos confirmados; antes, "pendiente": nunca un
+		    número parcial como final.
+		      1°: "acredita" siempre (se acredita con haber cursado el grado).
+		      2° a 6°: "acredita" si el promedio final de grado y las cuatro finales por campo
+		      llegan a 6.0; "revisar" si el promedio llega pero algún campo no (algunas
+		      entidades exigen 6 en cada campo: lo confirma control escolar; nunca "no
+		      acredita" solo por eso); "no_acredita" si el promedio es menor que 6.0.
 		  - Grado: el de la foto del cierre del 3er trimestre si está cerrado (lo entregado);
 		    si no, el que da quien llama (el de hoy o el del cierre del trimestre que se ve).
 		boletaCiclo = {1: {LEN: fila, ...}, 2: {...}, 3: {...}}
 		→ { porCampo: {LEN: n|null, ...}, promedio: n|null, completo, faltan (calificaciones
-		    sin confirmar, de 12), grado, acreditacion: "acredita"|"no_acredita"|"pendiente" }
+		    sin confirmar, de 12), grado,
+		    acreditacion: "acredita"|"revisar"|"no_acredita"|"pendiente",
+		    camposBajoMinimo: ["LEN", ...] (finales debajo del mínimo por campo; vacío en 1°),
+		    explicacion: texto corto para "revisar" ("" en los demás casos) }
 	*/
 	var TRIMESTRES = [1, 2, 3];
-	var ACREDITA = "acredita", NO_ACREDITA = "no_acredita", PENDIENTE = "pendiente";
-	var ETIQUETA_ACREDITACION = { acredita: "Acredita", no_acredita: "No acredita", pendiente: "pendiente" };
+	var ACREDITA = "acredita", REVISAR = "revisar", NO_ACREDITA = "no_acredita", PENDIENTE = "pendiente";
+	var ETIQUETA_ACREDITACION = { acredita: "Acredita", revisar: "Revisar", no_acredita: "No acredita", pendiente: "pendiente" };
+	// Color de la acreditación en las pantallas con Tailwind (reporte, pestaña Boleta, Concentrado)
+	var COLOR_ACREDITACION_TW = { acredita: "text-emerald-700", revisar: "text-amber-700", no_acredita: "text-red-700", pendiente: "text-gray-500 italic" };
+	// "LEN" | "LEN y SAB" | "LEN, SAB y ETI"
+	function listaCampos(campos) {
+		if (campos.length <= 1) return campos.join("");
+		return campos.slice(0, -1).join(", ") + " y " + campos[campos.length - 1];
+	}
+	/*
+		Explicación de "Revisar" (decisión 18b), la misma en los cinco documentos:
+		"Promedio de 6 o más, pero LEN tiene menos de 6. Algunas entidades exigen mínimo 6 en
+		cada campo; confírmalo con tu control escolar."
+	*/
+	function explicacionRevisar(camposBajo, minimoPromedio, minimoCampo) {
+		if (!camposBajo || !camposBajo.length) return "";
+		return "Promedio de " + minimoPromedio + " o más, pero " + listaCampos(camposBajo) +
+			(camposBajo.length === 1 ? " tiene" : " tienen") + " menos de " + minimoCampo +
+			". Algunas entidades exigen mínimo " + minimoCampo + " en cada campo; confírmalo con tu control escolar.";
+	}
 	function finalCiclo(boletaCiclo, grado) {
 		var ciclo = boletaCiclo || {};
 		var porCampo = {}, faltan = 0;
@@ -372,9 +422,31 @@
 		var t3 = ciclo[3] || {};
 		var ac = boletaCerrada(t3) ? alumnoCierre(fotoCierre(t3.GEN)) : null;
 		var g = ac ? Number(ac.grado) : (vacio(grado) ? null : Number(grado));
-		var acreditacion = PENDIENTE;
-		if (completo) acreditacion = (g === 1 || prom >= 6) ? ACREDITA : NO_ACREDITA;
-		return { porCampo: porCampo, promedio: prom, completo: completo, faltan: faltan, grado: g, acreditacion: acreditacion };
+		var A = reglas().acreditacion;
+		var acreditacion = PENDIENTE, camposBajoMinimo = [], explicacion = "";
+		if (completo) {
+			if (g === 1 && A.primeroConCursar) {
+				acreditacion = ACREDITA;
+			} else if (prom < A.promedioMinimo) {
+				acreditacion = NO_ACREDITA;
+			} else {
+				camposBajoMinimo = CAMPOS.filter(function (c) { return porCampo[c] < A.campoMinimo; });
+				acreditacion = camposBajoMinimo.length ? REVISAR : ACREDITA;
+				explicacion = explicacionRevisar(camposBajoMinimo, A.promedioMinimo, A.campoMinimo);
+			}
+		}
+		return {
+			porCampo: porCampo, promedio: prom, completo: completo, faltan: faltan, grado: g,
+			acreditacion: acreditacion, camposBajoMinimo: camposBajoMinimo, explicacion: explicacion,
+		};
+	}
+	// Regla de acreditación en una frase, para las notas de los documentos
+	function reglaAcreditacionTexto(grado) {
+		var A = reglas().acreditacion;
+		if (Number(grado) === 1 && A.primeroConCursar) return "En 1° se acredita con haber cursado el grado.";
+		return "De 2° a 6° se acredita con un promedio final de grado mínimo de " + A.promedioMinimo +
+			"; si el promedio llega pero algún campo queda debajo de " + A.campoMinimo +
+			", dice «Revisar» (algunas entidades exigen " + A.campoMinimo + " en cada campo).";
 	}
 	/*
 		Nota que acompaña a toda final y a todo promedio final de grado (boleta imprimible,
@@ -396,15 +468,21 @@
 		if (!boletaCerrada(filasTrimestre)) return 0;
 		var foto = fotoCierre((filasTrimestre || {}).GEN);
 		if (!foto) return 0;
-		if (foto.campos && typeof foto.campos === "object") {
-			var peso = 0;
-			CAMPOS.forEach(function (c) {
-				var r = foto.campos[c] && foto.campos[c].rubros ? foto.campos[c].rubros.conducta : null;
-				if (r && !vacio(r.fraccion) && Number(r.peso) > peso) peso = Number(r.peso);
-			});
-			return peso;
-		}
+		if (foto.campos && typeof foto.campos === "object") return pesoConductaCampos(foto.campos);
 		return foto.pesos && Number(foto.pesos.conducta) > 0 ? Number(foto.pesos.conducta) : 0;
+	}
+	/*
+		La misma regla sobre un desglose por campo ({LEN: {rubros: {conducta: {peso,
+		fraccion}}}, ...}: el porCampo del motor o foto.campos): el mayor peso de conducta
+		entre los campos donde de verdad entró (con peso y con datos). 0 = no ponderó.
+	*/
+	function pesoConductaCampos(campos) {
+		var peso = 0;
+		CAMPOS.forEach(function (c) {
+			var r = campos && campos[c] && campos[c].rubros ? campos[c].rubros.conducta : null;
+			if (r && !vacio(r.fraccion) && Number(r.peso) > peso) peso = Number(r.peso);
+		});
+		return peso;
 	}
 
 	// 7.6 → "7.6"; 8 → "8.0"; null → null
@@ -440,16 +518,15 @@
 		}).join("");
 		var pie = "<tr class='bg-gray-50'><th scope='row' colspan='4' class='px-2 py-1.5 border border-gray-200 text-left font-semibold text-gray-800'>Promedio final de grado</th>" +
 			celda(formatoDecimal(f.promedio), "", "data-final-promedio") + "</tr>";
-		var colorAcr = f.acreditacion === ACREDITA ? "text-emerald-700" : (f.acreditacion === NO_ACREDITA ? "text-red-700" : "text-gray-500 italic");
-		var regla = f.grado === 1
-			? "En 1° se acredita con haber cursado el grado."
-			: "De 2° a 6° se acredita con un promedio final de grado mínimo de 6.";
+		var colorAcr = COLOR_ACREDITACION_TW[f.acreditacion] || COLOR_ACREDITACION_TW.pendiente;
+		var regla = reglaAcreditacionTexto(f.grado);
 		return "<div" + (opciones.id ? " id='" + esc(opciones.id) + "'" : "") + " data-final-ciclo>" +
 			"<div class='overflow-x-auto'><table class='w-full text-xs sm:text-sm border-collapse'>" +
 			"<thead>" + cabeza + "</thead><tbody>" + cuerpo + pie + "</tbody></table></div>" +
 			"<p class='mt-2 text-sm'><span class='font-semibold text-gray-700'>Acreditación del grado:</span> " +
 			"<span class='font-bold " + colorAcr + "' data-acreditacion='" + f.acreditacion + "'>" + ETIQUETA_ACREDITACION[f.acreditacion] + "</span>" +
 			(f.completo ? "" : " <span class='text-xs text-gray-500'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</p>" +
+			(f.explicacion ? "<p class='mt-1 text-xs text-amber-800 leading-relaxed' data-explicacion-acreditacion>" + esc(f.explicacion) + "</p>" : "") +
 			"<p class='mt-1 text-xs text-gray-500 leading-relaxed'>La final de cada campo es el promedio de sus tres calificaciones confirmadas, con un decimal y sin redondear; " +
 			"el promedio final de grado, el de las cuatro finales. Aparecen cuando están confirmados los tres trimestres. " + regla + " (Acuerdo 10/09/23, arts. 7 y 9).</p>" +
 			"<p class='mt-1 text-xs font-medium text-gray-600' data-nota-siged>" + NOTA_FINAL_APOYO + "</p>" +
@@ -716,7 +793,11 @@
 		fotoAsistencia: fotoAsistencia,
 		fotoDiagnostico: fotoDiagnostico,
 		faseDeGrado: faseDeGrado,
-		escalaDeFase: escalaDeFase,
+		escalaDeGrado: escalaDeGrado,
+		pisoDeGrado: pisoDeGrado,
+		reglaAcreditacionTexto: reglaAcreditacionTexto,
+		COLOR_ACREDITACION_TW: COLOR_ACREDITACION_TW,
+		pesoConductaCampos: pesoConductaCampos,
 		truncar2: truncar2,
 		fotoAlumno: fotoAlumno,
 		fotoCampos: fotoCampos,

@@ -1,4 +1,26 @@
-document.addEventListener("DOMContentLoaded", async function () {
+/*
+	Parte pura de Ajustes (se prueba en node: pruebas/ajustes-peso-efectivo.test.js).
+	textoEfectivo(valor, conPeso): la línea bajo cada peso con lo que vale de verdad.
+	  valor   = peso efectivo del rubro con un decimal (MotorCalificacion.repartoEntero)
+	  conPeso = cuántos rubros tienen peso mayor que 0 (los que se reparten el 100 %)
+	El ".0" final se quita con el punto ESCAPADO: con /.0$/ el punto era cualquier
+	carácter y 10, 20… 100 salían "vale  %" o "vale 1 %" (revisor R6).
+*/
+var AjustesTexto = (function () {
+	var CUANTOS = { 2: "los dos rubros con peso tienen", 3: "los tres rubros con peso tienen", 4: "los cuatro rubros tienen" };
+	function numeroPeso(v) {
+		return String(v).replace(/\.0$/, "");
+	}
+	function textoEfectivo(valor, conPeso) {
+		var n = Number(conPeso) || 0;
+		if (n <= 1) return "vale " + numeroPeso(valor) + " % si tiene datos";
+		return "vale " + numeroPeso(valor) + " % si " + (CUANTOS[n] || CUANTOS[4]) + " datos";
+	}
+	return { numeroPeso: numeroPeso, textoEfectivo: textoEfectivo };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = AjustesTexto; // pruebas en node
+
+if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) {
 		return;
 	}
@@ -269,21 +291,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		sumaPonderacionSpan.textContent = String(suma);
 		/*
-			Lo que vale de verdad cada rubro (peso efectivo) cuando los cuatro tienen datos:
+			Lo que vale de verdad cada rubro (peso efectivo) cuando todos los rubros con peso tienen datos:
 			su peso entre la suma, con un decimal y sumando 100 (MotorCalificacion.repartoEntero,
 			el mismo reparto que muestran Reportes y el reporte detallado). Un rubro sin datos
-			en un campo no entra, y ahí los demás valen más: por eso "si todos tienen datos".
+			en un campo no entra, y ahí los demás valen más: por eso "si ... tienen datos". La frase
+			cuenta solo los rubros con peso mayor que 0 (un rubro en 0 "no cuenta").
 		*/
 		var pesos = {};
 		entradas.forEach(function (e, i) { pesos[e.clave] = valores[i] || 0; });
 		var M = window.MotorCalificacion;
 		var efectivos = validos && suma > 0 && M && M.repartoEntero ? M.repartoEntero(pesos) : null;
+		var conPeso = valores.filter(function (v) { return v > 0; }).length;
 		entradas.forEach(function (e, i) {
 			if (!e.efectivo) return;
 			if (!(validos && suma > 0)) { e.efectivo.textContent = ""; return; }
 			var v = efectivos ? efectivos[e.clave] : (valores[i] > 0 ? Math.floor(valores[i] / suma * 1000 + 1e-9) / 10 : undefined);
 			e.efectivo.textContent = valores[i] > 0 && v !== undefined
-				? "vale " + String(v).replace(/.0$/, "") + " % si los cuatro rubros tienen datos"
+				? AjustesTexto.textoEfectivo(v, conPeso)
 				: "no cuenta";
 		});
 

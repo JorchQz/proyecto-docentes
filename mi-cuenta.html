@@ -34,6 +34,14 @@
 							<option value="profesor">Hombre (Profesor)</option>
 						</select>
 					</div>
+					<div id="entidad" class="scroll-mt-24">
+						<label for="teacherEntidad" class="block text-sm font-medium text-gray-800">Estado donde das clases</label>
+						<select id="teacherEntidad" class="mt-1 block w-full min-h-[44px] px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
+							<option value="">Elige tu estado</option>
+						</select>
+						<p id="teacherEntidadAviso" class="hidden mt-1 text-xs text-amber-800">Todavía no has elegido tu estado. Elígelo y guarda: así, si tu estado pide reglas de evaluación propias, Mi salón las aplicará.</p>
+						<p class="text-xs text-gray-500 mt-1">Hoy las reglas de evaluación son las nacionales para todos los estados.</p>
+					</div>
 					<div>
 						<label for="teacherEmail" class="block text-sm font-medium text-gray-800">Correo electrónico actual</label>
 						<input id="teacherEmail" type="email" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 text-gray-800" readonly>
@@ -115,6 +123,7 @@
 	<script src="js/saas-guard.js"></script>
 	<script src="js/navbar.js"></script>
 	<script src="js/grupo-activo.js"></script>
+	<script src="js/entidades.js"></script>
 	<script src="js/cuenta.js"></script>
 </body>
 </html>

@@ -92,9 +92,10 @@
 		return 5;
 	}
 
-	// Mismo texto que la boleta imprimible (ReporteDatos.escalaDeFase)
+	// Mismo texto que la boleta imprimible (ReporteDatos.escalaDeGrado): la escala va por
+	// grado, no por fase (decisión 17b: 1° de 6 a 10; 2° a 6° de 5 a 10)
 	function escalaDeGrado(grado) {
-		return "enteros de " + RD().escalaDeFase(faseDeGrado(grado));
+		return "enteros de " + RD().escalaDeGrado(grado);
 	}
 
 	// Fase y escala como se entregaron (foto del cierre, ReporteDatos.alumnoTrimestre)
@@ -420,11 +421,11 @@
 			"Un rubro sin datos no cuenta: su peso se reparte entre los demás rubros en proporción a sus pesos.",
 		];
 		// La conducta no pondera (LGE, art. 21: se informa aparte de la calificación). Una
-		// boleta cerrada antes del cambio conserva el peso con que se entregó.
-		var conductaPondera = CAMPOS.some(function (c) {
-			var x = porCampo[c] && porCampo[c].rubros ? porCampo[c].rubros.conducta : null;
-			return x && Number(x.peso) > 0;
-		});
+		// boleta cerrada antes del cambio conserva el peso con que se entregó. Misma regla
+		// que ReporteDatos.pesoConductaCierre: cuenta solo con peso Y con datos (un rubro de
+		// conducta con peso pero sin datos no entró al cálculo)
+		var boletaT = datos.cerrada ? (datos.boletaCiclo || {})[datos.trimestre] : null;
+		var conductaPondera = (boletaT ? RD().pesoConductaCierre(boletaT) : RD().pesoConductaCampos(porCampo)) > 0;
 		if (!conductaPondera) {
 			notas.push("La conducta se registra y se informa como referencia: no forma parte del porcentaje ni de la calificación.");
 		} else {
@@ -453,7 +454,7 @@
 		}
 		if (CAMPOS.some(function (c) { return calificacionCampo(datos, c).juicio; })) {
 			notas.push("<span class='font-semibold text-amber-800'>Juicio docente:</span> en los campos sin evidencias registradas " +
-				"en el trimestre, el docente asignó la calificación por su juicio, dentro de la escala de la fase; no hay porcentaje ni desglose que mostrar.");
+				"en el trimestre, el docente asignó la calificación por su juicio, dentro de la escala de su grado; no hay porcentaje ni desglose que mostrar.");
 		}
 		if (m.usaLegacy) {
 			notas.push("Incluye calificaciones capturadas con el formato anterior (revisión de tareas del Dashboard, escala 5 a 10).");
@@ -602,7 +603,8 @@
 		var matesHtml = listaMates.map(function (h) {
 			var alcance = catalogo.alcanceMatematica ? catalogo.alcanceMatematica(h, grado) : "";
 			return "<div class='flex items-center justify-between gap-3 border-b border-gray-100 py-1.5 text-sm last:border-0' data-habilidad='" + esc(h.clave) + "'>" +
-				"<span class='text-gray-700'>" + esc(h.etiqueta) +
+				// En 1° y 2°, el nombre con que se evalúa (Fase 3), sin cambiar la clave
+				"<span class='text-gray-700'>" + esc(catalogo.etiquetaDeGrado ? catalogo.etiquetaDeGrado(h, grado) : h.etiqueta) +
 				(alcance ? "<span class='block text-xs text-gray-500' data-alcance>Alcance en " + gradoOk + "°: " + esc(alcance) + "</span>" : "") +
 				"</span>" + semaforo(mates[h.clave], "No evaluada") + "</div>";
 		}).join("");
@@ -754,7 +756,7 @@
 	function renderPie(datos, info) {
 		return "<footer class='bloque mt-6 border-t border-gray-200 pt-3 text-[11px] text-gray-500 leading-relaxed'>" +
 			"<p>Semáforo del campo: logrado con 80 % o más, en proceso de 60 % a 79.9 %, requiere apoyo debajo de 60 %. " +
-			"Escala de su fase: " + esc(escalaDe(datos)) +
+			"Escala de su grado: " + esc(escalaDe(datos)) +
 			". El sistema propone la calificación y el docente la confirma.</p>" +
 			"<p class='mt-1'>Generado el " + fmtFecha(info.hoy || fechaHoyISO()) + " con Mi salón. Reporte interno; complementa la boleta oficial.</p>" +
 			"</footer>";

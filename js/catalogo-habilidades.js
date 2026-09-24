@@ -165,6 +165,20 @@
 		return (g !== null && h.familias && h.familias[g]) || h.etiqueta.toLowerCase();
 	}
 
+	/*
+		Nombre del renglón de la habilidad en la sección 3 de la boleta, el reporte y la
+		pestaña Boleta: el mismo que usan los textos para las familias, con mayúscula
+		("Cálculo mental para multiplicar" y "Estrategias para repartir o agrupar" en 1° y 2°);
+		de 3° a 6°, la etiqueta. La clave no cambia.
+	*/
+	function etiquetaDeGrado(claveOHabilidad, grado) {
+		var h = habilidadMates(claveOHabilidad);
+		if (!h) return "";
+		var g = gradoValido(grado);
+		var familias = g !== null && h.familias ? h.familias[g] : "";
+		return familias ? familias.charAt(0).toUpperCase() + familias.slice(1) : h.etiqueta;
+	}
+
 	var NIVELES = ["logrado", "en_proceso", "requiere_apoyo"];
 	var ETIQUETA_NIVEL = { logrado: "Logrado", en_proceso: "En proceso", requiere_apoyo: "Requiere apoyo" };
 
@@ -218,6 +232,7 @@
 		aplicaMatematica: aplicaMatematica,
 		alcanceMatematica: alcanceMatematica,
 		textoFamilias: textoFamilias,
+		etiquetaDeGrado: etiquetaDeGrado,
 		gradoValido: gradoValido,
 		NIVELES: NIVELES,
 		ETIQUETA_NIVEL: ETIQUETA_NIVEL,

@@ -22,7 +22,7 @@
 	  - Máximos automáticos: se cuentan los productos que le tocan al grado del alumno;
 	    justificado / no_aplica se descuentan del máximo (no penalizan).
 	  - Porcentaje → calificación SOLO con la función SQL calcular_calificacion_boleta
-	    (piso por fase: 6 en 1°-2°, 5 en 3°-6°). El motor nunca redondea por su cuenta.
+	    (piso por grado, decisión 17b: 6 en 1°, 5 de 2° a 6°). El motor nunca redondea por su cuenta.
 	  - Participación y conducta (decisiones de Jorge, 2026-09-24): 1 (normal) y 2
 	    (destacado) valen el día completo; 0 vale 0. El 2 se nota en los textos.
 	  - Alumno dado de alta tarde: solo cuentan los productos con fecha desde su alta, y
@@ -461,7 +461,7 @@
 			};
 		});
 
-		// Calificación propuesta: SIEMPRE la función SQL (piso por fase), en un solo viaje
+		// Calificación propuesta: SIEMPRE la función SQL (piso por grado), en un solo viaje
 		if (pendientes.length) {
 			var rpc = await sb.rpc("calcular_calificaciones_boleta", {
 				p_porcentajes: pendientes.map(function (p) { return p[2]; }),

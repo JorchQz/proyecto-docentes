@@ -37,9 +37,15 @@ y áreas, y la presentación trimestre a trimestre para la junta.
 
 ### 0.2 Marco normativo (Acuerdo 10/09/23 de la SEP)
 
-- **Escala por fase** (art. 9): Fase 3 (1°–2°) enteros de **6 a 10**; Fases 4 y 5 (3°–6°)
-  enteros de **5 a 10**, donde 5 no acredita. Lo impone la base de datos (trigger
-  `boleta_trimestral_piso_fase`), no solo la pantalla.
+- **Escala por grado** (art. 9; decisión 17b de Jorge, 2026-09-24): **1°** enteros de **6 a
+  10** (se acredita con haberlo cursado); **2° a 6°** enteros de **5 a 10**, donde 5 no es
+  aprobatorio. Hasta el 2026-09-24 2° usaba 6 a 10 por estar en la Fase 3: ya no se decide
+  por fase. Lo impone la base de datos (`piso_calificacion_boleta` y el trigger
+  `boleta_trimestral_piso_fase`, migración b11), no solo la pantalla; en el código, la regla
+  vive en `js/reglas-entidad.js`. Las boletas de 2° cerradas antes conservan su escala.
+- **Entidad** (decisión 21): el estado de la maestra se guarda en `perfiles.estado`
+  (onboarding y Mi cuenta). Hoy todas las entidades usan la regla nacional;
+  `js/reglas-entidad.js` es el punto donde se activaría la variante de un estado.
 - **La asistencia no pondera** (art. 7 I d): se muestra como dato de referencia en todos
   los reportes, nunca como parte de la calificación.
 - **Juicio docente** (art. 4 XI): el sistema **propone** la calificación; la oficial es la
@@ -137,7 +143,8 @@ la fórmula: se reporta aparte como referencia.
   así se rotula en los reportes que lo muestran (boleta en pantalla, reporte detallado,
   junta y exportación).
 - Conversión a calificación: **una sola función SQL** `calcular_calificacion_boleta`
-  (≥90→10, ≥80→9, ≥70→8, ≥60→7, ≥50→6, si no 5; y nunca por debajo del piso de la fase).
+  (≥90→10, ≥80→9, ≥70→8, ≥60→7, ≥50→6, si no 5; y nunca por debajo del piso del grado:
+  6 en 1°, 5 de 2° a 6°).
   El motor la llama por lote con `calcular_calificaciones_boleta` (también para un solo
   alumno), que aplica la misma función a cada porcentaje.
 - El motor también cuenta la **entrega** aparte de la calidad (esperados, entregados,
@@ -249,8 +256,12 @@ la confirmada, textos del maestro o propuesta, diagnóstico y bandas. Colores NE
 2024-2025): final por campo = promedio de las tres calificaciones confirmadas; promedio
 final de grado = promedio de las cuatro finales; los dos con un entero y un decimal,
 **truncados, sin redondear** (decisión de Jorge: el Acuerdo no dice cómo cortar y las normas
-SEP previas dicen "no se deben redondear"). Acreditación: 1° con haber cursado el grado; 2° a
-6° con promedio final mínimo de 6. Todo dice "pendiente" hasta que estén confirmados los
+SEP previas dicen "no se deben redondear"). Acreditación (decisión 18b): 1° con haber cursado
+el grado; de 2° a 6°, "Acredita" si el promedio final de grado y las cuatro finales por campo
+llegan a 6; "Revisar" si el promedio llega pero algún campo no (con una explicación corta:
+algunas entidades exigen mínimo 6 en cada campo, que la maestra lo confirme con su control
+escolar; nunca "No acredita" solo por eso); "No acredita" si el promedio es menor que 6.
+Todo dice "pendiente" hasta que estén confirmados los
 tres trimestres de los cuatro campos. Una sola función, `ReporteDatos.finalCiclo`, para la
 boleta imprimible, el reporte detallado, la pestaña Boleta de Reportes, el Concentrado y
 la exportación.

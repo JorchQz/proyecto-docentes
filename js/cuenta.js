@@ -20,6 +20,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var saveEmailBtn = document.getElementById("saveEmailBtn");
 	var savePasswordBtn = document.getElementById("savePasswordBtn");
 
+	var entidadSelect = document.getElementById("teacherEntidad");
+	var entidadAviso = document.getElementById("teacherEntidadAviso");
+	var entidadGuardada = null; // null = no se pudo leer; "" = no la ha elegido
+
 	var newPasswordInput = document.getElementById("newPassword");
 	var confirmPasswordInput = document.getElementById("confirmPassword");
 	var strengthLabel = document.getElementById("passwordStrengthLabel");
@@ -36,6 +40,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	bindMainMenu();
 	fillUserData(currentUser);
+	cargarEntidad().catch(function (e) { console.error("mi-cuenta: entidad", e); });
 
 	window.sb.auth.onAuthStateChange(function (event) {
 		if (event === "SIGNED_OUT") {
@@ -80,6 +85,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return;
 			}
 
+			var entidad = entidadSelect ? entidadSelect.value : "";
+			if (entidad && !(window.Entidades && window.Entidades.esValida(entidad))) {
+				showMessage("accountMessage", "error", "Elige un estado de la lista.");
+				return;
+			}
+
 			if (
 				sex &&
 				sex !== "hombre" &&
@@ -113,6 +124,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 				currentUser = updateResult.data.user || currentUser;
 				fillUserData(currentUser);
+
+				// Entidad (decisión 21): perfiles.estado. Vacío = no se toca lo guardado
+				if (entidad && entidad !== entidadGuardada) {
+					var resEntidad = await window.Entidades.guardar(window.sb, currentUser.id, entidad);
+					if (resEntidad.error) {
+						console.error("mi-cuenta: entidad", resEntidad.error);
+						showMessage("accountMessage", "error", "Tu nombre se guardó, pero no se pudo guardar tu estado. Revisa tu conexión e intenta de nuevo.");
+						return;
+					}
+					entidadGuardada = entidad;
+					mostrarAvisoEntidad();
+				}
 				showMessage("accountMessage", "success", "Datos actualizados correctamente.");
 			} catch (error) {
 				showMessage("accountMessage", "error", "No se pudieron guardar los datos: " + (error.message || "Error desconocido"));
@@ -224,6 +247,30 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		teacherEmailInput.value = user.email || "";
 		teacherCreatedAtInput.value = formatDateTime(user.created_at);
+	}
+
+	/*
+		Entidad de la maestra (perfiles.estado, decisión 21). Si no la ha elegido, un aviso
+		discreto invita a elegirla; no bloquea nada.
+	*/
+	async function cargarEntidad() {
+		if (!entidadSelect || !window.Entidades) return;
+		// La lista se pone antes de leer: aunque la lectura falle, se puede elegir
+		window.Entidades.llenarSelect(entidadSelect, "");
+		// lectura-opcional: solo propone lo guardado; si falla, el selector queda en "Elige tu estado", no se muestra el aviso (no se sabe si falta) y al guardar solo se escribe lo que elija
+		var res = await window.sb.from("perfiles").select("estado").eq("id", currentUser.id).maybeSingle();
+		if (res.error) {
+			console.error("mi-cuenta: no se pudo leer la entidad", res.error);
+			return;
+		}
+		entidadGuardada = res.data && res.data.estado ? String(res.data.estado) : "";
+		window.Entidades.llenarSelect(entidadSelect, entidadGuardada);
+		mostrarAvisoEntidad();
+	}
+
+	function mostrarAvisoEntidad() {
+		if (!entidadAviso) return;
+		entidadAviso.classList.toggle("hidden", entidadGuardada !== "");
 	}
 
 	function bindMainMenu() {

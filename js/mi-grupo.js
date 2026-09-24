@@ -513,9 +513,14 @@
 			currentGroup.trimestre_actual = nuevo;
 			mensajeTrimestre("success", "Guardado: tu grupo está en el trimestre " + nuevo + ". Hoy, Inicio, Reportes, Diagnóstico y Crear proyecto ya abren en él.");
 		} catch (error) {
+			// El detalle técnico ("TypeError: Failed to fetch") solo va a la consola; la
+			// maestra lee qué pasó y qué hacer (revisor R6)
 			console.error("mi-grupo: trimestre actual", error);
-			mensajeTrimestre("error", "No se pudo guardar el trimestre" + (error && error.message ? " (" + error.message + ")" : "") +
-				". Tu grupo sigue en " + (anterior ? "el trimestre " + anterior : "el trimestre que tenía") + ". Revisa tu conexión e intenta de nuevo.");
+			var sinRed = window.Lectura && window.Lectura.errorDeRed ? window.Lectura.errorDeRed(error) : false;
+			var sigue = " Tu grupo sigue en " + (anterior ? "el trimestre " + anterior : "el trimestre que tenía") + ".";
+			mensajeTrimestre("error", sinRed
+				? "No se pudo guardar el trimestre porque no hay conexión." + sigue + " Revisa tu internet e intenta de nuevo."
+				: "No se pudo guardar el trimestre." + sigue + " Intenta de nuevo en un momento.");
 		} finally {
 			guardandoTrimestre = false;
 			renderTrimestreActual();

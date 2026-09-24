@@ -29,6 +29,8 @@
 	var cicloInicioSelect = document.getElementById("cicloInicio");
 	var cicloFinSelect = document.getElementById("cicloFin");
 	var trimestreActualSelect = document.getElementById("trimestreActual");
+	var entidadSelect = document.getElementById("entidadDocente");
+	if (window.Entidades) window.Entidades.llenarSelect(entidadSelect, "");
 
 	var currentGroupId = null;
 	var currentGroupType = "";
@@ -61,6 +63,16 @@
 	}
 
 	var userId = sessionResult.data.session.user.id;
+
+	/*
+		Entidad de la maestra (decisión 21): se guarda en perfiles.estado. Si ya la había
+		elegido (un segundo grupo), queda propuesta.
+		lectura-opcional: solo propone lo que ya guardó; si falla, el selector queda en
+		"Elige tu estado", la maestra lo elige y se guarda lo que elija. No se afirma nada.
+	*/
+	var perfilEntidad = await window.sb.from("perfiles").select("estado").eq("id", userId).maybeSingle();
+	var entidadGuardada = perfilEntidad && !perfilEntidad.error && perfilEntidad.data ? (perfilEntidad.data.estado || "") : "";
+	if (window.Entidades && entidadGuardada) window.Entidades.llenarSelect(entidadSelect, entidadGuardada);
 
 	bindStudentInputRules();
 
@@ -113,11 +125,18 @@
 		var groupSchool = document.getElementById("groupSchool").value.trim();
 		var cicloInicio = parseInt(cicloInicioSelect.value, 10);
 		var cicloFin = parseInt(cicloFinSelect.value, 10);
+		var entidad = entidadSelect ? entidadSelect.value : "";
 
 		var gradeList = Array.from(groupGradeCheckboxes)
 			.filter(function (cb) { return cb.checked; })
 			.map(function (cb) { return parseInt(cb.value, 10); })
 			.sort(function (a, b) { return a - b; });
+
+		if (!entidad || !window.Entidades || !window.Entidades.esValida(entidad)) {
+			showMessage("groupMessage", "error", "Elige el estado donde das clases.");
+			if (entidadSelect) entidadSelect.focus();
+			return;
+		}
 
 		if (!groupName || !groupType) {
 			showMessage("groupMessage", "error", "Nombre y tipo de organización son requeridos.");
@@ -145,6 +164,18 @@
 		setLoading(groupForm.querySelector("button"), true);
 
 		try {
+			// Primero la entidad: es obligatoria. Si no se guarda, tampoco el grupo
+			if (entidad !== entidadGuardada) {
+				var resEntidad = await window.Entidades.guardar(window.sb, userId, entidad);
+				if (resEntidad.error) {
+					console.error("onboarding: entidad", resEntidad.error);
+					var errEntidad = new Error("No se pudo guardar tu estado. Revisa tu conexión e intenta de nuevo.");
+					errEntidad.humano = true;
+					throw errEntidad;
+				}
+				entidadGuardada = entidad;
+			}
+
 			var trimestre = parseInt(trimestreActualSelect.value, 10) || 1;
 
 			var payload = {
@@ -189,7 +220,7 @@
 			showMessage(
 				"groupMessage",
 				"error",
-				"Error al guardar grupo: " + (error.message || "Error desconocido")
+				error && error.humano ? error.message : "Error al guardar grupo: " + (error.message || "Error desconocido")
 			);
 		} finally {
 			setLoading(groupForm.querySelector("button"), false);

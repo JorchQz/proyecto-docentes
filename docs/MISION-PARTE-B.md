@@ -21,6 +21,7 @@ Esa revisión encontró dos bugs que tus pruebas no vieron (el aviso "propuesta:
 - **Art. 7:** la asistencia **no** es criterio de acreditación. Nunca pondera. Se muestra solo como dato de referencia.
 - **Art. 8:** tres periodos de evaluación por ciclo (trimestres).
 - **Art. 9:** Fase 3 (1° y 2°) usa enteros **6 a 10**. Fases 4 y 5 (3° a 6°) usan enteros **5 a 10**; 5 es reprobatoria. Fuente única: `calcular_calificacion_boleta` / `piso_calificacion_boleta` más el trigger `boleta_trimestral_piso_fase`. Ningún reporte convierte por su cuenta.
+  - **Nota (decisión 17b de Jorge, 2026-09-24):** la escala ya no va por fase sino por grado. **1°** sigue de 6 a 10; **2°** pasa a 5 a 10 con 5 no aprobatorio, como 3° a 6° (boleta DGAIR de 2°, AEFCM, SEIEM y el proyecto de sentencia de la SCJN AR 419/2025; ver `docs/PROGRESO-PARTE-B.md`, "Auditoría normativa NEM"). Migración `supabase/mi_salon_b11_escala_2_2026-09.sql`; en el código, `js/reglas-entidad.js`. El texto de arriba se conserva como estaba escrito. Por lo mismo, la aceptación de §3.1 ("un alumno de 2° en riesgo sale con piso 6") hoy es: 1° con piso 6; 2° a 6° pueden salir 5.
 - La boleta lleva observaciones y sugerencias por campo formativo. Mi salón es **complemento** de la boleta oficial SIGED, no la sustituye; no la presentes como documento oficial de la SEP.
 - La SEP no prescribe participación por campo: el registro diario global es válido (ya construido).
 
