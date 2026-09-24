@@ -1,21 +1,24 @@
 # Mi salón, Parte B — Reporte final
 
-**Para:** Jorge. **Fecha:** 24 de septiembre de 2026. **Rama:** `mi-salon-parte-b`
-(sin push a `main` ni merge: lo decides tú).
+**Para:** Jorge. **Fecha:** 24 de septiembre de 2026. **Rama:** `mi-salon-parte-b`.
 
 ## En una frase
 
-La Parte B quedó construida completa. Cada bloque pasó por un revisor independiente, que
-lo probó en navegador real y contra la base. Los datos reales no se tocaron (18 alumnos y
-404 asistencias, igual que al empezar). Quedan decisiones de producto que son tuyas.
+Mi salón quedó terminado: los diez bloques de la Parte B pasaron por revisores independientes
+que lo probaron en navegador real y contra la base, y el mismo 24 de septiembre se aplicaron
+todas tus decisiones de la encuesta (§4), revisadas otra vez de punta a punta. Todo el QA corre
+en el **proyecto de Supabase de pruebas** (§3), no en producción.
 
-**El ensayo final (3.10) pasó** en su noveno intento, el 24 de septiembre. El revisor recorrió
-por la interfaz un trimestre completo de un grupo 1°-2° como el de Fanny y lo esencial de
-Fase 4. Encontró los números cuadrados a mano, 180 marcas de "Hoy" iguales entre pantalla y
-base, las boletas cerradas idénticas por md5 después de cambiarlo todo y 25 vías por API
-contra una boleta cerrada rechazadas. Ese ensayo corrió en un **proyecto de Supabase de
-pruebas**, no en producción (ver §3). El bloque 3.7 quedó detenido y es decisión tuya (ver
-abajo).
+- **Ensayo final (3.10):** pasó en su noveno intento. Un trimestre completo de un grupo 1°-2°
+  como el de Fanny, por la interfaz, con los números cuadrados a mano.
+- **Bloque 3.7:** se había detenido; lo reabriste y quedó terminado con una sola capa de
+  lectura para toda la app.
+- **Cierre del 24 de septiembre:** cuatro revisores. R1 PASS; R2 FAIL con dos defectos,
+  corregidos; R3 FAIL con un defecto de redondeo, corregido; R4 PASS.
+- **Acceso:** el SaaS sigue invisible para el público. Solo lo ven `soporte.jissez@gmail.com`,
+  Fanny (`sarayval034@gmail.com`, sin datos, empieza desde cero) y las dos cuentas QA.
+- **Datos reales en producción:** 2 alumnos y 4 asistencias (tu cuenta), igual al empezar y
+  al terminar cada revisión.
 
 ---
 
@@ -34,25 +37,17 @@ está en `docs/PROGRESO-PARTE-B.md` y los scripts y capturas de cada revisor en
 | 3.4 Reporte detallado por alumno | **PASS** | a la primera |
 | 3.5 Presentación para la junta de padres | **PASS** | a la primera |
 | 3.6 Exportación CSV / XLSX | **PASS** | a la primera |
-| 3.7 Coherencia y deuda conocida | **DETENIDO** | 8 revisiones; las tres últimas fallaron por la misma causa (lecturas cuyo error se ignora), y la misión manda detener el bloque. Detalle abajo |
+| 3.7 Coherencia y deuda conocida | **PASS** (reabierto por Jorge el 24 de septiembre) | Se detuvo tras 8 revisiones: las tres últimas fallaron por lecturas cuyo error se ignora. Jorge pidió terminarlo con una sola capa de lectura (`js/lectura.js`), y el revisor R1 del cierre le dio PASS con 243 lecturas forzadas a fallar |
 | 3.8 Redacción con IA (Capa 2) | **PASS** (apagada hasta que exista la llave) | a la primera |
 | 3.9 Documentación | **PASS** | FAIL → FAIL → PASS (44 afirmaciones verificadas, ninguna falsa) |
 | 3.10 Ensayo final de punta a punta | **PASS** | 7 FAIL (evidencia por PDA, cierre del día, boleta cerrada sin congelar, carreras en Diagnóstico, cierre no atómico, boleta cerrada borrable por API) → 1 sin veredicto (se cayó la base de producción) → PASS en el noveno |
 
-**Bloques detenidos: 3.7.** La regla de la misión es detener un bloque que falla tres veces
-seguidas por la misma causa, y eso pasó: los FAIL #6, #7 y #8 fueron lecturas de Supabase
-cuyo error la pantalla ignora (si la lectura falla, la pantalla cree que no hay nada y lo
-dice, o guarda encima). Cada ronda se corrigió y la siguiente encontró la capa de abajo. Lo
-que sí quedó probado: en ~190 casos de lectura fallida en 21 pantallas, las pantallas que
-capturan (Hoy, Tareas, Asistencia, Diagnóstico, Formativa, Exámenes, Ajustes, Reportes y
-los cuatro reportes) avisan y ninguna intentó escribir. Lo que queda abierto: la lectura
-del grupo activo en error (varias pantallas no la atrapan), Mi grupo ("Eliminar grupo" dice
-0 alumnos si falla el conteo), Inicio si falla el proyecto activo, una regresión en
-Diagnóstico al desmarcar, una carrera en Asistencia al cambiar de fecha, y algunos guardados
-fallidos o salidas con pendientes sin aviso. La lista completa y la propuesta de
-solución de fondo (una sola capa de lectura para todas las páginas) están en
-`docs/PROGRESO-PARTE-B.md`, sección "Bloques detenidos". **Es una decisión tuya** si se
-hace ese cambio transversal antes del merge.
+**Bloque 3.7.** Se detuvo el 23 de septiembre: tres revisiones seguidas fallaron por la misma
+causa (lecturas cuyo error la pantalla ignora). El 24 lo reabriste. Ahora toda lectura pasa
+por `js/lectura.js` y, si falla, la pantalla dice "No se pudo cargar" con Reintentar, sin
+dibujar datos parciales ni guardar. El revisor R1 forzó a fallar 243 lecturas en 26 pantallas:
+0 excepciones, 0 afirmaciones falsas y 0 escrituras. Los 9 defectos que habían quedado
+abiertos ya no se reproducen.
 
 ### Lo más importante que encontraron los revisores (y se corrigió)
 
@@ -113,26 +108,28 @@ especificación) y `docs/CONTEXTO.md` §3, §5.1, §6 y §7.
 **Migraciones aplicadas en producción (todas aditivas o sobre tablas vacías):** B.0, B.3,
 B.5 (ya reportadas antes), y en esta fase `b7_plantillas_sugerencia`,
 `b8_calificaciones_boleta_por_lote`, `qa_funcion_resembrar` y
-`b7_plantillas_calidad_y_descripciones`, `b5c_evidencia_pda_con_todos_los_productos` `b8_cierre_boleta_atomico_inmutable` y `b8_cierre_boleta_sin_borrar_ni_cerrar_por_fuera` (cierre de boleta en una transacción; una boleta cerrada no se modifica, no se borra y solo se cierra con «Cerrar boleta»). Copia en `supabase/*.sql`.
+`b7_plantillas_calidad_y_descripciones`, `b5c_evidencia_pda_con_todos_los_productos` `b8_cierre_boleta_atomico_inmutable` `b8_cierre_boleta_sin_borrar_ni_cerrar_por_fuera` (cierre de boleta en una transacción; una boleta cerrada no se modifica, no se borra y solo se cierra con «Cerrar boleta»), y con el cierre del 24 de septiembre `mi_salon_b9_referencias_propias_2026-09.sql`, `mi_salon_b9_diagnostica_cascada_2026-09.sql` y la semilla QA actualizada (`qa_semilla.sql`). Copia en `supabase/*.sql`.
 
-**Edge Function nueva desplegada:** `redactar-boleta` (v3). Sin el secreto no hace nada:
+**Edge Function nueva desplegada:** `redactar-boleta` (en producción y en el proyecto de pruebas). Sin el secreto no hace nada:
 responde "no configurada".
 
 ---
 
 ## 3. Pruebas
 
-- **22 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
+- **34 suites automáticas** (`for t in pruebas/*.test.js; do node $t | tail -1; done`):
   todas pasan. Cubren motor, textos, boleta de punta a punta, IA y Capa 1, los cuatro
-  reportes, Vista Recrea y Concentrado, Tareas, Hoy y ausencia de emojis.
+  reportes, Vista Recrea y Concentrado, Tareas, Hoy, capa de lectura, Asistencia, portal,
+  referencias propias, matemáticas por grado, alta tarde y ausencia de emojis.
 - **Verificaciones en navegador** (en `.qa/`, locales): recorrido de humo por las 18
   pantallas con los dos grupos, sin errores de consola; verificaciones de 3.2, de los
   pulidos, de Tareas contra Hoy y de la impresión del reporte.
 - **Aislamiento entre maestros** con una segunda cuenta real: 0 filas de otro maestro en
   las 16 tablas y vistas de Mi salón; el catálogo global se lee pero no se edita.
-- **Datos reales:** 18 alumnos y 404 asistencias, y 0 proyectos, calificaciones y
-  boletas, al empezar y al terminar cada bloque (el último conteo, el 24 de septiembre
-  después del ensayo final).
+- **Datos reales:** 18 alumnos y 404 asistencias hasta el 24 de septiembre; ese día, con tu
+  permiso, se borraron los datos viejos de Fanny (respaldados). Desde entonces: 2 alumnos y 4
+  asistencias (tu cuenta), y 0 proyectos, calificaciones y boletas reales, iguales al empezar
+  y al terminar cada revisión.
 
 ### Incidente del 23 de septiembre y proyecto de pruebas
 
@@ -160,84 +157,48 @@ para rehacer el proyecto de pruebas están en `.qa/`, y las cadenas de conexión
 
 ---
 
-## 4. Decisiones pendientes para ti
+## 4. Decisiones
 
-En cada caso se eligió lo más conservador y el sistema funciona así mientras decides.
+### Lo que decidiste el 24 de septiembre (ya construido y revisado)
 
-1. **Participación y conducta.** El valor normal del día es 1 de 2 y el motor lo cuenta
-   como 50 % del rubro (6 % y 5 % de la calificación). Un alumno "normal" pierde parte de
-   esos pesos. *Hoy:* la calificación no se cambió; los textos tratan el 1 como normal.
-2. **Redacción con IA.** Para activarla hay que crear el secreto `ANTHROPIC_API_KEY` en
-   las Edge Functions de Supabase y decidir quién paga el consumo (modelo
-   `claude-opus-5`, esfuerzo bajo, una llamada por boleta). No se envía el nombre del
-   alumno. No hay límite por maestro (solo 30 s entre redacciones de la misma boleta).
-3. **Catálogo de sugerencias** (`plantillas_sugerencia`): es global y hoy solo se edita
-   por SQL como administrador; falta una pantalla.
-4. **Privacidad en la junta.** Por defecto, número de lista y grado; nombres solo con un
-   interruptor. Las áreas de atención van siempre agregadas y en la fluidez, sin nombres,
-   ni siquiera va el número de lista. Un revisor sugiere poder ocultar las diapositivas por
-   alumno en grupos muy chicos.
-5. **Pixel de Meta en el SaaS.** Está en todas las páginas con barra y recibe la URL
-   completa, que en los reportes lleva el id del alumno. Recomendación: dejarlo solo en
-   `tienda/`.
-6. **"Retardo" en asistencia:** no existe (sería decisión de producto).
-7. **Habilidades de matemáticas por grado:** en 1°-2° la boleta muestra multiplicación,
-   división, fracciones y tablas como "No evaluada" (el catálogo, como la hoja de Fanny,
-   no dice a qué grados aplican).
-8. **Criterios propios** de cuaderno y habilidades por maestro: no existen todavía.
-9. **Productos con nombre genérico** (`origen='backfill'`) del importador: sigue pendiente
-   el trabajo de enriquecerlos (ya estaba anotado desde la Parte A).
-10. **`CLAUDE.md`** decía que la Parte B no se construye sin tu permiso. Lo actualicé
-    en la rama (solo llega a `main` si haces el merge): dice que la Parte B está construida
-    en `mi-salon-parte-b`, que el merge lo decides tú y que las decisiones nuevas de
-    producto o legales siguen necesitando tu visto bueno. Revísalo antes del merge.
-    Un revisor encontró además una frase desactualizada en su tabla de datos: dice que
-    `tareas`, `calificaciones` y `evaluacion_formativa` se materializan al cerrar
-    sesiones. Hoy `tareas` está en desuso (0 filas, nadie la escribe), `calificaciones`
-    se escribe en "Hoy" al tocar cada producto y `evaluacion_formativa` la llena un
-    trigger al calificar (más el ajuste del maestro). No la cambié porque `CLAUDE.md` es
-    tuyo; sugiero ese texto.
-11. **Editar un proyecto en curso.** "Crear proyecto" en modo edición guarda borrando y
-    volviendo a crear las sesiones, y el borrado en cascada se llevaría productos,
-    calificaciones y evidencias. *Hoy:* un proyecto que ya se está trabajando se abre solo
-    para consulta (no se puede guardar). Falta decidir cómo editarlo sin perder nada (por
-    ejemplo, actualizar sesión por sesión en lugar de borrar y recrear).
-12. **Boleta cerrada y lo que no es boleta.** La boleta cerrada queda fija en todos sus
-    documentos, pero la junta y las columnas de rubros de la exportación siguen mostrando
-    los datos de hoy. *Hoy:* así está documentado (la junta no es la boleta). Decide si
-    también deben congelarse.
-13. **Ausentes y cierre del día.** Un alumno que faltó sigue contando como "sin calificar"
-    en los productos del día, y el primer toque del cierre guarda 1 y 1 también a quien no
-    tiene asistencia capturada (se asume presente). *Hoy:* sin cambio.
-14. **La casilla sin marcar en "Asistencia".** En `asistencia.html` (la pantalla vieja de
-    lista) una casilla sin marcar se guarda como falta, y cada toque guarda a todo el
-    grupo; en "Hoy" un alumno sin marcar queda sin registro. *Hoy:* se dejó como estaba
-    (solo se protegió contra lecturas fallidas y el retiro del cierre se limita a faltas
-    marcadas). Decide si debe comportarse como "Hoy".
-15. **Alumno sin ninguna evidencia en el trimestre** (por ejemplo, uno que llegó tarde). Sus
-    cuatro campos salen "—" y no se puede confirmar ni cerrar su boleta. En cambio, un solo
-    campo sin evidencias ofrece "Elige" (juicio del docente). *Hoy:* sin cambio. Decide si
-    ese alumno también debe poder recibir la calificación por juicio docente.
-16. **Cambiar el grado de un alumno después de cerrar su boleta** cambia en la imprimible el
-    grado, la fase, la escala y el estándar de PPM. Esos datos se leen en vivo, no de la foto
-    del cierre. Es un caso raro y fuera del criterio del ensayo. *Hoy:* sin cambio.
-17. **Seguridad de datos entre alumnos.** Las políticas de la base revisan que la fila sea
-    del maestro (`maestro_id`), pero no que el alumno también lo sea. Un maestro podría
-    crear, con su propia cuenta, filas ligadas al id de un alumno ajeno (el revisor lo hizo
-    con `cerrar_boleta`). No ve ni cambia nada del otro maestro, pero quedan filas basura, y
-    si la boleta quedó cerrada no se pueden borrar hasta borrar al alumno. Es un patrón de
-    todas las tablas, así que lo propongo como mejora aparte: revisar en cada política que
-    el `alumno_id` sea del mismo maestro.
-18. **Tamaño de la instancia de producción.** En reposo usa casi toda su memoria. Con 4
-    maestros activos en el SaaS y la tienda en la misma base, un pico de uso real podría
-    repetir la caída del 23. Subir el cómputo (requiere el plan Pro de Supabase) es una
-    decisión de costo tuya. Mientras tanto, el QA ya no la carga.
-19. **Detalles que notaría una maestra** (del último ensayo, sin bloquear):
-    - a un alumno dado de alta tarde, "Hoy" le muestra como pendientes todas las tareas
-      pasadas;
-    - un "trabajo diario" escrito en una pestaña vieja se guarda en Diagnóstico, aunque ya
-      no entra a la boleta cerrada;
-    - la boleta tarda de 3 a 5 s en Reportes.
+| Tema | Cómo quedó |
+|---|---|
+| Participación y conducta | 1 (normal) y 2 (destacado) valen el rubro completo; 0 vale 0. El 2 aparece en los textos cuando casi todos los días fueron 2 |
+| Alumno sin ninguna evidencia | "Elige" en los cuatro campos (juicio docente, dentro de la escala de su fase); imprimible, reporte y exportación lo indican |
+| Grado después del cierre | Grado, fase, escala, estándar de PPM, rubros y avance por PDA van en la foto del cierre |
+| Junta y exportación | Para alumnos con boleta cerrada usan la foto; los abiertos siguen en vivo, y la junta lo explica |
+| Asistencia | Igual que "Hoy": Presente, Falta, Justificada; sin marcar = sin registro; cada toque guarda a ese alumno |
+| Alumno dado de alta tarde | Solo cuenta lo que es desde su alta (pendientes, productos y examen) |
+| Matemáticas por grado | Según los programas sintéticos NEM: 1° cuatro habilidades, 2° siete, 3° a 6° las ocho, cada una con su alcance; la exportación dice "No aplica" |
+| Referencias propias | Ninguna fila puede apuntar a alumnos, grupos, proyectos o sesiones de otra cuenta (políticas restrictivas); el diagnóstico se borra con su alumno |
+| Pixel de Meta | Fuera del SaaS; sigue en la tienda |
+| Pantalla principal | `portal.html` con Mi Salón, Tienda y Sala de Maestros "Próximamente", solo para cuentas con acceso; el resto entra directo a la tienda |
+| `CLAUDE.md` | Corregida la frase de `tareas`, `calificaciones` y `evaluacion_formativa` |
+| Accesos | Solo `soporte.jissez@gmail.com`, Fanny y las cuentas QA. Los datos viejos de Fanny se respaldaron en `.qa/respaldos/` y se borraron |
+
+### Lo que sigue pendiente
+
+1. **IA para redactar:** falta que crees el secreto `ANTHROPIC_API_KEY` (recordatorio el
+   sábado 26). Costo estimado: ~0.05 USD por boleta.
+2. **Servidor de producción:** en reposo usa casi toda su memoria. Decidiste no subirlo por
+   ahora; si vuelve a caer, es lo primero.
+3. **`mates.calculo_mental`:** el programa lo pide en los seis grados; agregarlo cambia el
+   formato de la exportación. Conviene validarlo con Fanny.
+4. **`CLAUDE.md`, flujo de entrada:** todavía dice index → dashboard; ahora es login → portal.
+   No lo cambié sin tu visto bueno.
+5. **Ya conocidos, sin cambio:** "retardo" en asistencia; pantalla para editar el catálogo de
+   sugerencias; criterios propios por maestro; nombres genéricos de productos del importador;
+   editar un proyecto en curso sin perder capturas; los exámenes dependen de que el generador
+   los cree (hoy el rubro de examen se reparte).
+6. **Detalles que notaría una maestra** (de los revisores, sin bloquear):
+   - la asistencia de referencia se muestra con tres redondeos (66.6 %, 67 % y 66.7);
+   - la junta puede bajar un punto al cerrar una boleta (promedia la foto truncada);
+   - Mi grupo quita números y acentos de los nombres;
+   - en "Hoy" los productos del importador tienen nombres genéricos;
+   - el primer toque del cierre del día pone 1 y 1 a todo el grupo;
+   - volver a tocar la opción marcada la quita en Asistencia pero no en "Hoy";
+   - el saludo dice "Docente" en el portal y el nombre del perfil en Inicio;
+   - la boleta tarda de 3 a 5 s en Reportes.
 
 ---
 
@@ -275,34 +236,21 @@ Si quieres ver aislamiento: entra con `qa.aislamiento@jissez.com` (contraseña t
 
 ## 6. Mi opinión: ¿listo para `main`?
 
-**Sí, para un piloto controlado con Fanny, después de que hagas tú la prueba de 10 minutos.
-No para abrirlo a todos todavía.**
+**Sí.** Lo decidiste así: el SaaS sale a `main` pero sigue invisible para el público. Solo
+Fanny y soporte tienen acceso, y ella lo prueba al menos dos semanas antes de abrirlo.
 
 **A favor:**
-- El recorrido completo de una maestra de 1°-2°, de crear el proyecto a exportar, pasó una
-  revisión independiente sin excepciones en consola.
-- Los números cuadran a mano.
-- Lo que la ley pide está respetado: la maestra confirma, la asistencia no pondera y los
-  pisos van por fase.
-- Una boleta cerrada ya no cambia por ningún camino.
-- Todas las migraciones ya están en producción y son aditivas, así que el merge solo cambia
-  pantallas.
+- El recorrido completo de una maestra pasó revisiones independientes una y otra vez, con los
+  números cuadrados a mano.
+- Una boleta cerrada no cambia por ningún camino.
+- Lo que la ley pide está respetado: la maestra confirma, la asistencia no pondera y los pisos
+  van por fase.
+- Las lecturas fallidas ya no engañan ni escriben.
+- Las migraciones son aditivas y se revisaron en producción antes de aplicarse: 0 referencias
+  cruzadas y 0 huérfanos.
 
-**Lo que pesaría antes de abrirlo:**
-
-1. **El bloque 3.7 quedó detenido.** Las pantallas que capturan avisan cuando una lectura
-   falla y no escriben encima. Pero varias pantallas secundarias (selector de grupo, Mi
-   grupo, Inicio) todavía pueden mostrar "vacío" en vez de "no se pudo leer". Con buena
-   conexión no se nota; con la red de una escuela rural, sí. Te recomiendo hacer la capa de
-   lectura única antes de sumar más maestros. Para un piloto con Fanny es un riesgo
-   aceptable si ella sabe que un "no hay datos" raro se arregla recargando.
-2. **Un merge a `main` se publica solo en jissez.com** y cambia las pantallas de los 4
-   maestros reales que hoy tienen acceso al SaaS (entre ellas `asistencia.html` y el
-   Inicio). Conviene avisarles o hacerlo en un horario tranquilo.
-3. **Decide antes del merge** el Pixel de Meta en el SaaS (punto 5) y revisa el cambio a
-   `CLAUDE.md` (punto 10).
-4. **La instancia de producción está al límite de memoria** (punto 18). No depende de la
-   Parte B, pero es lo que más probablemente tumbe la tienda otra vez.
-
-Si lo haces así (prueba tuya, avisar a los 4 maestros, piloto con Fanny y después la capa de
-lectura), el riesgo es bajo y el beneficio para Fanny es inmediato.
+**Lo que vigilaría:**
+- **Fanny empieza en blanco.** Su primera entrada la lleva al portal y de ahí a crear su grupo.
+- **La memoria del servidor de producción:** si la tienda vuelve a caer, subir el cómputo es lo
+  primero.
+- **Los detalles de §4:** la opinión de Fanny sobre ellos es lo que más vale ahora.

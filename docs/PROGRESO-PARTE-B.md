@@ -31,7 +31,7 @@ seguir desde el último bloque con PASS.
 | 3.4 B.8.2 Reporte detallado | **PASS** | revisor 33b | (commit al cerrar la ronda) |
 | 3.5 B.8.3 Junta de padres | **PASS** | revisor 35b | (commit al cerrar la ronda) |
 | 3.6 B.8.5 Exportación CSV/XLSX | **PASS** | revisor 35b | (commit al cerrar la ronda) |
-| 3.7 Coherencia y deuda | **DETENIDO** (3 FAIL seguidos por la misma causa) | FAIL #1 37b (Tareas: justificados) → FAIL #2 37c (proyecto terminado) → FAIL #3 37d (cierre con faltas) → FAIL #4 37e (lecturas sin paginar en Hoy/Tareas/Inicio; todo el grupo ausente) → FAIL #5 37f (lecturas sin paginar en Reportes: 2.º seguido por esa causa) → FAIL #6 37g (causa nueva: lecturas con error ignoradas) → FAIL #7 37h (misma causa) → FAIL #8 37i (misma causa: 3.º seguido) → **DETENIDO** (ver "Bloques detenidos") | — |
+| 3.7 Coherencia y deuda | **PASS** (reabierto el 2026-09-24) | DETENIDO tras FAIL #1-#8 (ver "Bloques detenidos") → Jorge decidió terminarlo con una capa de lectura única → **PASS** revisor R1 del cierre (`.qa/revisor-cierre-r1/`) | ver `git log` |
 | 3.8 B.7 Capa 2 (IA) | **PASS** (detrás de bandera: falta el secreto) | revisor 37b | (commit de la ronda) |
 | 3.9 Documentación | **PASS** | FAIL #1 revisor 39 → FAIL #2 39b → **PASS** revisor 39c | d39ccfe y siguiente |
 | 3.10 Ensayo final | **PASS** | FAIL #1 revisor 310 (PDA, cierre del día, boleta sin evidencias, diagnóstico, Inicio) → FAIL #2 310b (excepción en Crear proyecto; boleta cerrada no congelada) → FAIL #3 310c (semáforo y diagnóstico de la boleta cerrada; Hoy perdía capturas al recargar) → FAIL #4 310d (carrera en Diagnóstico) → FAIL #5 310e (guardados de Diagnóstico fuera de orden) → FAIL #6 310f (cierre no atómico; base sin proteger lo cerrado) → FAIL #7 310g (borrar y reinsertar lo cerrado: misma causa, 2.º seguido) → 310h SIN VEREDICTO (base de producción caída) → **PASS** revisor 310i (proyecto de pruebas) | ver `git log` |
@@ -811,6 +811,12 @@ las 29 suites pasan.
   - **Lo que pasa:** 14 porcentajes cuadrados a mano, alta tarde con examen previo, juicio docente, boletas cerradas idénticas tras capturar, grado en la foto, junta cuadrada, matemáticas por grado y las correcciones menores (42 casos de sesión sin red).
   - **El defecto:** el motor mandaba a la función SQL el porcentaje **redondeado**, mientras la pantalla y la boleta lo truncan. Con 49.9964 % se veía "49.9 %" y la propuesta era un 6 que acredita en Fase 4.
   - **Corrección:** el motor trunca a 2 decimales y el nivel usa el mismo valor. La prueba `pruebas/porcentaje-truncado.test.js` proponía un 6 con el código anterior. Además se corrigió el desborde de Proyectos a 390 px.
+- **Revisor R4: PASS** (`.qa/revisor-cierre-r4/`).
+  - **Conversión:** 38 530 porcentajes pasaron por el motor real contra la función SQL real, con 0 fallas; con el motor anterior hubo 18 221. Un borde se reprodujo por la interfaz ajustando pesos.
+  - **Recorrido corto:** hecho por la interfaz, con 19 porcentajes cuadrados a mano. Las boletas cerradas quedaron idénticas en 38 archivos tras capturar y cambiar el grado.
+  - **Humo:** 176 pantallas a 1280 y 390 px, sin errores ni desbordes.
+  - **Menores para Jorge:** la asistencia de referencia se muestra con tres redondeos distintos (66.6 %, 67 % y 66.7); la junta puede bajar un punto al cerrar porque promedia la foto truncada; un examen cuyo valor por pregunta no es exacto quedaría un poco por debajo (hoy no ocurre).
+- **Estado:** el cierre del SaaS está aprobado por revisores independientes. Falta aplicar en producción `mi_salon_b9_referencias_propias`, `mi_salon_b9_diagnostica_cascada` y `qa_semilla.sql`; la comprobación previa en producción dio 0 referencias cruzadas y 0 huérfanos. Después, merge rápido a `main` con despliegue automático.
 
 ## Bloques detenidos
 
