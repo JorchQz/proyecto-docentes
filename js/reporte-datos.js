@@ -269,6 +269,31 @@
 		});
 		return salida;
 	}
+	/*
+		Boleta cerrada ANTES de que existiera la foto completa: no hay desglose del cierre,
+		pero el porcentaje y el semáforo de cada fila sí son los del cierre. Lo cerrado nunca
+		lee en vivo: el porcentaje es el de la fila, y un campo sin porcentaje (juicio docente,
+		sin evidencias al cierre) queda sin porcentaje ni desglose aunque después se capture
+		algo en él. En los demás campos el desglose es el de hoy (las pantallas lo avisan).
+		porCampoVivo: el del motor de hoy.
+	*/
+	function porCampoFilas(boletaT, porCampoVivo) {
+		var salida = {};
+		CAMPOS.forEach(function (c) {
+			var fila = (boletaT && boletaT[c]) || {};
+			var vivo = (porCampoVivo && porCampoVivo[c]) || { rubros: {} };
+			var sin = vacio(fila.porcentaje);
+			salida[c] = Object.assign({}, vivo, {
+				rubros: sin ? {} : (vivo.rubros || {}),
+				porcentaje: sin ? null : Number(fila.porcentaje),
+				nivel: sin ? null : (fila.nivel || vivo.nivel || null),
+				calificacionPropuesta: null, // cerrada: la calificación es la confirmada
+				sinEvidencias: sin,
+			});
+		});
+		return salida;
+	}
+
 	function avancePdaCierre(foto) {
 		return foto && Array.isArray(foto.avance_pda) ? foto.avance_pda : null;
 	}
@@ -394,7 +419,7 @@
 				pesos: foto.pesos || motorVivo.pesos,
 				examenAproximado: tiene(foto, "examen_aproximado") ? !!foto.examen_aproximado : motorVivo.examenAproximado,
 				usaLegacy: tiene(foto, "usa_legacy") ? !!foto.usa_legacy : motorVivo.usaLegacy,
-			} : {});
+			} : (cerrada ? { porCampo: porCampoFilas(boletaT, motorVivo.porCampo) } : {}));
 		avancePda = avancePdaCierre(foto) || avancePda;
 
 		// Grado, fase, escala y banda de lectura como se entregaron
@@ -453,7 +478,7 @@
 					porCampo: pc,
 					examenAproximado: tiene(foto, "examen_aproximado") ? !!foto.examen_aproximado : m.examenAproximado,
 					usaLegacy: tiene(foto, "usa_legacy") ? !!foto.usa_legacy : m.usaLegacy,
-				} : {});
+				} : { porCampo: porCampoFilas(boletaT, m.porCampo) });
 			var pda = avancePdaCierre(foto);
 			if (pda) {
 				avancePda = avancePda.filter(function (f) { return f.alumno_id !== a.id; })
@@ -566,6 +591,7 @@
 		faseVisible: faseVisible,
 		escalaVisible: escalaVisible,
 		porCampoCierre: porCampoCierre,
+		porCampoFilas: porCampoFilas,
 		avancePdaCierre: avancePdaCierre,
 		juicioSinEvidencias: juicioSinEvidencias,
 		congelarCerradas: congelarCerradas,

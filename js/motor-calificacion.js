@@ -20,7 +20,8 @@
 	    (piso por fase: 6 en 1°-2°, 5 en 3°-6°). El motor nunca redondea por su cuenta.
 	  - Participación y conducta (decisiones de Jorge, 2026-09-24): 1 (normal) y 2
 	    (destacado) valen el día completo; 0 vale 0. El 2 se nota en los textos.
-	  - Alumno dado de alta tarde: solo cuentan los productos con fecha desde su alta
+	  - Alumno dado de alta tarde: solo cuentan los productos con fecha desde su alta, y
+	    el examen solo si se aplicó desde su alta o si lo contestó
 	    (la regla vive en js/alcance-hoy.js; es la misma de Hoy, Inicio y Tareas).
 
 	Filas viejas: antes de la pantalla "Hoy", la revisión de tareas del Dashboard
@@ -253,7 +254,8 @@
 
 	// { alumnoId: "AAAA-MM-DD" | null }. Si quien llama no trae created_at, se lee aquí.
 	// También se lee cuándo se creó el grupo: quien nació con él no es "de alta tarde".
-	async function fechasDeAlta(sb, alumnos, grupoId) {
+	// instantes (opcional) recibe { alumnoId: created_at } para la regla del examen.
+	async function fechasDeAlta(sb, alumnos, grupoId, instantes) {
 		var A = alcance();
 		var salida = {};
 		if (!A || !alumnos.length) return salida;
@@ -276,7 +278,10 @@
 			var g = grupos.filter(function (x) { return x.id === grupoId; })[0];
 			grupoCreado = g ? g.created_at : null;
 		}
-		alumnos.forEach(function (a) { salida[a.id] = A.fechaAlta(creado[a.id], grupoCreado); });
+		alumnos.forEach(function (a) {
+			salida[a.id] = A.fechaAlta(creado[a.id], grupoCreado);
+			if (instantes) instantes[a.id] = creado[a.id] || null;
+		});
 		return salida;
 	}
 
@@ -311,7 +316,8 @@
 		var alumnos = (ctx.alumnos || []).map(function (a) { return { id: a.id, grado: Number(a.grado), created_at: a.created_at }; });
 		var ids = alumnos.map(function (a) { return a.id; });
 		var pesos = await cargarPesos(sb, ctx.maestroId);
-		var alta = await fechasDeAlta(sb, alumnos, ctx.grupoId);
+		var altaInstante = {};
+		var alta = await fechasDeAlta(sb, alumnos, ctx.grupoId, altaInstante);
 
 		// Proyectos del trimestre (proyectos.trimestre es la fuente única) y sus sesiones
 		var proyRes = await sb.from("proyectos").select("id")
@@ -371,7 +377,7 @@
 			});
 		}
 
-		var examenes = await examenesPorGrado(sb, ctx, alumnos, ids, campos);
+		var examenes = await examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante);
 
 		// Por alumno: mismas entradas que la boleta individual
 		var porAlumno = {};
@@ -460,11 +466,20 @@
 	/*
 		Examen del trimestre DEL GRADO DE CADA ALUMNO (en multigrado hay un examen por
 		grado; tomar cualquiera mezclaba grados). Si hay varios del mismo grado, manda el
-		más reciente. Limitación conocida: banco_preguntas no guarda el valor de cada
-		pregunta, así que el máximo por campo se aproxima como valor_total / total_preguntas.
+		más reciente. Solo los exámenes DEL GRUPO: una maestra con dos grupos del mismo
+		grado tiene un examen en cada uno. Limitación conocida: banco_preguntas no guarda el
+		valor de cada pregunta, así que el máximo por campo se aproxima como
+		valor_total / total_preguntas.
+
+		Alumno dado de alta tarde (decisión 10; la regla vive en js/alcance-hoy.js,
+		examenCuentaDesdeAlta): si el examen se aplicó antes de su alta y no lo contestó, no
+		le cuenta; el alumno queda sin examen y el rubro se reparte como cualquier rubro
+		sin datos. alta = {id: "AAAA-MM-DD" | null}, altaInstante = {id: created_at}.
 		→ { alumnoId: { porCampo: {LEN: 0..1}, aproximado } }
 	*/
-	async function examenesPorGrado(sb, ctx, alumnos, ids, campos) {
+	async function examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
+		alta = alta || {};
+		altaInstante = altaInstante || {};
 		var salida = {};
 		var grados = [];
 		alumnos.forEach(function (a) { if (grados.indexOf(a.grado) === -1) grados.push(a.grado); });
@@ -472,8 +487,8 @@
 
 		var exRes = await sb.from("examenes")
 			.select("id, preguntas_ids, valor_total, total_preguntas, grado, created_at")
-			.eq("maestro_id", ctx.maestroId).eq("trimestre", ctx.trimestre).in("grado", grados)
-			.order("created_at", { ascending: false });
+			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre)
+			.in("grado", grados).order("created_at", { ascending: false });
 		if (exRes.error) throw exRes.error;
 		var porGrado = {};
 		(exRes.data || []).forEach(function (ex) { if (!porGrado[ex.grado]) porGrado[ex.grado] = ex; });
@@ -499,9 +514,27 @@
 				.in("examen_id", examenes.map(function (e) { return e.id; })).in("alumno_id", ids).order("id");
 		});
 
+		// Fecha de aplicación de cada examen (primera respuesta capturada de cualquier
+		// alumno; sin ninguna, su creación). Solo se lee si hay un alumno de alta tarde que
+		// no lo contestó: para los demás el examen cuenta siempre.
+		var contesto = {};
+		respuestas.forEach(function (r) { contesto[r.alumno_id + "|" + r.examen_id] = true; });
+		var aplicado = {};
+		for (var i = 0; i < alumnos.length; i++) {
+			var al = alumnos[i], exA = porGrado[al.grado];
+			if (!exA || !alta[al.id] || contesto[al.id + "|" + exA.id] || aplicado[exA.id] !== undefined) continue;
+			var primera = await sb.from("respuestas_examen").select("created_at")
+				.eq("examen_id", exA.id).order("created_at", { ascending: true }).range(0, 0);
+			if (primera.error) throw primera.error;
+			aplicado[exA.id] = ((primera.data || [])[0] || {}).created_at || exA.created_at || null;
+		}
+		var A = alcance();
+
 		alumnos.forEach(function (a) {
 			var ex = porGrado[a.grado];
 			if (!ex || !(ex.preguntas_ids || []).length) return;
+			if (A && alta[a.id] && !A.examenCuentaDesdeAlta(alta[a.id], altaInstante[a.id],
+				aplicado[ex.id], !!contesto[a.id + "|" + ex.id])) return; // se aplicó antes de que llegara
 			var valor = (ex.valor_total && ex.total_preguntas) ? Number(ex.valor_total) / Number(ex.total_preguntas) : 1;
 			var max = {}, obt = {};
 			ex.preguntas_ids.forEach(function (id) {

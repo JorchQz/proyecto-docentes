@@ -18,6 +18,8 @@
 	  - Sesión sin activo_saas → tienda/catalogo.html
 	  - Sesión con activo_saas → pasa
 	  - No se pudo leer        → aviso "No se pudo comprobar tu acceso" y la página se detiene
+	  - Sin red o error 5xx al comprobar la sesión → aviso común de js/lectura.js (no es
+	    "sin sesión": la maestra no sale); cualquier otra excepción → el mismo aviso de acceso
 */
 
 (function saasGuard() {
@@ -81,6 +83,11 @@
 		.getUser()
 		.then(function (res) {
 			var user = res && res.data ? res.data.user : null;
+			// Sin red o 5xx no es "sin sesión" (con la capa común esto ya se detuvo antes)
+			if (res && res.error && window.Lectura && window.Lectura.errorDeRed(res.error)) {
+				sinComprobar(res.error);
+				return null;
+			}
 			if ((res && res.error) || !user) {
 				expulsar(LOGIN_URL);
 				return null;
@@ -103,7 +110,9 @@
 				expulsar(TIENDA_URL);
 			}
 		})
-		.catch(function () {
-			expulsar(LOGIN_URL);
+		.catch(function (error) {
+			// Una excepción no es "sin sesión" (eso es user null, arriba): ni se deja pasar
+			// ni se saca a la maestra; se avisa y se ofrece reintentar
+			sinComprobar(error);
 		});
 })();

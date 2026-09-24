@@ -15,7 +15,8 @@
 	También viven aquí las otras piezas que esas tres pantallas deben compartir para
 	decir lo mismo: la lectura de calificaciones sin el tope de 1000 filas (leerPorLotes),
 	la cuenta del cierre del día (resumenCierre) y la regla del alumno dado de alta tarde
-	(fechaAlta, fechaProducto, cuentaDesdeAlta), que también usa el motor de calificación.
+	(fechaAlta, fechaProducto, cuentaDesdeAlta y, para el examen, examenCuentaDesdeAlta), que
+	también usa el motor de calificación.
 */
 
 (function () {
@@ -103,6 +104,24 @@
 	}
 
 	/*
+		El examen del trimestre para un alumno dado de alta tarde (misma decisión 10). Un
+		examen no tiene fecha de sesión: su fecha es el instante en que se aplicó (la
+		primera respuesta capturada; sin ninguna, cuando se creó el examen). Se compara al
+		instante y no por día porque el alta y el examen pueden caer el mismo día.
+		- Quien no es de alta tarde (alta null): siempre cuenta, contestara o no.
+		- Si el alumno contestó alguna pregunta, cuenta: es evidencia de que lo presentó.
+		- Si se aplicó antes de su alta y no lo contestó, no cuenta: el rubro de examen
+		  queda sin datos y su peso se reparte entre los demás, como cualquier rubro vacío.
+		alta: fechaAlta · altaInstante: alumnos.created_at · fechaExamen: instante ISO
+	*/
+	function examenCuentaDesdeAlta(alta, altaInstante, fechaExamen, contesto) {
+		if (!alta || contesto || !altaInstante || !fechaExamen) return true;
+		var a = new Date(altaInstante).getTime(), e = new Date(fechaExamen).getTime();
+		if (isNaN(a) || isNaN(e)) return true;
+		return e >= a;
+	}
+
+	/*
 		Lecturas sin tope. Supabase devuelve como máximo 1000 filas por consulta (y corta
 		en silencio) y la lista de ids viaja en la URL. leerPorLotes parte los ids en lotes
 		y lee cada lote por páginas: con un trimestre completo (decenas de productos por
@@ -147,6 +166,7 @@
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea,
 		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre,
 		fechaAlta: fechaAlta, fechaProducto: fechaProducto, cuentaDesdeAlta: cuentaDesdeAlta,
+		examenCuentaDesdeAlta: examenCuentaDesdeAlta,
 	};
 	if (typeof window !== "undefined") window.AlcanceHoy = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

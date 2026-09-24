@@ -118,8 +118,7 @@ document.addEventListener("DOMContentLoaded", function () {
 						if (c.estado) enBase[c.alumnoId] = c.estado; else delete enBase[c.alumnoId];
 					});
 				}
-				var faltaron = cambios.filter(function (c) { return c.estado === "ausente" || c.estado === "justificada"; })
-					.map(function (c) { return c.alumnoId; });
+				var faltaron = cambios.filter(function (c) { return c.estado === "ausente" || c.estado === "justificada"; });
 				if (faltaron.length) retirarCierre(dia, faltaron);
 			},
 			mal: function (e) {
@@ -142,8 +141,9 @@ document.addEventListener("DOMContentLoaded", function () {
 	}
 
 	// Quien faltó no tiene cierre ese día: se retira solo el 1 y 1 que se puso por defecto;
-	// una excepción capturada a mano en "Hoy" se queda
-	function retirarCierre(dia, alumnoIds) {
+	// una excepción capturada a mano en "Hoy" se queda. faltaron: [{ alumnoId, estado }]
+	function retirarCierre(dia, faltaron) {
+		var alumnoIds = faltaron.map(function (c) { return c.alumnoId; });
 		encolar({
 			correr: async function () {
 				var res = await window.sb.from("registro_diario").delete()
@@ -152,12 +152,33 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (res.error) throw res.error;
 			},
 			mal: function (e) {
-				mensaje("error", "La falta se guardó, pero no se pudo quitar su cierre del día (participación y conducta): " +
-					textoError(e) + ". Vuelve a marcar la falta cuando tengas conexión.");
+				mensaje("error", avisoCierreSinQuitar(dia, faltaron, textoError(e)));
 			},
 			dia: dia,
 			ids: [],
 		});
+	}
+
+	/*
+		Qué hacer si la falta se guardó pero su cierre del día no se pudo quitar. Volver a
+		tocar la opción marcada la QUITA (queda sin registro), así que "vuelve a marcarla"
+		no bastaba: hay que tocarla dos veces (quitarla y marcarla de nuevo), y eso vuelve a
+		intentar quitar el cierre. Se dice de quién, qué día y qué botón.
+	*/
+	function avisoCierreSinQuitar(dia, faltaron, error) {
+		var nombres = faltaron.map(function (c) {
+			var al = alumnos.filter(function (a) { return a.id === c.alumnoId; })[0];
+			return al && al.nombre_completo ? al.nombre_completo : "un alumno";
+		});
+		var estados = {};
+		faltaron.forEach(function (c) { estados[c.estado] = true; });
+		var boton = estados.ausente && estados.justificada ? "Falta o Justificada, la que tenga marcada,"
+			: (estados.justificada ? "Justificada" : "Falta");
+		var quien = nombres.length === 1 ? nombres[0] : nombres.slice(0, -1).join(", ") + " y " + nombres[nombres.length - 1];
+		return "La " + (estados.ausente ? "falta" : "falta justificada") + " de " + quien + " del " + fechaUI(dia) + " se guardó, " +
+			"pero no se pudo quitar su participación y conducta de ese día: " + error + ". Cuando tengas conexión, " +
+			"en ese día toca " + boton + " dos veces en " + (nombres.length === 1 ? "su renglón" : "el renglón de cada uno") +
+			": el primer toque la quita y el segundo la vuelve a marcar y quita su participación y conducta.";
 	}
 
 	// ── Carga ─────────────────────────────────────────────────────────────────

@@ -28,6 +28,14 @@
 	usan esta capa: una página que no pudo leer su grupo o comprobar el acceso se detiene
 	aquí, sin tener que manejarlo ella.
 
+	Comprobar la sesión: si window.sb.auth.getUser o getSession fallan por red o por el
+	servidor (5xx), eso NO es "sin sesión". Antes cada página lo tomaba como sin sesión y
+	mandaba a la maestra fuera sin aviso. Aquí se decide una vez para todas: un error así
+	detiene la página con el aviso común ("No se pudo comprobar tu sesión", Reintentar) y
+	la promesa no se cumple nunca, así que la página ni redirige ni sigue. Sin sesión de
+	verdad (user/session null sin error, o el servidor dice que la sesión no vale: 4xx)
+	pasa igual que antes y la página manda al login.
+
 	Se carga justo después de js/supabase.js y antes de js/saas-guard.js.
 
 	Lectura.antesDeSalir({ pendiente, guardar }) → para las pantallas que capturan: al
@@ -101,6 +109,66 @@
 	if (sb && fromDirecto) {
 		sb.from = function (tabla) { return detenida ? inerte() : fromDirecto(tabla); };
 		if (rpcDirecto) sb.rpc = function () { return detenida ? inerte() : rpcDirecto.apply(null, arguments); };
+	}
+
+	// ── Comprobar la sesión ───────────────────────────────────────────────────
+	/*
+		¿El error de auth es de red o del servidor (no "sin sesión")?
+		  - AuthRetryableFetchError: sin red (status 0) o 502/503/504
+		  - cualquier status 0 o 5xx
+		  - sin status: un fallo de fetch (TypeError "Failed to fetch", "Load failed"...)
+		  - AuthSessionMissingError, 4xx (token vencido o inválido): sin sesión, como antes
+	*/
+	function errorDeRed(err) {
+		if (!err) return false;
+		var nombre = String(err.name || "");
+		if (nombre === "AuthSessionMissingError") return false;
+		if (nombre === "AuthRetryableFetchError") return true;
+		var status = typeof err.status === "number" ? err.status : null;
+		if (status !== null) return status === 0 || status >= 500;
+		return /failed to fetch|fetch failed|networkerror|network request failed|load failed|timeout|timed out/i.test(String(err.message || ""));
+	}
+
+	function sesionSinComprobar(error) {
+		detenerPagina(error, {
+			todo: true,
+			mostrar: true,
+			titulo: "No se pudo comprobar tu sesión",
+			texto: "Revisa tu conexión y vuelve a intentarlo. Mientras tanto no se muestra ni se guarda nada.",
+		});
+		return new Promise(function () {});
+	}
+
+	function comprobarSesion(promesa) {
+		return Promise.resolve(promesa).then(function (res) {
+			if (res && res.error && errorDeRed(res.error)) return sesionSinComprobar(res.error);
+			return res;
+		}, function (e) {
+			if (errorDeRed(e)) return sesionSinComprobar(e);
+			throw e;
+		});
+	}
+
+	/*
+		Solo las llamadas de las PÁGINAS pasan por aquí: window.sb pasa a ser una vista del
+		cliente cuyo auth envuelve getUser y getSession. El cliente real no cambia, así que
+		supabase-js sigue pidiendo su token con su propio auth (un refresco que falla en
+		medio de un guardado no detiene la página: ese guardado falla y lo dice).
+	*/
+	var authDirecto = sb && sb.auth ? sb.auth : null;
+	if (sb && authDirecto && typeof Proxy !== "undefined") {
+		var authVista = new Proxy(authDirecto, {
+			get: function (t, clave) {
+				if ((clave === "getUser" || clave === "getSession") && typeof t[clave] === "function") {
+					return function () { return comprobarSesion(t[clave].apply(t, arguments)); };
+				}
+				var v = t[clave];
+				return typeof v === "function" ? v.bind(t) : v;
+			},
+		});
+		window.sb = new Proxy(sb, {
+			get: function (t, clave) { return clave === "auth" ? authVista : t[clave]; },
+		});
 	}
 
 	// ── El aviso ──────────────────────────────────────────────────────────────
@@ -236,6 +304,10 @@
 		antesDeSalir: antesDeSalir,
 		// Solo para el candado: su lectura no debe quedar colgada si la página ya se detuvo
 		fromDirecto: function (tabla) { return fromDirecto(tabla); },
+		errorDeRed: errorDeRed,
+		// El auth del cliente sin envolver: para una comprobación a media captura (guardar
+		// un proyecto) que prefiere avisar en su pantalla a detener la página
+		authDirecto: authDirecto,
 	};
 	if (typeof window !== "undefined") window.Lectura = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -23,6 +23,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       .replace(/'/g, '&#39;');
   }
 
+  // Auth sin la comprobación común de js/lectura.js (que detiene la página si no hay red):
+  // a media captura se avisa en pantalla y lo capturado se conserva
+  function authCaptura() {
+    return (window.Lectura && window.Lectura.authDirecto) || window.sb.auth;
+  }
+
   const DRAFT_KEY = 'borradorProyectoActivo';
 
   // Detección de modo edición (URL ?id=xxx)
@@ -1217,7 +1223,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     async function subirArchivo(file) {
-      const { data: { user } } = await window.sb.auth.getUser();
+      // A media captura: sin red se avisa aquí, sin detener la página (se perdería el proyecto)
+      const { data: { user }, error: userError } = await authCaptura().getUser();
+      if (userError && window.Lectura && window.Lectura.errorDeRed(userError)) throw new Error('No se pudo comprobar tu sesión. Revisa tu conexión y vuelve a subir el archivo.');
       if (!user) throw new Error('No hay sesión activa para subir archivos.');
 
       const ruta = `recursos/${user.id}/${tempRecursosId}/sesion_${num}/${file.name}`;
@@ -2245,7 +2253,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     btn.textContent = 'Guardando...';
 
     try {
-      const { data: { user }, error: userError } = await window.sb.auth.getUser();
+      // A media captura: sin red se avisa aquí, sin detener la página (se perdería el proyecto)
+      const { data: { user }, error: userError } = await authCaptura().getUser();
+      if (userError && window.Lectura && window.Lectura.errorDeRed(userError)) throw new Error('No se pudo comprobar tu sesión. Revisa tu conexión y vuelve a guardar; lo que capturaste sigue aquí.');
       if (userError || !user) throw new Error('No hay sesión activa.');
 
       // Datos del proyecto

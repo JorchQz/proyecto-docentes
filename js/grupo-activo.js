@@ -53,6 +53,7 @@
 		pantalla tiene que acordarse: la que espera el grupo simplemente no sigue.
 	*/
 	var enCurso = null, enCursoMaestro = null;
+	var elegido = null; // grupo elegido en esta página (elegir): ninguna lectura lo pisa
 	function compartida(sb, maestroId) {
 		if (enCurso && enCursoMaestro === maestroId) return enCurso;
 		enCursoMaestro = maestroId;
@@ -85,7 +86,9 @@
 			if (grupos[i].id === guardado) { grupo = grupos[i]; break; }
 		}
 		if (!grupo) grupo = grupos[0] || null;
-		if (grupo) guardar(grupo.id);
+		// Si en esta página se eligió un grupo (onboarding recién lo creó), una lectura
+		// que empezó antes no lo pisa con el que estaba
+		if (grupo && !elegido) guardar(grupo.id);
 		pintarSelector(grupos, grupo);
 		return { grupo: grupo, grupos: grupos };
 	}
@@ -124,7 +127,19 @@
 		}
 	}
 
-	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, leerGuardado: leerGuardado };
+	/*
+		elegir(id): deja ese grupo como activo sin recargar. Lo usa el onboarding al crear
+		un grupo: la maestra que da de alta su segundo grupo llega a Inicio con ese grupo,
+		no con el anterior.
+	*/
+	function elegir(id) {
+		if (!id) return;
+		elegido = id;
+		enCurso = null;
+		guardar(id);
+	}
+
+	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, elegir: elegir, leerGuardado: leerGuardado };
 
 	// En pantallas que no usan el grupo (Ajustes, Mi cuenta…) el selector de la barra
 	// también debe aparecer: se carga solo, con la misma consulta compartida. Si esta

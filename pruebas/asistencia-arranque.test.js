@@ -9,6 +9,8 @@
 	  - defecto 7: tocar y cambiar de fecha enseguida no manda la lista del día nuevo (el
 	    guardado lleva su propia fecha y su propio alumno);
 	  - un guardado que falla regresa la pantalla a lo que tiene la base y lo dice;
+	  - si la falta se guarda pero su cierre no se puede quitar, el aviso dice de quién y
+	    exactamente qué hacer (tocar Falta dos veces), y hacerlo vuelve a quitar el cierre;
 	  - con cada lectura en error (grupos, alumnos, asistencias) la página se detiene con el
 	    aviso común, no dice "no hay alumnos" y no escribe nada.
 
@@ -64,6 +66,7 @@ function escenario(opciones) {
 	const asistencias = (opciones.asistencias || []).map((a) => Object.assign({}, a));
 	const escrituras = [];
 	let fallarEscritura = 0;
+	let fallarRegistro = 0;
 	function consulta(tabla) {
 		const q = {
 			_filtros: {}, _in: null, _op: "select", _filas: null,
@@ -81,6 +84,7 @@ function escenario(opciones) {
 					if (self._op !== "select") {
 						escrituras.push({ tabla, op: self._op, filas: self._filas, filtros: self._filtros, in: self._in });
 						if (fallarEscritura > 0 && tabla === "asistencias") { fallarEscritura--; return resolver({ data: null, error: { message: "sin red" } }); }
+						if (fallarRegistro > 0 && tabla === "registro_diario") { fallarRegistro--; return resolver({ data: null, error: { message: "sin red" } }); }
 						if (tabla === "asistencias" && self._op === "upsert") {
 							self._filas.forEach((f) => {
 								const i = asistencias.findIndex((a) => a.alumno_id === f.alumno_id && a.fecha === f.fecha);
@@ -124,6 +128,7 @@ function escenario(opciones) {
 	return {
 		el, porId, ventana, escrituras, asistencias, errores,
 		fallarProxima(n) { fallarEscritura = n || 1; },
+		fallarRetiroCierre(n) { fallarRegistro = n || 1; },
 		arrancar() { (docListeners.DOMContentLoaded || []).forEach((f) => f({})); return espera(40); },
 		tocar(alumno, valor) {
 			const btn = { dataset: { alumno: alumno, valor: valor } };
@@ -207,6 +212,36 @@ const activo = (e, alumno, valor) => new RegExp("data-alumno='" + alumno + "' da
 		await espera(60);
 		ok("si el guardado falla, la pantalla vuelve a lo que tiene la base", !activo(e, "al-1", "presente"));
 		ok("... y lo dice", /No se pudo guardar la asistencia/.test(e.el("attendanceMessage").textContent));
+	}
+
+	// ── La falta se guarda pero su cierre no se puede quitar ─────────────────
+	{
+		const e = escenario({});
+		await e.arrancar();
+		e.fallarRetiroCierre(1);
+		e.tocar("al-2", "ausente");
+		await espera(60);
+		const aviso = e.el("attendanceMessage").textContent;
+		ok("el aviso dice de quién es la falta", /BETO/.test(aviso), aviso);
+		ok("el aviso ya no pide solo \"volver a marcar la falta\" (tocarla una vez la quita)", !/Vuelve a marcar la falta/.test(aviso), aviso);
+		ok("el aviso dice exactamente qué hacer: tocar Falta dos veces", /toca Falta dos veces/.test(aviso) && /el primer toque la quita y el segundo la vuelve a marcar/.test(aviso), aviso);
+		ok("la falta sí quedó guardada", activo(e, "al-2", "ausente") && e.asistencias.some((a) => a.alumno_id === "al-2" && a.asistencia_estado === "ausente"));
+		// Seguir el aviso: dos toques en Falta → se quita, se vuelve a marcar y se reintenta el retiro
+		const n0 = e.escrituras.length;
+		e.tocar("al-2", "ausente");
+		await espera(40);
+		e.tocar("al-2", "ausente");
+		await espera(60);
+		const retiro = e.escrituras.slice(n0).filter((w) => w.tabla === "registro_diario" && w.op === "delete");
+		ok("seguir el aviso vuelve a quitar su cierre", retiro.length === 1 && retiro[0].in[1].join() === "al-2", JSON.stringify(retiro));
+		ok("... y la falta queda marcada", activo(e, "al-2", "ausente") && e.asistencias.some((a) => a.alumno_id === "al-2" && a.asistencia_estado === "ausente"));
+
+		// Justificada: el aviso nombra ese botón
+		e.fallarRetiroCierre(1);
+		e.tocar("al-3", "justificada");
+		await espera(60);
+		const aviso2 = e.el("attendanceMessage").textContent;
+		ok("con Justificada el aviso dice tocar Justificada dos veces", /CARLA/.test(aviso2) && /toca Justificada dos veces/.test(aviso2), aviso2);
 	}
 
 	// ── Lecturas en error: aviso común, nada de "no hay alumnos", nada escrito ─

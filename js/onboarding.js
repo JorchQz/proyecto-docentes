@@ -48,8 +48,11 @@
 		opt2.textContent = y;
 		cicloFinSelect.appendChild(opt2);
 	}
-	cicloInicioSelect.value = currentYear - 1;
-	cicloFinSelect.value = currentYear;
+	// El ciclo escolar en México empieza a fines de agosto: de agosto a diciembre se
+	// propone año-año+1 (sept. de 2026 → 2026-2027); de enero a julio, año-1-año.
+	var inicioCiclo = new Date().getMonth() >= 7 ? currentYear : currentYear - 1;
+	cicloInicioSelect.value = inicioCiclo;
+	cicloFinSelect.value = inicioCiclo + 1;
 
 	var sessionResult = await window.sb.auth.getSession();
 	if (sessionResult.error || !sessionResult.data.session) {
@@ -166,7 +169,12 @@
 				throw result.error;
 			}
 
-			if (!isEditing) { currentGroupId = result.data[0].id; }
+			if (!isEditing) {
+				currentGroupId = result.data[0].id;
+				// El grupo recién creado queda como grupo activo: al terminar, Inicio abre
+				// este y no el que estaba antes (js/grupo-activo.js decide)
+				if (window.GrupoActivo) window.GrupoActivo.elegir(currentGroupId);
+			}
 			currentGroupType = groupType;
 			currentGroupGrades = gradeList.slice();
 			configureStudentGradeSelector();

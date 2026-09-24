@@ -472,7 +472,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		const RDB = window.ReporteDatos;
 		const fotoGen = boletaYaCerrada ? RDB.fotoCierre(boletaPorCampo[window.TextosBoleta.GENERAL]) : null;
 		const porCampoCierre = RDB.porCampoCierre(fotoGen);
-		const porCampoVisible = porCampoCierre || porCampo;
+		// Cerrada antes de la foto completa: porcentaje de cada fila y, en un campo por juicio
+		// docente, ningún desglose de hoy (ReporteDatos.porCampoFilas)
+		const porCampoVisible = porCampoCierre || (boletaYaCerrada ? RDB.porCampoFilas(boletaPorCampo, porCampo) : porCampo);
 		const pesosVisibles = (porCampoCierre && fotoGen.pesos) || motor.pesos;
 		const alumnoVisible = RDB.alumnoVisible(alumno, fotoGen);
 		const bandaVisible = RDB.bandaVisible(bandas ? bandas[alumnoVisible.grado] || null : null, fotoGen);
@@ -599,12 +601,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 		CODIGOS.forEach(function (codigo) {
 			const vivo = porCampo[codigo] ? porCampo[codigo].porcentaje : null;
 			const fila = boletaPorCampo[codigo] || {};
-			// Campo cerrado: el porcentaje del cierre, no el de las capturas de hoy
-			const guardado = fila.cerrada && fila.porcentaje !== null && fila.porcentaje !== undefined ? Number(fila.porcentaje) : null;
-			// También si hoy ya no hay evidencias en un campo que las tenía al cerrar
-			if (guardado !== null && (vivo === null || vivo === undefined || Math.abs(guardado - vivo) >= 0.05)) cambioTrasCierre = true;
-			const pct = guardado !== null ? guardado : vivo;
-			filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(pct) + "</td>";
+			if (!fila.cerrada) {
+				filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(vivo) + "</td>";
+				return;
+			}
+			/*
+				Campo cerrado: SIEMPRE el porcentaje del cierre, nunca el de las capturas de hoy.
+				Sin porcentaje guardado no tenía evidencias al cerrar (juicio docente): se dice así
+				aunque después se haya capturado algo en ese campo.
+			*/
+			const guardado = fila.porcentaje !== null && fila.porcentaje !== undefined && fila.porcentaje !== "" ? Number(fila.porcentaje) : null;
+			const hayVivo = vivo !== null && vivo !== undefined;
+			// Aviso de capturas después del cierre (también si hoy ya no hay evidencias en un
+			// campo que las tenía, o si hoy hay en uno que no tenía)
+			if (guardado !== null ? (!hayVivo || Math.abs(guardado - vivo) >= 0.05) : hayVivo) cambioTrasCierre = true;
+			filaPorcentaje += guardado !== null
+				? "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(guardado) + "</td>"
+				: "<td class='px-3 py-2 text-center border border-gray-200 text-gray-400' data-sin-evidencias-cierre='1'>—" +
+					"<span class='block text-xs text-amber-700 mt-1'>sin evidencias al cierre</span></td>";
 		});
 
 		// Fila de calificación: selector para que el maestro ajuste antes de confirmar
