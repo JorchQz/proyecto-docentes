@@ -780,6 +780,28 @@ grupos, 16 alumnos, 400 asistencias de una escuela donde ya no da clases) para q
 desde cero. **Datos reales desde hoy:** 2 alumnos y 4 asistencias (cuenta de Jorge); 0
 proyectos, calificaciones y boletas.
 
+### Construcción y revisión del cierre (2026-09-24)
+
+Seis constructores en paralelo, con archivos separados: A capa de lectura y Asistencia; B1
+boleta; B2 motor y alta tarde; C portal; D políticas de referencias propias; E investigación de
+matemáticas. Después F aplicó matemáticas por grado. Todo corre en el proyecto de pruebas y
+las 29 suites pasan.
+
+- **Revisor R1: PASS** en los cinco puntos (`.qa/revisor-cierre-r1/`).
+  - **3.7:** 243 lecturas forzadas a 500 en 26 pantallas, 0 excepciones, 0 afirmaciones falsas y 0 escrituras. Los 9 defectos abiertos y los menores ya no se reproducen.
+  - **Asistencia:** igual que "Hoy", incluido el cambio de fecha con un guardado en vuelo.
+  - **Portal:** ida y vuelta completa; sin SaaS lleva a la tienda; `?next=` peligrosos ignorados; la tienda de los compradores no cambió.
+  - **Pixel:** 0 peticiones a Meta en las 21 páginas del SaaS.
+  - **Referencias propias:** 25 inserts y 27 updates hacia la otra cuenta rechazados, cuenta QA idéntica por md5 y cascada del diagnóstico.
+  - **Menores:** error de red al comprobar la sesión saca a la maestra sin aviso; texto del aviso del retiro de cierre; Hoy y Asistencia difieren al volver a tocar; saludo "Docente" contra "QA".
+- **Revisor R2: FAIL** (`.qa/revisor-cierre-r2/`), en un ensayo de punta a punta por la interfaz con un grupo 1°-2°-4°.
+  - **PASS:** decisiones 9 (12 porcentajes a mano), 6, 7 (junta cuadrada a mano) y 13.
+  - **Bloqueantes:**
+    - un examen aplicado antes del alta cuenta 0 al alumno que llegó tarde, que reprueba los cuatro campos (`js/motor-calificacion.js`, `examenesPorGrado`; además la lectura de exámenes no filtra por grupo);
+    - una boleta cerrada con un campo por juicio docente muestra el porcentaje en vivo si después se captura en ese campo (`js/reportes.js`).
+  - **Menores:** el onboarding propone el ciclo 2025-2026 en septiembre de 2026; al crear un segundo grupo, Inicio abre el anterior.
+  - **Corrección:** a cargo del constructor G; después, un revisor nuevo.
+
 ## Bloques detenidos
 
 ### 3.7 Coherencia y deuda — DETENIDO (2026-09-23)
