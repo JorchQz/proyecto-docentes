@@ -414,8 +414,12 @@
 				var pct = porCampo[campo].porcentaje;
 				porCampo[campo].calificacionPropuesta = null;
 				if (pct === null) return;
-				porCampo[campo].nivel = pct >= 80 ? "logrado" : (pct >= 60 ? "en_proceso" : "requiere_apoyo");
-				pendientes.push([a.id, campo, Math.round(pct * 100) / 100, a.grado]);
+				// Truncado a 2 decimales, igual que lo que se ve y lo que se guarda en la boleta: un
+				// 49.996 se ve "49.9 %", se guarda 49.99 y su calificación y su nivel salen de 49.99
+				// (redondear aquí daba 50.00: un 6 que acredita junto a "49.9 %")
+				var pct2 = Math.floor(pct * 100 + 1e-9) / 100;
+				porCampo[campo].nivel = pct2 >= 80 ? "logrado" : (pct2 >= 60 ? "en_proceso" : "requiere_apoyo");
+				pendientes.push([a.id, campo, pct2, a.grado]);
 			});
 
 			// Asistencia: SOLO referencia, nunca entra a la fórmula (art. 7 I d)
