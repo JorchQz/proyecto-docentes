@@ -14,6 +14,12 @@
 
 	     Sin meta refresh a propósito: el reencaminamiento se decide en JS
 	     porque hay casos que no pueden resolverse con una URL fija. -->
+	<style>
+		html, body { margin: 0; background: #faf9f4; }
+		body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; color: #5b6473; }
+		.raiz-aviso { margin: 3rem 1rem; text-align: center; font-size: 15px; line-height: 1.5; }
+		.raiz-aviso a { color: #1e3a8a; font-weight: 600; }
+	</style>
 	<script>
 		(function () {
 			// Los enlaces de recuperación de contraseña aterrizan aquí y no en
@@ -54,6 +60,11 @@
 			}
 			var tienda = function () { ir("tienda/index.html"); };
 			setTimeout(tienda, 6000);
+			// Si la comprobación tarda (red lenta), un aviso discreto en vez de la pantalla vacía
+			setTimeout(function () {
+				var aviso = document.getElementById("raizEspera");
+				if (aviso && !listo) aviso.hidden = false;
+			}, 800);
 
 			function cargar(src, despues) {
 				var s = document.createElement("script");
@@ -82,9 +93,11 @@
 	</script>
 </head>
 <body>
-	<p>Redirigiendo a <a href="tienda/index.html">Planeaciones NEM</a>…</p>
+	<!-- Con JavaScript la raíz no muestra texto: el fondo es el de la tienda y, solo si la
+	     comprobación para volver a Mi Salón tarda, aparece un aviso discreto -->
+	<p id="raizEspera" class="raiz-aviso" hidden>Abriendo Jissez…</p>
 	<noscript>
-		<p>Necesitas JavaScript. Entra directamente a
+		<p class="raiz-aviso">Necesitas JavaScript. Entra directamente a
 			<a href="tienda/index.html">la tienda</a>.</p>
 	</noscript>
 </body>

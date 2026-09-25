@@ -362,6 +362,10 @@
 				"Alumnos guardados. Redirigiendo..."
 			);
 
+			// Terminó el alta: la raíz y el login la regresan a Mi Salón (el candado ya
+			// confirmó el acceso para llegar aquí)
+			if (window.Secciones) window.Secciones.guardarUltima("salon");
+
 			setTimeout(function () {
 				window.location.href = "dashboard.html";
 			}, 1500);

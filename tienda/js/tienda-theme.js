@@ -25,3 +25,32 @@ tailwind.config = {
 		},
 	},
 };
+
+
+// Encabezado de una cuenta con Mi Salón: su espacio se aparta desde el primer pintado
+// (html.jz-sec-reserva, tienda/css/tienda.css) para que el contenido no brinque cuando
+// entra el encabezado con el selector de secciones. Misma regla que saasProbable() en
+// tienda-common.js, que es quien lo libera: la cuenta con sesión en este navegador y
+// "jissez.saas.<id>" = "1" en la pestaña o, si la pestaña no sabe, en el dispositivo.
+// A un comprador o visitante no se le aparta nada. El login y el anexo no llevan ese
+// encabezado.
+(function () {
+	try {
+		// jissez.com sirve las páginas sin ".html" (/tienda/login); en local llevan la extensión
+		if (/\/(login|anexo)(\.html)?$/.test(location.pathname)) return;
+		var uid = null;
+		for (var i = 0; i < localStorage.length && !uid; i++) {
+			var k = localStorage.key(i);
+			if (!k || !/^sb-.+-auth-token$/.test(k)) continue;
+			var s = JSON.parse(localStorage.getItem(k) || "null");
+			var u = s && (s.user || (s.currentSession && s.currentSession.user));
+			if (u && u.id) uid = u.id;
+		}
+		if (!uid) return;
+		var clave = "jissez.saas." + uid;
+		var ya = sessionStorage.getItem(clave);
+		if (ya === "1" || (ya !== "0" && localStorage.getItem(clave) === "1")) {
+			document.documentElement.classList.add("jz-sec-reserva");
+		}
+	} catch (_) {}
+})();

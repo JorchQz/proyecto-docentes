@@ -91,8 +91,11 @@
 		}).join("");
 
 		return (
-			'<nav id="app-navbar" aria-label="Mi Salón" class="fixed top-0 left-0 right-0 z-30 bg-blue-800 shadow-md">' +
-			'<div class="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">' +
+			// #app-navbar es solo el contenedor fijo: la navegación "Mi Salón" es la fila de
+			// adentro, y el selector de secciones (que va en este contenedor) queda como su
+			// hermana, no anidada en ella
+			'<div id="app-navbar" class="fixed top-0 left-0 right-0 z-30 bg-blue-800 shadow-md">' +
+			'<nav aria-label="Mi Salón" class="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">' +
 			'<div class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">' +
 			navLinksHtml +
 			"</div>" +
@@ -113,8 +116,8 @@
 			'<button id="navbarLogoutBtn" type="button" class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-red-700 hover:bg-red-50 transition-colors">Cerrar sesión</button>' +
 			"</div>" +
 			"</div>" +
-			"</div>" +
-			"</nav>"
+			"</nav>" +
+			"</div>"
 		);
 	}
 
@@ -208,13 +211,20 @@
 				panel.classList.add("hidden");
 				logoutBtn.disabled = true;
 				logoutBtn.textContent = "Cerrando...";
-				if (window.sb) {
-					var result = await window.sb.auth.signOut();
-					if (result.error) {
-						logoutBtn.disabled = false;
-						logoutBtn.textContent = "Cerrar sesión";
-					}
+				// Como en la tienda y en Sala de Maestros: con la sesión cerrada, a la portada de la
+				// tienda (antes la pantalla se quedaba en el panel)
+				var result = null;
+				try {
+					result = window.sb ? await window.sb.auth.signOut() : null;
+				} catch (error) {
+					result = { error: error };
 				}
+				if (result && result.error) {
+					logoutBtn.disabled = false;
+					logoutBtn.textContent = "Cerrar sesión";
+					return;
+				}
+				window.location.href = "tienda/index.html";
 			});
 		}
 	});

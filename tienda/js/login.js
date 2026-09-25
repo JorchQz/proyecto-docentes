@@ -72,6 +72,8 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			.select("activo_saas")
 			.eq("id", userId)
 			.maybeSingle();
+		// Recordar si tiene Mi Salón: la primera página tras el login aparta el espacio del selector
+		if (!perf.error && Tienda.recordarSaas) { Tienda.recordarSaas(userId, LoginDestino.tieneSaas(perf)); }
 		if (!LoginDestino.tieneSaas(perf)) { return LoginDestino.porPerfil(perf); }
 		// Con acceso: la última sección (js/secciones.js, que la tienda carga solo para estas
 		// cuentas). Si no se pudo cargar, Mi Salón, que es la sección de la primera vez.

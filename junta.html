@@ -11,7 +11,10 @@
 		   un tamaño base proporcional al ancho del escenario (cqw), así se ven iguales en
 		   la tablet, en la PC, en pantalla completa y en la impresión. */
 		.j-pantalla { display: flex; flex-direction: column; align-items: center; gap: .75rem; }
-		.j-escenario { container-type: inline-size; width: min(100%, max(560px, calc((100vh - 250px - var(--jz-sec-arriba, 0px)) * 16 / 9))); outline: none; }
+		/* Alto disponible: la ventana menos lo que ocupa la página arriba del escenario y los
+		   controles de abajo (--j-sobre, lo mide js/junta.js: la barra de herramientas se parte en
+		   dos renglones en tablet). Sin medida, un aproximado. */
+		.j-escenario { container-type: inline-size; width: min(100%, max(560px, calc((100vh - var(--j-sobre, calc(250px + var(--jz-sec-arriba, 0px)))) * 16 / 9))); outline: none; }
 		.j-slide { display: none; position: relative; width: 100%; aspect-ratio: 16 / 9; font-size: 1.55cqw; background: #fff; color: #0f172a;
 			border: 1px solid #e2e8f0; border-radius: 1em; box-shadow: 0 1px 3px rgba(15, 23, 42, .08), 0 8px 24px rgba(15, 23, 42, .06);
 			padding: 1.9em 2.4em 1.1em; flex-direction: column; overflow: hidden; line-height: 1.3; }

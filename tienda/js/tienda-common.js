@@ -395,7 +395,11 @@
 	async function requireSession(redirectTo) {
 		var session = await getSession();
 		if (!session) {
-			var dest = redirectTo || ("login.html?next=" + encodeURIComponent(location.pathname.split("/").pop() + location.search));
+			// jissez.com sirve las páginas sin ".html" (/tienda/mis-compras): se agrega para que
+			// el login (nextSeguro, que solo acepta páginas .html) regrese aquí
+			var pagina = location.pathname.split("/").pop() || "index.html";
+			if (!/\.html$/.test(pagina)) pagina += ".html";
+			var dest = redirectTo || ("login.html?next=" + encodeURIComponent(pagina + location.search));
 			location.href = dest;
 			return null;
 		}
@@ -509,7 +513,16 @@
 	//   opts.cta: {href,label,icon?} → botón verde de acción (p. ej. "Ver planeaciones").
 	async function montarNav(activo, opts) {
 		opts = opts || {};
+		// Cuenta con Mi Salón ya conocida: su espacio queda apartado desde ahora (ver
+		// reservarEncabezado). Para un comprador no se aparta nada.
+		var reserva = reservarEncabezado();
 		var session = await getSession();
+		// En PC y tablet el encabezado de esa cuenta sale ya con el selector: se espera a
+		// saberlo (y al archivo) antes de insertarlo, para que entre completo de una vez.
+		var S = null;
+		if (reserva && session && session.user && session.user.id === reserva && esPantallaAncha()) {
+			S = await seccionesParaEncabezado(session);
+		}
 		var admin = esAdmin(session);
 		var nombre = nombreUsuario(session);
 		var anchors = opts.anchors || null;
@@ -605,6 +618,10 @@
 		wrapper.innerHTML = html;
 		var header = wrapper.firstChild;
 		document.body.insertBefore(header, document.body.firstChild);
+		// En el mismo turno: el selector entra con el encabezado y el espacio apartado se
+		// libera sin que nada se mueva
+		if (S) { aplicarSecciones(header, S, nombre); }
+		quitarReserva();
 		iconos();
 
 		// Toggle del menú móvil.
@@ -633,7 +650,7 @@
 		// Selector de secciones (Tienda, Mi Salón, Sala de Maestros): solo para cuentas con
 		// Mi Salón. A un comprador la barra le llega igual que siempre: nada se espera ni se
 		// carga por él.
-		if (session) { conSecciones(header, session, nombre); }
+		if (session && !S) { conSecciones(header, session, nombre); }
 
 		// Cerrar sesión (botón desktop y móvil, y el de la fila del selector, que puede
 		// llegar después): un solo oyente en el encabezado.
@@ -664,8 +681,23 @@
 		var perf = await window.sb.from("perfiles").select("activo_saas").eq("id", uid).maybeSingle();
 		if (perf.error) { return false; }
 		var si = !!(perf.data && perf.data.activo_saas === true);
-		try { sessionStorage.setItem(clave, si ? "1" : "0"); } catch (_) {}
+		recordarSaas(uid, si);
 		return si;
+	}
+
+	// Guarda lo que se supo del acceso: en la pestaña ("1" o "0") y, si tiene acceso, también
+	// en el dispositivo, solo como pista para apartar el espacio del selector la próxima vez
+	// (la primera página de una pestaña nueva). La pista nunca da acceso a nada: el selector
+	// se sigue mostrando solo tras confirmarlo. Expuesta (Tienda.recordarSaas) para que el
+	// login guarde lo que ya leyó; el candado de Mi Salón (js/saas-guard.js) escribe la misma
+	// clave.
+	function recordarSaas(uid, si) {
+		if (!uid) { return; }
+		var clave = "jissez.saas." + uid;
+		try { sessionStorage.setItem(clave, si ? "1" : "0"); } catch (_) {}
+		try {
+			if (si) { localStorage.setItem(clave, "1"); } else { localStorage.removeItem(clave); }
+		} catch (_) {}
 	}
 
 	// ¿Ya se sabe en esta pestaña que la cuenta tiene el SaaS? Sin leer la base: "1", "0"
@@ -675,6 +707,88 @@
 			var v = sessionStorage.getItem("jissez.saas." + uid);
 			return v === "1" || v === "0" ? v : null;
 		} catch (_) { return null; }
+	}
+
+	// Id de la cuenta con sesión guardada en este navegador, sin esperar al cliente de
+	// Supabase (lee su sesión de localStorage: sb-<proyecto>-auth-token). null si no hay.
+	function uidGuardado() {
+		try {
+			for (var i = 0; i < localStorage.length; i++) {
+				var k = localStorage.key(i);
+				if (!k || !/^sb-.+-auth-token$/.test(k)) { continue; }
+				var s = JSON.parse(localStorage.getItem(k) || "null");
+				var u = s && (s.user || (s.currentSession && s.currentSession.user));
+				if (u && u.id) { return u.id; }
+			}
+		} catch (_) {}
+		return null;
+	}
+
+	// ¿La cuenta con sesión tiene (casi seguro) Mi Salón? La pestaña manda; si no sabe, la
+	// pista del dispositivo. Devuelve su id, o null (comprador, visitante o no se sabe).
+	function saasProbable() {
+		var uid = uidGuardado();
+		if (!uid) { return null; }
+		var ya = saasEnPestana(uid);
+		if (ya) { return ya === "1" ? uid : null; }
+		try { return localStorage.getItem("jissez.saas." + uid) === "1" ? uid : null; } catch (_) { return null; }
+	}
+
+	function esPantallaAncha() {
+		return !!(window.matchMedia && window.matchMedia("(min-width: 768px)").matches);
+	}
+
+	// Espacio del encabezado apartado (tienda/css/tienda.css, html.jz-sec-reserva) mientras
+	// llega la sesión: el alto final del encabezado con el selector, así el contenido no
+	// brinca cuando entra. Solo cuando se sabe (o se sabía en este dispositivo) que la cuenta
+	// tiene Mi Salón; a un comprador no se le aparta nada. Devuelve el id o null.
+	//
+	// Lo ideal es que la clase ya venga puesta desde el <head> (tienda/js/tienda-theme.js,
+	// con la misma regla), para que el espacio esté desde el primer pintado; si no viene,
+	// se pone aquí, al llamar a montarNav.
+	var reservaTope = null;
+	var navMontado = false;
+	function reservarEncabezado() {
+		navMontado = true;
+		var uid = saasProbable();
+		if (!uid) { quitarReserva(); return null; }
+		document.documentElement.classList.add("jz-sec-reserva");
+		// Por si algo falla antes de insertar el encabezado: nunca queda un hueco fijo
+		if (!reservaTope) { reservaTope = setTimeout(quitarReserva, 4000); }
+		return uid;
+	}
+
+	function quitarReserva() {
+		if (reservaTope) { clearTimeout(reservaTope); reservaTope = null; }
+		document.documentElement.classList.remove("jz-sec-reserva");
+	}
+
+	// Si el <head> apartó el espacio en una página que no monta el encabezado, se libera en
+	// cuanto termina de cargar (tras los oyentes de DOMContentLoaded de la página).
+	(function reservaDelHead() {
+		try {
+			if (!document.documentElement.classList.contains("jz-sec-reserva")) { return; }
+		} catch (_) { return; }
+		reservaTope = setTimeout(quitarReserva, 4000);
+		document.addEventListener("DOMContentLoaded", function () {
+			setTimeout(function () { if (!navMontado) { quitarReserva(); } }, 0);
+		});
+	})();
+
+	// El selector para el encabezado que está por insertarse: si en la pestaña ya se sabe que
+	// tiene acceso, solo falta el archivo (normalmente ya pedido por precargar); si solo hay
+	// pista, se confirma en la base al mismo tiempo. Con tope: si tarda, el encabezado entra
+	// sin él y el selector llega después (conSecciones), como antes.
+	function seccionesParaEncabezado(session) {
+		var uid = session.user.id;
+		var ya = saasEnPestana(uid);
+		if (ya === "0") { return Promise.resolve(null); }
+		var archivo = cargarSecciones();
+		var p = ya === "1" ? archivo : tieneSaas(session).then(function (si) { return si ? archivo : null; });
+		return Promise.race([
+			p.catch(function () { return null; }),
+			new Promise(function (resolver) { setTimeout(function () { resolver(null); }, 2500); }),
+		]);
 	}
 
 	// El selector vive en js/secciones.js (uno solo para la tienda, Mi Salón y Sala de
@@ -693,15 +807,10 @@
 		return seccionesPromesa;
 	}
 
-	// Si en esta pestaña ya se supo que la cuenta tiene el SaaS, el selector se pide desde
-	// ya, para que el encabezado salga completo al primer pintado (sin brincar).
+	// Si ya se sabe (en la pestaña o por la pista del dispositivo) que la cuenta tiene el
+	// SaaS, el selector se pide desde ya, mientras llega la sesión.
 	(function precargar() {
-		try {
-			for (var i = 0; i < sessionStorage.length; i++) {
-				var k = sessionStorage.key(i);
-				if (k && k.indexOf("jissez.saas.") === 0 && sessionStorage.getItem(k) === "1") { cargarSecciones(); return; }
-			}
-		} catch (_) {}
+		if (saasProbable()) { cargarSecciones(); }
 	})();
 
 	// Pone el selector en el encabezado de una cuenta con Mi Salón y guarda "Tienda" como
@@ -1070,6 +1179,7 @@
 		nombreUsuario: nombreUsuario,
 		asegurarPerfil: asegurarPerfil,
 		tieneSaas: tieneSaas,
+		recordarSaas: recordarSaas,
 		cargarSecciones: cargarSecciones,
 		descargarArchivo: descargarArchivo,
 		montarNav: montarNav,

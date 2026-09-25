@@ -1050,6 +1050,26 @@
 			el.mensaje.textContent = texto;
 		}
 
+		// Lo que ocupa la página fuera del escenario (arriba: barras, título y herramientas;
+		// abajo: los controles), para que la diapositiva y sus controles quepan en la ventana
+		// (junta.html, .j-escenario). En tablet la barra de herramientas se parte en dos
+		// renglones y con el aproximado fijo los controles se salían unos pixeles. Se vuelve a
+		// medir cuando cambia lo de arriba (avisos, herramientas) o la ventana.
+		function medirEspacio() {
+			if (!el.pantalla || !el.escenario) return;
+			var arriba = el.pantalla.getBoundingClientRect().top + window.scrollY;
+			var controles = el.controles && !el.controles.classList.contains("hidden") ? el.controles.offsetHeight : 56;
+			var hueco = parseFloat(window.getComputedStyle(el.pantalla).rowGap) || 12;
+			el.escenario.style.setProperty("--j-sobre", Math.ceil(arriba + hueco + controles + 12) + "px");
+		}
+		medirEspacio();
+		window.addEventListener("resize", medirEspacio);
+		if (window.ResizeObserver) {
+			var ro = new ResizeObserver(medirEspacio);
+			[el.pantalla.previousElementSibling, el.mensaje, el.avisoNombres, document.querySelector("main header")]
+				.forEach(function (x) { if (x) ro.observe(x); });
+		}
+
 		function hayPresentacion() { return !!(modelo && modelo.hayDatos && total > 0); }
 
 		function controlesActivos(activos) {

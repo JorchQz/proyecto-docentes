@@ -85,16 +85,19 @@ function raiz(opciones) {
 					};
 				}
 				if (s.src === "js/secciones.js") ventana.Secciones = S;
+				if (opciones.cuelga) return; // la red nunca contesta
 				Promise.resolve().then(() => (opciones.falla === s.src ? s.onerror() : s.onload()));
 			},
 		},
 		createElement: () => ({}),
+		getElementById: (id) => (id === "raizEspera" ? r.aviso : null),
 	};
+	r.aviso = { hidden: true };
 	const ventana = {
 		location: { hash: opciones.hash || "", search: "", replace: (u) => { if (r.destino === null) r.destino = u; } },
 		get localStorage() { if (opciones.bloqueado) throw new Error("bloqueado"); return local; },
 	};
-	const ctx = { window: ventana, document: doc, setTimeout: (f) => r.relojes.push(f), Promise, console };
+	const ctx = { window: ventana, document: doc, setTimeout: (f, ms) => { f.ms = ms; r.relojes.push(f); }, Promise, console };
 	vm.createContext(ctx);
 	vm.runInContext(codigo, ctx);
 	return new Promise((listo) => setTimeout(() => listo(r), 30));
@@ -122,20 +125,47 @@ function raiz(opciones) {
 	r = await raiz({ guardado: "salon", sesion: true, falla: "js/supabase.js" });
 	ok("raíz si no carga un script → tienda", r.destino, "tienda/index.html");
 	r = await raiz({ guardado: "salon", sesion: true, perfil: { data: { activo_saas: true }, error: null } });
-	ok("raíz: hay un límite de tiempo que manda a la tienda", r.relojes.length, 1);
+	ok("raíz: un límite de tiempo y el aviso de espera, nada más", r.relojes.length, 2);
+	r = await raiz({ guardado: "salon", sesion: true, cuelga: true });
+	ok("raíz colgada: sin texto a la vista mientras decide", [r.destino, r.aviso.hidden], [null, true]);
+	r.relojes.slice().sort((x, y) => x.ms - y.ms).forEach((f) => f()); // en el orden en que vencen
+	ok("raíz colgada: el aviso discreto aparece y el límite manda a la tienda", [r.destino, r.aviso.hidden], ["tienda/index.html", false]);
+	const htmlRaiz = leer("index.html");
+	ok("raíz: el texto técnico ya no está y el aviso empieza oculto", [/Redirigiendo a/.test(htmlRaiz), /id="raizEspera"[^>]*hidden/.test(htmlRaiz)], [false, true]);
+	ok("raíz: sin JavaScript sigue el enlace a la tienda", /<noscript>[\s\S]*href="tienda\/index\.html"[\s\S]*<\/noscript>/.test(htmlRaiz), true);
+	ok("raíz: fondo de la marca (el de la tienda)", /background: #faf9f4/.test(htmlRaiz), true);
 
 	// ── La tienda carga el selector solo para cuentas con acceso ─────────────────
-	function tienda(guardadoPestana) {
+	// La cuenta con sesión en el navegador es u1 (sesión de Supabase en localStorage)
+	const SESION_U1 = { "sb-x-auth-token": JSON.stringify({ access_token: "t", user: { id: "u1" } }) };
+	function conLlaves(a) {
+		a.key = (i) => Object.keys(a.d)[i];
+		a.removeItem = (k) => { delete a.d[k]; };
+		Object.defineProperty(a, "length", { get: () => Object.keys(a.d).length });
+		return a;
+	}
+	function tienda(guardadoPestana, guardadoLocal, clasesHtml) {
 		const pedidos = [];
-		const ss = almacen(guardadoPestana || {});
-		ss.key = (i) => Object.keys(ss.d)[i];
-		Object.defineProperty(ss, "length", { get: () => Object.keys(ss.d).length });
+		const ss = conLlaves(almacen(guardadoPestana || {}));
+		const ls = conLlaves(almacen(guardadoLocal === undefined ? SESION_U1 : guardadoLocal));
+		const clases = new Set(clasesHtml || []);
+		const oyentes = {};
 		const ctx = {
 			window: { sb: null, matchMedia: () => ({ matches: false }) },
-			document: { createElement: () => ({}), head: { appendChild: (s) => pedidos.push(s.src) } },
+			document: {
+				createElement: () => ({}), head: { appendChild: (s) => pedidos.push(s.src) },
+				documentElement: { classList: { contains: (c) => clases.has(c), add: (c) => clases.add(c), remove: (c) => clases.delete(c) } },
+				addEventListener: (ev, f) => { oyentes[ev] = f; },
+			},
 			sessionStorage: ss,
+			localStorage: ls,
+			setTimeout: (f, ms) => { pedidos.relojes = (pedidos.relojes || []).concat([[f, ms]]); return 1; },
+			clearTimeout: () => {},
 			console,
 		};
+		pedidos.clases = clases;
+		pedidos.oyentes = oyentes;
+		pedidos.ctx = ctx;
 		ctx.window.window = ctx.window;
 		vm.createContext(ctx);
 		vm.runInContext(leer("tienda/js/tienda-common.js"), ctx);
@@ -144,6 +174,50 @@ function raiz(opciones) {
 	ok("tienda: anónimo no pide el selector", tienda(), []);
 	ok("tienda: comprador sin acceso no pide el selector", tienda({ "jissez.saas.u1": "0" }), []);
 	ok("tienda: con acceso ya sabido se pide desde la raíz", tienda({ "jissez.saas.u1": "1" }), ["../js/secciones.js"]);
+	ok("tienda: pestaña nueva con la pista del dispositivo lo pide", tienda({}, Object.assign({ "jissez.saas.u1": "1" }, SESION_U1)), ["../js/secciones.js"]);
+	ok("tienda: la pestaña manda sobre la pista (acceso retirado)", tienda({ "jissez.saas.u1": "0" }, Object.assign({ "jissez.saas.u1": "1" }, SESION_U1)), []);
+	ok("tienda: la pista de otra cuenta del dispositivo no cuenta", tienda({}, Object.assign({ "jissez.saas.u2": "1" }, SESION_U1)), []);
+	ok("tienda: sin sesión guardada no pide nada aunque haya pista", tienda({ "jissez.saas.u1": "1" }, { "jissez.saas.u1": "1" }), []);
+	ok("tienda: comprador sin nada guardado no pide el selector", tienda({}, SESION_U1), []);
+
+	// Espacio apartado para el encabezado (html.jz-sec-reserva)
+	{
+		const t = tienda({ "jissez.saas.u1": "1" });
+		ok("reserva: cargar la tienda no la pone por sí sola", t.clases.has("jz-sec-reserva"), false);
+		// La pone el head (tienda-theme.js): si la página no monta el encabezado, se libera
+		const conHead = tienda({ "jissez.saas.u1": "1" }, undefined, ["jz-sec-reserva"]);
+		ok("reserva del head: hay tope de tiempo", (conHead.relojes || []).some((x) => x[1] === 4000), true);
+		conHead.oyentes.DOMContentLoaded();
+		conHead.relojes.filter((x) => x[1] === 0).forEach((x) => x[0]());
+		ok("reserva del head: sin encabezado en la página se libera al cargar", conHead.clases.has("jz-sec-reserva"), false);
+	}
+	{
+		// montarNav la pone (o la confirma) antes de esperar la sesión y la quita al insertar
+		const t = tienda({ "jissez.saas.u1": "1" }, undefined, []);
+		const cuerpo = { hijos: [], insertBefore(n) { this.hijos.unshift(n); }, get firstChild() { return this.hijos[0] || null; } };
+		t.ctx.document.body = cuerpo;
+		const nodo = { firstChild: null, querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, classList: { contains: () => false, add: () => {} } };
+		t.ctx.document.createElement = () => ({ set innerHTML(v) { this.firstChild = nodo; }, firstChild: null });
+		let vistaEsperando = null;
+		t.ctx.window.sb = { auth: { getSession: () => { vistaEsperando = t.clases.has("jz-sec-reserva"); return Promise.resolve({ data: { session: null }, error: null }); } } };
+		t.ctx.window.lucide = { createIcons: () => {} };
+		const T = t.ctx.window.Tienda || vm.runInContext("Tienda", t.ctx);
+		const p = T.montarNav("");
+		ok("reserva: montarNav la pone mientras llega la sesión", vistaEsperando, true);
+		await p;
+		ok("reserva: se quita al insertar el encabezado", t.clases.has("jz-sec-reserva"), false);
+		const c = tienda({}, SESION_U1, []);
+		c.ctx.document.body = { hijos: [], insertBefore(n) { this.hijos.unshift(n); }, get firstChild() { return this.hijos[0] || null; } };
+		c.ctx.document.createElement = () => ({ set innerHTML(v) { this.firstChild = nodo; }, firstChild: null });
+		let vistaComprador = null;
+		c.ctx.window.sb = { auth: { getSession: () => { vistaComprador = c.clases.has("jz-sec-reserva"); return Promise.resolve({ data: { session: null }, error: null }); } } };
+		await (c.ctx.window.Tienda || vm.runInContext("Tienda", c.ctx)).montarNav("");
+		ok("reserva: a un comprador no se le aparta nada", vistaComprador, false);
+	}
+	const css = leer("tienda/css/tienda.css");
+	ok("reserva: mide lo mismo que el encabezado (65 celular, 110 PC y tablet)", /html\.jz-sec-reserva body::before \{[\s\S]*?height: 65px[\s\S]*?min-width: 768px[\s\S]*?height: 110px/.test(css), true);
+	const guardJs = leer("js/saas-guard.js");
+	ok("candado: recuerda el acceso con la clave de la tienda", /var clave = "jissez\.saas\." \+ uid/.test(guardJs) && /if \(uid\) recordarAcceso\(uid, activo\);/.test(guardJs), true);
 
 	// ── Páginas ──────────────────────────────────────────────────────────────────
 	const paginasNavbar = fs.readdirSync(RAIZ).filter((f) => f.endsWith(".html") && /src="js\/navbar\.js"/.test(leer(f)));
@@ -180,6 +254,21 @@ function raiz(opciones) {
 	ok("foco visible", /:focus-visible/.test(js), true);
 	ok("la barra de abajo mide al menos 44 px", S.ALTO_BARRA >= 44 && /height:" \+ ALTO_ABAJO \+ "px/.test(js) && /ALTO_ABAJO = (\d+)/.exec(js)[1] >= 44, true);
 	ok("Tienda en el selector lleva a la portada, no al catálogo", /clave: "tienda"[^}]*ruta: "tienda\/index\.html"/.test(js), true);
+
+	// ── Pulido R10 ───────────────────────────────────────────────────────────────
+	ok("PC: la barra de abajo no existe (ni como región vacía para el lector)", /\.jz-sec-abajo-nav,\.jz-sec-abajo\{display:none\}/.test(js) && /max-width:767\.98px\)\{" \+\s*"\.jz-sec-abajo-nav\{display:block\}/.test(js), true);
+	ok("Mi Salón: #app-navbar es contenedor y la navegación va adentro (el selector no queda anidado)",
+		/'<div id="app-navbar" class="fixed/.test(navbar) && /'<nav aria-label="Mi Salón" class="max-w-4xl/.test(navbar) && !/<nav id="app-navbar"/.test(navbar), true);
+	ok("Mi Salón: cerrar sesión lleva a la tienda", /signOut\(\)[\s\S]{0,400}window\.location\.href = "tienda\/index\.html"/.test(navbar), true);
+	const formativa = leer("js/evaluacion_formativa.js");
+	ok("formativa: el ajuste toma el contenido por id, no la barra", /getElementById\("evalContenido"\)/.test(formativa) && !/querySelector\("\.max-w-4xl/.test(formativa) && /id="evalContenido"/.test(leer("evaluacion_formativa.html")), true);
+	const examen = leer("js/examen.js");
+	ok("examen: el final deja lo que mide el pie de Calificar", /function ajustarPie\(\)[\s\S]{0,600}footerEl\.offsetHeight/.test(examen) && /new ResizeObserver\(ajustarPie\)/.test(examen), true);
+	ok("junta: el alto disponible se mide (--j-sobre)", /--j-sobre/.test(leer("junta.html")) && /setProperty\("--j-sobre"/.test(leer("js/junta.js")), true);
+	const onboarding = leer("onboarding.html");
+	ok("alta: sin selector (no monta nada) pero guarda Mi Salón al terminar",
+		!/src="js\/navbar\.js"/.test(onboarding) && onboarding.indexOf('src="js/saas-guard.js"') < onboarding.indexOf('src="js/secciones.js"') &&
+		!/Secciones\.montar/.test(leer("js/onboarding.js")) && /Secciones\.guardarUltima\("salon"\)/.test(leer("js/onboarding.js")), true);
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

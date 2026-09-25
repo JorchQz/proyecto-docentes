@@ -136,9 +136,11 @@ var Secciones = (function () {
 		".jz-sec-boton:hover{background:rgba(255,255,255,.1);color:#fff}" +
 		".jz-sec-boton:focus-visible{outline:2px solid #f2cf6b;outline-offset:-2px}" +
 		".jz-sec-boton:disabled{opacity:.7;cursor:default}" +
-		// Barra de abajo (celular)
-		".jz-sec-abajo{display:none}" +
+		// Barra de abajo (celular). En PC no existe ni para el lector de pantalla: sin esto su
+		// <nav> quedaba como una región de navegación vacía
+		".jz-sec-abajo-nav,.jz-sec-abajo{display:none}" +
 		"@media screen and (max-width:767.98px){" +
+		".jz-sec-abajo-nav{display:block}" +
 		"html.jz-secciones{--jz-sec-abajo:calc(" + ALTO_ABAJO + "px + env(safe-area-inset-bottom,0px))}" +
 		".jz-sec-barra:not(.jz-sec-barra--movil){display:none}" +
 		".jz-sec-barra--movil .jz-sec-fila{grid-template-columns:1fr auto}" +

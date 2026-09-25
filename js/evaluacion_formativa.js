@@ -552,15 +552,20 @@ async function iniciarEvaluacionFormativa() {
 	// ── primer render ─────────────────────────────────────────────────────────
 	renderLista();
 
-	// Ajustar padding top del contenido dinámicamente según altura del header evaluación
-	(function ajustarPadding() {
-		var navbar    = document.getElementById("app-navbar");
+	// El contenido empieza justo bajo el encabezado fijo de la evaluación, que va bajo la
+	// barra de Mi Salón (y, en PC, bajo la fila del selector de secciones). Se mide la
+	// posición real del encabezado: su alto cambia con el ancho (el título se parte) y con
+	// la fila del selector. Antes se buscaba el contenido por sus clases y se tomaba la fila
+	// de la barra de Mi Salón, que crecía y tapaba el encabezado.
+	function ajustarPadding() {
 		var evalHdr   = document.getElementById("evalHeader");
-		var contenido = document.querySelector(".max-w-4xl.mx-auto.px-4");
-		if (!navbar || !evalHdr || !contenido) return;
-		var navH  = navbar.offsetHeight;
-		var evalH = evalHdr.offsetHeight;
-		// El header evalHeader ya tiene top-14 (56px navbar), calculamos el offset total
-		contenido.style.paddingTop = (navH + evalH + 8) + "px";
-	})();
+		var contenido = document.getElementById("evalContenido");
+		if (!evalHdr || !contenido) return;
+		contenido.style.paddingTop = "0px";
+		var inicio = contenido.getBoundingClientRect().top + window.scrollY;
+		var abajo  = evalHdr.getBoundingClientRect().bottom; // fijo: su lugar en la ventana
+		contenido.style.paddingTop = Math.max(16, Math.ceil(abajo - inicio + 16)) + "px";
+	}
+	ajustarPadding();
+	window.addEventListener("resize", ajustarPadding);
 }

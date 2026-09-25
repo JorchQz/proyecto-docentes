@@ -46,6 +46,19 @@
 		resolverAcceso(true);
 	}
 
+	// Lo que se supo del acceso, con la misma clave que la tienda (Tienda.recordarSaas en
+	// tienda/js/tienda-common.js): en la pestaña "1" o "0" y, con acceso, la pista del
+	// dispositivo. Con ella la tienda aparta desde el principio el espacio del selector de
+	// secciones y su encabezado no brinca. Solo decide eso; no da acceso a nada.
+	function recordarAcceso(uid, si) {
+		var clave = "jissez.saas." + uid;
+		try { window.sessionStorage.setItem(clave, si ? "1" : "0"); } catch (_) {}
+		try {
+			if (si) window.localStorage.setItem(clave, "1");
+			else window.localStorage.removeItem(clave);
+		} catch (_) {}
+	}
+
 	// No se pudo comprobar el acceso (falló la lectura): ni se deja pasar ni se manda a la
 	// tienda como si la cuenta no tuviera acceso; se dice y se ofrece reintentar.
 	// Con la capa común (js/lectura.js) además se DETIENE la página: su script ya arrancó en
@@ -85,6 +98,7 @@
 		return;
 	}
 
+	var uid = null;
 	window.sb.auth
 		.getUser()
 		.then(function (res) {
@@ -101,6 +115,7 @@
 			// Por fuera de la capa común: si la página ya se detuvo, esta lectura no debe
 			// quedar colgada (la página seguiría oculta)
 			// error-revisado-en: perf.error
+			uid = user.id;
 			return (window.Lectura ? window.Lectura.fromDirecto("perfiles") : window.sb.from("perfiles"))
 				.select("activo_saas")
 				.eq("id", user.id)
@@ -110,6 +125,7 @@
 			if (!perf) { return; } // ya redirigido (sin sesión)
 			if (perf.error) { sinComprobar(perf.error); return; }
 			var activo = perf.data && perf.data.activo_saas === true;
+			if (uid) recordarAcceso(uid, activo);
 			if (activo) {
 				permitir();
 			} else {

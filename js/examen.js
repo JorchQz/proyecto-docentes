@@ -766,7 +766,23 @@ async function iniciarExamen() {
 			tabsEl.style.top = (navbar.getBoundingClientRect().bottom + hdrH) + "px";
 		}
 		contenidoEl.style.paddingTop = (navH + hdrH + tabsH + 12) + "px";
+		ajustarPie();
 	}
+
+	// El pie fijo de Calificar (resumen por campo, progreso y "Siguiente alumno") mide más en
+	// celular, donde el resumen se parte en varias líneas: el final de la página deja lo que
+	// mide el pie (más un respiro) para que la última opción no quede debajo. El espacio de
+	// la barra de secciones del celular ya lo pone js/secciones.js (body::after).
+	function ajustarPie() {
+		if (!contenidoEl) return;
+		var visible = footerEl && !footerEl.classList.contains("hidden");
+		if (!visible) { contenidoEl.style.paddingBottom = ""; return; }
+		var yaHay = parseFloat(window.getComputedStyle(document.body).paddingBottom) || 0;
+		contenidoEl.style.paddingBottom = Math.max(0, Math.ceil(footerEl.offsetHeight + 16 - yaHay)) + "px";
+	}
+	// El pie cambia de alto con su contenido (se repinta en cada alumno) y al mostrarse u
+	// ocultarse
+	if (footerEl && window.ResizeObserver) new ResizeObserver(ajustarPie).observe(footerEl);
 	window.addEventListener("resize", ajustarPadding);
 	ajustarPadding();
 }

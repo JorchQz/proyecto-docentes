@@ -121,6 +121,24 @@ body.con-barra-compra { padding-bottom: calc(4.75rem + env(safe-area-inset-botto
 	header.jz-con-secciones [data-derecha] { display: flex !important; }
 }
 
+/* Espacio apartado para el encabezado de una cuenta con Mi Salón mientras llega la sesión
+   (tienda-common.js pone y quita html.jz-sec-reserva en el mismo turno en que inserta el
+   encabezado). Mide lo mismo que el encabezado final y lleva sus colores, así el contenido
+   no brinca: 65 px en celular (el encabezado de siempre) y 110 px en PC y tablet (fila de
+   marca de 52 + 1 y barra de la tienda de 56 + 1). Un comprador nunca tiene esta clase. */
+html.jz-sec-reserva body::before {
+	content: "";
+	display: block;
+	height: 65px;
+	background: #1e3a8a;
+}
+@media (min-width: 768px) {
+	html.jz-sec-reserva body::before {
+		height: 110px;
+		background: linear-gradient(#16276b 0 53px, #1e3a8a 53px);
+	}
+}
+
 /* ---- FAQ / details ---- */
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
