@@ -90,8 +90,9 @@ ok("normalizar: vacío o desconocido", [E.normalizar(""), E.normalizar(null), E.
 ok("esValida: solo el nombre exacto de la lista", [E.esValida("Jalisco"), E.esValida("jalisco"), E.esValida(""), E.esValida("Texas")], [true, false, false, false]);
 ok("regla de cualquier estado = nacional (sin variantes)", E.ENTIDADES.every((e) => R.regla(e.nombre) === R.NACIONAL && !R.tieneVariante(e.nombre)), true);
 ok("sin estado: nacional", R.regla("") === R.NACIONAL && R.regla() === R.NACIONAL, true);
-ok("regla nacional: promedios con un decimal, truncados", R.NACIONAL.promedios, { decimales: 1, modo: "truncar" });
-ok("ReporteDatos trunca como dice la regla (7.66 → 7.6)", RD.promedioTruncado([7, 8, 8]), 7.6);
+ok("regla nacional: promedios con un decimal, redondeados (como la plataforma de control escolar)", R.NACIONAL.promedios, { decimales: 1, modo: "redondear" });
+ok("ReporteDatos redondea como dice la regla (7.66 → 7.7)", RD.promedioRedondeado([7, 8, 8]), 7.7);
+ok("redondeo igual para todos los estados (Jalisco = nacional)", R.regla("Jalisco").promedios, { decimales: 1, modo: "redondear" });
 
 // llenarSelect con un DOM mínimo
 function selectFalso() {

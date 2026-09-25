@@ -137,7 +137,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   `perfiles.estado` (nombre de `js/entidades.js`, las 32 entidades; obligatorio en el
   onboarding, editable en Mi cuenta; Inicio avisa si falta, sin bloquear). `js/reglas-entidad.js`
   es el punto único donde se activaría la variante de un estado; hoy todas usan la regla
-  nacional (escala por grado, acreditación, promedios truncados a un decimal).
+  nacional (escala por grado, acreditación, promedios redondeados a un decimal).
 - **Motor único: `js/motor-calificacion.js`** (B.3, 2026-09-22; reemplazó a `calcCF`).
   Lee `productos_sesion` + `calificaciones` (grano nuevo) + `registro_diario` + el examen
   **del grado del alumno**. No hay otra fórmula en ningún `.js`. Valor de un producto:
@@ -148,9 +148,15 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   porcentaje).
 - **Evaluación final del ciclo** (Acuerdo 10/09/23, arts. 7 III b y 9; formato de las
   boletas DGAIR 2024-2025): por campo, T1, T2, T3 y una **final** = promedio de las tres
-  calificaciones **confirmadas**, con un entero y un decimal, **truncado, no redondeado**
-  (decisión de Jorge; el Acuerdo no dice cómo cortar, las normas SEP previas dicen "no se
-  deben redondear"). **Promedio final de grado** = promedio de las cuatro finales, truncado.
+  calificaciones **confirmadas**, con un entero y un decimal, **redondeado al décimo más
+  cercano, con .5 hacia arriba** (decisión de Jorge del 2026-09-24, con la evidencia de la
+  maestra piloto: la plataforma de control escolar donde se suben las calificaciones acepta un
+  decimal y redondea, 6.67 queda 6.7; antes Mi salón truncaba). **Promedio final de grado** =
+  promedio de las cuatro finales ya redondeadas (como la boleta oficial, que muestra las dos),
+  redondeado igual. Se cuenta en milésimas enteras, sin coma flotante (6.65 → 6.7,
+  6.649 → 6.6, 5.95 → 6.0; 7, 8, 8 → 7.7). La calificación de cada trimestre sigue siendo un
+  entero por juicio docente (la app propone y la maestra elige), y los **porcentajes** de logro
+  siguen truncados a 2 decimales: de ellos sale la propuesta entera.
   **Acreditación** (decisión 18b): 1° con haber cursado el grado. De 2° a 6°, **"Acredita"**
   si el promedio final de grado y las cuatro finales por campo llegan a 6.0; **"Revisar"** si
   el promedio llega a 6.0 pero algún campo no (con la explicación "Promedio de 6 o más, pero
@@ -161,7 +167,11 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   cerrado. Una sola función: `ReporteDatos.finalCiclo` (`js/reporte-datos.js`), que usan la
   boleta imprimible (columna Final), el reporte detallado, la pestaña Boleta de Reportes, el
   Concentrado y la exportación (columnas al final). Los promedios de calificaciones de toda
-  la app (general del trimestre, Concentrado) también truncan a un decimal.
+  la app (general del trimestre en la boleta imprimible, Concentrado y Vista Recrea) también
+  se redondean a un decimal. Con calificaciones enteras una final es n, n.3 o n.7: si el
+  redondeo sube el promedio de 5.9 a 6.0, algún campo quedó bajo 6 y el resultado es
+  "Revisar", no "Acredita". Las boletas cerradas guardan solo sus enteros; la final se
+  calcula al mostrarla, así que el cambio no tocó la base.
 
 > **Pruebas automáticas (`pruebas/`, se corren con `node`, sin npm):** no son una suite
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
@@ -171,7 +181,7 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad;
 >   la conducta no pondera (peso 0 aunque los ajustes traigan otro) y cuadre a mano 28/28/6/33.
 > - `evaluacion-final` — final por campo, promedio final de grado y acreditación
->   (`ReporteDatos.finalCiclo`): truncado, "pendiente" mientras falte algo, 1° siempre
+>   (`ReporteDatos.finalCiclo`): redondeado al décimo (6.65 → 6.7, 6.649 → 6.6), "pendiente" mientras falte algo, 1° siempre
 >   acredita, 2° a 6° "Acredita" / "Revisar" (algún campo debajo de 6) / "No acredita"
 >   (promedio debajo de 6); y que boleta imprimible, reporte y Concentrado la usan.
 > - `reglas-entidad` — escala por grado (1° de 6 a 10, 2° a 6° de 5 a 10) igual que la

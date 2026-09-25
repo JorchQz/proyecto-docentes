@@ -115,9 +115,11 @@
 	function esColumnaUnDecimal(titulo) {
 		return titulo === COL_PROMEDIO_FINAL || CAMPOS.some(function (c) { return titulo === colFinal(c); });
 	}
-	// 7.6 → "7.6"; 10 → "10.0" (el valor ya viene truncado de ReporteDatos.finalCiclo)
+	// 7.7 → "7.7"; 10 → "10.0". El valor ya viene redondeado de ReporteDatos.finalCiclo; aquí
+	// solo se escribe con un decimal, con el mismo redondeo en milésimas enteras (nunca trunca)
 	function unDecimal(v) {
-		return (Math.floor(Number(v) * 10 + 1e-9) / 10).toFixed(1);
+		var n = Math.round(Number(v) * 1000);
+		return (Math.floor((2 * n + 100) / 200) / 10).toFixed(1);
 	}
 
 	function redondear1(n) {
@@ -386,8 +388,8 @@
 			["<Campo>: Calificación", "Calificación confirmada por el docente o «pendiente». Escala por grado: en 1°, enteros de 6 a 10 (1° se acredita con haberlo cursado); de 2° a 6°, enteros de 5 a 10, y 5 no es aprobatoria. Una boleta cerrada antes de este cambio conserva la escala con que se cerró (en 2°, de 6 a 10)."],
 			[COL_BOLETA, "«cerrada»: el docente cerró la boleta; todas las columnas de ese alumno (grado, rubros, asistencia, cuaderno, lectura y textos) son las del cierre, lo que se entregó, aunque después se haya capturado algo o cambiado su grado. «abierta»: lo capturado hasta hoy."],
 			[COL_JUICIO, "Campos cuya calificación asignó el docente por juicio, sin evidencias registradas en el trimestre (por ejemplo, un alumno que llegó tarde). Esos campos no tienen porcentaje ni rubros."],
-			["<Campo>: Final", "Evaluación final del campo formativo en el ciclo (Acuerdo 10/09/23, art. 7): promedio de las calificaciones confirmadas de los trimestres 1, 2 y 3, siempre con un decimal («10.0»), truncado (sin redondear). Es un cálculo de apoyo: el promedio oficial lo calcula SIGED. «pendiente» mientras falte confirmar alguno de los tres. Es la misma en los tres trimestres."],
-			[COL_PROMEDIO_FINAL, "Promedio de las cuatro finales por campo, siempre con un decimal («6.0»), truncado. «pendiente» mientras falte alguna final. Es un cálculo de apoyo: el promedio oficial lo calcula SIGED."],
+			["<Campo>: Final", "Evaluación final del campo formativo en el ciclo (Acuerdo 10/09/23, art. 7): promedio de las calificaciones confirmadas de los trimestres 1, 2 y 3, siempre con un decimal («10.0»), redondeado al décimo más cercano, con .5 hacia arriba (7, 8 y 8 dan 7.7). Es un cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar, que también redondea a un decimal. «pendiente» mientras falte confirmar alguno de los tres. Es la misma en los tres trimestres."],
+			[COL_PROMEDIO_FINAL, "Promedio de las cuatro finales por campo ya redondeadas, siempre con un decimal («6.0»), redondeado igual (5.95 queda en 6.0). «pendiente» mientras falte alguna final. Es un cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar."],
 			[COL_ACREDITACION, "Acuerdo 10/09/23, art. 9: 1° se acredita con haber cursado el grado. De 2° a 6°: «Acredita» si el promedio final de grado y las cuatro finales por campo llegan a 6; «Revisar» si el promedio llega a 6 pero algún campo tiene menos de 6 (algunas entidades exigen mínimo 6 en cada campo; confírmalo con tu control escolar; las columnas «<Campo>: Final» dicen cuál); «No acredita» si el promedio final de grado es menor que 6. Solo cuando están confirmados los tres trimestres de los cuatro campos; antes, «pendiente»."],
 			["Celda vacía", "Sin evidencias de ese rubro en el trimestre, o sin captura."],
 		];
@@ -554,9 +556,14 @@
 				return "<th scope='col' class='px-3 py-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap border-b border-gray-200" + fija + "'" +
 					(color ? " style='box-shadow: inset 0 3px 0 " + color + "'" : "") + ">" + esc(h) + "</th>";
 			}).join("") + "</tr>";
+			var unDec = enc.map(esColumnaUnDecimal);
 			var cuerpo = tabla.filas.slice(0, FILAS_VISTA).map(function (f) {
 				return "<tr>" + f.map(function (v, i) {
 					if (i === 0) return "<th scope='row' class='px-3 py-2 text-left font-medium text-gray-800 whitespace-nowrap border-b border-gray-100 sm:sticky sm:left-0 bg-white'>" + esc(v) + "</th>";
+					// Finales y promedio final de grado con un decimal, como en el CSV y el XLSX ("8.0", no "8")
+					if (unDec[i] && typeof v === "number" && isFinite(v)) {
+						return "<td class='px-3 py-2 border-b border-gray-100 text-right tabular-nums whitespace-nowrap'>" + esc(unDecimal(v)) + "</td>";
+					}
 					return celdaVista(v);
 				}).join("") + "</tr>";
 			}).join("");

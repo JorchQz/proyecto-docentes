@@ -64,8 +64,9 @@
 		return e ? "Enteros de " + e : "";
 	}
 
+	// Promedios con un decimal, redondeados como en todos los documentos (ReporteDatos.formatoDecimal)
 	function formatoPromedio(valor) {
-		return valor === null || valor === undefined ? null : Number(valor).toFixed(1);
+		return valor === null || valor === undefined ? null : RD().formatoDecimal(valor);
 	}
 
 	function fechaLarga(fecha) {
@@ -95,7 +96,8 @@
 			general:  {1: n|null, 2, 3, final: n|null},
 			final:    ReporteDatos.finalCiclo (acreditación incluida)
 		}
-		General de un trimestre: solo con los cuatro campos confirmados (truncado a un decimal).
+		General de un trimestre: solo con los cuatro campos confirmados (redondeado a un decimal,
+		como la plataforma de control escolar: 5.75 → 5.8).
 		Final de cada campo y promedio final de grado: ReporteDatos.finalCiclo, la misma
 		función de todos los documentos; solo con los tres trimestres confirmados.
 	*/
@@ -231,7 +233,7 @@
 			"<p class='bol-nota'>«pendiente»: el docente todavía no confirma esa calificación. " +
 			"El promedio general de un trimestre aparece cuando están confirmados los cuatro campos formativos. " +
 			"La final de cada campo es el promedio de sus tres calificaciones confirmadas y el promedio final de grado, el de las cuatro finales: " +
-			"con un decimal, sin redondear, y solo cuando están confirmados los tres trimestres. " +
+			"redondeados a un decimal, y solo cuando están confirmados los tres trimestres. " +
 			R.reglaAcreditacionTextoFamilias(f.grado) +
 			" " + notaConducta(boletaCiclo) + "</p>" +
 			(hayJuicio

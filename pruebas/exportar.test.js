@@ -346,30 +346,40 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 		});
 		return salida;
 	};
-	// Lucía (4°): LEN 7, 8, 8 = 7.66 → 7.6 (truncado); SAB 6, 6, 7 = 6.33 → 6.3;
-	// ETI 9, 9, 9 = 9.0; DHL 5, 6, 6 = 5.66 → 5.6. Promedio (7.6 + 6.3 + 9.0 + 5.6) / 4 = 7.125 → 7.1
+	// Lucía (4°), redondeado al décimo como la plataforma de control escolar (antes truncado):
+	// LEN 7, 8, 8 = 7.66 → 7.7; SAB 6, 6, 7 = 6.33 → 6.3; ETI 9, 9, 9 = 9.0; DHL 5, 6, 6 = 5.66 → 5.7.
+	// Promedio de las finales redondeadas (7.7 + 6.3 + 9.0 + 5.7) / 4 = 7.175 → 7.2 (truncado daba 7.1)
 	const bolFinal = { a2: ciclo([7, 6, 9, 5], [8, 6, 9, 6], [8, 7, 9, 6]) };
 	const tf = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: bolFinal, bandas, plantillas: {} });
 	const fl = tf.filas[0];
-	ok("final: LEN 7.66 → 7.6 (truncado, no 7.7)", fl[col("LEN: Final")], 7.6);
-	ok("final: las cuatro", ["LEN", "SAB", "ETI", "DHL"].map((c) => fl[col(c + ": Final")]), [7.6, 6.3, 9, 5.6]);
-	ok("final: promedio final de grado 7.125 → 7.1", fl[col("Promedio final de grado")], 7.1);
-	// Decisión 18b: el promedio llega a 6 pero DHL (5.6) no → "Revisar", nunca "No acredita" por eso
-	ok("final: 4° con 7.1 pero DHL 5.6 → Revisar", fl[col("Acreditación")], "Revisar");
-	// Los cuatro campos en 6 o más → "Acredita" (LEN 7.6, SAB 6.3, ETI 9.0, DHL 6.0 → 7.2)
+	ok("final: LEN 7, 8, 8 = 7.66 → 7.7 (redondeado; truncado daba 7.6)", fl[col("LEN: Final")], 7.7);
+	ok("final: las cuatro", ["LEN", "SAB", "ETI", "DHL"].map((c) => fl[col(c + ": Final")]), [7.7, 6.3, 9, 5.7]);
+	ok("final: promedio final de grado 7.175 → 7.2", fl[col("Promedio final de grado")], 7.2);
+	// Decisión 18b: el promedio llega a 6 pero DHL (5.7) no → "Revisar", nunca "No acredita" por eso
+	ok("final: 4° con 7.2 pero DHL 5.7 → Revisar", fl[col("Acreditación")], "Revisar");
+	// Los cuatro campos en 6 o más → "Acredita" (LEN 7.7, SAB 6.3, ETI 9.0, DHL 6.0 → 7.25 → 7.3)
 	const todos6 = { a2: ciclo([7, 6, 9, 6], [8, 6, 9, 6], [8, 7, 9, 6]) };
 	const fa = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: todos6, bandas, plantillas: {} }).filas[0];
-	ok("final: 4° con 7.2 y los cuatro campos en 6 o más → Acredita", [fa[col("DHL: Final")], fa[col("Promedio final de grado")], fa[col("Acreditación")]], [6, 7.2, "Acredita"]);
+	ok("final: 4° con 7.3 y los cuatro campos en 6 o más → Acredita", [fa[col("DHL: Final")], fa[col("Promedio final de grado")], fa[col("Acreditación")]], [6, 7.3, "Acredita"]);
 	ok("final: la misma en cualquier trimestre exportado",
-		E.construir({ alumnos: [LUCIA], trimestre: 1, motor, diagnosticas: {}, avancePda: [], boletas: bolFinal, bandas, plantillas: {} }).filas[0][col("Promedio final de grado")], 7.1);
-	// 4° con 5.9: no acredita (5, 6, 6 en tres campos y 6, 6, 6 en uno → 5.6, 5.6, 5.6, 6.0 → 5.7)
+		E.construir({ alumnos: [LUCIA], trimestre: 1, motor, diagnosticas: {}, avancePda: [], boletas: bolFinal, bandas, plantillas: {} }).filas[0][col("Promedio final de grado")], 7.2);
+	// 4° no acredita: 5, 6, 6 en tres campos y 6, 6, 6 en uno → 5.7, 5.7, 5.7, 6.0 → 5.775 → 5.8
 	const bajo = { a2: ciclo([5, 5, 5, 6], [6, 6, 6, 6], [6, 6, 6, 6]) };
 	const fb = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: bajo, bandas, plantillas: {} }).filas[0];
-	ok("final: 4° con promedio 5.7 no acredita", [fb[col("Promedio final de grado")], fb[col("Acreditación")]], [5.7, "No acredita"]);
+	ok("final: 4° con promedio 5.8 no acredita", [fb[col("Promedio final de grado")], fb[col("Acreditación")]], [5.8, "No acredita"]);
+	// Truncar daba 5.8 y "No acredita"; redondear da 5.95 → 6.0: el promedio llega (LEN, SAB y
+	// ETI 5.7 quedan bajo 6 → "Revisar"). LEN, SAB, ETI 5, 6, 6; DHL 6, 7, 7 = 6.7
+	const borde = { a2: ciclo([5, 5, 5, 6], [6, 6, 6, 7], [6, 6, 6, 7]) };
+	const fbr = E.construir({ alumnos: [LUCIA], trimestre: 3, motor, diagnosticas: {}, avancePda: [], boletas: borde, bandas, plantillas: {} });
+	ok("final: 5.95 → 6.0, el promedio llega (Revisar, ya no «No acredita»)", [fbr.filas[0][col("Promedio final de grado")], fbr.filas[0][col("Acreditación")]], [6, "Revisar"]);
+	ok("CSV: 5.95 → «6.0»", parsearCSV(E.aCSV(fbr.encabezados, fbr.filas).slice(1))[1][col("Promedio final de grado")], "6.0");
 	const csvFinal = parsearCSV(E.aCSV(tf.encabezados, tf.filas).slice(1));
-	ok("CSV: final con punto decimal", csvFinal[1][col("LEN: Final")], "7.6");
+	ok("CSV: final con punto decimal (7, 8, 8 → 7.7)", csvFinal[1][col("LEN: Final")], "7.7");
 	ok("CSV: la final entera sale con un decimal (9.0, no 9)", csvFinal[1][col("ETI: Final")], "9.0");
-	ok("CSV: el promedio final con un decimal", csvFinal[1][col("Promedio final de grado")], "7.1");
+	ok("CSV: el promedio final con un decimal", csvFinal[1][col("Promedio final de grado")], "7.2");
+	// Al escribir con un decimal también redondea, nunca trunca: 6.65 → «6.7», 6.649 → «6.6»
+	const csvBorde = parsearCSV(E.aCSV(tf.encabezados, [tf.filas[0].map((v, i) => i === col("LEN: Final") ? 6.65 : (i === col("SAB: Final") ? 6.649 : v))]).slice(1));
+	ok("CSV: 6.65 → «6.7» y 6.649 → «6.6»", [csvBorde[1][col("LEN: Final")], csvBorde[1][col("SAB: Final")]], ["6.7", "6.6"]);
 	const csv10 = parsearCSV(E.aCSV(tf.encabezados, [tf.filas[0].map((v, i) => (i === col("LEN: Final") || i === col("Promedio final de grado")) ? (i === col("LEN: Final") ? 10 : 6) : v)]).slice(1));
 	ok("CSV: 10 → «10.0» y 6 → «6.0»", [csv10[1][col("LEN: Final")], csv10[1][col("Promedio final de grado")]], ["10.0", "6.0"]);
 	ok("CSV: «pendiente» sigue igual", parsearCSV(E.aCSV(tf.encabezados, [tf.filas[0].map((v, i) => i === col("SAB: Final") ? "pendiente" : v)]).slice(1))[1][col("SAB: Final")], "pendiente");
@@ -391,7 +401,7 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 		["<Campo>: Final", "Promedio final de grado", "Acreditación"].every((c) => E.hojaLeeme({}).some((f) => f[0] === c)), true);
 	ok("Léeme: dice que la conducta es referencia y no pondera",
 		E.hojaLeeme({}).some((f) => /Cond\./.test(f[0]) && /REFERENCIA/.test(f[1]) && /NO pondera/.test(f[1])), true);
-	ok("Léeme: la final es un cálculo de apoyo (SIGED)", E.hojaLeeme({}).some((f) => f[0] === "<Campo>: Final" && /SIGED/.test(f[1])), true);
+	ok("Léeme: la final es un cálculo de apoyo (plataforma de control escolar)", E.hojaLeeme({}).some((f) => f[0] === "<Campo>: Final" && /cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar/.test(f[1])), true);
 	// Decisiones 17b y 18b y el aviso de R6 sobre DHL
 	const leeme = E.hojaLeeme({});
 	const fila = (t) => (leeme.find((f) => f[0] === t) || [])[1] || "";
@@ -401,7 +411,9 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 	ok("Léeme: explica «Revisar»", /«Revisar» si el promedio llega a 6 pero algún campo tiene menos de 6/.test(fila("Acreditación")), true);
 	ok("Léeme: «Revisar» nunca es «No acredita»", /«No acredita» si el promedio final de grado es menor que 6/.test(fila("Acreditación")), true);
 	ok("Léeme: DHL es lo que la hoja de Fanny llama HUM", /DHL = De lo Humano y lo Comunitario, que en la hoja original se llama «HUM»/.test(fila("Campos formativos")), true);
-	ok("Léeme: truncado, sin redondear", E.hojaLeeme({}).some((f) => /truncado \(sin redondear\)/.test(f[1] || "")), true);
+	ok("Léeme: la final y el promedio se redondean al décimo (ya no «truncado»)",
+		[/redondeado al décimo más cercano, con \.5 hacia arriba/.test(fila("<Campo>: Final")), /redondeado/.test(fila("Promedio final de grado")),
+			/truncad|sin redondear/.test(fila("<Campo>: Final") + fila("Promedio final de grado"))], [true, true, false]);
 }
 
 // Sin emojis en lo que se exporta

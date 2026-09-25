@@ -133,7 +133,16 @@ const CICLO_4 = {
 const tabla4 = B.tablaCalificaciones(CICLO_4, 2);
 ok("4°: LEN T1 confirmado con 5", celda(tabla4, "LEN", 1), "5");
 ok("4°: ETI T1 confirmado con 5", celda(tabla4, "ETI", 1), "5");
-ok("4°: promedio general T1 (5+6+5+7)/4 = 5.75 → 5.7 (truncado, no redondeado)", celda(tabla4, "GENERAL", 1), "5.7");
+ok("4°: promedio general T1 (5+6+5+7)/4 = 5.75 → 5.8 (redondeado, como control escolar; truncado daba 5.7)", celda(tabla4, "GENERAL", 1), "5.8");
+// Promedio general del trimestre: 7, 8, 8, 8 = 7.75 → 7.8 y 6, 6, 7, 7 = 6.5 → 6.5
+{
+	const t = B.tablaCalificaciones({
+		1: { LEN: fila("LEN", 7, true), SAB: fila("SAB", 8, true), ETI: fila("ETI", 8, true), DHL: fila("DHL", 8, true) },
+		2: { LEN: fila("LEN", 6, true), SAB: fila("SAB", 6, true), ETI: fila("ETI", 7, true), DHL: fila("DHL", 7, true) },
+		3: {},
+	}, 2);
+	ok("promedio general T1 7, 8, 8, 8 → 7.8 y T2 6, 6, 7, 7 → 6.5", [celda(t, "GENERAL", 1), celda(t, "GENERAL", 2)].join(" "), "7.8 6.5");
+}
 ok("4°: T2 elegido y vacío → pendiente", celda(tabla4, "LEN", 2), "pendiente");
 ok("4°: columna T2 resaltada", /actual/.test(claseCelda(tabla4, "LEN", 2)), true);
 

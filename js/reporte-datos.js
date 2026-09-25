@@ -432,21 +432,29 @@
 	}
 
 	/*
-		Promedios de calificaciones: con un número entero y un decimal, TRUNCADO, no
-		redondeado (decisión de Jorge del 2026-09-24). El Acuerdo 10/09/23 (art. 9) pide "los
-		promedios con un número entero y un decimal" sin decir cómo cortar; las normas de
-		control escolar de la SEP anteriores dicen "no se deben redondear", y la app ya trunca
-		el porcentaje. Se cuenta en décimas enteras para que 7.6 no salga 7.5999.
+		Promedios de calificaciones: con un número entero y un decimal, REDONDEADOS al décimo
+		más cercano, con .5 hacia arriba (decisión de Jorge del 2026-09-24, con la evidencia de
+		la maestra piloto: la plataforma de control escolar donde se suben las calificaciones
+		acepta un decimal y redondea, 6.67 queda 6.7). Antes se truncaba (6.67 → 6.6). El
+		Acuerdo 10/09/23 (art. 9) pide "los promedios con un número entero y un decimal".
+		Se cuenta en milésimas enteras y el redondeo es una división entera, sin coma
+		flotante: 6.65 → 6.7 (en flotante, 6.65 * 10 puede quedar en 66.4999...), 6.649 → 6.6,
+		5.95 → 6.0, y 7, 8, 8 → 7.7. Los PORCENTAJES de logro no pasan por aquí: siguen
+		truncados a 2 decimales (truncar2), porque de ellos sale la propuesta entera.
 	*/
-	function decimas(v) { return Math.round(Number(v) * 10); }
-	function promedioTruncado(valores) {
+	function milesimas(v) { return Math.round(Number(v) * 1000); }
+	function promedioRedondeado(valores) {
 		var nums = valores.filter(function (v) { return v !== null && v !== undefined && v !== "" && !isNaN(v); });
 		if (!nums.length) return null;
-		var suma = nums.reduce(function (a, v) { return a + decimas(v); }, 0);
-		return Math.floor(suma / nums.length + 1e-9) / 10;
+		var suma = nums.reduce(function (a, v) { return a + milesimas(v); }, 0);
+		var n = nums.length;
+		// décimas = suma / (100·n) redondeado con .5 hacia arriba, todo en enteros
+		return Math.floor((2 * suma + 100 * n) / (200 * n)) / 10;
 	}
-	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal, truncado
-	function promedio(valores) { return promedioTruncado(valores); }
+	// Un solo valor con un decimal, redondeado (6.65 → 6.7); null si no es número
+	function redondear1(v) { return vacio(v) || isNaN(v) ? null : promedioRedondeado([v]); }
+	// Promedio de calificaciones confirmadas (enteros por campo) con un decimal, redondeado
+	function promedio(valores) { return promedioRedondeado(valores); }
 
 	/*
 		Evaluación final del ciclo (Acuerdo 10/09/23: art. 7 III b, "tres evaluaciones
@@ -454,8 +462,9 @@
 		boletas oficiales de la DGAIR 2024-2025: por campo, T1, T2, T3 y el promedio final;
 		el promedio final de grado; y si acredita.
 		  - Final por campo: promedio de las tres calificaciones CONFIRMADAS (calificacionOficial;
-		    las cerradas conservan su número), truncado a un decimal. Falta una → null.
-		  - Promedio final de grado: promedio de las cuatro finales, truncado a un decimal.
+		    las cerradas conservan su número), redondeado a un decimal. Falta una → null.
+		  - Promedio final de grado: promedio de las cuatro finales YA redondeadas (como la
+		    boleta oficial, que muestra las dos), redondeado a un decimal.
 		  - Acreditación (art. 9 y decisión 18b; umbrales en js/reglas-entidad.js). Solo con
 		    los tres trimestres de los cuatro campos confirmados; antes, "pendiente": nunca un
 		    número parcial como final.
@@ -523,10 +532,12 @@
 			var valores = TRIMESTRES.map(function (t) { return calificacionOficial((ciclo[t] || {})[c]).valor; });
 			var sin = valores.filter(function (v) { return v === null; }).length;
 			faltan += sin;
-			porCampo[c] = sin ? null : promedioTruncado(valores);
+			porCampo[c] = sin ? null : promedioRedondeado(valores);
 		});
 		var completo = faltan === 0;
-		var prom = completo ? promedioTruncado(CAMPOS.map(function (c) { return porCampo[c]; })) : null;
+		// De las finales ya redondeadas. La acreditación y "Revisar" comparan estos mismos
+		// valores redondeados: un 5.95 queda en 6.0 y llega al mínimo
+		var prom = completo ? promedioRedondeado(CAMPOS.map(function (c) { return porCampo[c]; })) : null;
 		// Grado del cierre del 3er trimestre (lo entregado), si no el que se recibe
 		var t3 = ciclo[3] || {};
 		var ac = boletaCerrada(t3) ? alumnoCierre(fotoCierre(t3.GEN)) : null;
@@ -560,10 +571,10 @@
 	/*
 		Nota que acompaña a toda final y a todo promedio final de grado (boleta imprimible,
 		reporte detallado, pestaña Boleta y Concentrado de Reportes): el número es un cálculo
-		de apoyo; el oficial lo calcula SIGED. Truncar o redondear sigue pendiente de Jorge:
-		aquí solo se dice lo que hace Mi salón hoy.
+		de apoyo; el oficial lo calcula la plataforma de control escolar, que lo redondea a un
+		decimal, y Mi salón hace lo mismo (decisión de Jorge del 2026-09-24).
 	*/
-	var NOTA_FINAL_APOYO = "Cálculo de apoyo: el promedio oficial lo calcula SIGED. Mi salón lo trunca a un decimal.";
+	var NOTA_FINAL_APOYO = "Cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar. Mi salón lo redondea a un decimal, como ella.";
 
 	/*
 		Peso con el que la conducta entró a la calificación de una boleta cerrada, según su
@@ -594,8 +605,8 @@
 		return peso;
 	}
 
-	// 7.6 → "7.6"; 8 → "8.0"; null → null
-	function formatoDecimal(v) { return vacio(v) ? null : (Math.floor(Number(v) * 10 + 1e-9) / 10).toFixed(1); }
+	// 7.6 → "7.6"; 8 → "8.0"; 6.65 → "6.7" (redondeado, como los promedios); null → null
+	function formatoDecimal(v) { var r = redondear1(v); return r === null ? null : r.toFixed(1); }
 
 	/*
 		Tabla de la evaluación final del ciclo para el reporte detallado y la pestaña Boleta de
@@ -651,7 +662,7 @@
 			"<span class='font-bold " + colorAcr + "' data-acreditacion='" + f.acreditacion + "'>" + esc(etiquetaAcr) + "</span>" +
 			(f.completo ? "" : " <span class='text-xs text-gray-500'>(faltan " + f.faltan + " de 12 calificaciones confirmadas)</span>") + "</p>" +
 			(explicacionAcr ? "<p class='mt-1 text-xs " + (revisarFam ? "text-gray-700" : "text-amber-800") + " leading-relaxed' data-explicacion-acreditacion>" + esc(explicacionAcr) + "</p>" : "") +
-			"<p class='mt-1 text-xs text-gray-500 leading-relaxed'>La final de cada campo es el promedio de sus tres calificaciones confirmadas, con un decimal y sin redondear; " +
+			"<p class='mt-1 text-xs text-gray-500 leading-relaxed'>La final de cada campo es el promedio de sus tres calificaciones confirmadas, redondeado a un decimal; " +
 			"el promedio final de grado, el de las cuatro finales. Aparecen cuando están confirmados los tres trimestres. " + regla + " (Acuerdo 10/09/23, arts. 7 y 9).</p>" +
 			"<p class='mt-1 text-xs font-medium text-gray-600' data-nota-siged>" + NOTA_FINAL_APOYO + "</p>" +
 			"</div>";
@@ -916,7 +927,8 @@
 		explicacionRevisarFamilias: explicacionRevisarFamilias,
 		reglaAcreditacionTextoFamilias: reglaAcreditacionTextoFamilias,
 		promedio: promedio,
-		promedioTruncado: promedioTruncado,
+		promedioRedondeado: promedioRedondeado,
+		redondear1: redondear1,
 		finalCiclo: finalCiclo,
 		formatoDecimal: formatoDecimal,
 		NOTA_FINAL_APOYO: NOTA_FINAL_APOYO,

@@ -89,6 +89,29 @@ ok("Concentrado: sin bloque Medio vacío", conc.includes("Medio (promedio"), fal
 ok("Concentrado: tabla por grado usa solo confirmadas (2° LEN = 8.0)", /<td class='px-3 py-2 font-medium'>2°<\/td><td[^>]*><b[^>]*>8\.0<\/b>/.test(conc), true);
 ok("Concentrado: 2° SAB promedia solo lo confirmado (8.0 de Ana)", /2°<\/td>(<td[^>]*>[\s\S]*?<\/td>){1}<td[^>]*><b[^>]*>8\.0<\/b>/.test(conc), true);
 
+// Promedios redondeados al décimo, .5 hacia arriba, como la plataforma de control escolar
+// (decisión de Jorge del 2026-09-24; antes truncados). Aquí sin ReporteDatos: la cuenta propia.
+{
+	const al3 = [
+		{ id: "e", nombre_completo: "EVA TERCERO", num_lista: 1, grado: 3 },
+		{ id: "f", nombre_completo: "FER TERCERO", num_lista: 2, grado: 3 },
+		{ id: "g", nombre_completo: "GIL TERCERO", num_lista: 3, grado: 3 },
+	];
+	const d3 = { motor: { porAlumno: {} }, boletas: {
+		e: { 1: { LEN: bol(7, true), SAB: bol(8, true), ETI: bol(8, true), DHL: bol(8, true) }, 2: {}, 3: {} },
+		f: { 1: { LEN: bol(8, true), SAB: bol(8, true), ETI: bol(8, true), DHL: bol(8, true) }, 2: {}, 3: {} },
+		g: { 1: { LEN: bol(8, true), SAB: bol(8, true), ETI: bol(8, true), DHL: bol(8, true) }, 2: {}, 3: {} },
+	} };
+	const f3 = R.filas(al3, d3, 1);
+	ok("promedio del trimestre 7, 8, 8, 8 = 7.75 → 7.8 (truncado daba 7.7)", f3[0].promedio, 7.8);
+	ok("Vista Recrea: 7.8", /EVA TERCERO[\s\S]*?>7\.8<\/span>/.test(R.htmlVistaRecrea(f3, 1)), true);
+	ok("CSV: 7.8", R.csvVistaRecrea(f3).replace(/^﻿/, "").split("\r\n")[1], "1,EVA TERCERO,3,7,8,8,8,7.8");
+	const c3 = R.htmlConcentrado(f3, 1);
+	ok("Concentrado: 7.8 junto a su nombre", /EVA TERCERO[\s\S]*?>7\.8<\/span>/.test(c3), true);
+	// Tabla por grado: LEN 7, 8, 8 = 7.67 → 7.7 (truncado daba 7.6)
+	ok("Concentrado: tabla por grado LEN 7, 8, 8 → 7.7", /3°<\/td><td[^>]*><b[^>]*>7\.7<\/b>/.test(c3), true);
+}
+
 const vacio = R.htmlConcentrado([], 1);
 ok("Concentrado sin alumnos", vacio.includes("Sin alumnos activos"), true);
 

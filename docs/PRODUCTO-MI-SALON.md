@@ -254,9 +254,11 @@ la confirmada, textos del maestro o propuesta, diagnóstico y bandas. Colores NE
 
 **Evaluación final del ciclo** (Acuerdo 10/09/23, arts. 7 y 9; como las boletas DGAIR
 2024-2025): final por campo = promedio de las tres calificaciones confirmadas; promedio
-final de grado = promedio de las cuatro finales; los dos con un entero y un decimal,
-**truncados, sin redondear** (decisión de Jorge: el Acuerdo no dice cómo cortar y las normas
-SEP previas dicen "no se deben redondear"). Acreditación (decisión 18b): 1° con haber cursado
+final de grado = promedio de las cuatro finales ya redondeadas; los dos con un entero y un
+decimal, **redondeados al décimo más cercano, con .5 hacia arriba**, como la plataforma de
+control escolar donde se suben las calificaciones (decisión de Jorge del 2026-09-24, con la
+evidencia de la maestra piloto: 6.67 se registra como 6.7; antes se truncaba). Los
+porcentajes de logro siguen truncados. Acreditación (decisión 18b): 1° con haber cursado
 el grado; de 2° a 6°, "Acredita" si el promedio final de grado y las cuatro finales por campo
 llegan a 6; "Revisar" si el promedio llega pero algún campo no (con una explicación corta:
 algunas entidades exigen mínimo 6 en cada campo, que la maestra lo confirme con su control
@@ -283,7 +285,7 @@ Además, en `reportes.html`: **Vista Recrea** (calificación confirmada por alum
 lista para capturar en SIGED, con "pendiente" en lo no confirmado) y **Concentrado
 Director** (evaluación final del ciclo por alumno con su acreditación, niveles por
 promedio de las 4 calificaciones confirmadas, pendientes aparte y promedio por grado y
-campo; todos los promedios truncados a un decimal).
+campo; todos los promedios redondeados a un decimal).
 
 ### B.9 Multigrado y grupo activo
 

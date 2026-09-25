@@ -6,8 +6,10 @@
 	     (cuaderno de Fase 3, pp. 25-26); de 3° a 6° no cambia nada. Boleta y junta.
 	  2. Trimestre actual: sugerencia por el calendario SEP 2026-2027 y selector en Mi grupo
 	     que guarda por la capa de lectura.
-	  3. Nota "cálculo de apoyo, SIGED, truncado" junto a la final: boleta imprimible,
-	     reporte / pestaña Boleta (htmlFinalCiclo) y Concentrado.
+	  3. Nota "cálculo de apoyo" junto a la final: boleta imprimible,
+	     reporte / pestaña Boleta (htmlFinalCiclo) y Concentrado. Desde el 2026-09-24 dice
+	     que Mi salón REDONDEA a un decimal, como la plataforma de control escolar (antes, que
+	     truncaba y que el oficial lo calcula SIGED).
 	  6. Junta: un grado sin ningún PPM no dice "0 de 0".
 	  7. Peso efectivo: suma 100 entre los rubros con datos; Ajustes no pinta de verde la suma.
 	  8. Nota de conducta en boletas cerradas antes del cambio (foto con conducta que ponderó).
@@ -124,7 +126,7 @@ ok("Mi grupo: «Editar grupo» no pierde trimestre_actual", /descripcion, trimes
 
 // ── 3. Nota de la final ─────────────────────────────────────────────────────
 console.log("\n3. Nota de cálculo de apoyo junto a la final");
-const NOTA = "Cálculo de apoyo: el promedio oficial lo calcula SIGED. Mi salón lo trunca a un decimal.";
+const NOTA = "Cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar. Mi salón lo redondea a un decimal, como ella.";
 function filaB(campo, cal, extra) {
 	return Object.assign({ campo: campo, calificacion: cal, calificacion_confirmada: true, cerrada: false, porcentaje: 80 }, extra || {});
 }
@@ -137,7 +139,7 @@ intentar("Concentrado", () => {
 	const h = RG.htmlConcentrado(lista, 3);
 	ok("Concentrado: la tabla de la final lleva la nota", h.includes("data-final-grupo") && h.includes(NOTA), true);
 });
-ok("el cálculo no cambió (truncado: 7, 8, 8 → 7.6)", RD.finalCiclo({ 1: { LEN: filaB("LEN", 7) }, 2: { LEN: filaB("LEN", 8) }, 3: { LEN: filaB("LEN", 8) } }, 4).porCampo.LEN, 7.6);
+ok("la nota dice lo que hace el cálculo (redondeado: 7, 8, 8 → 7.7)", RD.finalCiclo({ 1: { LEN: filaB("LEN", 7) }, 2: { LEN: filaB("LEN", 8) }, 3: { LEN: filaB("LEN", 8) } }, 4).porCampo.LEN, 7.7);
 
 // ── 6. Junta sin PPM en un grado ────────────────────────────────────────────
 console.log("\n6. Junta: grado sin ningún PPM");

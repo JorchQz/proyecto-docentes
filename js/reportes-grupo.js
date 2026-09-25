@@ -26,13 +26,18 @@
 			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 	}
 
-	// Con un decimal, truncado y no redondeado, igual que ReporteDatos.promedio (decisión de
-	// Jorge del 2026-09-24): se cuenta en décimas enteras
+	/*
+		Con un decimal, redondeado al décimo más cercano con .5 hacia arriba, como la
+		plataforma de control escolar (decisión de Jorge del 2026-09-24; antes se truncaba):
+		ReporteDatos.promedio. Sin esa capa (pruebas), la misma cuenta en milésimas enteras.
+	*/
 	function promedio(valores) {
-		var nums = valores.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
+		var RD = typeof window !== "undefined" ? window.ReporteDatos : null;
+		if (RD && RD.promedio) return RD.promedio(valores);
+		var nums = valores.filter(function (v) { return v !== null && v !== undefined && v !== "" && !isNaN(v); });
 		if (!nums.length) return null;
-		var suma = nums.reduce(function (a, v) { return a + Math.round(Number(v) * 10); }, 0);
-		return Math.floor(suma / nums.length + 1e-9) / 10;
+		var suma = nums.reduce(function (a, v) { return a + Math.round(Number(v) * 1000); }, 0);
+		return Math.floor((2 * suma + 100 * nums.length) / (200 * nums.length)) / 10;
 	}
 
 	// Evaluación final del ciclo (ReporteDatos.finalCiclo, la misma de todos los documentos)
@@ -57,7 +62,8 @@
 		return { valor: Number(fila.calificacion), fuera: null };
 	}
 
-	function fmt1(v) { return (Math.floor(v * 10 + 1e-9) / 10).toFixed(1); }
+	// 7.7 → "7.7"; 6 → "6.0"; redondeado como los promedios (6.65 → "6.7")
+	function fmt1(v) { var r = promedio([v]); return r === null ? "" : r.toFixed(1); }
 
 	/*
 		Una fila por alumno activo:
@@ -217,14 +223,14 @@
 			"<th class='px-3 py-2 text-center whitespace-nowrap'>Promedio final</th><th class='px-3 py-2 text-center'>Acreditación</th></tr></thead>" +
 			"<tbody class='divide-y divide-gray-100'>" + filasHtml + "</tbody></table></div>" +
 			"<p class='text-xs text-gray-400 mt-1'>Final de cada campo: promedio de sus tres calificaciones confirmadas; promedio final: el de las cuatro finales; " +
-			"con un decimal y sin redondear. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6 y cada campo en 6 o más " +
+			"redondeado a un decimal, como la plataforma de control escolar. 1° se acredita con haber cursado el grado; 2° a 6°, con promedio final mínimo de 6 y cada campo en 6 o más " +
 			"(si el promedio llega pero algún campo no, dice «Revisar»: algunas entidades exigen 6 en cada campo).</p>" +
 			"<p class='text-xs font-medium text-gray-600 mt-1' data-nota-siged>" + esc(notaFinalApoyo()) + "</p></div>";
 	}
 	// Misma nota en todos los documentos (ReporteDatos.NOTA_FINAL_APOYO)
 	function notaFinalApoyo() {
 		var RD = typeof window !== "undefined" ? window.ReporteDatos : null;
-		return (RD && RD.NOTA_FINAL_APOYO) || "Cálculo de apoyo: el promedio oficial lo calcula SIGED. Mi salón lo trunca a un decimal.";
+		return (RD && RD.NOTA_FINAL_APOYO) || "Cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar. Mi salón lo redondea a un decimal, como ella.";
 	}
 
 	// Concentrado para el director: niveles por promedio de las 4 calificaciones confirmadas

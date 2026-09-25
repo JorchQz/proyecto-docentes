@@ -14,7 +14,12 @@
 	    por campo llegan a 6; "Revisar" si el promedio llega pero algún campo no (algunas
 	    entidades exigen 6 en cada campo; se confirma con control escolar); "No acredita"
 	    solo si el promedio es menor que 6. La aplica ReporteDatos.finalCiclo.
-	  - Promedios con un entero y un decimal, truncados (ReporteDatos.promedioTruncado).
+	  - Promedios de calificaciones (final por campo, promedio final de grado y promedio
+	    general del trimestre) con un entero y un decimal, REDONDEADOS al décimo más
+	    cercano con .5 hacia arriba, como la plataforma de control escolar (6.67 → 6.7;
+	    decisión de Jorge del 2026-09-24; antes se truncaban). Igual en todos los estados.
+	    Los aplica ReporteDatos.promedioRedondeado. Los porcentajes de logro siguen
+	    truncados: son otra regla (ReporteDatos.truncar2).
 
 	Para activar la variante de un estado (en el futuro, con la norma de su control escolar):
 	  1. agregarla en VARIANTES con el nombre de js/entidades.js como llave, copiando la
@@ -58,7 +63,8 @@
 			promedioMinimo: 6,      // promedio final de grado mínimo (debajo: "No acredita")
 			campoMinimo: 6,         // final por campo mínima (debajo, con promedio suficiente: "Revisar")
 		},
-		promedios: { decimales: 1, modo: "truncar" },
+		// Promedios de calificaciones: un decimal, redondeado con .5 hacia arriba (ReporteDatos.promedioRedondeado)
+		promedios: { decimales: 1, modo: "redondear" },
 	};
 
 	// Variantes por estado (llave: nombre de js/entidades.js). Ninguna activa.
