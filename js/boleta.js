@@ -396,7 +396,7 @@
 			"<div class='bol-periodo'><strong>Trimestre " + d.trimestre + "</strong>Ciclo escolar " + esc(d.ciclo || "—") + "</div>" +
 			"</div>" +
 			"<p class='bol-complemento' id='boletaComplemento'>Complemento de la boleta oficial (SIGED). " +
-			"No sustituye el documento oficial de la SEP.</p>" +
+			"No sustituye el documento oficial de la SEP. Aviso de privacidad: jissez.com/tienda/privacidad.html</p>" +
 			"<dl class='bol-datos'>" +
 			dato("Alumno", a.nombre_completo, "ancho") +
 			dato("Grado", a.grado ? a.grado + "°" : null) +
