@@ -32,23 +32,6 @@
 	    dispositivo la cambió o la creó), NO se pisa: la captura sale de la cola y se avisa con
 	    el alumno, lo que quedó y lo que no se aplicó (alConflicto).
 	  - Reenviar la misma captura no duplica nada: la segunda vez la fila ya tiene su valor.
-	  - "Propio" es TODO valor que este dispositivo envió para esa llave, lo haya enviado la
-	    ventana que sea (la app instalada y una pestaña comparten la cola) y aunque la
-	    respuesta se haya perdido. Justo antes de enviar, el valor se anota en IndexedDB
-	    (almacén "propias": por llave, con la cuenta dueña y el `orden` de la captura), así
-	    que cualquier ventana lo reconoce. `orden` es el lugar de la captura en el orden de
-	    captura del dispositivo: un contador en ese almacén que comparten todas las ventanas,
-	    NO el reloj (un reloj adelantado o corregido no desordena nada). Solo cuentan los
-	    anotados por capturas ANTERIORES a la que se envía; si ya salió una captura MÁS NUEVA
-	    de la misma llave, la vieja no se escribe (queda "superada": decide la nueva). Al
-	    confirmarse una captura se olvidan los anotados más viejos que ella; tras un
-	    conflicto, los de esa captura y anteriores; tras un rechazo, el suyo. Las anotaciones
-	    de más de 7 días se borran al abrir.
-	    Límite: si otro aparato pone justo un valor que este anotó y aún recuerda (el último
-	    que confirmó o uno en camino), no se distingue del propio y no se avisa.
-	  - Un solo aviso por dato: si la maestra tocó varias veces el mismo dato antes del aviso
-	    de conflicto (todas sobre la misma vista vieja), ninguna se aplica y se avisa una vez,
-	    con su último toque. Lo que toque después del aviso ya parte de lo que hay en la base.
 
 	Otras reglas:
 	  - Una sola captura por llave (alumno + fecha, alumno + producto): la más reciente del
@@ -73,17 +56,10 @@
 		b.pendientes(), b.persistente(), b.vacia(), b.esperarEnvio() → Promise
 	Cerrar sesión (js/navbar.js, js/sala-maestros.js):
 		BandejaSalida.confirmarSalida(sb) → Promise<boolean>
-	Fuera de Hoy (las demás páginas que cargan este archivo): si la cuenta tiene capturas sin
-	enviar, un aviso discreto lo dice con un enlace a Hoy y, con red, se envían en segundo
-	plano con la misma regla; lo que no se aplicó se avisa ahí mismo (vigilarFuera).
 */
 var BandejaSalida = (function () {
 	var NOMBRE_BD = "jissez-bandeja";
 	var ALMACEN = "pendientes";
-	var ALMACEN_PROPIAS = "propias"; // por llave: los valores que este dispositivo envió
-	var ALMACENES = [ALMACEN, ALMACEN_PROPIAS];
-	var MAX_PROPIAS = 20;
-	var DIAS_PROPIAS = 7; // un anotado más viejo ya no hace falta
 	var MAX_INTENTOS_CAS = 4;
 	// Una retroalimentación muy larga no va como filtro en la URL: se compara al leer
 	var RETRO_MAX_FILTRO = 1000;
@@ -301,39 +277,23 @@ var BandejaSalida = (function () {
 	}
 
 	/*
-		enviar(sb, it, anotadasDe) → { valor, id? } si quedó guardada, { conflicto: true, actual }
-		si otro dispositivo la cambió, o { superada: true } si una captura más nueva de la misma
-		llave ya salió de este dispositivo (esta ya no se escribe). Lanza el error de la base
-		(red, sesión o rechazo).
-		`anotadasDe()` → Promise<[{ valor, seq, orden }]>: lo que este dispositivo envió para esa llave
-		(desde cualquier ventana; almacén "propias"). Se relee antes de declarar un conflicto:
-		otra ventana pudo escribir mientras tanto.
+		enviar(sb, it) → { valor, id? } si quedó guardada, o { conflicto: true, actual } si otro
+		dispositivo la cambió. Lanza el error de la base (red, sesión o rechazo).
 	*/
-	async function enviar(sb, it, anotadasDe) {
+	async function enviar(sb, it) {
 		var deseado = valorDeseado(it);
 		var base = it.base === undefined ? null : it.base; // capturas de antes de esta regla: "no existía"
-		var heredadas = [base].concat(it.propias || []);
-		var anotadas = anotadasDe ? await anotadasDe() : [];
-		// El orden es el de captura en este dispositivo (contador, no reloj); una captura de antes de
-		// esta regla no lo trae y se queda con la regla anterior (base y propias)
-		var conOrden = typeof it.orden === "number";
-		function superada() { return conOrden && anotadas.some(function (a) { return a.orden > it.orden; }); }
-		function propio(v) {
-			return heredadas.some(function (w) { return igual(v, w); }) ||
-				(conOrden && anotadas.some(function (a) { return a.orden < it.orden && igual(a.valor, v); }));
-		}
+		var aceptables = [base].concat(it.propias || []);
 		var esperado = base;
 		for (var i = 0; i < MAX_INTENTOS_CAS; i++) {
-			if (superada()) return { superada: true };
 			if (!igual(esperado, deseado)) {
 				var r = await escribirSi(sb, it, esperado, deseado);
 				if (r.ok) return { valor: r.valor, id: r.id || null };
 			}
 			var actual = await leerActual(sb, it);
 			if (igual(actual.valor, deseado)) return { valor: actual.valor, id: actual.id };
-			if (!propio(actual.valor) && anotadasDe) anotadas = await anotadasDe();
-			if (superada()) return { superada: true };
-			if (!propio(actual.valor)) return { conflicto: true, actual: actual.valor, id: actual.id };
+			var nuestro = aceptables.some(function (v) { return igual(v, actual.valor); });
+			if (!nuestro) return { conflicto: true, actual: actual.valor, id: actual.id };
 			esperado = actual.valor; // la base tiene lo que este dispositivo vio o escribió: se repite
 		}
 		// La fila cambió varias veces mientras se intentaba: se reintenta más tarde
@@ -363,46 +323,10 @@ var BandejaSalida = (function () {
 	// ── Almacenes ────────────────────────────────────────────────────────────────
 	function copia(it) { return it ? JSON.parse(JSON.stringify(it)) : it; }
 
-	/*
-		Lo que este dispositivo envió, por llave:
-			{ clave, maestro_id, valores: [{ valor, seq, orden }], en }
-		`seq` identifica la captura; `orden` es su lugar en el orden de captura del dispositivo
-		(0 en una captura de antes de esta regla). La llave de la asistencia no lleva la cuenta:
-		una anotación de otra cuenta no cuenta. En el mismo almacén, "#orden" es el contador.
-	*/
-	var CLAVE_ORDEN = "#orden";
-	function sumarAnotadas(e, nuevas) {
-		nuevas.forEach(function (n) {
-			if (e.valores.some(function (a) { return a.seq === n.seq; })) return;
-			e.valores.push({ valor: n.valor === undefined ? null : n.valor, seq: n.seq, orden: typeof n.orden === "number" ? n.orden : 0 });
-		});
-		e.valores.sort(function (a, b) { return a.orden - b.orden; });
-		if (e.valores.length > MAX_PROPIAS) e.valores = e.valores.slice(-MAX_PROPIAS);
-		e.en = new Date().toISOString();
-		return e;
-	}
-	// [{ clave, maestro_id, valor, seq, orden }] → { clave: [..] } (una escritura por llave)
-	function porClave(lista) {
-		var por = {};
-		lista.forEach(function (x) { (por[x.clave] = por[x.clave] || []).push(x); });
-		return por;
-	}
-	function entradaPara(previa, grupo) {
-		var m = grupo[0].maestro_id;
-		var e = previa && previa.maestro_id === m ? previa : { clave: grupo[0].clave, maestro_id: m, valores: [] };
-		return sumarAnotadas(e, grupo);
-	}
-
-	// En memoria: sin IndexedDB, y en las pruebas (el mismo objeto simula "recargar" y dos
-	// ventanas del mismo dispositivo)
+	// En memoria: sin IndexedDB, y en las pruebas (el mismo objeto simula "recargar")
 	function almacenMemoria() {
 		var mapa = {};
-		var propias = {};
-		var orden = 0;
 		return {
-			// Orden de captura del dispositivo: un contador, no el reloj (que puede estar mal o
-			// cambiar entre una captura y otra)
-			siguienteOrden: function () { return Promise.resolve(++orden); },
 			persistente: false,
 			todos: function () { return Promise.resolve(Object.keys(mapa).map(function (k) { return copia(mapa[k]); })); },
 			obtener: function (c) { return Promise.resolve(copia(mapa[c]) || null); },
@@ -417,25 +341,6 @@ var BandejaSalida = (function () {
 				return Promise.resolve();
 			},
 			quitar: function (c) { delete mapa[c]; },
-			// Anota lo que sale de este dispositivo: [{ clave, maestro_id, valor, seq, orden }]
-			anotar: function (lista) {
-				var por = porClave(lista);
-				Object.keys(por).forEach(function (c) { propias[c] = entradaPara(propias[c], por[c]); });
-				return Promise.resolve();
-			},
-			anotadas: function (c, maestroId) {
-				var e = propias[c];
-				return Promise.resolve(e && e.maestro_id === maestroId ? copia(e.valores) : []);
-			},
-			// Se quedan solo las anotaciones de esa llave que cumplen `seguir(anotada)`
-			podar: function (c, seguir) {
-				var e = propias[c];
-				if (e) {
-					e.valores = e.valores.filter(seguir);
-					if (!e.valores.length) delete propias[c];
-				}
-				return Promise.resolve();
-			},
 		};
 	}
 
@@ -444,14 +349,8 @@ var BandejaSalida = (function () {
 			var hecho = false;
 			function fin(v) { if (!hecho) { hecho = true; ok(v); } else if (v && v.close) { try { v.close(); } catch (_) {} } }
 			setTimeout(function () { fin(null); }, 4000); // un navegador que nunca contesta
-			// "pendientes" (la cola) y "propias" (lo que este dispositivo envió, por llave)
 			function crearAlmacen(db) {
-				ALMACENES.forEach(function (n) {
-					if (!db.objectStoreNames.contains(n)) db.createObjectStore(n, { keyPath: "clave" });
-				});
-			}
-			function completa(db) {
-				return ALMACENES.every(function (n) { return db.objectStoreNames.contains(n); });
+				if (!db.objectStoreNames.contains(ALMACEN)) db.createObjectStore(ALMACEN, { keyPath: "clave" });
 			}
 			function listo(db) {
 				db.onversionchange = function () { try { db.close(); } catch (_) {} };
@@ -465,10 +364,8 @@ var BandejaSalida = (function () {
 				req.onblocked = function () { fin(null); };
 				req.onsuccess = function () {
 					var db = req.result;
-					if (completa(db)) { listo(db); return; }
-					// Existe sin un almacén (la de antes no tenía "propias"): se sube de versión para
-					// crearlo. Otra página abierta con la versión anterior cierra su conexión
-					// (onversionchange); si no la cierra, se sigue en memoria
+					if (db.objectStoreNames.contains(ALMACEN)) { listo(db); return; }
+					// Existe sin el almacén (no debería): se sube de versión para crearlo
 					var v = db.version + 1;
 					db.close();
 					var r2 = indexedDB.open(NOMBRE_BD, v);
@@ -488,11 +385,11 @@ var BandejaSalida = (function () {
 	function almacenIDB(db) {
 		var mem = almacenMemoria();
 		var a = { persistente: true };
-		function txn(modo, fn, almacen) {
+		function txn(modo, fn) {
 			return new Promise(function (ok, mal) {
 				try {
-					var tx = db.transaction(almacen || ALMACEN, modo);
-					var req = fn(tx.objectStore(almacen || ALMACEN));
+					var tx = db.transaction(ALMACEN, modo);
+					var req = fn(tx.objectStore(ALMACEN));
 					tx.oncomplete = function () { ok(req ? req.result : undefined); };
 					tx.onerror = function () { mal(tx.error || new Error("IndexedDB")); };
 					tx.onabort = function () { mal(tx.error || new Error("IndexedDB")); };
@@ -546,68 +443,6 @@ var BandejaSalida = (function () {
 				}).catch(function () {});
 			});
 		};
-		// El contador de orden vive en IndexedDB: todas las ventanas lo comparten (cada incremento es
-		// una transacción). Si falla, la captura va sin orden (la regla anterior: base y propias)
-		a.siguienteOrden = function () {
-			var n = null;
-			return txn("readwrite", function (s) {
-				var g = s.get(CLAVE_ORDEN);
-				g.onsuccess = function () {
-					n = (g.result && typeof g.result.n === "number" ? g.result.n : 0) + 1;
-					s.put({ clave: CLAVE_ORDEN, n: n, en: new Date().toISOString() });
-				};
-				return null;
-			}, ALMACEN_PROPIAS).then(function () { return n; }, function () { return null; });
-		};
-		// Lo que este dispositivo envió (almacén "propias"): lo comparten todas las ventanas. Si
-		// IndexedDB falla, queda en memoria de esta ventana (como la cola)
-		a.anotar = function (lista) {
-			if (!lista.length) return Promise.resolve();
-			var por = porClave(lista);
-			return txn("readwrite", function (s) {
-				Object.keys(por).forEach(function (c) {
-					var g = s.get(c);
-					g.onsuccess = function () { s.put(entradaPara(g.result, por[c])); };
-				});
-				return null;
-			}, ALMACEN_PROPIAS).catch(function () { return mem.anotar(lista); });
-		};
-		a.anotadas = function (c, maestroId) {
-			return txn("readonly", function (s) { return s.get(c); }, ALMACEN_PROPIAS).catch(function () { return null; }).then(function (e) {
-				return mem.anotadas(c, maestroId).then(function (enMem) {
-					var desdeBD = e && e.maestro_id === maestroId ? e.valores || [] : [];
-					return desdeBD.concat(enMem);
-				});
-			});
-		};
-		a.podar = function (c, seguir) {
-			return mem.podar(c, seguir).then(function () {
-				return txn("readwrite", function (s) {
-					var g = s.get(c);
-					g.onsuccess = function () {
-						var e = g.result;
-						if (!e) return;
-						e.valores = (e.valores || []).filter(seguir);
-						if (e.valores.length) s.put(e); else s.delete(c);
-					};
-					return null;
-				}, ALMACEN_PROPIAS).catch(function () {});
-			});
-		};
-		// Anotaciones de hace días: ya no hacen falta (se borran al abrir)
-		try {
-			var limite = new Date(Date.now() - DIAS_PROPIAS * 86400000).toISOString();
-			txn("readwrite", function (s) {
-				var cur = s.openCursor();
-				cur.onsuccess = function () {
-					var c = cur.result;
-					if (!c) return;
-					if (c.key !== CLAVE_ORDEN && (!c.value || !c.value.en || c.value.en < limite)) c.delete();
-					c.continue();
-				};
-				return null;
-			}, ALMACEN_PROPIAS).catch(function () {});
-		} catch (_) {}
 		return a;
 	}
 
@@ -688,9 +523,7 @@ var BandejaSalida = (function () {
 			};
 			// En serie: dos toques seguidos de la misma llave no se pisan la herencia
 			var hecho = st.cadena.then(function () { return listo; })
-				// Su lugar en el orden de captura del dispositivo (todas las ventanas): ver enviar()
-				.then(function () { return st.almacen.siguienteOrden(); })
-				.then(function (n) { if (typeof n === "number") it.orden = n; return st.almacen.obtener(it.clave); })
+				.then(function () { return st.almacen.obtener(it.clave); })
 				.then(function (prev) {
 					if (prev && prev.maestro_id === it.maestro_id) {
 						it.base = prev.base === undefined ? null : prev.base;
@@ -743,38 +576,15 @@ var BandejaSalida = (function () {
 
 		async function terminar(it, r) {
 			await st.almacen.quitarSi(it.clave, it.seq);
-			// Ya salió una captura más nueva de la misma llave: decide ella (esta no se escribió)
-			if (r.superada) return;
-			var sigue;
+			var sigue = await hayMasNueva(it);
 			if (r.conflicto) {
-				/*
-					Un solo aviso por dato: las capturas más nuevas de esta llave hechas sobre la
-					misma vista vieja (antes de este aviso: heredaron su base) tampoco se aplican.
-					Se avisa una vez, con el último toque. Una que ya pide lo que hay en la base
-					sigue su camino (se da por guardada sin escribir).
-				*/
-				var ultima = it;
-				for (var k = 0; k < 10; k++) {
-					var nueva = await st.almacen.obtener(it.clave);
-					// (la que está en la cola y no es esta, la reemplazó: es más nueva)
-					if (!nueva || nueva.seq === ultima.seq || nueva.maestro_id !== it.maestro_id) break;
-					if (!igual(nueva.base, it.base) || igual(valorDeseado(nueva), r.actual)) break;
-					await st.almacen.quitarSi(nueva.clave, nueva.seq);
-					ultima = nueva;
-				}
-				// Nada de esto llegó a la base: ya no cuenta como propio
-				await st.almacen.podar(it.clave, function (a) { return typeof ultima.orden === "number" ? a.orden > ultima.orden : a.seq !== ultima.seq; });
-				sigue = await hayMasNueva(ultima);
-				if (typeof console !== "undefined") console.warn("bandeja: conflicto, se conservó lo de la base", ultima.descripcion);
-				if (o.alConflicto) { try { o.alConflicto(ultima, { actual: r.actual, sigue: sigue, texto: textoConflicto(ultima, r.actual) }); } catch (_) {} }
+				if (typeof console !== "undefined") console.warn("bandeja: conflicto, se conservó lo de la base", it.descripcion);
+				if (o.alConflicto) { try { o.alConflicto(it, { actual: r.actual, sigue: sigue, texto: textoConflicto(it, r.actual) }); } catch (_) {} }
 				return;
 			}
-			// La base ya tiene esta captura: lo anotado antes de ella ya no hace falta
-			if (typeof it.orden === "number") await st.almacen.podar(it.clave, function (a) { return a.orden >= it.orden; });
-			sigue = await hayMasNueva(it);
 			// Lo que escribió esta captura es "propio" para la más nueva de la misma llave
 			if (sigue) {
-				await st.almacen.cambiarSi(it.clave, function (x) { return x.seq !== it.seq; }, function (x) {
+				await st.almacen.cambiarSi(it.clave, function (x) { return x.seq > it.seq; }, function (x) {
 					x.propias = (x.propias || []).concat([r.valor]).slice(-10);
 				});
 			}
@@ -802,10 +612,6 @@ var BandejaSalida = (function () {
 					var lista = await propios();
 					if (!lista.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; break; }
 					if (!(await duenaPresente())) break;
-					// Comprobar la sesión puede tardar (un refresco del token con poca señal) y la
-					// maestra pudo volver a tocar mientras: se envía la cola de ahora, no la de antes
-					lista = await propios();
-					if (!lista.length) continue;
 					if (st.estado === "ok") { st.estado = "enviando"; avisar(); }
 					var it = lista[0];
 					// Lo que esperó en la cola (no es una captura recién hecha en línea): ver escribirSi
@@ -814,22 +620,16 @@ var BandejaSalida = (function () {
 					if (it.tipo === "registro" && (it.base === null || it.base === undefined) && !st.unoPorUno) {
 						lote = lista.filter(function (x) { return x.tipo === "registro" && (x.base === null || x.base === undefined); }).slice(0, 100);
 					}
-					lote.forEach(function (x) { st.enVuelo[x.clave] = x.seq; });
-					// Antes de salir, el valor queda anotado como propio de este dispositivo: cualquier
-					// ventana lo reconoce aunque la respuesta se pierda o la envíe otra ventana
-					await st.almacen.anotar(lote.map(function (x) {
-						return { clave: x.clave, maestro_id: x.maestro_id, valor: valorDeseado(x), seq: x.seq, orden: x.orden };
-					}));
 					for (var j = 0; j < lote.length; j++) {
 						var x = lote[j];
+						st.enVuelo[x.clave] = x.seq;
 						if (!x.intentado) {
 							await st.almacen.cambiarSi(x.clave, (function (seq) { return function (y) { return y.seq === seq; }; })(x.seq),
 								function (y) { y.intentado = true; });
 						}
 					}
 					try {
-						var rs = lote.length > 1 ? await enviarLoteRegistros(o.sb, lote)
-							: [await enviar(o.sb, it, function () { return st.almacen.anotadas(it.clave, it.maestro_id); })];
+						var rs = lote.length > 1 ? await enviarLoteRegistros(o.sb, lote) : [await enviar(o.sb, it)];
 						// Antes de dar algo por terminado: ¿sigue siendo la sesión de la dueña?
 						if (!(await duenaPresente())) break;
 						for (var i = 0; i < lote.length; i++) {
@@ -845,7 +645,6 @@ var BandejaSalida = (function () {
 							// Un "no" con la sesión de otra cuenta no es de la captura: se espera a su dueña
 							if (!(await duenaPresente())) break;
 							await st.almacen.quitarSi(it.clave, it.seq);
-							await st.almacen.podar(it.clave, function (a) { return a.seq !== it.seq; }); // no llegó a la base
 							if (typeof console !== "undefined") console.warn("bandeja: la base rechazó una captura", it.descripcion, e);
 							var actual;
 							try { actual = (await leerActual(o.sb, it)).valor; } catch (_) { actual = undefined; }
@@ -979,134 +778,7 @@ var BandejaSalida = (function () {
 		return window.confirm((n === 1
 			? "Tienes 1 captura de Hoy sin enviar. Se queda guardada en este dispositivo y se enviará"
 			: "Tienes " + n + " capturas de Hoy sin enviar. Se quedan guardadas en este dispositivo y se enviarán") +
-			" cuando vuelvas a entrar en él con señal.\n\n¿Cerrar sesión de todos modos?");
-	}
-
-	// ── Fuera de Hoy: aviso de lo pendiente y envío en segundo plano ─────────────
-	/*
-		En las demás páginas que cargan este archivo (las de la barra): si la cuenta de la sesión
-		guardada tiene capturas de Hoy sin enviar, un aviso discreto abajo lo dice, con un
-		enlace a Hoy, y con red se envían con la misma regla (escritura condicional; lo que
-		otro dispositivo cambió no se pisa). Lo que no se aplicó se dice en ese mismo aviso.
-		Sin capturas pendientes no se abre ni se crea nada. En Hoy no corre: Hoy tiene la suya.
-	*/
-	var ESTILO_BOTON = "display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 1rem;" +
-		"border-radius:.75rem;font-weight:600;font-size:.875rem;text-decoration:none;cursor:pointer;";
-
-	function avisoFuera() {
-		var caja = document.createElement("div");
-		caja.id = "bandejaAvisoFuera";
-		caja.setAttribute("role", "status");
-		caja.setAttribute("aria-live", "polite");
-		// Sin "margin" abreviado: en celular js/secciones.js sube lo fijo abajo (margin-bottom) sobre su barra
-		caja.setAttribute("style", "position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:45;margin-left:auto;margin-right:auto;max-width:28rem;" +
-			"box-sizing:border-box;background:#fff;border:1px solid #bfdbfe;border-radius:1rem;box-shadow:0 10px 25px rgba(15,23,42,.15);" +
-			"padding:.75rem 1rem;font-size:.875rem;line-height:1.45;color:#1e293b;display:none");
-		var texto = document.createElement("p");
-		texto.setAttribute("style", "margin:0");
-		var lista = document.createElement("ul");
-		lista.setAttribute("style", "margin:.5rem 0 0;padding-left:1.25rem;display:none");
-		var acciones = document.createElement("div");
-		acciones.setAttribute("style", "display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem");
-		var ir = document.createElement("a");
-		ir.href = "hoy.html";
-		ir.textContent = "Ir a Hoy";
-		ir.setAttribute("style", ESTILO_BOTON + "background:#1e3a8a;color:#fff;border:0");
-		var entendido = document.createElement("button");
-		entendido.type = "button";
-		entendido.textContent = "Entendido";
-		entendido.setAttribute("style", ESTILO_BOTON + "background:#fff;color:#1e3a8a;border:1px solid #bfdbfe;display:none");
-		acciones.appendChild(ir);
-		acciones.appendChild(entendido);
-		caja.appendChild(texto);
-		caja.appendChild(lista);
-		caja.appendChild(acciones);
-		document.body.appendChild(caja);
-
-		var problemas = []; // [{ clave, texto }]: un renglón por dato
-		var ultimo = { pendientes: 0 };
-		var ocultarEn = null;
-		function mostrar(t, alerta) {
-			if (ocultarEn) { clearTimeout(ocultarEn); ocultarEn = null; }
-			texto.textContent = t;
-			caja.setAttribute("role", alerta ? "alert" : "status");
-			caja.style.borderColor = alerta ? "#fecaca" : "#bfdbfe";
-			lista.textContent = "";
-			problemas.forEach(function (p) {
-				var li = document.createElement("li");
-				li.textContent = p.texto;
-				lista.appendChild(li);
-			});
-			lista.style.display = problemas.length ? "block" : "none";
-			entendido.style.display = problemas.length ? "inline-flex" : "none";
-			caja.style.display = "block";
-		}
-		function pintar() {
-			var n = ultimo.pendientes;
-			if (n) {
-				var cuantas = n === 1 ? "Tienes 1 captura de Hoy sin enviar." : "Tienes " + n + " capturas de Hoy sin enviar.";
-				var detalle = ultimo.estado === "red" ? " Sin señal: están guardadas en este dispositivo y se enviarán solas al volver la señal."
-					: ultimo.estado === "servidor" ? " El servidor no respondió bien; se reintentará."
-					: ultimo.estado === "sesion" ? " Tu sesión se cerró: vuelve a iniciar sesión para enviarlas."
-					: ultimo.estado === "cuenta" ? " Son de otra cuenta: se enviarán cuando ella entre en este dispositivo."
-					: " Enviando...";
-				mostrar(cuantas + detalle + (problemas.length ? " Estas no se aplicaron:" : ""), problemas.length > 0);
-				return;
-			}
-			if (problemas.length) {
-				mostrar("Se enviaron las capturas de Hoy que faltaban, salvo estas (se conservó lo que había en la base):", true);
-				return;
-			}
-			mostrar("Se enviaron las capturas de Hoy que faltaban.", false);
-			ocultarEn = setTimeout(function () { caja.style.display = "none"; }, 4000);
-		}
-		entendido.addEventListener("click", function () {
-			problemas = [];
-			if (ultimo.pendientes) pintar(); else caja.style.display = "none";
-		});
-		return {
-			estado: function (e) { ultimo = e; pintar(); },
-			problema: function (clave, t) {
-				problemas = problemas.filter(function (p) { return p.clave !== clave; }).concat([{ clave: clave, texto: t }]);
-				pintar();
-			},
-		};
-	}
-
-	function vigilarFuera() {
-		try {
-			if (!window.sb || typeof window.sb.from !== "function" || typeof indexedDB === "undefined" || !indexedDB || !document.body) return;
-			if (document.querySelector('script[src$="/hoy.js"], script[src="hoy.js"]')) return; // Hoy tiene su propia bandeja
-		} catch (_) {
-			return;
-		}
-		var id = cuentaGuardada();
-		if (!id) return;
-		contarDe(id).then(function (n) {
-			if (!n) return;
-			var aviso = avisoFuera();
-			var b = crear({
-				sb: window.sb,
-				// El auth sin envolver: una falla de red al comprobar la sesión no detiene la página
-				auth: window.Lectura && window.Lectura.authDirecto ? window.Lectura.authDirecto : window.sb.auth,
-				maestroId: id,
-				alCambiar: aviso.estado,
-				alConflicto: function (it, r) { aviso.problema(it.clave, r.texto); },
-				alRechazar: function (it, explicacion) { aviso.problema(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + "."); },
-			});
-			window.addEventListener("online", function () { b.procesar(); });
-			document.addEventListener("visibilitychange", function () {
-				if (document.visibilityState === "visible") b.procesar();
-			});
-			b.iniciar();
-		}).catch(function (e) {
-			if (typeof console !== "undefined") console.warn("bandeja: no se pudo revisar lo pendiente", e);
-		});
-	}
-
-	if (typeof window !== "undefined" && typeof document !== "undefined" && window.addEventListener && document.querySelector) {
-		// Después de que la página cargó (no compite con sus lecturas)
-		window.addEventListener("load", function () { setTimeout(vigilarFuera, 1200); });
+			" cuando vuelvas a entrar en él y abras Hoy.\n\n¿Cerrar sesión de todos modos?");
 	}
 
 	return {
@@ -1123,7 +795,6 @@ var BandejaSalida = (function () {
 		cuentaGuardada: cuentaGuardada,
 		contarDe: contarDe,
 		confirmarSalida: confirmarSalida,
-		vigilarFuera: vigilarFuera,
 	};
 })();
 if (typeof window !== "undefined") window.BandejaSalida = BandejaSalida;

@@ -90,34 +90,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	*/
 	var bandeja = null;
 	var huboPendientes = false;
-	// Lo que la base no aceptó (o ya tenía algo más nuevo), para la maestra: un renglón por
-	// dato ({ clave, texto }); un aviso nuevo del mismo dato reemplaza al anterior
-	var avisosBandeja = [];
-
-	/*
-		Pila fija abajo (a la vista donde esté la maestra, también en el Cierre del día): el
-		estado de la cola y el aviso de lo que no se guardó, uno sobre otro, sin encimarse.
-	*/
-	function pilaFija() {
-		if (typeof document.createElement !== "function" || !document.body) return null;
-		var pila = document.getElementById("hoyAvisosFijos");
-		if (pila && pila.appendChild) return pila;
-		pila = document.createElement("div");
-		pila.id = "hoyAvisosFijos";
-		pila.className = "fixed inset-x-4 bottom-4 z-40 flex flex-col items-center gap-2 pointer-events-none";
-		document.body.appendChild(pila);
-		var pastilla = document.getElementById("hoyEstadoGuardado");
-		if (pastilla && pastilla.parentNode) pila.appendChild(pastilla);
-		return pila;
-	}
+	var avisosBandeja = []; // lo que la base no aceptó (o ya tenía algo más nuevo), para la maestra
 
 	function estadoGuardado(texto, tipo) {
 		var el = document.getElementById("hoyEstadoGuardado");
 		if (!el) return;
 		if (!texto) { el.classList.add("hidden"); return; }
-		var enPila = !!(el.parentNode && el.parentNode.id === "hoyAvisosFijos");
-		el.className = (enPila ? "pointer-events-auto max-w-full " : "fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100%-2rem)] ") +
-			"text-center rounded-2xl px-4 py-2 text-sm font-medium shadow-lg " +
+		el.className = "fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100%-2rem)] text-center rounded-2xl px-4 py-2 text-sm font-medium shadow-lg " +
 			(tipo === "error" ? "bg-red-600 text-white"
 			 : tipo === "ok"  ? "bg-emerald-600 text-white" : "bg-gray-800 text-white");
 		el.textContent = texto;
@@ -159,69 +138,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
-	// Lo que no se guardó, con su explicación (la captura ya salió de la cola): en la lista de
-	// arriba y en el aviso fijo de abajo
-	function avisarBandeja(clave, texto) {
-		avisosBandeja = avisosBandeja.filter(function (a) { return a.clave !== clave; }).concat([{ clave: clave, texto: texto }]);
-		pintarAvisosBandeja();
-		avisoFijo();
-	}
-
-	function cerrarAvisos() {
-		avisosBandeja = [];
-		var el = document.getElementById("hoyMensaje");
-		if (el) { el.textContent = ""; el.classList.add("hidden"); }
-		var fijo = document.getElementById("hoyAvisoFijo");
-		if (fijo && fijo.parentNode) fijo.parentNode.removeChild(fijo);
-	}
-
-	// El aviso fijo (role="alert": un lector de pantalla lo anuncia): el último dato que no se
-	// guardó, "Ver detalle" (lleva a la lista de arriba) y "Cerrar"
-	function avisoFijo() {
-		var pila = pilaFija();
-		if (!pila || !avisosBandeja.length) return;
-		var viejo = document.getElementById("hoyAvisoFijo");
-		if (viejo && viejo.parentNode) viejo.parentNode.removeChild(viejo);
-		var caja = document.createElement("div");
-		caja.id = "hoyAvisoFijo";
-		caja.setAttribute("role", "alert");
-		caja.className = "pointer-events-auto w-full max-w-lg rounded-2xl border border-red-200 bg-white shadow-xl p-4 text-sm text-red-800";
-		var n = avisosBandeja.length;
-		var titulo = document.createElement("p");
-		titulo.className = "font-semibold";
-		titulo.textContent = n === 1 ? "Una captura no se guardó" : n + " capturas no se guardaron";
-		var ultimo = document.createElement("p");
-		ultimo.className = "mt-1";
-		ultimo.textContent = avisosBandeja[n - 1].texto + (n > 1 ? " (y " + (n - 1) + (n === 2 ? " más)." : " más).") : "");
-		var acciones = document.createElement("div");
-		acciones.className = "flex flex-wrap gap-2 mt-3";
-		var ver = document.createElement("button");
-		ver.type = "button";
-		ver.className = "min-h-[44px] px-4 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700";
-		ver.textContent = "Ver detalle";
-		ver.addEventListener("click", function () {
-			if (caja.parentNode) caja.parentNode.removeChild(caja);
-			var el = document.getElementById("hoyMensaje");
-			if (!el || !el.scrollIntoView) return;
-			el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
-			el.setAttribute("tabindex", "-1");
-			el.scrollIntoView({ block: "start", behavior: "smooth" });
-			try { el.focus({ preventScroll: true }); } catch (_) {}
-		});
-		var cerrar = document.createElement("button");
-		cerrar.type = "button";
-		cerrar.className = "min-h-[44px] px-4 rounded-lg border border-red-200 bg-white text-sm font-semibold text-red-700 hover:bg-red-50";
-		cerrar.textContent = "Cerrar";
-		cerrar.addEventListener("click", function () { if (caja.parentNode) caja.parentNode.removeChild(caja); });
-		acciones.appendChild(ver);
-		acciones.appendChild(cerrar);
-		caja.appendChild(titulo);
-		caja.appendChild(ultimo);
-		caja.appendChild(acciones);
-		pila.insertBefore(caja, pila.firstChild);
-	}
-
-	function pintarAvisosBandeja() {
+	// Lo que no se guardó, con su explicación (la captura ya salió de la cola)
+	function avisarBandeja(texto) {
+		avisosBandeja.push(texto);
 		var el = document.getElementById("hoyMensaje");
 		if (!el) return;
 		el.className = "rounded-xl px-4 py-3 text-sm bg-red-50 text-red-700 border border-red-200";
@@ -232,9 +151,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.appendChild(titulo);
 		var ul = document.createElement("ul");
 		ul.className = "list-disc pl-5 flex flex-col gap-1";
-		avisosBandeja.forEach(function (a) {
+		avisosBandeja.forEach(function (t) {
 			var li = document.createElement("li");
-			li.textContent = a.texto;
+			li.textContent = t;
 			ul.appendChild(li);
 		});
 		el.appendChild(ul);
@@ -242,7 +161,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cerrar.type = "button";
 		cerrar.className = "mt-2 min-h-[44px] px-4 rounded-lg border border-red-200 bg-white text-sm font-semibold text-red-700 hover:bg-red-50";
 		cerrar.textContent = "Entendido";
-		cerrar.addEventListener("click", cerrarAvisos);
+		cerrar.addEventListener("click", function () { avisosBandeja = []; el.textContent = ""; el.classList.add("hidden"); });
 		el.appendChild(cerrar);
 		el.classList.remove("hidden");
 	}
@@ -333,17 +252,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			alConflicto: function (it, r) {
 				enBase[it.clave] = r.actual;
 				if (!r.sigue) aplicarValor(it, r.actual);
-				avisarBandeja(it.clave, r.texto);
+				avisarBandeja(r.texto);
 			},
 			alRechazar: function (it, explicacion, r) {
 				if (r && r.actual !== undefined) {
 					enBase[it.clave] = r.actual;
 					if (!r.sigue) aplicarValor(it, r.actual);
 				}
-				avisarBandeja(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + ".");
+				avisarBandeja((it.descripcion || "Una captura") + ": " + explicacion + ".");
 			},
 		});
-		pilaFija();
 		// Volvió la red, o la app volvió a primer plano: se reenvía lo pendiente
 		window.addEventListener("online", function () { bandeja.procesar(); });
 		document.addEventListener("visibilitychange", function () {
