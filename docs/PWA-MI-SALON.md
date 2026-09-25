@@ -560,4 +560,23 @@ En iPhone (si hay uno a mano): Safari → `jissez.com/salon/hoy` → Compartir �
 - Fase 2 (abrir sin red con el shell en caché y versiones fijas de los CDN) y fase 3 (captura 100 % sin red) no se hicieron.
 - Asistencia (la pantalla aparte) tiene su propio autoguardado: su cola no vive en el dispositivo.
 - Las capturas de días anteriores que se envían tarde no revisan si la boleta del trimestre ya se cerró (§4.3, punto 6).
-- `_redirects`: falta `/salon/index.html /salon/ 301` (hoy `/salon/index.html` saldría a la raíz). Las salidas sin sesión ya no pasan por ahí, pero conviene la regla.
+- `_redirects`: la regla `/salon/index.html /salon/ 301` ya existe.
+
+### 9.7 Límites conocidos de la versión publicada y rediseño pendiente (2026-09-25)
+
+Se publica la cola de 3d48d1a por decisión de Jorge ("versión anterior ya y rediseño después"). R12 la aprobó en todo salvo dos carreras del **mismo** aparato. Con esta versión nada se pierde sin aviso: en el peor caso sale un aviso falso de "se cambió desde otro dispositivo" y la maestra repite el toque.
+
+- **Doble toque con la señal muy lenta** (token vencido, refresco lento y respuesta perdida): el segundo toque puede descartarse con un aviso falso (`.qa/revisor-r12/r91-carrera-navegador.js`).
+- **Hoy abierto en dos ventanas del mismo aparato** (la app y una pestaña): si una envía lo que capturó la otra, la siguiente corrección en la primera se descarta con un aviso falso (`r93-otra-pestana-envia.js`, `r92-dos-pestanas.js`). Recomendación para la maestra: usar solo la app.
+- Menores: el aviso de conflicto está arriba de Hoy (no se ve desde Cierre del día); dos toques sobre un dato que otro aparato cambió dan dos avisos; fuera de Hoy nada menciona ni envía lo pendiente (llega al abrir Hoy).
+
+El intento eadbe09 (contar como "propio" todo valor que el aparato anotó, en IndexedDB) quitó esos avisos falsos pero abrió pérdidas sin aviso (R13, `.qa/revisor-r13/`): una ventana vieja pisaba campos de otra ventana, y un valor igual puesto por otro aparato se tomaba como propio (vuelve el caso de R11). Se revirtió (cd40494). Al comparar por contenido no se distingue "lo escribí yo" de "otro puso el mismo valor".
+
+**Rediseño pendiente: marca por captura.**
+- Migración aditiva: una columna `captura_id uuid` (nula) en `asistencias`, `calificaciones` y `registro_diario`, que cada escritura llena con un id único generado en el aparato.
+- La versión de un dato pasa a ser esa marca, no su contenido: la escritura es condicional sobre la marca que vio la pantalla, y "es mío" significa que la marca está entre las que este aparato generó. Sin ambigüedad ni relojes.
+- Escrituras solo de los campos tocados, para que una ventana vieja no pise otros campos.
+- El relleno 1/1 del cierre solo inserta, nunca actualiza.
+- BroadcastChannel entre ventanas para repintar.
+- Aviso fijo abajo en Hoy, y aviso "N capturas sin enviar" fuera de Hoy, que se pueda cerrar y que no tape controles.
+- La migración va a producción solo con la confirmación de Jorge en el momento.
