@@ -199,6 +199,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	function updateModeUI() {
 		if (mode === "register") {
 			nombreField.classList.remove("hidden");
+			var avisoReg = document.getElementById("avisoRegistro"); if (avisoReg) avisoReg.classList.remove("hidden");
 			nombreInput.required = true;
 			submitBtn.textContent = "Crear cuenta";
 			toggleLink.textContent = "Inicia sesión";
@@ -206,6 +207,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			document.querySelector("#toggleLink").parentNode.firstChild.textContent = "¿Ya tienes cuenta? ";
 		} else {
 			nombreField.classList.add("hidden");
+			var avisoLogin = document.getElementById("avisoRegistro"); if (avisoLogin) avisoLogin.classList.add("hidden");
 			nombreInput.required = false;
 			submitBtn.textContent = "Iniciar sesión";
 			toggleLink.textContent = "Regístrate";

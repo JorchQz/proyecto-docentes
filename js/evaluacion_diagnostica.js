@@ -531,6 +531,7 @@ async function iniciarDiagnostico() {
 			'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
 			escHtml(observaciones) +
 			'</textarea>' +
+			'<p class="text-xs text-gray-500">No escribas datos de salud, discapacidad ni diagnósticos médicos o psicológicos del alumno.</p>' +
 			'</div>';
 
 		diagCuerpoEl.innerHTML = cuadernoHtml + lecturaHtml + matesHtml + obsHtml;

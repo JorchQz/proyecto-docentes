@@ -981,7 +981,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			(todoCerrado
 				? "<div class='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 mb-3 no-print'><p class='text-xs text-emerald-800'>La boleta está cerrada: los textos quedan como se entregaron.</p></div>"
 				: "<div class='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 no-print'>" +
-				"<p class='text-xs text-blue-800'>Los textos marcados como <span class='font-semibold'>propuestos</span> salen de lo que ya capturaste. Edita lo que quieras: lo que escribas queda como tuyo y no se vuelve a sobreescribir.</p>" +
+				"<p class='text-xs text-blue-800'>Los textos marcados como <span class='font-semibold'>propuestos</span> salen de lo que ya capturaste. Edita lo que quieras: lo que escribas queda como tuyo y no se vuelve a sobreescribir. " +
+				"No escribas datos de salud, discapacidad ni diagnósticos médicos o psicológicos (<a href='tienda/privacidad.html' class='underline'>Aviso de privacidad</a>).</p>" +
 				"<div class='flex flex-wrap gap-2 shrink-0'>" +
 				(conIa
 					? "<button id='boletaIaBtn' type='button' title='Reescribe los textos propuestos con mejor redacción. Los que editaste no se tocan.' class='min-h-[44px] px-4 rounded-lg border border-violet-300 bg-white text-sm font-medium text-violet-700 hover:bg-violet-50'>Redactar con IA</button>"
