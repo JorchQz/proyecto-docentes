@@ -16,6 +16,10 @@
 	- Una versión vieja en camino no borra la nueva ni la vuelve "conflicto".
 	- La cola es de la cuenta que capturó: con la sesión de otra cuenta no se envía nada.
 	- Sesión vencida se refresca y se reintenta; sin sesión se espera.
+	- §9 Marca por captura (docs/PWA-MI-SALON.md §9.8): los escenarios de R12 (r91, r92, r93) y R13
+	  (t20, t21, t31), campos por separado, relleno del cierre, otra pantalla, una escritura por
+	  toque, capturas del formato anterior, base sin la columna y retiro del cierre. Con 421cd57
+	  y con eadbe09 (git show <commit>:js/bandeja-salida.js) fallan; con el código nuevo pasan.
 
 	node pruebas/bandeja-salida.test.js [ruta de otra versión de bandeja-salida.js]
 */
@@ -54,11 +58,15 @@ const UNICAS = {
 	  modo.e500 = n              → las siguientes n escrituras responden 500
 	  modo.demora = ms           → cada petición tarda
 	  modo.perder = n            → las siguientes n escrituras SÍ se aplican pero la respuesta se pierde
+	  modo.sinMarca = true       → la base aún no tiene la columna captura_id (400 si se usa)
+	  modo.sesionLenta = ms      → getSession tarda (refresco del token con señal débil)
 	  sesion: la sesión del dispositivo ({ user: { id } } o null); RLS: solo se ve y escribe lo de esa cuenta
+	Como el trigger de supabase/mi_salon_b12_captura_id_2026-09.sql: un update que no trae
+	captura_id deja la fila sin marca.
 */
 function cliente(bd, modo, sesion) {
 	modo = modo || {};
-	const c = { peticiones: [], modo, sesion: sesion === undefined ? { user: { id: "m1" } } : sesion };
+	const c = { peticiones: [], escrituras: [], modo, sesion: sesion === undefined ? { user: { id: "m1" } } : sesion };
 	const uid = () => (c.sesion && c.sesion.user ? c.sesion.user.id : null);
 	function coincide(fila, filtros) {
 		return filtros.every(([col, op, v]) => (op === "is" ? fila[col] === null || fila[col] === undefined : fila[col] === v));
@@ -82,6 +90,14 @@ function cliente(bd, modo, sesion) {
 		c.peticiones.push(tabla + ":" + q.op + (q.ignorar ? "-ignorar" : ""));
 		if (modo.red) return { data: null, error: { message: "TypeError: Failed to fetch", code: "" }, status: 0 };
 		const escribe = q.op !== "select";
+		if (escribe) c.escrituras.push(tabla + ":" + q.op + " " + JSON.stringify(q.fila || q.filas || null) + " " + JSON.stringify(q.filtros));
+		if (modo.sinMarca) {
+			const enFilas = [].concat(q.filas || [], q.fila ? [q.fila] : []).some((f) => f && "captura_id" in f);
+			if (enFilas) return { data: null, error: { message: "Could not find the 'captura_id' column of '" + tabla + "' in the schema cache", code: "PGRST204" }, status: 400 };
+			if (q.filtros.some((f) => f[0] === "captura_id") || /captura_id/.test(q.cols || "")) {
+				return { data: null, error: { message: "column " + tabla + ".captura_id does not exist", code: "42703" }, status: 400 };
+			}
+		}
 		if (escribe && modo.jwt > 0) { modo.jwt--; return { data: null, error: { message: "JWT expired", code: "PGRST301" }, status: 401 }; }
 		if (escribe && modo.e500 > 0) { modo.e500--; return { data: null, error: { message: "error interno", code: "XX000" }, status: 500 }; }
 		const filas = q.filas || (q.fila && q.op === "insert" ? [q.fila] : []);
@@ -118,7 +134,10 @@ function cliente(bd, modo, sesion) {
 		}
 		const elegidas = visibles.filter((x) => coincide(x, q.filtros) && cumpleOr(x, q.or));
 		if (q.op === "update") {
-			elegidas.forEach((x) => Object.assign(x, q.fila));
+			elegidas.forEach((x) => {
+				Object.assign(x, q.fila);
+				if (!("captura_id" in q.fila)) x.captura_id = null; // el trigger: sin marca nueva, sin marca
+			});
 			return respuesta(q.devolver ? elegidas.map((x) => proyectar(x, q.cols)) : null, 200);
 		}
 		if (q.op === "delete") {
@@ -150,7 +169,12 @@ function cliente(bd, modo, sesion) {
 		return api;
 	}
 	c.from = from;
-	c.auth = { getSession: async () => ({ data: { session: c.sesion }, error: null }) };
+	c.auth = {
+		getSession: async () => {
+			if (modo.sesionLenta) { const ms = modo.sesionLenta; modo.sesionLenta = 0; await dormir(ms); }
+			return { data: { session: c.sesion }, error: null };
+		},
+	};
 	return c;
 }
 
@@ -551,6 +575,344 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		Object.defineProperty(ls, "length", { get: () => Object.keys(ls._).length });
 		ok("la cuenta de la sesión guardada se lee sin red", B.cuentaGuardada(ls), "m7");
 	});
+
+	// ── 9. Marca por captura (R12 y R13) ─────────────────────────────────────────
+	// La base que vio la pantalla: con la marca en el código nuevo; por contenido en las versiones
+	// anteriores (3d48d1a, eadbe09), para que cada una se pruebe con lo que entiende
+	const NUEVO = typeof B.baseDeFila === "function";
+	const vista = (valor, marcaVista) => (valor === null ? null : NUEVO ? { captura_id: marcaVista === undefined ? null : marcaVista, valor } : valor);
+	const marcaDe = (fila) => (fila ? fila.captura_id || null : null);
+	const asisDe = (bdX, al) => bdX.asistencias.find((a) => a.alumno_id === al);
+	const regDe = (bdX, al) => bdX.registro_diario.find((r) => r.alumno_id === al);
+	const calDe = (bdX, al, p) => bdX.calificaciones.find((x) => x.alumno_id === al && x.producto_sesion_id === p);
+	const vReg = (r) => (r ? { participacion: r.participacion, conducta: r.conducta } : null);
+	const vCalDe = (x) => (x ? vCal({ estado_entrega: x.estado_entrega, nivel: x.nivel, puntaje: x.puntaje === undefined ? null : x.puntaje, retroalimentacion: x.retroalimentacion || null }) : null);
+	const C = (lista) => ({ campos: lista });
+	const RELLENO = { relleno: true };
+	const esperarTodas = (bs, ms) => Promise.all(bs.map((b) => vacia(b, ms || 1500)));
+
+	// R12-r91: doble toque con el token vencido (refresco lento) y la respuesta del primero perdida
+	await caso("r91 doble toque con token lento", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "a1", fecha: F, asistencia_estado: "presente", captura_id: "m0" });
+		const s = cliente(bdR, { perder: 1, sesionLenta: 60 });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
+		b.iniciar();
+		b.agregar("asistencia", asis("a1", "ausente"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await dormir(20); // la maestra corrige mientras se refresca la sesión
+		await b.agregar("asistencia", asis("a1", "justificada"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await vacia(b, 2000);
+		ok("r91: queda el último toque (Justificada) y sin aviso falso", [asisDe(bdR, "a1").asistencia_estado, b.eventos.conflictos.length, b.pendientes()], ["justificada", 0, 0]);
+	});
+
+	// Respuesta perdida y otro toque después (la pantalla no se enteró): lo propio no es conflicto
+	await caso("respuesta perdida con marca", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "a1", fecha: F, asistencia_estado: "presente", captura_id: "m0" });
+		const s = cliente(bdR, { perder: 1 });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 10000 });
+		b.iniciar();
+		await b.agregar("asistencia", asis("a1", "ausente"), "A1", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await dormir(30);
+		await b.agregar("asistencia", asis("a1", "justificada"), "A1", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await b.procesar();
+		await vacia(b);
+		ok("respuesta perdida + otro toque: último valor, sin aviso", [asisDe(bdR, "a1").asistencia_estado, b.eventos.conflictos.length], ["justificada", 0]);
+	});
+
+	// R12-r93: dos ventanas del mismo aparato (la app y una pestaña) comparten la cola; la 2 envía lo
+	// de la 1, que no se entera, y la maestra corrige en la 1
+	await caso("r93 otra ventana envía", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const s1 = cliente(bdR, { red: true });
+		const v1 = bandeja(s1, alm, { esperaMax: 20 });
+		const v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar();
+		await v1.agregar("asistencia", asis("a1", "presente"), "Asistencia de Ana", null, C(["estado"]));
+		await v1.agregar("calificacion", calif("a2", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", null, C(["nivel", "estado_entrega"]));
+		await dormir(20);
+		await v2.iniciar();
+		await vacia(v2);
+		// La ventana 1 sigue creyendo que no hay filas
+		await v1.agregar("asistencia", asis("a1", "ausente"), "Asistencia de Ana", null, C(["estado"]));
+		await v1.agregar("calificacion", calif("a2", "p1", { nivel: "en_proceso", estado_entrega: "entregado" }), "Calificación de Beto", null, C(["nivel", "estado_entrega"]));
+		s1.modo.red = false;
+		await v1.procesar();
+		await esperarTodas([v1, v2]);
+		ok("r93: la corrección de la ventana 1 se guarda sin aviso falso",
+			[asisDe(bdR, "a1").asistencia_estado, calDe(bdR, "a2", "p1").nivel, v1.eventos.conflictos.length + v2.eventos.conflictos.length, bdR.calificaciones.length],
+			["ausente", "en_proceso", 0, 1]);
+	});
+
+	// R12-r92: doble toque rápido en la ventana 1 mientras la ventana 2 también envía
+	await caso("r92 dos ventanas procesan", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const v1 = bandeja(cliente(bdR, { demora: 8 }), alm);
+		const v2 = bandeja(cliente(bdR, { demora: 5 }), alm);
+		v1.iniciar(); v2.iniciar();
+		const finales = [];
+		for (let i = 0; i < 5; i++) {
+			const x = i % 2 ? "presente" : "justificada", y = i % 2 ? "justificada" : "presente";
+			const base = asisDe(bdR, "a3") ? null : null; // la ventana no se entera de lo que envió la otra
+			v1.agregar("asistencia", asis("a3", x), "Asistencia de Dani", base, C(["estado"]));
+			setTimeout(() => v1.agregar("asistencia", asis("a3", y), "Asistencia de Dani", base, C(["estado"])), 3);
+			setTimeout(() => v2.procesar(), 4);
+			await dormir(20);
+			await esperarTodas([v1, v2]);
+			finales.push(asisDe(bdR, "a3") && asisDe(bdR, "a3").asistencia_estado === y);
+		}
+		ok("r92: cada ronda queda el último toque, sin avisos falsos",
+			[finales.every(Boolean), v1.eventos.conflictos.length + v2.eventos.conflictos.length, bdR.asistencias.length], [true, 0, 1]);
+	});
+
+	// R12-r92 (el aviso falso que se vio en navegador): el cierre de Dani lo capturó la ventana 1 sin
+	// señal y lo envió la 2; después se marca Justificada en la 1 y se retira el cierre
+	await caso("r92 retiro del cierre", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const s1 = cliente(bdR, { red: true });
+		const v1 = bandeja(s1, alm, { esperaMax: 20 });
+		const v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar();
+		await v1.agregar("registro", reg("dani", 1, 1), "Cierre de Dani", null, RELLENO);
+		await dormir(15);
+		await v2.iniciar();
+		await vacia(v2);
+		s1.modo.red = false;
+		// La ventana 1 no se enteró: para ella Dani no tenía fila
+		await v1.agregar("asistencia", asis("dani", "justificada"), "Asistencia de Dani", null, C(["estado"]));
+		await v1.agregar("registro_borrar", { alumno_id: "dani", fecha: F }, "Cierre de Dani", null);
+		await v1.procesar();
+		await esperarTodas([v1, v2]);
+		ok("r92: se retira el cierre por defecto de quien faltó, sin aviso falso",
+			[bdR.registro_diario.length, v1.eventos.conflictos.length + v2.eventos.conflictos.length], [0, 0]);
+	});
+
+	// R13-t20: ventana vieja del mismo aparato toca OTRO campo del mismo dato; su relleno del
+	// cierre no pisa lo que capturó la otra ventana
+	await caso("t20 ventana vieja", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const v1 = bandeja(cliente(bdR, {}), alm);
+		const v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar(); v2.iniciar();
+		await v1.agregar("calificacion", calif("ana", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Ana", null, C(["nivel", "estado_entrega"]));
+		await v1.agregar("registro", reg("caro", 2, 1), "Cierre de Caro", null, C(["participacion"]));
+		for (const al of ["ana", "beto", "dani"]) await v1.agregar("registro", reg(al, 1, 1), "Cierre de " + al, null, RELLENO);
+		await vacia(v1);
+		// La ventana 2 (abierta antes, no sabe nada) pone puntaje 7 a Ana y conducta 0 a Dani
+		await v2.agregar("calificacion", calif("ana", "p1", { puntaje: 7 }), "Calificación de Ana", null, C(["puntaje"]));
+		await v2.agregar("registro", reg("dani", 1, 0), "Cierre de Dani", null, C(["conducta"]));
+		for (const al of ["ana", "beto", "caro"]) await v2.agregar("registro", reg(al, 1, 1), "Cierre de " + al, null, RELLENO);
+		await esperarTodas([v1, v2]);
+		const cal = calDe(bdR, "ana", "p1");
+		ok("t20: se conserva el semáforo de Ana (ventana 1) y se aplica su puntaje (ventana 2)", [cal.nivel, cal.estado_entrega, cal.puntaje], ["logrado", "entregado", 7]);
+		ok("t20: se conserva la participación 2 de Caro y se aplica la conducta 0 de Dani",
+			[vReg(regDe(bdR, "caro")), vReg(regDe(bdR, "dani")), vReg(regDe(bdR, "beto"))],
+			[{ participacion: 2, conducta: 1 }, { participacion: 1, conducta: 0 }, { participacion: 1, conducta: 1 }]);
+		ok("t20: sin avisos falsos", v1.eventos.conflictos.length + v2.eventos.conflictos.length, 0);
+	});
+
+	// R13-t21: dos ventanas, subida lenta en la 1: Presente → Falta (se envía por la 2) → Presente otra vez
+	await caso("t21 ABA dos ventanas", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente", captura_id: "m0" });
+		const alm = B.almacenMemoria();
+		const s1 = cliente(bdR, { red: true });
+		const v1 = bandeja(s1, alm, { esperaMax: 20 });
+		const v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar();
+		await v1.agregar("asistencia", asis("ana", "ausente"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await dormir(15);
+		s1.modo.red = false;
+		s1.modo.demora = 150; // la petición de la ventana 1 llega tarde a la base
+		v1.procesar();
+		await dormir(10);
+		await v2.iniciar(); // la ventana 2 envía la cola compartida
+		await dormir(30);
+		// La maestra corrige en la ventana 1 (que aún cree que hay "presente" con la marca vieja)
+		await v1.agregar("asistencia", asis("ana", "presente"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await v2.procesar();
+		await dormir(400);
+		await esperarTodas([v1, v2], 2000);
+		ok("t21: queda el último toque (Presente): la petición vieja que llegó tarde no lo pisa",
+			[asisDe(bdR, "ana").asistencia_estado, v1.eventos.conflictos.length + v2.eventos.conflictos.length], ["presente", 0]);
+	});
+
+	// R13-t31: otro aparato pone el MISMO valor que este escribió en la mañana: no es "propio"
+	await caso("t31 anotada vieja", async () => {
+		const bdR = crearBD();
+		const sA = cliente(bdR, {}), sB = cliente(bdR, {});
+		const A = bandeja(sA, B.almacenMemoria()), Bb = bandeja(sB, B.almacenMemoria(), { esperaMax: 20 });
+		A.iniciar(); Bb.iniciar();
+		await Bb.agregar("asistencia", asis("beto", "justificada"), "Asistencia de Beto", null, C(["estado"]));
+		await Bb.agregar("calificacion", calif("beto", "p1", { nivel: "en_proceso", estado_entrega: "entregado" }), "Calificación de Beto", null, C(["nivel", "estado_entrega"]));
+		await vacia(Bb);
+		let fa = asisDe(bdR, "beto"), fc = calDe(bdR, "beto", "p1");
+		await A.agregar("asistencia", asis("beto", "presente"), "Asistencia de Beto", vista({ estado: fa.asistencia_estado }, marcaDe(fa)), C(["estado"]));
+		await A.agregar("calificacion", calif("beto", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", vista(vCalDe(fc), marcaDe(fc)), C(["nivel", "estado_entrega"]));
+		await vacia(A);
+		// B recarga (ve lo de A), se queda sin señal y toca Falta y Requiere apoyo
+		fa = asisDe(bdR, "beto"); fc = calDe(bdR, "beto", "p1");
+		const baseBa = vista({ estado: fa.asistencia_estado }, marcaDe(fa)), baseBc = vista(vCalDe(fc), marcaDe(fc));
+		sB.modo.red = true;
+		await Bb.agregar("asistencia", asis("beto", "ausente"), "Asistencia de Beto", baseBa, C(["estado"]));
+		await Bb.agregar("calificacion", calif("beto", "p1", { nivel: "requiere_apoyo", estado_entrega: "entregado" }), "Calificación de Beto", baseBc, C(["nivel", "estado_entrega"]));
+		await dormir(20);
+		// A (en línea, después) pone lo mismo que B escribió en la mañana
+		await A.agregar("asistencia", asis("beto", "justificada"), "Asistencia de Beto", baseBa, C(["estado"]));
+		await A.agregar("calificacion", calif("beto", "p1", { nivel: "en_proceso", estado_entrega: "entregado" }), "Calificación de Beto", baseBc, C(["nivel", "estado_entrega"]));
+		await vacia(A);
+		sB.modo.red = false;
+		await Bb.procesar();
+		await vacia(Bb);
+		ok("t31: se conserva lo nuevo del otro aparato y B avisa las dos",
+			[asisDe(bdR, "beto").asistencia_estado, calDe(bdR, "beto", "p1").nivel, Bb.eventos.conflictos.length], ["justificada", "en_proceso", 2]);
+	});
+
+	// Otro aparato cambió OTRO campo: se aplica el tocado sin pisar el otro, sin aviso; el MISMO campo, aviso
+	await caso("campos por separado", async () => {
+		const bdR = crearBD();
+		bdR.calificaciones.push({ id: "k1", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p1", nivel: "logrado", estado_entrega: "entregado", puntaje: null, retroalimentacion: null, captura_id: "m0" });
+		bdR.calificaciones.push({ id: "k2", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p2", nivel: "logrado", estado_entrega: "entregado", puntaje: null, retroalimentacion: null, captura_id: "n0" });
+		bdR.registro_diario.push({ id: "k3", maestro_id: "m1", alumno_id: "ana", fecha: F, participacion: 1, conducta: 1, captura_id: "r0" });
+		const s = cliente(bdR, { red: true });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
+		b.iniciar();
+		const semilla = vCal({ nivel: "logrado", estado_entrega: "entregado" });
+		await b.agregar("calificacion", calif("ana", "p1", Object.assign({}, semilla, { puntaje: 8 })), "Calificación de Ana en P1", vista(semilla, "m0"), C(["puntaje"]));
+		await b.agregar("calificacion", calif("ana", "p2", { nivel: "requiere_apoyo", estado_entrega: "entregado" }), "Calificación de Ana en P2", vista(semilla, "n0"), C(["nivel", "estado_entrega"]));
+		await b.agregar("registro", reg("ana", 2, 1), "Cierre de Ana", vista({ participacion: 1, conducta: 1 }, "r0"), C(["participacion"]));
+		// Otro aparato: en P1 cambia el semáforo; en P2 también el semáforo; en el cierre, la conducta
+		Object.assign(calDe(bdR, "ana", "p1"), { nivel: "en_proceso", captura_id: "m1x" });
+		Object.assign(calDe(bdR, "ana", "p2"), { nivel: "en_proceso", captura_id: "n1x" });
+		Object.assign(regDe(bdR, "ana"), { conducta: 0, captura_id: "r1x" });
+		s.modo.red = false;
+		await b.procesar();
+		await vacia(b);
+		const p1 = calDe(bdR, "ana", "p1"), p2 = calDe(bdR, "ana", "p2");
+		ok("otro campo: se aplica el puntaje y se conserva el semáforo del otro aparato", [p1.nivel, p1.puntaje], ["en_proceso", 8]);
+		ok("otro campo: se aplica la participación y se conserva la conducta del otro aparato", vReg(regDe(bdR, "ana")), { participacion: 2, conducta: 0 });
+		ok("mismo campo: se conserva lo del otro aparato", p2.nivel, "en_proceso");
+		const avisos = b.eventos.conflictos.map((c) => c[0]);
+		ok("solo avisa el mismo campo", avisos, ["Calificación de Ana en P2"]);
+		const texto = (b.eventos.conflictos[0] || [null, {}])[1].texto || "";
+		ok("el aviso habla del semáforo (quedó En proceso; tu Requiere apoyo)", /quedó: En proceso\)/.test(texto) && /tu captura \(Requiere apoyo\)/.test(texto), true);
+	});
+
+	// El relleno del Cierre del día solo inserta donde no hay fila (sin marca) y nunca avisa
+	await caso("relleno solo inserta", async () => {
+		const bdR = crearBD();
+		bdR.registro_diario.push({ id: "k1", maestro_id: "m1", alumno_id: "caro", fecha: F, participacion: 2, conducta: 1, captura_id: "otro" });
+		const s = cliente(bdR, {});
+		const b = bandeja(s, B.almacenMemoria());
+		b.iniciar();
+		for (const al of ["ana", "caro"]) await b.agregar("registro", reg(al, 1, 1), "Cierre de " + al, null, RELLENO);
+		await vacia(b);
+		ok("relleno: no pisa la fila que ya había ni avisa; inserta la que faltaba",
+			[vReg(regDe(bdR, "caro")), vReg(regDe(bdR, "ana")), b.eventos.conflictos.length, s.escrituras.filter((e) => /update/.test(e)).length],
+			[{ participacion: 2, conducta: 1 }, { participacion: 1, conducta: 1 }, 0, 0]);
+		ok("relleno: la fila nueva va sin marca (no es captura de la maestra)", NUEVO ? regDe(bdR, "ana").captura_id || null : null, null);
+	});
+
+	// Otra pantalla (Asistencia) cambió la fila: el trigger le quitó la marca → se compara por contenido
+	await caso("otra pantalla", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente", captura_id: "m0" });
+		const s = cliente(bdR, { red: true });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
+		b.iniciar();
+		await b.agregar("asistencia", asis("ana", "justificada"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		Object.assign(asisDe(bdR, "ana"), { asistencia_estado: "ausente", captura_id: null });
+		s.modo.red = false;
+		await b.procesar();
+		await vacia(b);
+		ok("otra pantalla cambió el dato: se conserva y se avisa", [asisDe(bdR, "ana").asistencia_estado, b.eventos.conflictos.length], ["ausente", 1]);
+	});
+
+	// En línea: un toque = una sola escritura, sin lecturas, y deja su marca
+	await caso("una escritura por toque", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente", captura_id: "m0" });
+		const s = cliente(bdR, {});
+		const b = bandeja(s, B.almacenMemoria());
+		b.iniciar();
+		await b.agregar("asistencia", asis("ana", "ausente"), "A", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await vacia(b);
+		const marca1 = marcaDe(asisDe(bdR, "ana"));
+		const base1 = NUEVO ? b.eventos.guardadas[0][1].base : { estado: "ausente" };
+		await b.agregar("asistencia", asis("ana", "justificada"), "A", base1, C(["estado"]));
+		await vacia(b);
+		ok("en línea: una petición por toque (sin lecturas)", s.peticiones, ["asistencias:update", "asistencias:update"]);
+		ok("en línea: cada toque deja una marca nueva", NUEVO ? [!!marca1, marca1 !== "m0", marcaDe(asisDe(bdR, "ana")) !== marca1] : [true, true, true], [true, true, true]);
+	});
+
+	// Una captura guardada por la versión publicada (formato 3d48d1a) se envía bien tras actualizar
+	await caso("capturas del formato anterior", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente", captura_id: null });
+		bdR.registro_diario.push({ id: "q2", maestro_id: "m1", alumno_id: "beto", fecha: F, participacion: 1, conducta: 1, captura_id: "zz" });
+		const alm = B.almacenMemoria();
+		const ahora = Date.now() * 1000;
+		await alm.poner({ clave: "asistencia|g1|ana|" + F, tipo: "asistencia", maestro_id: "m1", seq: ahora - 3, capturado_en: new Date().toISOString(),
+			datos: asis("ana", "ausente"), descripcion: "Asistencia de Ana", base: { estado: "presente" }, propias: [], intentado: false });
+		await alm.poner({ clave: "registro|m1|beto|" + F, tipo: "registro", maestro_id: "m1", seq: ahora - 2, capturado_en: new Date().toISOString(),
+			datos: reg("beto", 2, 1), descripcion: "Cierre de Beto", base: { participacion: 1, conducta: 1 }, propias: [], intentado: true });
+		await alm.poner({ clave: "calificacion|m1|caro|p1", tipo: "calificacion", maestro_id: "m1", seq: ahora - 1, capturado_en: new Date().toISOString(),
+			datos: calif("caro", "p1", { nivel: "logrado", estado_entrega: "entregado" }), descripcion: "Calificación de Caro", base: null, propias: [], intentado: false });
+		const b = bandeja(cliente(bdR, {}), alm);
+		await b.iniciar();
+		await vacia(b);
+		ok("formato anterior: las tres llegan, sin avisos",
+			[asisDe(bdR, "ana").asistencia_estado, vReg(regDe(bdR, "beto")), calDe(bdR, "caro", "p1") && calDe(bdR, "caro", "p1").nivel, b.eventos.conflictos.length, b.pendientes()],
+			["ausente", { participacion: 2, conducta: 1 }, "logrado", 0, 0]);
+	});
+
+	// El frontend nuevo antes que la migración: sin la columna, se usa la regla por contenido
+	await caso("sin la columna captura_id", async () => {
+		if (NUEVO) B.marcaDisponible(null);
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente" });
+		bdR.asistencias.push({ id: "q2", maestro_id: "m1", grupo_id: "g1", alumno_id: "beto", fecha: F, asistencia_estado: "presente" });
+		const s = cliente(bdR, { red: true, sinMarca: true });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
+		b.iniciar();
+		await b.agregar("asistencia", asis("ana", "justificada"), "Asistencia de Ana", vista({ estado: "presente" }, null), C(["estado"]));
+		await b.agregar("asistencia", asis("beto", "justificada"), "Asistencia de Beto", vista({ estado: "presente" }, null), C(["estado"]));
+		await b.agregar("calificacion", calif("caro", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Caro", null, C(["nivel", "estado_entrega"]));
+		asisDe(bdR, "beto").asistencia_estado = "ausente"; // otro aparato
+		s.modo.red = false;
+		await b.procesar();
+		await vacia(b);
+		ok("sin la columna: se guarda por contenido y se avisa el conflicto, sin rechazos",
+			[asisDe(bdR, "ana").asistencia_estado, asisDe(bdR, "beto").asistencia_estado, calDe(bdR, "caro", "p1") && calDe(bdR, "caro", "p1").nivel,
+				b.eventos.conflictos.map((c) => c[0]), b.eventos.rechazos.length],
+			["justificada", "ausente", "logrado", ["Asistencia de Beto"], 0]);
+		if (NUEVO) ok("sin la columna: la bandeja lo recuerda", B.marcaDisponible(), false);
+		if (NUEVO) B.marcaDisponible(true);
+	});
+
+	// Retirar el cierre (falta después del cierre): borra el relleno propio; no el que otro cambió
+	await caso("retiro con marca", async () => {
+		const bdR = crearBD();
+		const s = cliente(bdR, {});
+		const b = bandeja(s, B.almacenMemoria());
+		b.iniciar();
+		for (const al of ["ana", "beto"]) await b.agregar("registro", reg(al, 1, 1), "Cierre de " + al, null, RELLENO);
+		await vacia(b);
+		const baseAna = vista({ participacion: 1, conducta: 1 }, marcaDe(regDe(bdR, "ana")));
+		const baseBeto = vista({ participacion: 1, conducta: 1 }, marcaDe(regDe(bdR, "beto")));
+		Object.assign(regDe(bdR, "beto"), { participacion: 2, captura_id: "otro" });
+		await b.agregar("registro_borrar", { alumno_id: "ana", fecha: F }, "Cierre de Ana", baseAna);
+		await b.agregar("registro_borrar", { alumno_id: "beto", fecha: F }, "Cierre de Beto", baseBeto);
+		await vacia(b);
+		ok("retiro: se quita el de Ana; el de Beto (cambiado en otro aparato) se queda y se avisa",
+			[bdR.registro_diario.map((r) => r.alumno_id), b.eventos.conflictos.map((c) => c[0])], [["beto"], ["Cierre de Beto"]]);
+	});
+
+	ok("un error de la base sin su código técnico", /PGRST|código|\(error/.test(B.explicar({ status: 404, code: "PGRST205", message: "Could not find the table" })), false);
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

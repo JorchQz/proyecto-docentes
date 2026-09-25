@@ -17,7 +17,7 @@
 	Emergencia: publicar un sw.js que en "activate" borre sus cachés y llame
 	self.registration.unregister() (docs/PWA-MI-SALON.md §4.4).
 */
-var VERSION = "salon-2026-09-25-2";
+var VERSION = "salon-2026-09-25-3";
 var CACHE = "jissez-ms-" + VERSION;
 var SIN_CONEXION = "/salon/sin-conexion";
 var GUARDADOS = [SIN_CONEXION, "/iconos/mi-salon-192.png"];

@@ -30,9 +30,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
 	var siguientes = [];       // próximas sesiones sin fecha del proyecto activo (para "Trabajar hoy")
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
-	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja (null = no hay
-	// fila). Cada captura lleva ese valor como "la versión que vio" (concurrencia optimista,
-	// js/bandeja-salida.js); se actualiza al confirmar, en un conflicto y tras un rechazo.
+	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { captura_id, valor }
+	// (la marca de la última captura de Hoy y el contenido) o null = no hay fila. Cada captura lo
+	// lleva como "la versión que vio" (js/bandeja-salida.js); se actualiza al confirmar (aquí o en
+	// otra ventana de este aparato), en un conflicto y tras un rechazo.
 	var enBase = {};
 	var pintado = false; // ya se dibujaron las secciones (los avisos de la bandeja pueden repintar)
 
@@ -90,13 +91,34 @@ document.addEventListener("DOMContentLoaded", async function () {
 	*/
 	var bandeja = null;
 	var huboPendientes = false;
-	var avisosBandeja = []; // lo que la base no aceptó (o ya tenía algo más nuevo), para la maestra
+	// Lo que la base no aceptó (o ya tenía algo más nuevo), para la maestra: un renglón por
+	// dato ({ clave, texto }); un aviso nuevo del mismo dato reemplaza al anterior
+	var avisosBandeja = [];
+
+	/*
+		Pila fija abajo (a la vista donde esté la maestra, también en el Cierre del día): el
+		estado de la cola y el aviso de lo que no se guardó, uno sobre otro, sin encimarse.
+	*/
+	function pilaFija() {
+		if (typeof document.createElement !== "function" || !document.body) return null;
+		var pila = document.getElementById("hoyAvisosFijos");
+		if (pila && pila.appendChild) return pila;
+		pila = document.createElement("div");
+		pila.id = "hoyAvisosFijos";
+		pila.className = "fixed inset-x-4 bottom-4 z-40 flex flex-col items-center gap-2 pointer-events-none";
+		document.body.appendChild(pila);
+		var pastilla = document.getElementById("hoyEstadoGuardado");
+		if (pastilla && pastilla.parentNode) pila.appendChild(pastilla);
+		return pila;
+	}
 
 	function estadoGuardado(texto, tipo) {
 		var el = document.getElementById("hoyEstadoGuardado");
 		if (!el) return;
 		if (!texto) { el.classList.add("hidden"); return; }
-		el.className = "fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100%-2rem)] text-center rounded-2xl px-4 py-2 text-sm font-medium shadow-lg " +
+		var enPila = !!(el.parentNode && el.parentNode.id === "hoyAvisosFijos");
+		el.className = (enPila ? "pointer-events-auto max-w-full " : "fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100%-2rem)] ") +
+			"text-center rounded-2xl px-4 py-2 text-sm font-medium shadow-lg " +
 			(tipo === "error" ? "bg-red-600 text-white"
 			 : tipo === "ok"  ? "bg-emerald-600 text-white" : "bg-gray-800 text-white");
 		el.textContent = texto;
@@ -138,9 +160,69 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
-	// Lo que no se guardó, con su explicación (la captura ya salió de la cola)
-	function avisarBandeja(texto) {
-		avisosBandeja.push(texto);
+	// Lo que no se guardó, con su explicación (la captura ya salió de la cola): en la lista de
+	// arriba y en el aviso fijo de abajo
+	function avisarBandeja(clave, texto) {
+		avisosBandeja = avisosBandeja.filter(function (a) { return a.clave !== clave; }).concat([{ clave: clave, texto: texto }]);
+		pintarAvisosBandeja();
+		avisoFijo();
+	}
+
+	function cerrarAvisos() {
+		avisosBandeja = [];
+		var el = document.getElementById("hoyMensaje");
+		if (el) { el.textContent = ""; el.classList.add("hidden"); }
+		var fijo = document.getElementById("hoyAvisoFijo");
+		if (fijo && fijo.parentNode) fijo.parentNode.removeChild(fijo);
+	}
+
+	// El aviso fijo (role="alert": un lector de pantalla lo anuncia): el último dato que no se
+	// guardó, "Ver detalle" (lleva a la lista de arriba) y "Cerrar"
+	function avisoFijo() {
+		var pila = pilaFija();
+		if (!pila || !avisosBandeja.length) return;
+		var viejo = document.getElementById("hoyAvisoFijo");
+		if (viejo && viejo.parentNode) viejo.parentNode.removeChild(viejo);
+		var caja = document.createElement("div");
+		caja.id = "hoyAvisoFijo";
+		caja.setAttribute("role", "alert");
+		caja.className = "pointer-events-auto w-full max-w-lg rounded-2xl border border-red-200 bg-white shadow-xl p-4 text-sm text-red-800";
+		var n = avisosBandeja.length;
+		var titulo = document.createElement("p");
+		titulo.className = "font-semibold";
+		titulo.textContent = n === 1 ? "Una captura no se guardó" : n + " capturas no se guardaron";
+		var ultimo = document.createElement("p");
+		ultimo.className = "mt-1";
+		ultimo.textContent = avisosBandeja[n - 1].texto + (n > 1 ? " (y " + (n - 1) + " más)." : "");
+		var acciones = document.createElement("div");
+		acciones.className = "flex flex-wrap gap-2 mt-3";
+		var ver = document.createElement("button");
+		ver.type = "button";
+		ver.className = "min-h-[44px] px-4 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700";
+		ver.textContent = "Ver detalle";
+		ver.addEventListener("click", function () {
+			if (caja.parentNode) caja.parentNode.removeChild(caja);
+			var el = document.getElementById("hoyMensaje");
+			if (!el || !el.scrollIntoView) return;
+			el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
+			el.setAttribute("tabindex", "-1");
+			el.scrollIntoView({ block: "start", behavior: "smooth" });
+			try { el.focus({ preventScroll: true }); } catch (_) {}
+		});
+		var cerrar = document.createElement("button");
+		cerrar.type = "button";
+		cerrar.className = "min-h-[44px] px-4 rounded-lg border border-red-200 bg-white text-sm font-semibold text-red-700 hover:bg-red-50";
+		cerrar.textContent = "Cerrar";
+		cerrar.addEventListener("click", function () { if (caja.parentNode) caja.parentNode.removeChild(caja); });
+		acciones.appendChild(ver);
+		acciones.appendChild(cerrar);
+		caja.appendChild(titulo);
+		caja.appendChild(ultimo);
+		caja.appendChild(acciones);
+		pila.insertBefore(caja, pila.firstChild);
+	}
+
+	function pintarAvisosBandeja() {
 		var el = document.getElementById("hoyMensaje");
 		if (!el) return;
 		el.className = "rounded-xl px-4 py-3 text-sm bg-red-50 text-red-700 border border-red-200";
@@ -151,9 +233,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.appendChild(titulo);
 		var ul = document.createElement("ul");
 		ul.className = "list-disc pl-5 flex flex-col gap-1";
-		avisosBandeja.forEach(function (t) {
+		avisosBandeja.forEach(function (a) {
 			var li = document.createElement("li");
-			li.textContent = t;
+			li.textContent = a.texto;
 			ul.appendChild(li);
 		});
 		el.appendChild(ul);
@@ -161,7 +243,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cerrar.type = "button";
 		cerrar.className = "mt-2 min-h-[44px] px-4 rounded-lg border border-red-200 bg-white text-sm font-semibold text-red-700 hover:bg-red-50";
 		cerrar.textContent = "Entendido";
-		cerrar.addEventListener("click", function () { avisosBandeja = []; el.textContent = ""; el.classList.add("hidden"); });
+		cerrar.addEventListener("click", cerrarAvisos);
 		el.appendChild(cerrar);
 		el.classList.remove("hidden");
 	}
@@ -173,16 +255,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return v === undefined ? null : v;
 	}
 
-	function guardar(tipo, datos, descripcion) {
+	// opciones: { campos: [los que tocó la maestra] } o { relleno: true } (1 y 1 del cierre)
+	function guardar(tipo, datos, descripcion, opciones) {
 		if (!bandeja) return;
-		bandeja.agregar(tipo, datos, descripcion, baseDe(tipo, datos)).catch(function (e) { console.error("hoy: no se pudo encolar", e); });
+		bandeja.agregar(tipo, datos, descripcion, baseDe(tipo, datos), opciones).catch(function (e) { console.error("hoy: no se pudo encolar", e); });
 	}
 
 	/*
 		Tras un conflicto o un rechazo, la pantalla muestra lo que quedó en la base (sin esperar
 		a recargar). `v`: el valor de la base (js/bandeja-salida.js, valorDeFila); null = no hay fila.
 	*/
-	function aplicarValor(it, v) {
+	function aplicarValor(it, v, id) {
 		if (!pintado) return;
 		var d = it.datos || {};
 		try {
@@ -205,6 +288,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var k = d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
 				var c = calificaciones[k] || { alumno_id: d.fila.alumno_id, producto_sesion_id: d.fila.producto_sesion_id };
 				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { c[f] = v ? v[f] : null; });
+				if (id && !c.id) c.id = id;
 				calificaciones[k] = c;
 				renderTareas();
 				repintarSesiones();
@@ -212,6 +296,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (e) {
 			console.error("hoy: no se pudo mostrar lo guardado", e);
 		}
+	}
+
+	// ¿Lo que muestra la pantalla es distinto de `v` (lo que hay en la base)?
+	function difiere(it, v) {
+		var d = it.datos || {};
+		if (it.tipo === "asistencia") return (asistencia[d.alumno_id] || null) !== (v && v.estado ? v.estado : null);
+		if (it.tipo === "registro" || it.tipo === "registro_borrar") {
+			var r = registroGuardado[d.alumno_id] ? registro[d.alumno_id] : null;
+			if (!r || !v) return !r !== !v;
+			return r.participacion !== v.participacion || r.conducta !== v.conducta;
+		}
+		if (it.tipo === "calificacion" && d.fila) {
+			var c = calificaciones[d.fila.alumno_id + "|" + d.fila.producto_sesion_id] || {};
+			return ["estado_entrega", "nivel", "puntaje", "retroalimentacion"].some(function (f) {
+				var a = c[f] === undefined || c[f] === "" ? null : c[f], b = v ? v[f] : null;
+				return (a === null ? null : String(a)) !== (b === null || b === undefined ? null : String(b));
+			});
+		}
+		return false;
 	}
 
 	function nombreDe(alumnoId) {
@@ -243,25 +346,44 @@ document.addEventListener("DOMContentLoaded", async function () {
 			alCambiar: pintarBandeja,
 			// La base ya tiene lo capturado: es la nueva "versión que vio" esta pantalla
 			alGuardar: function (it, r) {
-				enBase[it.clave] = r ? r.valor : null;
-				if (it.tipo !== "calificacion" || !r || !r.id) return;
-				var c = calificaciones[it.datos.fila.alumno_id + "|" + it.datos.fila.producto_sesion_id];
-				if (c && !c.id) c.id = r.id;
+				enBase[it.clave] = r ? r.base : null;
+				if (it.tipo === "calificacion" && r && r.id) {
+					var c = calificaciones[it.datos.fila.alumno_id + "|" + it.datos.fila.producto_sesion_id];
+					if (c && !c.id) c.id = r.id;
+				}
+				// Se escriben solo los campos tocados: si la fila trae otros que esta pantalla no
+				// tenía (los capturó otra ventana), se muestran
+				if (r && !r.sigue && difiere(it, r.fila ? r.valor : null)) aplicarValor(it, r.fila ? r.valor : null, r.id);
 			},
 			// Otro dispositivo (u otra pantalla) la cambió: se conservó lo de la base y se muestra
 			alConflicto: function (it, r) {
-				enBase[it.clave] = r.actual;
-				if (!r.sigue) aplicarValor(it, r.actual);
-				avisarBandeja(r.texto);
+				enBase[it.clave] = r.base;
+				if (!r.sigue) aplicarValor(it, r.actual, r.id);
+				avisarBandeja(it.clave, r.texto);
 			},
 			alRechazar: function (it, explicacion, r) {
-				if (r && r.actual !== undefined) {
-					enBase[it.clave] = r.actual;
+				if (r && r.base !== undefined) {
+					enBase[it.clave] = r.base;
 					if (!r.sigue) aplicarValor(it, r.actual);
 				}
-				avisarBandeja((it.descripcion || "Una captura") + ": " + explicacion + ".");
+				avisarBandeja(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + ".");
+			},
+			// Otra ventana de Hoy en este aparato (la app y una pestaña) confirmó algo o no pudo:
+			// esta pantalla se entera de la versión nueva y la muestra (si no hay algo más nuevo
+			// pendiente de ese dato)
+			alSaber: function (m) {
+				var it = { clave: m.clave, tipo: m.tipoCaptura, datos: m.datos };
+				if (!it.datos || !it.tipo) return;
+				if (m.base !== undefined) enBase[m.clave] = m.base;
+				// `sigue` lo calculó quien envió, sobre la cola compartida del aparato; sin
+				// IndexedDB cada ventana tiene su cola y se mira la propia
+				var pendiente = m.sigue || (bandeja && !bandeja.persistente() && bandeja.pendienteDe(m.clave));
+				var v = m.base ? m.base.valor : null;
+				if (m.base !== undefined && !pendiente && difiere(it, v)) aplicarValor(it, v, m.id);
+				if (m.tipo === "aviso" && m.texto) avisarBandeja(m.clave, m.texto);
 			},
 		});
+		pilaFija();
 		// Volvió la red, o la app volvió a primer plano: se reenvía lo pendiente
 		window.addEventListener("online", function () { bandeja.procesar(); });
 		document.addEventListener("visibilitychange", function () {
@@ -308,28 +430,49 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// todo el estado está inicializado. Las funciones se izan, las asignaciones de
 	// `var` no: arrancar aquí dejaba variables de estado en undefined.
 
+	// La marca de la última captura (captura_id) se lee con cada fila; si la base aún no tiene la
+	// columna (el frontend se publicó antes que la migración), se lee sin ella y la bandeja
+	// compara por contenido (js/bandeja-salida.js)
+	var conMarca = !(window.BandejaSalida && window.BandejaSalida.marcaDisponible() === false);
+	function conCaptura(columnas) { return columnas + (conMarca ? ", captura_id" : ""); }
+	function baseDeFila(tipo, fila) {
+		return window.BandejaSalida ? window.BandejaSalida.baseDeFila(tipo, fila) : null;
+	}
+
 	async function cargarDatosDelDia() {
 		// Asistencia y registro diario de hoy
-		var asisRes = await window.sb.from("asistencias")
-			.select("alumno_id, asistencia_estado")
-			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("fecha", hoy);
+		// error-revisado-en: asisRes.error
+		function leerAsistencia() {
+			return window.sb.from("asistencias")
+				.select(conCaptura("alumno_id, asistencia_estado"))
+				.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("fecha", hoy);
+		}
+		var asisRes = await leerAsistencia();
+		if (asisRes.error) {
+			if (!(conMarca && window.BandejaSalida && window.BandejaSalida.faltaMarca(asisRes.error))) throw asisRes.error;
+			conMarca = false;
+			window.BandejaSalida.marcaDisponible(false);
+			asisRes = await leerAsistencia();
+		} else if (conMarca && window.BandejaSalida) {
+			window.BandejaSalida.marcaDisponible(true);
+		}
 		// Toda lectura fallida detiene la carga (ver el arranque): con datos a medias, el
 		// cierre del día guardaría 1 y 1 encima de lo capturado y las secciones dirían
 		// "nada pendiente"
 		if (asisRes.error) throw asisRes.error;
 		(asisRes.data || []).forEach(function (a) {
 			asistencia[a.alumno_id] = a.asistencia_estado;
-			if (window.BandejaSalida) enBase[claveDe("asistencia", { grupo_id: grupo.id, alumno_id: a.alumno_id, fecha: hoy })] = window.BandejaSalida.valorDeFila("asistencia", a);
+			if (window.BandejaSalida) enBase[claveDe("asistencia", { grupo_id: grupo.id, alumno_id: a.alumno_id, fecha: hoy })] = baseDeFila("asistencia", a);
 		});
 
 		var regRes = await window.sb.from("registro_diario")
-			.select("alumno_id, participacion, conducta")
+			.select(conCaptura("alumno_id, participacion, conducta"))
 			.eq("maestro_id", user.id).eq("fecha", hoy);
 		if (regRes.error) throw regRes.error;
 		(regRes.data || []).forEach(function (r) {
 			registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
 			registroGuardado[r.alumno_id] = true;
-			if (window.BandejaSalida) enBase[claveDe("registro", { alumno_id: r.alumno_id, fecha: hoy })] = window.BandejaSalida.valorDeFila("registro", r);
+			if (window.BandejaSalida) enBase[claveDe("registro", { alumno_id: r.alumno_id, fecha: hoy })] = baseDeFila("registro", r);
 		});
 
 		// Proyectos del grupo que mira "Hoy" (js/alcance-hoy.js) → sesiones → productos.
@@ -400,12 +543,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var idsRelevantes = productos.map(function (p) { return p.id; });
 		var califs = await window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
 			return window.sb.from("calificaciones")
-				.select("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, fecha")
+				.select(conCaptura("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, fecha"))
 				.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
 		});
 		califs.forEach(function (c) {
 			calificaciones[c.alumno_id + "|" + c.producto_sesion_id] = c;
-			if (window.BandejaSalida) enBase[claveDe("calificacion", { fila: c })] = window.BandejaSalida.valorDeFila("calificacion", c);
+			if (window.BandejaSalida) enBase[claveDe("calificacion", { fila: c })] = baseDeFila("calificacion", c);
 		});
 
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
@@ -422,17 +565,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── Guardado ──────────────────────────────────────────────────────────────
 	// Cada guardado es una captura para la bandeja (js/bandeja-salida.js): asistencia y cierre
 	// del día van por su llave natural; la fecha es la del día en que se abrió Hoy. La bandeja
-	// solo escribe si la base sigue como la vio esta pantalla (enBase)
+	// solo escribe si la base sigue como la vio esta pantalla (enBase), y solo los campos tocados
 	function guardarAsistencia(alumnoId, estado) {
 		guardar("asistencia", { grupo_id: grupo.id, alumno_id: alumnoId, fecha: hoy, estado: estado },
-			"Asistencia de " + nombreDe(alumnoId));
+			"Asistencia de " + nombreDe(alumnoId), { campos: ["estado"] });
 	}
 
-	function guardarRegistro(alumnoId) {
+	// campo: "participacion" o "conducta" (lo que tocó la maestra); sin campo, el relleno 1 y 1
+	// del cierre, que solo se inserta donde no hay fila (nunca pisa ni cuenta como captura)
+	function guardarRegistro(alumnoId, campo) {
 		var v = registro[alumnoId] || { participacion: 1, conducta: 1 };
 		registroGuardado[alumnoId] = true;
 		guardar("registro", { alumno_id: alumnoId, fecha: hoy, participacion: v.participacion, conducta: v.conducta },
-			"Cierre del día de " + nombreDe(alumnoId));
+			"Cierre del día de " + nombreDe(alumnoId), campo ? { campos: [campo] } : { relleno: true });
 	}
 
 	function faltoHoy(alumnoId) {
@@ -447,7 +592,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		que faltaron: ese día no participaron.
 	*/
 	function completarCierre() {
-		// Una captura por alumno; la bandeja manda juntas las que aún no tienen fila (un insert)
+		// Un relleno por alumno; la bandeja los manda juntos en un insert que no pisa
 		alumnos.forEach(function (al) {
 			if (registroGuardado[al.id] || faltoHoy(al.id)) return;
 			if (!registro[al.id]) registro[al.id] = { participacion: 1, conducta: 1 };
@@ -499,7 +644,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// revisar hoy una tarea de la semana pasada no la mueve (evaluado_en guarda el
 			// momento del último cambio; es informativo, no decide quién gana)
 			guardar("calificacion", { id: actual.id || null, fecha: hoy, fila: fila },
-				"Calificación de " + alumno.nombre_completo + " en " + (producto.nombre || "un producto"));
+				"Calificación de " + alumno.nombre_completo + " en " + (producto.nombre || "un producto"),
+				{ campos: Object.keys(cambios) });
 		})();
 	}
 
@@ -993,8 +1139,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var actual = registro[alumnoId] || { participacion: 1, conducta: 1 };
 		actual[btn.dataset.cierre] = Number(btn.dataset.valor);
 		registro[alumnoId] = actual;
-		guardarRegistro(alumnoId);
-		completarCierre(); // la primera excepción guarda el día de todo el grupo
+		guardarRegistro(alumnoId, btn.dataset.cierre);
+		completarCierre(); // la primera excepción guarda el día de todo el grupo (relleno)
 		renderCierre();
 	});
 
@@ -1014,11 +1160,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var lista = await bandeja.lista();
 		lista.forEach(function (it) {
 			var d = it.datos || {};
+			// Solo los campos que tocó la captura (una ventana vieja no tapa lo que otra capturó)
+			var v = window.BandejaSalida.valoresPendientes(it);
 			if (it.tipo === "asistencia") {
-				if (d.grupo_id === grupo.id && d.fecha === hoy) asistencia[d.alumno_id] = d.estado;
+				if (d.grupo_id === grupo.id && d.fecha === hoy && v.estado) asistencia[d.alumno_id] = v.estado;
 			} else if (it.tipo === "registro") {
 				if (d.fecha !== hoy) return;
-				registro[d.alumno_id] = { participacion: d.participacion, conducta: d.conducta };
+				if (it.relleno && registroGuardado[d.alumno_id]) return; // ya hay fila: el relleno no la cambia
+				var r = registro[d.alumno_id] || { participacion: 1, conducta: 1 };
+				registro[d.alumno_id] = {
+					participacion: "participacion" in v ? v.participacion : r.participacion,
+					conducta: "conducta" in v ? v.conducta : r.conducta,
+				};
 				registroGuardado[d.alumno_id] = true;
 			} else if (it.tipo === "registro_borrar") {
 				if (d.fecha !== hoy) return;
@@ -1027,7 +1180,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} else if (it.tipo === "calificacion" && d.fila) {
 				var k = d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
 				var c = calificaciones[k] || { alumno_id: d.fila.alumno_id, producto_sesion_id: d.fila.producto_sesion_id };
-				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { c[f] = d.fila[f]; });
+				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { if (f in v) c[f] = v[f]; });
 				if (!c.id && d.id) c.id = d.id;
 				calificaciones[k] = c;
 			}

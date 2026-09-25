@@ -90,9 +90,9 @@
 							var caja = document.getElementById("pendientes");
 							caja.textContent = yo
 								? (n === 1 ? "Tienes 1 captura de Hoy guardada" : "Tienes " + n + " capturas de Hoy guardadas") +
-									" en este dispositivo. Se enviarán cuando vuelva la señal y abras Hoy."
+									" en este dispositivo. Se enviarán solas cuando vuelva la señal y abras Mi Salón."
 								: (n === 1 ? "Hay 1 captura de Hoy guardada" : "Hay " + n + " capturas de Hoy guardadas") +
-									" en este dispositivo. Se enviarán cuando vuelva la señal y la cuenta que las capturó entre y abra Hoy.";
+									" en este dispositivo. Se enviarán cuando vuelva la señal y la cuenta que las capturó entre y abra Mi Salón.";
 							caja.className = "pendientes si";
 						};
 					} catch (_) { try { db.close(); } catch (__) {} }

@@ -1,69 +1,87 @@
 /*
 	bandeja-salida.js — La cola de guardado de "Hoy" vive en el dispositivo (fase 2.5 de
-	docs/PWA-MI-SALON.md, §9.3).
+	docs/PWA-MI-SALON.md, §9.3; marca por captura, §9.8).
 
-	Antes la cola de js/hoy.js vivía solo en memoria: si la app se cerraba, se recargaba o iOS
-	la descargaba sin red, lo pendiente se perdía. Ahora cada captura se guarda PRIMERO aquí
-	(IndexedDB "jissez-bandeja", almacén "pendientes") y después se envía en serie. Se borra
-	solo cuando la base la confirmó. Si no hay IndexedDB (o falla), la cola sigue en memoria,
-	como antes, y la página lo dice.
+	Cada captura se guarda PRIMERO aquí (IndexedDB "jissez-bandeja", almacén "pendientes") y
+	después se envía en serie. Se borra solo cuando la base la confirmó. Si no hay IndexedDB (o
+	falla), la cola sigue en memoria y la página lo dice.
 
-	Cada captura es un dato serializable:
-		{ clave, tipo, maestro_id, seq, capturado_en, datos, descripcion, base, propias, intentado }
+	Cada captura es un dato serializable (formato 2):
+		{ v: 2, clave, tipo, maestro_id, seq, capturado_en, datos, descripcion, captura_id,
+		  campos, vistos, relleno?, borrar?, intentado }
 	  tipo "asistencia"      datos { grupo_id, alumno_id, fecha, estado }
 	  tipo "registro"        datos { alumno_id, fecha, participacion, conducta }   (cierre del día)
 	  tipo "registro_borrar" datos { alumno_id, fecha }                            (se retira el cierre)
-	  tipo "calificacion"    datos { id?, fecha, fila }  (fila: la de calificaciones, sin evaluado_en)
+	  tipo "calificacion"    datos { id?, fecha, fila }  (fila: la de calificaciones)
+	  campos  { campo: valor } solo lo que la maestra tocó (estado; participacion, conducta;
+	          estado_entrega, nivel, puntaje, retroalimentacion)
+	  vistos  { campo: { fila, id, valor } } la versión de la base que la pantalla tenía al tocarlo
 
-	Concurrencia optimista (dos dispositivos, la misma maestra), sin depender de relojes:
-	  - El "valor" de un dato es su contenido en la base: asistencia { estado }; cierre del día
-	    { participacion, conducta }; calificación { estado_entrega, nivel, puntaje,
-	    retroalimentacion }; null = no hay fila. Es la "versión" que se compara (registro_diario
-	    no tiene columna de versión y evaluado_en de calificaciones lo pone el reloj del aparato).
-	  - Cada captura guarda `base`: el valor que la pantalla tenía de la base al tocarla. Si ya
-	    había una captura pendiente de la misma llave, la nueva hereda su base (la pantalla aún
-	    no sabe lo que hay en la base) y en `propias` lo que este dispositivo ya pudo haber
-	    escrito (capturas que se intentaron enviar).
-	  - Al enviar, la escritura es CONDICIONAL y atómica en un solo statement: update o delete
-	    con filtros "la fila sigue con el valor base"; si base es null, insert que no pisa
-	    (ON CONFLICT DO NOTHING; en calificaciones, el índice único parcial responde 23505).
-	  - Si no aplicó, se lee la fila: si ya tiene el valor deseado, listo; si tiene la base o un
-	    valor propio, se repite la escritura condicional con ese valor; si tiene otra cosa (otro
-	    dispositivo la cambió o la creó), NO se pisa: la captura sale de la cola y se avisa con
-	    el alumno, lo que quedó y lo que no se aplicó (alConflicto).
-	  - Reenviar la misma captura no duplica nada: la segunda vez la fila ya tiene su valor.
+	Marca por captura (columna captura_id en asistencias, calificaciones y registro_diario):
+	  - Cada escritura de Hoy pone un uuid NUEVO generado en el aparato. La "versión" de una fila
+	    es su marca. Una escritura de otra pantalla u otra versión de la app deja la fila sin
+	    marca (trigger de supabase/mi_salon_b12_captura_id_2026-09.sql); sin marca se compara por
+	    contenido, como antes.
+	  - La escritura es condicional y atómica: update ... where captura_id = <la que vio la
+	    pantalla> (sin marca: is null + el contenido de los campos que se escriben); si no había
+	    fila, insert que no pisa. Solo se escriben los campos que la maestra tocó: una ventana
+	    vieja no borra lo que otra ventana escribió en otros campos.
+	  - "Es mío": la marca está entre las que ESTE aparato generó para esa llave (almacén
+	    "propias", compartido por todas las ventanas, por cuenta, con poda por cantidad y no por
+	    reloj). Otro aparato nunca comparte un uuid: no hay ABA.
+	  - Si la escritura no aplicó, se lee la fila y se decide campo por campo (grupos:
+	    semáforo+entrega, puntaje, retroalimentación; participación, conducta; asistencia):
+	      * lo último que lo escribió fue una captura propia más vieja → se escribe encima, sin aviso
+	        (se sigue la cadena de marcas propias: cada una sabe sobre qué marca escribió y qué campos);
+	      * una captura propia más nueva ya lo escribió → esta captura ya no aplica (sin aviso);
+	      * otro aparato (o fila sin marca): si el campo sigue con el valor que vio la pantalla, se
+	        escribe; si otro aparato lo cambió → conflicto: NO se pisa, se avisa. Si otro aparato
+	        cambió solo OTROS campos, se escribe el campo tocado sin pisar los demás, sin aviso.
+	  - El relleno del Cierre del día (1 y 1 a todos) solo inserta donde no hay fila; nunca
+	    actualiza ni cuenta como captura de la maestra (se inserta sin marca).
+	  - Si la base aún no tiene la columna (el frontend se publicó antes que la migración), se
+	    detecta y se usa la regla anterior por contenido: el orden de despliegue no importa.
 
 	Otras reglas:
-	  - Una sola captura por llave (alumno + fecha, alumno + producto): la más reciente del
-	    dispositivo reemplaza a la anterior. Si una versión vieja estaba en camino, al volver no
-	    borra la nueva (se compara `seq`) y su valor pasa a `propias` de la nueva.
+	  - Una sola captura por llave: la más reciente reemplaza a la anterior y hereda sus campos
+	    (y la versión que vio de cada uno).
 	  - Solo se reintenta lo que es de red (sin respuesta: estado "red"; 408, 429, 5xx: estado
-	    "servidor"), con espera creciente, al volver la red (online), al volver a primer plano y
-	    al abrir la página. Sesión vencida (401/JWT): se refresca la sesión y se reintenta; si ya
-	    no hay sesión, se espera (nada se borra). Cualquier otra respuesta del servidor (400,
-	    403, 404, 409, un CHECK o un trigger que rechaza) NO se reintenta: se quita de la cola y
-	    se avisa con su explicación en español.
-	  - La cola es de la cuenta que capturó. Antes de enviar, y antes de dar por terminada una
-	    captura (guardada, en conflicto o rechazada), se confirma que la sesión del dispositivo
-	    es de esa cuenta. Si es de otra (cambió sin cerrar sesión), no se envía nada: las
-	    capturas esperan a su dueña (estado "cuenta").
+	    "servidor"), con espera creciente, al volver la red, al volver a primer plano y al abrir
+	    la página. Sesión vencida: se refresca y se reintenta; sin sesión, se espera. Cualquier
+	    otro "no" de la base (400, 403, 404, 409, un CHECK o un trigger) NO se reintenta: sale de
+	    la cola y se avisa en español, sin códigos técnicos.
+	  - La cola es de la cuenta que capturó (se confirma antes de enviar y antes de terminar).
+	  - Varias ventanas del mismo aparato: una sola envía a la vez (Web Locks, si hay) y se
+	    avisan por BroadcastChannel (lo confirmado, los avisos y los cambios de la cola).
 
 	Uso (js/hoy.js):
-		var b = BandejaSalida.crear({ sb, auth, maestroId, alCambiar, alGuardar, alConflicto, alRechazar });
-		b.agregar("asistencia", datos, "Asistencia de Ana", base);
+		var b = BandejaSalida.crear({ sb, auth, maestroId, alCambiar, alGuardar, alConflicto, alRechazar, alSaber });
+		b.agregar("asistencia", datos, "Asistencia de Ana", base, { campos: ["estado"] });
+		  base: lo que la pantalla sabe de la base (BandejaSalida.baseDeFila): { captura_id, valor } o null
 		b.iniciar();            // habilita el envío (después de pintar lo pendiente)
 		b.lista() → Promise<[capturas propias pendientes]>
 		b.pendientes(), b.persistente(), b.vacia(), b.esperarEnvio() → Promise
+	Otras páginas: BandejaSalida.vigilarFuera() (aviso "N capturas de Hoy sin enviar" y envío).
 	Cerrar sesión (js/navbar.js, js/sala-maestros.js):
 		BandejaSalida.confirmarSalida(sb) → Promise<boolean>
 */
 var BandejaSalida = (function () {
 	var NOMBRE_BD = "jissez-bandeja";
+	var VERSION_BD = 2;
 	var ALMACEN = "pendientes";
-	var MAX_INTENTOS_CAS = 4;
+	var PROPIAS = "propias"; // las marcas que generó este aparato, por llave
+	var META = "meta";       // el contador de capturas (orden sin reloj)
+	var CANAL = "jissez-bandeja";
+	var MAX_MARCAS = 40;     // por llave: se podan las más viejas por cantidad
+	var MAX_LLAVES = 3000;   // llaves con marcas guardadas (alumno y día, alumno y producto)
+	var MAX_INTENTOS_CAS = 5;
+	var LIMITE_ENVIO = 30000; // una petición que no contesta en 30 s se da por "sin señal"
 	// Una retroalimentación muy larga no va como filtro en la URL: se compara al leer
 	var RETRO_MAX_FILTRO = 1000;
 	var RECIENTE_MS = 5000; // una captura más vieja que esto ya esperó en la cola
+
+	// ¿La base tiene la columna captura_id? null: aún no se sabe (se intenta con ella)
+	var marca = { disponible: null };
 
 	// ── Reglas puras ─────────────────────────────────────────────────────────────
 	function clave(tipo, maestroId, d) {
@@ -73,14 +91,27 @@ var BandejaSalida = (function () {
 		throw new Error("bandeja: tipo desconocido " + tipo);
 	}
 
+	var CAMPOS = {
+		asistencia: ["estado"],
+		registro: ["participacion", "conducta"],
+		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion"],
+	};
+	// Campos que se deciden juntos: el semáforo implica la entrega (y "No entregó" quita el semáforo)
+	var GRUPOS = {
+		asistencia: [["estado"]],
+		registro: [["participacion"], ["conducta"]],
+		calificacion: [["estado_entrega", "nivel"], ["puntaje"], ["retroalimentacion"]],
+	};
+	function familia(tipo) { return tipo === "registro_borrar" ? "registro" : tipo; }
+	function columna(f) { return f === "estado" ? "asistencia_estado" : f; }
+
 	var MENSAJE_RED = /failed to fetch|fetch failed|networkerror|network request failed|load failed|timeout|timed out|aborted|network/i;
 
 	/*
 		tipoDeFallo(error) → "red" | "sesion" | "rechazo"
-		`error` es el que lanzan los envíos (con status y code de la respuesta) o cualquier
-		excepción. "rechazo" exige una respuesta del servidor que diga que no: sin respuesta,
-		o una excepción que no se entiende, se trata como de red (se reintenta; nunca se
-		descarta una captura por algo que no es un "no" de la base).
+		"rechazo" exige una respuesta del servidor que diga que no: sin respuesta, o una
+		excepción que no se entiende, se trata como de red (se reintenta; nunca se descarta una
+		captura por algo que no es un "no" de la base).
 	*/
 	function tipoDeFallo(e) {
 		var status = e && typeof e.status === "number" ? e.status : null;
@@ -99,8 +130,16 @@ var BandejaSalida = (function () {
 		return status > 0 ? "servidor" : "red";
 	}
 
+	// La base todavía no tiene la columna captura_id (se publicó el frontend antes que la migración)
+	function faltaMarca(e) {
+		if (!e) return false;
+		var texto = String(e.message || "") + " " + String(e.details || "") + " " + String(e.hint || "");
+		var code = String(e.code || "");
+		return /captura_id/.test(texto) && (code === "PGRST204" || code === "42703" || code === "PGRST100" || e.status === 400);
+	}
+
 	// Explicación para la maestra de por qué la base no aceptó una captura (en español; el
-	// texto técnico de la base solo va a la consola)
+	// texto técnico y los códigos de la base solo van a la consola)
 	function explicar(e) {
 		var code = e && e.code ? String(e.code) : "";
 		var status = e && e.status;
@@ -109,7 +148,7 @@ var BandejaSalida = (function () {
 		if (code === "23505" || status === 409) return "ya había un registro de ese dato guardado desde otro dispositivo o pantalla; se conservó ese";
 		if (code === "23514" || code === "22P02" || code === "22003" || code === "23502") return "un valor capturado no es válido";
 		if (code === "P0001" && e.message) return e.message; // los triggers propios hablan en español
-		return "la base no lo aceptó" + (code ? " (código " + code + ")" : status ? " (error " + status + ")" : "");
+		return "la base no lo aceptó";
 	}
 
 	// La respuesta de supabase-js trae status y error: se vuelve un Error con ambos (para lanzarlo)
@@ -119,29 +158,79 @@ var BandejaSalida = (function () {
 		e.status = res && typeof res.status === "number" ? res.status : (typeof err.status === "number" ? err.status : null);
 		e.code = err.code || "";
 		e.details = err.details || null;
+		e.hint = err.hint || null;
 		return e;
 	}
 
-	// ── Valores (la "versión" de un dato es su contenido) ────────────────────────
+	// Un id único generado en el aparato (la marca de cada captura)
+	function nuevoId() {
+		try {
+			if (typeof crypto !== "undefined" && crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+		} catch (_) {}
+		var b = new Array(16);
+		try {
+			if (typeof crypto !== "undefined" && crypto && typeof crypto.getRandomValues === "function") {
+				var u = new Uint8Array(16);
+				crypto.getRandomValues(u);
+				for (var i = 0; i < 16; i++) b[i] = u[i];
+			}
+		} catch (_) {}
+		for (var j = 0; j < 16; j++) if (typeof b[j] !== "number") b[j] = Math.floor(Math.random() * 256);
+		b[6] = (b[6] & 0x0f) | 0x40;
+		b[8] = (b[8] & 0x3f) | 0x80;
+		var h = b.map(function (x) { return (x + 0x100).toString(16).slice(1); }).join("");
+		return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+	}
+
+	// ── Valores ──────────────────────────────────────────────────────────────────
 	function num(v) { return v === null || v === undefined || v === "" ? null : Number(v); }
 	function txt(v) { return v === null || v === undefined || v === "" ? null : String(v); }
+	function normal(f, v) { return f === "participacion" || f === "conducta" || f === "puntaje" ? num(v) : txt(v); }
+	// Lo que la pantalla muestra cuando no hay fila (el cierre del día empieza en 1 y 1)
+	function predeterminado(tipo, f) { return familia(tipo) === "registro" ? 1 : null; }
+	function igual1(a, b) {
+		var na = a === undefined ? null : a, nb = b === undefined ? null : b;
+		return na === nb;
+	}
 
 	function valorDeFila(tipo, f) {
 		if (!f) return null;
-		if (tipo === "asistencia") return { estado: txt(f.asistencia_estado !== undefined ? f.asistencia_estado : f.estado) };
-		if (tipo === "registro" || tipo === "registro_borrar") return { participacion: num(f.participacion), conducta: num(f.conducta) };
-		if (tipo === "calificacion") {
+		var fam = familia(tipo);
+		if (fam === "asistencia") return { estado: txt(f.asistencia_estado !== undefined ? f.asistencia_estado : f.estado) };
+		if (fam === "registro") return { participacion: num(f.participacion), conducta: num(f.conducta) };
+		if (fam === "calificacion") {
 			return { estado_entrega: txt(f.estado_entrega), nivel: txt(f.nivel), puntaje: num(f.puntaje), retroalimentacion: txt(f.retroalimentacion) };
 		}
 		return null;
 	}
 
-	// Lo que la captura quiere dejar en la base
-	function valorDeseado(it) {
+	// Lo que la pantalla guarda como "versión que vio" de una fila leída: { captura_id, valor } o null
+	function baseDeFila(tipo, f) {
+		if (!f) return null;
+		return { captura_id: f.captura_id === undefined ? null : f.captura_id, valor: valorDeFila(tipo, f) };
+	}
+
+	function valorCampo(fuente, f) {
+		if (!fuente) return undefined;
+		if (f === "estado") return fuente.estado !== undefined ? fuente.estado : fuente.asistencia_estado;
+		return fuente[f];
+	}
+	function fuenteDe(it) { return familia(it.tipo) === "calificacion" ? (it.datos && it.datos.fila) || {} : it.datos || {}; }
+
+	// Formato anterior (3d48d1a): lo que la captura quería dejar, la fila completa
+	function valorDeseadoLegado(it) {
 		var d = it.datos || {};
 		if (it.tipo === "registro_borrar") return null;
 		if (it.tipo === "calificacion") return valorDeFila("calificacion", d.fila);
 		return valorDeFila(it.tipo, d);
+	}
+
+	// Lo que la captura quiere dejar en la base (los campos que tocó; null = retirar la fila)
+	function valorDeseado(it) {
+		if (!it) return null;
+		if (it.v !== 2) return valorDeseadoLegado(it);
+		if (it.borrar) return null;
+		return Object.assign({}, it.campos || {});
 	}
 
 	function igual(a, b) {
@@ -151,36 +240,255 @@ var BandejaSalida = (function () {
 		return ka.every(function (k) { return a[k] === b[k]; });
 	}
 
-	// El valor como lo lee la maestra (para los avisos)
+	function elegir(v, campos) {
+		if (!v) return v;
+		var o = {};
+		campos.forEach(function (f) { o[f] = v[f] === undefined ? null : v[f]; });
+		return o;
+	}
+
+	// El valor como lo lee la maestra (para los avisos); acepta valores parciales
 	var ETIQ_ASISTENCIA = { presente: "Presente", ausente: "Falta", justificada: "Justificada" };
 	var ETIQ_NIVEL = { logrado: "Logrado", en_proceso: "En proceso", requiere_apoyo: "Requiere apoyo" };
 	var ETIQ_ENTREGA = { entregado: "Entregó", incompleto: "Incompleta", no_entregado: "No entregó", justificado: "Justificada", no_aplica: "No aplica" };
 	function describir(tipo, v) {
-		if (tipo === "asistencia") return v && v.estado ? (ETIQ_ASISTENCIA[v.estado] || v.estado) : "sin asistencia registrada";
-		if (tipo === "registro" || tipo === "registro_borrar") {
-			return v ? "participación " + (v.participacion === null ? "-" : v.participacion) + ", conducta " + (v.conducta === null ? "-" : v.conducta) : "sin cierre del día";
+		var fam = familia(tipo);
+		function g(k) { return v && v[k] !== undefined ? v[k] : null; }
+		if (fam === "asistencia") return v && v.estado ? (ETIQ_ASISTENCIA[v.estado] || v.estado) : "sin asistencia registrada";
+		if (fam === "registro") {
+			if (!v) return "sin cierre del día";
+			var pr = [];
+			if ("participacion" in v) pr.push("participación " + (g("participacion") === null ? "-" : g("participacion")));
+			if ("conducta" in v) pr.push("conducta " + (g("conducta") === null ? "-" : g("conducta")));
+			return pr.length ? pr.join(", ") : "sin cierre del día";
 		}
-		if (tipo === "calificacion") {
+		if (fam === "calificacion") {
 			if (!v) return "sin calificar";
 			var partes = [];
-			if (v.nivel) partes.push(ETIQ_NIVEL[v.nivel] || v.nivel);
-			if (v.estado_entrega && !(v.nivel && v.estado_entrega === "entregado")) partes.push(ETIQ_ENTREGA[v.estado_entrega] || v.estado_entrega);
-			if (v.puntaje !== null) partes.push("puntaje " + v.puntaje);
-			if (v.retroalimentacion) partes.push("retroalimentación “" + (v.retroalimentacion.length > 60 ? v.retroalimentacion.slice(0, 57) + "..." : v.retroalimentacion) + "”");
-			return partes.length ? partes.join(", ") : "sin calificar";
+			var nivel = g("nivel"), entrega = g("estado_entrega"), puntaje = g("puntaje"), retro = g("retroalimentacion");
+			if (nivel) partes.push(ETIQ_NIVEL[nivel] || nivel);
+			if (entrega && !(nivel && entrega === "entregado")) partes.push(ETIQ_ENTREGA[entrega] || entrega);
+			if (puntaje !== null) partes.push("puntaje " + puntaje);
+			if (retro) partes.push("retroalimentación “" + (retro.length > 60 ? retro.slice(0, 57) + "..." : retro) + "”");
+			if (partes.length) return partes.join(", ");
+			if ("puntaje" in v && Object.keys(v).length === 1) return "sin puntaje";
+			if ("retroalimentacion" in v && Object.keys(v).length === 1) return "sin retroalimentación";
+			return "sin calificar";
 		}
 		return "";
 	}
 
-	function textoConflicto(it, actual) {
+	/*
+		El aviso de un conflicto: el alumno, lo que quedó en la base y lo que no se aplicó, solo
+		de los campos en conflicto. `r`: { valor (la fila en la base, completa o null),
+		conflictos: [[campos]], aplicado }
+	*/
+	function textoConflicto(it, r) {
+		var campos = [];
+		(r.conflictos || []).forEach(function (g) { campos = campos.concat(g); });
+		if (it.v !== 2) campos = CAMPOS[familia(it.tipo)];
+		var quedo = r.fila === false || r.valor === null || r.valor === undefined ? null : elegir(r.valor, campos);
+		var tuya = it.borrar || it.tipo === "registro_borrar" ? null : elegir(valorDeseado(it), campos);
 		return (it.descripcion || "Una captura") + ": se cambió desde otro dispositivo o pantalla (quedó: " +
-			describir(it.tipo, actual) + "). Se conservó eso; tu captura (" + describir(it.tipo, valorDeseado(it)) + ") no se aplicó.";
+			describir(it.tipo, quedo) + "). Se conservó eso; tu captura (" + describir(it.tipo, tuya) + ") no se aplicó." +
+			(r.aplicado ? " Lo demás que capturaste sí se guardó." : "");
 	}
 
-	// ── Escrituras condicionales (una por tabla) ─────────────────────────────────
+	// ── Capturas ─────────────────────────────────────────────────────────────────
+	/*
+		vistaDe(base) → { fila, id, valor }
+		  null/undefined             → no había fila
+		  { captura_id, valor }      → la fila que vio la pantalla, con su marca (null = sin marca)
+		  { estado } / { nivel ... } → formato anterior (solo contenido): marca desconocida
+	*/
+	function vistaDe(base) {
+		if (base === null || base === undefined) return { fila: false, id: null, valor: null };
+		if (typeof base === "object" && Object.prototype.hasOwnProperty.call(base, "valor")) {
+			if (base.valor === null || base.valor === undefined) return { fila: false, id: null, valor: null };
+			return { fila: true, id: base.captura_id === undefined ? null : base.captura_id, valor: base.valor };
+		}
+		return { fila: true, id: undefined, valor: base };
+	}
+
+	function vistoDeCampo(tipo, vista, f) {
+		return { fila: vista.fila, id: vista.id, valor: vista.fila ? normal(f, vista.valor ? vista.valor[f] : null) : predeterminado(tipo, f) };
+	}
+
+	function crearCaptura(tipo, maestroId, datos, descripcion, base, opciones) {
+		opciones = opciones || {};
+		var fam = familia(tipo);
+		var it = {
+			v: 2, clave: clave(tipo, maestroId, datos), tipo: tipo, maestro_id: maestroId,
+			seq: 0, capturado_en: new Date().toISOString(),
+			datos: datos, descripcion: descripcion || "",
+			captura_id: nuevoId(), campos: {}, vistos: {}, propiasValor: {}, intentado: false,
+		};
+		if (tipo === "registro" && opciones.relleno) it.relleno = true;
+		if (tipo === "registro_borrar") it.borrar = true;
+		var todos = CAMPOS[fam];
+		var tocados = it.relleno ? [] : it.borrar ? todos
+			: (opciones.campos || todos).filter(function (f) { return todos.indexOf(f) !== -1; });
+		var fuente = fuenteDe(it);
+		var vista = vistaDe(base);
+		tocados.forEach(function (f) {
+			it.campos[f] = it.borrar ? null : normal(f, valorCampo(fuente, f));
+			it.vistos[f] = vistoDeCampo(tipo, vista, f);
+		});
+		return it;
+	}
+
+	// Una captura del formato anterior (3d48d1a: la fila completa y `base` por contenido) al formato 2
+	function normalizar(it) {
+		if (!it || it.v === 2) return it;
+		var fam = familia(it.tipo);
+		var todos = CAMPOS[fam];
+		var n = Object.assign({}, it, { v: 2, legado: true, captura_id: it.captura_id || null, campos: {}, vistos: {}, propiasValor: {} });
+		n.borrar = it.tipo === "registro_borrar";
+		var deseado = n.borrar ? null : valorDeseadoLegado(it) || {};
+		var vista = vistaDe(it.base === undefined ? null : it.base); // sin `base`: "no existía"
+		todos.forEach(function (f) {
+			n.campos[f] = n.borrar ? null : (deseado[f] === undefined ? null : deseado[f]);
+			n.vistos[f] = vistoDeCampo(it.tipo, vista, f);
+		});
+		// Lo que ese aparato ya pudo haber escrito (formato anterior, por contenido)
+		(it.propias || []).forEach(function (v) {
+			if (!v) return;
+			todos.forEach(function (f) { (n.propiasValor[f] = n.propiasValor[f] || []).push(v[f] === undefined ? null : v[f]); });
+		});
+		delete n.base;
+		delete n.propias;
+		return n;
+	}
+
+	// Los valores de los campos que una captura pendiente deja (para pintarla encima de la base)
+	function valoresPendientes(it) {
+		var n = normalizar(it);
+		if (!n) return {};
+		if (n.relleno) return valoresInsert(n);
+		return Object.assign({}, n.campos);
+	}
+
+	/*
+		Una captura nueva de una llave que ya tenía una pendiente: hereda sus campos y la versión
+		que vio de cada uno (la pantalla aún no sabe qué quedó en la base). `enVuelo(p)`: esa
+		captura ya se está enviando. → la captura a guardar, o null si no cambia nada.
+	*/
+	function combinar(prev, it, enVuelo) {
+		if (!prev || prev.maestro_id !== it.maestro_id) return it;
+		var p = normalizar(prev);
+		if (it.relleno) return null;   // ya hay algo de ese alumno: el relleno no agrega nada
+		if (p.relleno) return it;      // la maestra tocó a quien solo tenía el relleno
+		var n = Object.assign({}, it, { campos: {}, vistos: {}, propiasValor: {} });
+		var fam = familia(it.tipo);
+		if (it.borrar) {
+			n.campos = Object.assign({}, it.campos);
+			n.vistos = Object.assign({}, it.vistos);
+		} else if (p.borrar) {
+			// Se retiró el cierre y después se tocó: queda la fila que ve la pantalla completa
+			var fuente = fuenteDe(it);
+			CAMPOS[fam].forEach(function (f) {
+				n.campos[f] = f in it.campos ? it.campos[f] : normal(f, valorCampo(fuente, f));
+				n.vistos[f] = it.vistos[f] || p.vistos[f];
+			});
+		} else {
+			n.campos = Object.assign({}, p.campos, it.campos);
+			n.vistos = Object.assign({}, p.vistos, it.vistos);
+		}
+		Object.keys(p.propiasValor || {}).forEach(function (f) { n.propiasValor[f] = (p.propiasValor[f] || []).slice(-10); });
+		if (p.intentado || (enVuelo && enVuelo(p))) {
+			Object.keys(p.campos || {}).forEach(function (f) { (n.propiasValor[f] = n.propiasValor[f] || []).push(p.campos[f]); });
+		}
+		if (p.legado) n.legado = true;
+		return n;
+	}
+
+	// La marca propia que se anota al encolar (antes de enviar)
+	function entradaDe(it) {
+		return { id: it.captura_id, seq: it.seq, valores: Object.assign({}, it.campos), borrado: !!it.borrar, confirmada: false };
+	}
+	function podar(marcas) {
+		return marcas.slice().sort(function (a, b) { return a.seq - b.seq; }).slice(-MAX_MARCAS);
+	}
+
+	// ── Decidir campo por campo ──────────────────────────────────────────────────
+	/*
+		¿Quién escribió por última vez el campo f de la fila R? → la marca propia, o null (otro
+		aparato, fila sin marca, o no se sabe). Se sigue la cadena de marcas propias: cada una
+		confirmada sabe qué campos escribió (`escritos`) y sobre qué versión (`padre`); una que se
+		aplicó pero cuya respuesta se perdió se reconoce porque el campo tiene su valor.
+	*/
+	function ultimoEscritor(f, R, marcas) {
+		if (!R.fila) {
+			// ¿La quitó este aparato? La última marca propia confirmada de la llave es un retiro
+			var ultima = null;
+			marcas.forEach(function (m) { if (m.confirmada && (!ultima || m.seq > ultima.seq)) ultima = m; });
+			return ultima && ultima.borrado ? ultima : null;
+		}
+		var porId = {};
+		marcas.forEach(function (m) { porId[m.id] = m; });
+		var id = R.id, pasos = {};
+		while (id && !pasos[id]) {
+			pasos[id] = true;
+			var m = porId[id];
+			if (!m) return null;
+			if (!m.confirmada) {
+				// Se aplicó (la fila tiene su marca) pero no se sabe qué escribió: el campo es suyo si
+				// tiene su valor (nadie más lo cambió después: la marca seguiría siendo otra)
+				return m.valores && Object.prototype.hasOwnProperty.call(m.valores, f) && igual1(R.valor[f], m.valores[f]) ? m : null;
+			}
+			if ((m.escritos || []).indexOf(f) !== -1) return m;
+			if (!m.padre || !m.padre.fila) return null;
+			id = m.padre.id;
+		}
+		return null;
+	}
+
+	// "igual" | "propio" | "visto" | "superado" | "ajeno"
+	function estadoCampo(it, f, R, marcas, conMarca) {
+		if (!it.borrar && R.fila && igual1(R.valor[f], it.campos[f])) return "igual";
+		var quien = conMarca ? ultimoEscritor(f, R, marcas) : null;
+		if (quien) return quien.id === it.captura_id ? "igual" : quien.seq > it.seq ? "superado" : "propio";
+		var v = it.vistos[f] || { fila: false, id: null, valor: predeterminado(it.tipo, f) };
+		if (!R.fila) return v.fila ? "ajeno" : "visto";
+		if (igual1(R.valor[f], v.fila ? v.valor : predeterminado(it.tipo, f))) return "visto";
+		if ((it.legado || !conMarca) && (it.propiasValor && it.propiasValor[f] || []).some(function (x) { return igual1(x, R.valor[f]); })) return "propio";
+		return "ajeno";
+	}
+
+	// → { escribir: [campos], conflictos: [[campos]], superados: [[campos]] }
+	function decidir(it, R, marcas, conMarca) {
+		var fam = familia(it.tipo);
+		var escribir = [], conflictos = [], superados = [];
+		GRUPOS[fam].forEach(function (grupo) {
+			var campos = grupo.filter(function (f) { return Object.prototype.hasOwnProperty.call(it.campos, f); });
+			if (!campos.length) return;
+			var est = campos.map(function (f) { return estadoCampo(it, f, R, marcas, conMarca); });
+			if (est.indexOf("superado") !== -1) { superados.push(campos); return; }
+			if (est.every(function (e) { return e === "igual"; })) return;
+			if (est.indexOf("ajeno") !== -1) { conflictos.push(campos); return; }
+			escribir = escribir.concat(campos);
+		});
+		// Retirar el cierre es todo o nada
+		if (it.borrar && (conflictos.length || superados.length)) escribir = [];
+		return { escribir: escribir, conflictos: conflictos, superados: superados };
+	}
+
+	// ── Escrituras condicionales ─────────────────────────────────────────────────
 	function filtrar(q, pares) {
 		pares.forEach(function (p) { q = p[1] === null || p[1] === undefined ? q.is(p[0], null) : q.eq(p[0], p[1]); });
 		return q;
+	}
+
+	function valoresInsert(it) {
+		var fam = familia(it.tipo), fuente = fuenteDe(it), v = {};
+		CAMPOS[fam].forEach(function (f) {
+			if (it.campos && Object.prototype.hasOwnProperty.call(it.campos, f)) v[f] = it.campos[f];
+			else {
+				var x = valorCampo(fuente, f);
+				v[f] = x === undefined ? predeterminado(it.tipo, f) : normal(f, x);
+			}
+		});
+		return v;
 	}
 
 	var OPS = {
@@ -194,8 +502,6 @@ var BandejaSalida = (function () {
 				var d = it.datos;
 				return { maestro_id: it.maestro_id, grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha, asistencia_estado: v.estado };
 			},
-			cambios: function (it, v) { return { asistencia_estado: v.estado }; },
-			condicion: function (v) { return [["asistencia_estado", v.estado]]; },
 		},
 		registro: {
 			tabla: "registro_diario", columnas: "participacion, conducta", conflicto: "maestro_id,alumno_id,fecha",
@@ -203,8 +509,6 @@ var BandejaSalida = (function () {
 			nueva: function (it, v) {
 				return { maestro_id: it.maestro_id, alumno_id: it.datos.alumno_id, fecha: it.datos.fecha, participacion: v.participacion, conducta: v.conducta };
 			},
-			cambios: function (it, v) { return { participacion: v.participacion, conducta: v.conducta }; },
-			condicion: function (v) { return [["participacion", v.participacion], ["conducta", v.conducta]]; },
 		},
 		calificacion: {
 			// Una calificación por (maestro, alumno, producto): el índice único es parcial, así que
@@ -215,86 +519,187 @@ var BandejaSalida = (function () {
 				return [["maestro_id", it.maestro_id], ["alumno_id", f.alumno_id], ["producto_sesion_id", f.producto_sesion_id]];
 			},
 			// La fila entera de la captura (grado, campo, sesión...); evaluado_en = momento de la
-			// captura, solo informativo: la regla de concurrencia ya no depende de relojes
-			nueva: function (it) {
-				return Object.assign({ fecha: it.datos.fecha }, it.datos.fila, { maestro_id: it.maestro_id, evaluado_en: it.capturado_en });
-			},
-			cambios: function (it) { return Object.assign({}, it.datos.fila, { maestro_id: it.maestro_id, evaluado_en: it.capturado_en }); },
-			condicion: function (v) {
-				var c = [["estado_entrega", v.estado_entrega], ["nivel", v.nivel], ["puntaje", v.puntaje]];
-				if (!v.retroalimentacion || v.retroalimentacion.length <= RETRO_MAX_FILTRO) c.push(["retroalimentacion", v.retroalimentacion]);
-				return c;
+			// captura, solo informativo: la regla de concurrencia no depende de relojes
+			nueva: function (it, v) {
+				return Object.assign({ fecha: it.datos.fecha }, it.datos.fila, {
+					estado_entrega: v.estado_entrega, nivel: v.nivel, puntaje: v.puntaje, retroalimentacion: v.retroalimentacion,
+					entrego: v.estado_entrega === "entregado" || v.estado_entrega === "incompleto",
+					maestro_id: it.maestro_id, evaluado_en: it.capturado_en,
+				});
 			},
 		},
 	};
-	OPS.registro_borrar = OPS.registro;
 
-	// La fila de la base, ahora → { valor, id }
-	async function leerActual(sb, it) {
-		var op = OPS[it.tipo];
-		var res = await filtrar(sb.from(op.tabla).select(op.columnas), op.llave(it)).maybeSingle();
+	// Solo los campos que se escriben (una ventana vieja no pisa los demás)
+	function cambiosDe(it, campos) {
+		var c = {};
+		campos.forEach(function (f) { c[columna(f)] = it.campos[f]; });
+		if (familia(it.tipo) === "calificacion") {
+			if (campos.indexOf("estado_entrega") !== -1) c.entrego = it.campos.estado_entrega === "entregado" || it.campos.estado_entrega === "incompleto";
+			c.evaluado_en = it.capturado_en;
+		}
+		return c;
+	}
+
+	function columnasDe(op, conMarca) { return op.columnas + (conMarca ? ", captura_id" : ""); }
+
+	// La fila de la base, ahora → { fila, id (marca), valor, rowId }
+	async function leerActual(sb, it, conMarca) {
+		var op = OPS[familia(it.tipo)];
+		var res = await filtrar(sb.from(op.tabla).select(columnasDe(op, conMarca)), op.llave(it)).maybeSingle();
 		if (res.error) throw fallo(res);
-		return { valor: valorDeFila(it.tipo, res.data), id: res.data && res.data.id ? res.data.id : null };
+		var f = res.data;
+		return {
+			fila: !!f, id: f && conMarca && f.captura_id !== undefined ? f.captura_id : null,
+			valor: valorDeFila(it.tipo, f), rowId: f && f.id ? f.id : null,
+		};
 	}
 
 	/*
-		escribirSi(sb, it, esperado, deseado) → { ok, valor?, id? }
-		Escribe `deseado` solo si la base tiene `esperado` (null = no hay fila). Un solo statement:
-		la base lo resuelve de forma atómica. ok=false: la condición no se cumplió.
+		"La fila sigue como la vi": por su marca o, sin marca, por el contenido de los campos que
+		se escriben. estado.id: la marca (null = fila sin marca; undefined = no se sabe: solo contenido)
 	*/
-	async function escribirSi(sb, it, esperado, deseado) {
-		var op = OPS[it.tipo];
+	function condicion(q, estado, campos, contenido, conMarca) {
+		if (conMarca && estado.id) return q.eq("captura_id", estado.id);
+		if (conMarca && estado.id === null) q = q.is("captura_id", null);
+		campos.forEach(function (f) {
+			var v = contenido ? contenido[f] : null;
+			if (f === "retroalimentacion" && v && v.length > RETRO_MAX_FILTRO) return; // se compara leyendo
+			q = v === null || v === undefined ? q.is(columna(f), null) : q.eq(columna(f), v);
+		});
+		return q;
+	}
+
+	function retroLargaEnCondicion(estado, campos, contenido, conMarca) {
+		if (conMarca && estado.id) return false;
+		return campos.indexOf("retroalimentacion") !== -1 && contenido && contenido.retroalimentacion &&
+			contenido.retroalimentacion.length > RETRO_MAX_FILTRO;
+	}
+
+	// Una captura que esperó en la cola (sin red, reintento) no es una recién hecha en línea
+	function esperoEnCola(it) {
+		return !!(it.enCola || it.intentado || Date.now() - Date.parse(it.capturado_en) > RECIENTE_MS);
+	}
+
+	/*
+		escribir(sb, it, estado, campos, contenido, conMarca) → { ok, fila, valor, marca, rowId }
+		Un solo statement: la base lo resuelve de forma atómica. ok=false: la condición no se cumplió.
+		estado.fila=false: insert que no pisa (con todos los campos).
+	*/
+	async function escribir(sb, it, estado, campos, contenido, conMarca) {
+		var op = OPS[familia(it.tipo)];
+		var cols = columnasDe(op, conMarca);
 		var res;
-		if (esperado === null) {
-			if (deseado === null) return { ok: false };
+		if (it.borrar && !estado.fila) return { ok: false }; // no había fila que retirar: se lee
+		if (!estado.fila) {
+			var fila = op.nueva(it, valoresInsert(it));
+			// El relleno del cierre no es una captura de la maestra: va sin marca
+			if (conMarca && !it.relleno) fila.captura_id = it.captura_id;
 			if (op.conflicto) {
-				res = await sb.from(op.tabla).upsert(op.nueva(it, deseado), { onConflict: op.conflicto, ignoreDuplicates: true }).select(op.columnas);
+				res = await sb.from(op.tabla).upsert(fila, { onConflict: op.conflicto, ignoreDuplicates: true }).select(cols);
 			} else {
-				// Una captura que esperó en la cola (sin red, reintento) pudo encontrarse con una fila
-				// creada en otro lado: se mira antes, para no provocar un 409 en la consola. La
-				// captura recién hecha en línea va directo (una sola petición)
-				if (it.enCola || it.intentado || Date.now() - Date.parse(it.capturado_en) > RECIENTE_MS) {
-					if ((await leerActual(sb, it)).valor !== null) return { ok: false };
-				}
-				res = await sb.from(op.tabla).insert(op.nueva(it, deseado)).select(op.columnas);
+				// Una captura que esperó en la cola pudo encontrarse con una fila creada en otro lado:
+				// se mira antes, para no provocar un 409 en la consola
+				if (esperoEnCola(it) && (await leerActual(sb, it, conMarca)).fila) return { ok: false };
+				res = await sb.from(op.tabla).insert(fila).select(cols);
 				if (res.error && String(res.error.code || "") === "23505") return { ok: false };
 			}
-		} else if (deseado === null) {
-			res = await filtrar(filtrar(sb.from(op.tabla).delete(), op.llave(it)), op.condicion(esperado)).select("id");
+		} else if (it.borrar) {
+			res = await condicion(filtrar(sb.from(op.tabla).delete(), op.llave(it)), estado, CAMPOS.registro, contenido, conMarca).select("id");
 			if (res.error) throw fallo(res);
-			return res.data && res.data.length ? { ok: true, valor: null } : { ok: false };
+			return res.data && res.data.length ? { ok: true, fila: false, valor: null, marca: null, rowId: null } : { ok: false };
 		} else {
-			// Una retroalimentación muy larga no va en el filtro: se compara leyendo justo antes
-			if (it.tipo === "calificacion" && esperado.retroalimentacion && esperado.retroalimentacion.length > RETRO_MAX_FILTRO) {
-				if (!igual((await leerActual(sb, it)).valor, esperado)) return { ok: false };
+			if (retroLargaEnCondicion(estado, campos, contenido, conMarca)) {
+				var a = await leerActual(sb, it, conMarca);
+				if (!a.fila || !igual1(a.valor.retroalimentacion, contenido.retroalimentacion)) return { ok: false };
 			}
-			res = await filtrar(filtrar(sb.from(op.tabla).update(op.cambios(it, deseado)), op.llave(it)), op.condicion(esperado)).select(op.columnas);
+			var cambios = cambiosDe(it, campos);
+			if (conMarca) cambios.captura_id = it.captura_id;
+			res = await condicion(filtrar(sb.from(op.tabla).update(cambios), op.llave(it)), estado, campos, contenido, conMarca).select(cols);
 		}
 		if (res.error) throw fallo(res);
 		var filas = res.data ? [].concat(res.data) : [];
 		if (!filas.length) return { ok: false };
-		return { ok: true, valor: valorDeFila(it.tipo, filas[0]) || deseado, id: filas[0].id || null };
+		var f = filas[0];
+		return { ok: true, fila: true, valor: valorDeFila(it.tipo, f), marca: conMarca && f.captura_id !== undefined ? f.captura_id : null, rowId: f.id || null };
+	}
+
+	// Todos los campos tocados se vieron en la misma versión → { fila, id }; si no, null
+	function vistaComun(it) {
+		var campos = Object.keys(it.campos || {});
+		if (!campos.length) return null;
+		var v0 = it.vistos[campos[0]];
+		if (!v0) return null;
+		for (var i = 1; i < campos.length; i++) {
+			var v = it.vistos[campos[i]];
+			if (!v || v.fila !== v0.fila || v.id !== v0.id) return null;
+		}
+		return { fila: v0.fila, id: v0.id };
 	}
 
 	/*
-		enviar(sb, it) → { valor, id? } si quedó guardada, o { conflicto: true, actual } si otro
-		dispositivo la cambió. Lanza el error de la base (red, sesión o rechazo).
+		enviar(sb, it, ctx) → { aplicado, fila, valor, marca, rowId, escritos?, padre?, conflictos? }
+		ctx: { conMarca, marcas: () → Promise<[marcas propias de la llave]> }
+		Lanza el error de la base (red, sesión o rechazo).
 	*/
-	async function enviar(sb, it) {
-		var deseado = valorDeseado(it);
-		var base = it.base === undefined ? null : it.base; // capturas de antes de esta regla: "no existía"
-		var aceptables = [base].concat(it.propias || []);
-		var esperado = base;
-		for (var i = 0; i < MAX_INTENTOS_CAS; i++) {
-			if (!igual(esperado, deseado)) {
-				var r = await escribirSi(sb, it, esperado, deseado);
-				if (r.ok) return { valor: r.valor, id: r.id || null };
+	async function enviar(sb, it, ctx) {
+		var conMarca = !!ctx.conMarca;
+		var todos = CAMPOS[familia(it.tipo)];
+		function resultado(r, extra) {
+			return Object.assign({ fila: r.fila, valor: r.valor, marca: r.marca === undefined ? null : r.marca, rowId: r.rowId || null }, extra || {});
+		}
+
+		// 1. Directo, sin leer (el caso normal: un aparato, una ventana, en línea)
+		if (it.relleno) {
+			if (!it.intentado) {
+				var r0 = await escribir(sb, it, { fila: false, id: null }, [], null, conMarca);
+				if (r0.ok) return resultado(r0, { aplicado: true });
 			}
-			var actual = await leerActual(sb, it);
-			if (igual(actual.valor, deseado)) return { valor: actual.valor, id: actual.id };
-			var nuestro = aceptables.some(function (v) { return igual(v, actual.valor); });
-			if (!nuestro) return { conflicto: true, actual: actual.valor, id: actual.id };
-			esperado = actual.valor; // la base tiene lo que este dispositivo vio o escribió: se repite
+		} else {
+			var comun = vistaComun(it);
+			if (comun) {
+				var tocados = it.borrar ? todos : Object.keys(it.campos);
+				var contenido = {};
+				tocados.forEach(function (f) { contenido[f] = it.vistos[f] ? it.vistos[f].valor : null; });
+				var r1 = await escribir(sb, it, comun, tocados, contenido, conMarca);
+				if (r1.ok) {
+					return resultado(r1, {
+						aplicado: true, escritos: comun.fila && !it.borrar ? tocados : todos,
+						padre: comun.id === undefined || !conMarca ? undefined : { fila: comun.fila, id: comun.id },
+					});
+				}
+			}
+		}
+
+		// 2. Se lee la fila y se decide campo por campo
+		for (var i = 0; i < MAX_INTENTOS_CAS; i++) {
+			var R = await leerActual(sb, it, conMarca);
+			if (conMarca && R.fila && R.id && R.id === it.captura_id) {
+				// Ya estaba aplicada (se perdió la respuesta)
+				return resultado({ fila: true, valor: R.valor, marca: R.id, rowId: R.rowId }, { aplicado: false, yaEstaba: true });
+			}
+			if (it.relleno) {
+				if (R.fila) return resultado({ fila: true, valor: R.valor, marca: R.id, rowId: R.rowId }, { aplicado: false });
+				var ri = await escribir(sb, it, { fila: false, id: null }, [], null, conMarca);
+				if (ri.ok) return resultado(ri, { aplicado: true });
+				continue;
+			}
+			if (it.borrar && !R.fila) return resultado({ fila: false, valor: null }, { aplicado: false });
+			var marcas = conMarca && ctx.marcas ? await ctx.marcas() : [];
+			var d = decidir(it, R, marcas, conMarca);
+			if (!d.escribir.length) {
+				return resultado({ fila: R.fila, valor: R.valor, marca: R.id, rowId: R.rowId }, { aplicado: false, conflictos: d.conflictos });
+			}
+			var estado = { fila: R.fila, id: conMarca ? R.id : undefined };
+			var rw = await escribir(sb, it, estado, d.escribir, R.valor || {}, conMarca);
+			if (rw.ok) {
+				return resultado(rw, {
+					aplicado: true, conflictos: d.conflictos,
+					escritos: R.fila && !it.borrar ? d.escribir : todos,
+					padre: conMarca ? { fila: R.fila, id: R.id } : undefined,
+				});
+			}
+			// La fila cambió entre la lectura y la escritura: se vuelve a leer
 		}
 		// La fila cambió varias veces mientras se intentaba: se reintenta más tarde
 		var e = new Error("La fila cambió mientras se guardaba");
@@ -303,76 +708,132 @@ var BandejaSalida = (function () {
 	}
 
 	/*
-		Primer cierre del día: los alumnos sin fila se insertan todos en un solo statement que no
-		pisa (ON CONFLICT DO NOTHING). Los que no se insertaron (ya había fila) se resuelven uno
-		por uno con la regla general. → [{ valor } | { pendiente: true }] en el orden del lote.
+		El relleno del cierre (1 y 1 a quien aún no tiene fila): un solo insert que no pisa para
+		todos. Los que no se insertaron (ya había fila) se resuelven uno por uno (solo leen).
+		→ [{ aplicado, fila, valor } | { pendiente: true }] en el orden del lote.
 	*/
-	async function enviarLoteRegistros(sb, lote) {
+	async function enviarLoteRelleno(sb, lote, conMarca) {
 		var op = OPS.registro;
-		var res = await sb.from(op.tabla).upsert(lote.map(function (it) { return op.nueva(it, valorDeseado(it)); }),
-			{ onConflict: op.conflicto, ignoreDuplicates: true }).select("alumno_id, fecha, participacion, conducta");
+		var res = await sb.from(op.tabla).upsert(lote.map(function (it) { return op.nueva(it, valoresInsert(it)); }),
+			{ onConflict: op.conflicto, ignoreDuplicates: true }).select("alumno_id, fecha, participacion, conducta" + (conMarca ? ", captura_id" : ""));
 		if (res.error) throw fallo(res);
 		var puestas = {};
 		(res.data || []).forEach(function (f) { puestas[f.alumno_id + "|" + f.fecha] = f; });
 		return lote.map(function (it) {
 			var f = puestas[it.datos.alumno_id + "|" + it.datos.fecha];
-			return f ? { valor: valorDeFila("registro", f) } : { pendiente: true };
+			return f ? { aplicado: true, fila: true, valor: valorDeFila("registro", f), marca: null, rowId: null } : { pendiente: true };
 		});
 	}
 
 	// ── Almacenes ────────────────────────────────────────────────────────────────
 	function copia(it) { return it ? JSON.parse(JSON.stringify(it)) : it; }
 
-	// En memoria: sin IndexedDB, y en las pruebas (el mismo objeto simula "recargar")
+	// En memoria: sin IndexedDB, y en las pruebas (el mismo objeto = el mismo aparato)
 	function almacenMemoria() {
-		var mapa = {};
-		return {
+		var mapa = {}, marcas = {}, contador = Date.now() * 1000;
+		var a = {
 			persistente: false,
 			todos: function () { return Promise.resolve(Object.keys(mapa).map(function (k) { return copia(mapa[k]); })); },
 			obtener: function (c) { return Promise.resolve(copia(mapa[c]) || null); },
-			poner: function (it) { mapa[it.clave] = copia(it); return Promise.resolve(); },
+			poner: function (it) {
+				if (typeof it.seq === "number" && it.seq > contador) contador = it.seq;
+				mapa[it.clave] = copia(it);
+				return Promise.resolve();
+			},
 			quitarSi: function (c, seq) {
 				if (mapa[c] && mapa[c].seq === seq) delete mapa[c];
 				return Promise.resolve();
 			},
-			// Cambia la captura guardada solo si sigue siendo la misma (seq) o una más nueva (seq > desde)
+			// Cambia la captura guardada solo si pasa la prueba (la misma `seq`, o una más nueva)
 			cambiarSi: function (c, prueba, fn) {
 				if (mapa[c] && prueba(mapa[c])) fn(mapa[c]);
 				return Promise.resolve();
 			},
 			quitar: function (c) { delete mapa[c]; },
+			/*
+				encolar(it, combinarFn): en un solo paso, el siguiente número de captura, la captura
+				guardada (combinada con la pendiente de la misma llave) y su marca anotada como propia.
+				→ { guardada, sinCambio }
+			*/
+			encolar: function (it, combinarFn) {
+				contador += 1;
+				it.seq = contador;
+				var prev = mapa[it.clave] ? copia(mapa[it.clave]) : null;
+				var nuevo = combinarFn(prev, it);
+				if (!nuevo) return Promise.resolve({ guardada: prev, sinCambio: true });
+				mapa[it.clave] = copia(nuevo);
+				if (!nuevo.relleno) a.anotarMarca(it.clave, nuevo.maestro_id, entradaDe(nuevo));
+				return Promise.resolve({ guardada: copia(nuevo) });
+			},
+			marcas: function (c, maestroId) {
+				var r = marcas[c];
+				return Promise.resolve(r && (!maestroId || r.maestro_id === maestroId) ? copia(r.marcas) : []);
+			},
+			anotarMarca: function (c, maestroId, entrada) {
+				var r = marcas[c] = marcas[c] || { clave: c, maestro_id: maestroId, marcas: [] };
+				r.marcas = podar(r.marcas.filter(function (m) { return m.id !== entrada.id; }).concat([copia(entrada)]));
+				return Promise.resolve();
+			},
+			confirmarMarca: function (c, maestroId, id, cambios) {
+				var r = marcas[c];
+				var m = r && r.marcas.find(function (x) { return x.id === id; });
+				if (m) Object.assign(m, copia(cambios));
+				return Promise.resolve();
+			},
 		};
+		return a;
 	}
 
 	function abrirBD() {
 		return new Promise(function (ok) {
 			var hecho = false;
 			function fin(v) { if (!hecho) { hecho = true; ok(v); } else if (v && v.close) { try { v.close(); } catch (_) {} } }
-			setTimeout(function () { fin(null); }, 4000); // un navegador que nunca contesta
-			function crearAlmacen(db) {
-				if (!db.objectStoreNames.contains(ALMACEN)) db.createObjectStore(ALMACEN, { keyPath: "clave" });
-			}
+			setTimeout(function () { fin(null); }, 5000); // un navegador que nunca contesta
 			function listo(db) {
 				db.onversionchange = function () { try { db.close(); } catch (_) {} };
 				fin(db);
 			}
+			function completa(db) {
+				return db.objectStoreNames.contains(ALMACEN) && db.objectStoreNames.contains(PROPIAS) && db.objectStoreNames.contains(META);
+			}
 			try {
 				if (typeof indexedDB === "undefined" || !indexedDB) { fin(null); return; }
-				var req = indexedDB.open(NOMBRE_BD);
-				req.onupgradeneeded = function () { crearAlmacen(req.result); };
-				req.onerror = function (e) { if (e && e.preventDefault) e.preventDefault(); fin(null); };
-				req.onblocked = function () { fin(null); };
+				var req = indexedDB.open(NOMBRE_BD, VERSION_BD);
+				req.onupgradeneeded = function () {
+					// De la versión 1 (3d48d1a) a la 2: las capturas pendientes se quedan como están
+					// (se convierten al enviarlas) y se agregan las marcas propias y el contador
+					var db = req.result, tx = req.transaction;
+					if (!db.objectStoreNames.contains(ALMACEN)) db.createObjectStore(ALMACEN, { keyPath: "clave" });
+					if (!db.objectStoreNames.contains(PROPIAS)) db.createObjectStore(PROPIAS, { keyPath: "clave" });
+					if (!db.objectStoreNames.contains(META)) {
+						var meta = db.createObjectStore(META, { keyPath: "clave" });
+						// El contador arranca arriba de las capturas que ya había (el formato anterior
+						// numeraba con el reloj); de aquí en adelante, solo suma
+						var maximo = Date.now() * 1000;
+						var cur = tx.objectStore(ALMACEN).openCursor();
+						cur.onsuccess = function () {
+							var c = cur.result;
+							if (c) { if (typeof c.value.seq === "number" && c.value.seq >= maximo) maximo = c.value.seq + 1; c.continue(); }
+							else meta.put({ clave: "seq", valor: maximo });
+						};
+					}
+				};
+				req.onerror = function (e) {
+					if (e && e.preventDefault) e.preventDefault();
+					// La base ya es de una versión más nueva (se regresó a esta): se abre la que hay
+					var r2;
+					try { r2 = indexedDB.open(NOMBRE_BD); } catch (_) { fin(null); return; }
+					r2.onsuccess = function () { if (completa(r2.result)) listo(r2.result); else { try { r2.result.close(); } catch (_) {} fin(null); } };
+					r2.onerror = function (e2) { if (e2 && e2.preventDefault) e2.preventDefault(); fin(null); };
+				};
+				// Una pestaña con la versión anterior tiene la base abierta: la suelta al enterarse
+				// (onversionchange) y entonces sigue la actualización; si no, se vence el tiempo
+				req.onblocked = function () {};
 				req.onsuccess = function () {
 					var db = req.result;
-					if (db.objectStoreNames.contains(ALMACEN)) { listo(db); return; }
-					// Existe sin el almacén (no debería): se sube de versión para crearlo
-					var v = db.version + 1;
-					db.close();
-					var r2 = indexedDB.open(NOMBRE_BD, v);
-					r2.onupgradeneeded = function () { crearAlmacen(r2.result); };
-					r2.onsuccess = function () { listo(r2.result); };
-					r2.onerror = function (e) { if (e && e.preventDefault) e.preventDefault(); fin(null); };
-					r2.onblocked = function () { fin(null); };
+					if (completa(db)) { listo(db); return; }
+					try { db.close(); } catch (_) {}
+					fin(null);
 				};
 			} catch (_) {
 				fin(null);
@@ -385,12 +846,13 @@ var BandejaSalida = (function () {
 	function almacenIDB(db) {
 		var mem = almacenMemoria();
 		var a = { persistente: true };
-		function txn(modo, fn) {
+		function txn(almacenes, modo, fn) {
 			return new Promise(function (ok, mal) {
 				try {
-					var tx = db.transaction(ALMACEN, modo);
-					var req = fn(tx.objectStore(ALMACEN));
-					tx.oncomplete = function () { ok(req ? req.result : undefined); };
+					var tx = db.transaction(almacenes, modo);
+					var salida = { valor: undefined };
+					fn(tx, salida);
+					tx.oncomplete = function () { ok(salida.valor); };
 					tx.onerror = function () { mal(tx.error || new Error("IndexedDB")); };
 					tx.onabort = function () { mal(tx.error || new Error("IndexedDB")); };
 				} catch (e) {
@@ -398,8 +860,15 @@ var BandejaSalida = (function () {
 				}
 			});
 		}
+		function sinDisco(e) {
+			a.persistente = false;
+			if (typeof console !== "undefined") console.warn("bandeja: no se pudo guardar en el dispositivo; queda en memoria", e);
+		}
 		a.todos = function () {
-			return txn("readonly", function (s) { return s.getAll(); }).catch(function () { return []; }).then(function (lista) {
+			return txn([ALMACEN], "readonly", function (tx, s) {
+				var g = tx.objectStore(ALMACEN).getAll();
+				g.onsuccess = function () { s.valor = g.result; };
+			}).catch(function () { return []; }).then(function (lista) {
 				var por = {};
 				(lista || []).forEach(function (it) { por[it.clave] = it; });
 				return mem.todos().then(function (enMem) {
@@ -409,7 +878,10 @@ var BandejaSalida = (function () {
 			});
 		};
 		a.obtener = function (c) {
-			return txn("readonly", function (s) { return s.get(c); }).catch(function () { return null; }).then(function (enBD) {
+			return txn([ALMACEN], "readonly", function (tx, s) {
+				var g = tx.objectStore(ALMACEN).get(c);
+				g.onsuccess = function () { s.valor = g.result; };
+			}).catch(function () { return null; }).then(function (enBD) {
 				return mem.obtener(c).then(function (enMem) {
 					if (enMem && (!enBD || enBD.seq < enMem.seq)) return enMem;
 					return enBD || null;
@@ -417,48 +889,148 @@ var BandejaSalida = (function () {
 			});
 		};
 		a.poner = function (it) {
-			return txn("readwrite", function (s) { return s.put(it); }).then(function () {
+			return txn([ALMACEN], "readwrite", function (tx) { tx.objectStore(ALMACEN).put(it); }).then(function () {
 				mem.quitar(it.clave);
 			}, function (e) {
-				a.persistente = false;
-				if (typeof console !== "undefined") console.warn("bandeja: no se pudo guardar en el dispositivo; queda en memoria", e);
+				sinDisco(e);
 				return mem.poner(it);
 			});
 		};
 		a.quitarSi = function (c, seq) {
 			return mem.quitarSi(c, seq).then(function () {
-				return txn("readwrite", function (s) {
+				return txn([ALMACEN], "readwrite", function (tx) {
+					var s = tx.objectStore(ALMACEN);
 					var g = s.get(c);
 					g.onsuccess = function () { if (g.result && g.result.seq === seq) s.delete(c); };
-					return null;
 				}).catch(function () {});
 			});
 		};
 		a.cambiarSi = function (c, prueba, fn) {
 			return mem.cambiarSi(c, prueba, fn).then(function () {
-				return txn("readwrite", function (s) {
+				return txn([ALMACEN], "readwrite", function (tx) {
+					var s = tx.objectStore(ALMACEN);
 					var g = s.get(c);
 					g.onsuccess = function () { if (g.result && prueba(g.result)) { fn(g.result); s.put(g.result); } };
-					return null;
 				}).catch(function () {});
 			});
+		};
+		// Todo en una transacción: dos ventanas que encolan a la vez no se pisan
+		a.encolar = function (it, combinarFn) {
+			return txn([ALMACEN, PROPIAS, META], "readwrite", function (tx, salida) {
+				var sPend = tx.objectStore(ALMACEN), sProp = tx.objectStore(PROPIAS), sMeta = tx.objectStore(META);
+				var gm = sMeta.get("seq");
+				gm.onsuccess = function () {
+					var n = (gm.result && typeof gm.result.valor === "number" ? gm.result.valor : Date.now() * 1000) + 1;
+					sMeta.put({ clave: "seq", valor: n });
+					it.seq = n;
+					var gp = sPend.get(it.clave);
+					gp.onsuccess = function () {
+						var nuevo = combinarFn(gp.result || null, it);
+						if (!nuevo) { salida.valor = { guardada: gp.result || null, sinCambio: true }; return; }
+						sPend.put(nuevo);
+						salida.valor = { guardada: nuevo };
+						if (nuevo.relleno) return;
+						var gr = sProp.get(it.clave);
+						gr.onsuccess = function () {
+							var r = gr.result || { clave: it.clave, maestro_id: nuevo.maestro_id, marcas: [] };
+							r.marcas = podar(r.marcas.filter(function (m) { return m.id !== nuevo.captura_id; }).concat([entradaDe(nuevo)]));
+							sProp.put(r);
+						};
+					};
+				};
+			}).then(function (r) {
+				mem.quitar(it.clave);
+				return r;
+			}, function (e) {
+				sinDisco(e);
+				return mem.encolar(it, combinarFn);
+			});
+		};
+		a.marcas = function (c, maestroId) {
+			return txn([PROPIAS], "readonly", function (tx, s) {
+				var g = tx.objectStore(PROPIAS).get(c);
+				g.onsuccess = function () { s.valor = g.result; };
+			}).catch(function () { return null; }).then(function (r) {
+				return mem.marcas(c, maestroId).then(function (enMem) {
+					var lista = r && (!maestroId || r.maestro_id === maestroId) ? r.marcas : [];
+					return lista.concat(enMem);
+				});
+			});
+		};
+		a.anotarMarca = function (c, maestroId, entrada) {
+			return txn([PROPIAS], "readwrite", function (tx) {
+				var s = tx.objectStore(PROPIAS);
+				var g = s.get(c);
+				g.onsuccess = function () {
+					var r = g.result || { clave: c, maestro_id: maestroId, marcas: [] };
+					r.marcas = podar(r.marcas.filter(function (m) { return m.id !== entrada.id; }).concat([entrada]));
+					s.put(r);
+				};
+			}).catch(function () { return mem.anotarMarca(c, maestroId, entrada); });
+		};
+		a.confirmarMarca = function (c, maestroId, id, cambios) {
+			return mem.confirmarMarca(c, maestroId, id, cambios).then(function () {
+				return txn([PROPIAS], "readwrite", function (tx) {
+					var s = tx.objectStore(PROPIAS);
+					var g = s.get(c);
+					g.onsuccess = function () {
+						var r = g.result;
+						var m = r && r.marcas.find(function (x) { return x.id === id; });
+						if (!m) return;
+						Object.assign(m, cambios);
+						if (cambios.padre === undefined) delete m.padre;
+						s.put(r);
+					};
+				}).catch(function () {});
+			});
+		};
+		/*
+			Poda por cantidad de llaves (no por reloj): se quedan las MAX_LLAVES con la marca más
+			reciente. Olvidar las marcas de una llave vieja solo hace que esa llave se compare por
+			contenido; nunca pierde una captura.
+		*/
+		a.podarLlaves = function () {
+			return txn([PROPIAS], "readwrite", function (tx) {
+				var s = tx.objectStore(PROPIAS);
+				var c = s.count();
+				c.onsuccess = function () {
+					if (c.result <= MAX_LLAVES) return;
+					var g = s.getAll();
+					g.onsuccess = function () {
+						var ultimas = (g.result || []).map(function (r) {
+							return { clave: r.clave, seq: (r.marcas || []).reduce(function (m, x) { return Math.max(m, x.seq || 0); }, 0) };
+						}).sort(function (x, y) { return y.seq - x.seq; });
+						ultimas.slice(MAX_LLAVES).forEach(function (r) { s.delete(r.clave); });
+					};
+				};
+			}).catch(function () {});
 		};
 		return a;
 	}
 
 	function abrirAlmacen() {
-		return abrirBD().then(function (db) { return db ? almacenIDB(db) : almacenMemoria(); });
+		return abrirBD().then(function (db) {
+			if (!db) return almacenMemoria();
+			var a = almacenIDB(db);
+			a.podarLlaves();
+			return a;
+		});
 	}
 
 	// ── La bandeja ───────────────────────────────────────────────────────────────
-	var ultimoSeq = 0;
-	function siguienteSeq() {
-		var s = Date.now() * 1000;
-		ultimoSeq = s > ultimoSeq ? s : ultimoSeq + 1;
-		return ultimoSeq;
-	}
-
 	var FALLAS = ["red", "servidor", "sesion", "cuenta"];
+
+	// La promesa, o un error "sin señal" si tarda más de ms (la marca hace inofensivo que llegue tarde)
+	function conLimite(promesa, ms) {
+		return new Promise(function (ok, mal) {
+			var t = setTimeout(function () {
+				var e = new Error("La red no contestó a tiempo");
+				e.status = 0;
+				mal(e);
+			}, ms);
+			promesa.then(function (r) { clearTimeout(t); ok(r); }, function (e) { clearTimeout(t); mal(e); });
+		});
+	}
 
 	/*
 		crear(o)
@@ -467,28 +1039,70 @@ var BandejaSalida = (function () {
 		  o.maestroId   la cuenta con sesión (la dueña de lo que se capture aquí)
 		  o.almacen     (pruebas) un almacén ya abierto; si no, IndexedDB o memoria
 		  o.alCambiar({ pendientes, estado: "ok"|"enviando"|"red"|"servidor"|"sesion"|"cuenta", persistente })
-		  o.alGuardar(captura, { valor, id? })                    se confirmó; valor = lo que quedó en la base
-		  o.alConflicto(captura, { actual, texto, sigue })        otro dispositivo la cambió: se conservó lo de la base
-		  o.alRechazar(captura, explicacion, { actual?, sigue })  la base no la aceptó: ya salió de la cola
-		     `actual`: lo que hay en la base (undefined si no se pudo leer); `sigue`: hay una captura
-		     más nueva de la misma llave en la cola (la pantalla sigue mostrando esa)
+		  o.alGuardar(captura, { valor, id, captura_id, fila, base, sigue })    se confirmó
+		  o.alConflicto(captura, { actual, texto, sigue, base })   otro aparato lo cambió: se conservó lo de la base
+		  o.alRechazar(captura, explicacion, { actual?, sigue, base? })    la base no la aceptó: ya salió de la cola
+		     `actual`: lo que hay en la base (undefined si no se pudo leer); `base`: { captura_id, valor }
+		     o null (la nueva versión que vio la pantalla); `sigue`: hay una captura más nueva de la
+		     misma llave en la cola (la pantalla sigue mostrando esa)
+		  o.alSaber(mensaje)   otra ventana de este aparato confirmó algo o avisó de un conflicto:
+		     { tipo: "guardada"|"aviso", clave, tipoCaptura, datos, base, valor, id, sigue, texto? }
 		  o.esperaMax   tope de la espera entre reintentos (ms; 30 s)
+		  o.canal       (pruebas) un canal para avisar a otras ventanas; false = ninguno
+		  o.cerrojo     false = sin Web Locks (pruebas)
 	*/
 	function crear(o) {
 		var st = {
-			almacen: null, habilitada: false, procesando: false, otraVez: false,
-			espera: null, intentos: 0, estado: "ok", n: 0, unoPorUno: false,
+			almacen: null, habilitada: false, procesando: false, otraVez: false, enCiclo: false,
+			espera: null, intentos: 0, estado: "ok", n: 0, claves: {}, unoPorUno: false,
 			esperandoVacia: [], esperandoEnvio: [], cadena: Promise.resolve(), enVuelo: {},
 			huboFalla: false, // la cola se atoró (red, servidor, sesión) desde la última vez que se vació
 		};
 		var listo = (o.almacen ? Promise.resolve(o.almacen) : abrirAlmacen()).then(function (a) { st.almacen = a; return a; });
 		var esperaMax = o.esperaMax || 30000;
 
+		// ── Otras ventanas de este aparato ──
+		var canal = null;
+		try {
+			if (o.canal) canal = o.canal;
+			else if (o.canal !== false && typeof window !== "undefined" && window.BroadcastChannel) canal = new window.BroadcastChannel(CANAL);
+		} catch (_) { canal = null; }
+		function difundir(m) {
+			if (!canal) return;
+			try { canal.postMessage(Object.assign({ maestro_id: o.maestroId }, m)); } catch (_) {}
+		}
+		function alMensaje(ev) {
+			var m = ev && ev.data;
+			if (!m || m.maestro_id !== o.maestroId) return;
+			if (m.tipo === "cambio") {
+				// La cola cambió en otra ventana: se vuelve a contar y, si hay algo, se intenta enviar
+				listo.then(propios).then(function (l) {
+					avisar();
+					if (l.length && !st.procesando && st.habilitada) procesar();
+				});
+			} else if (m.tipo === "estado") {
+				if (!st.enCiclo && FALLAS.concat(["ok", "enviando"]).indexOf(m.estado) !== -1) {
+					st.estado = m.estado;
+					listo.then(propios).then(avisar);
+				}
+			} else if ((m.tipo === "guardada" || m.tipo === "aviso") && o.alSaber) {
+				try { o.alSaber(m); } catch (_) {}
+			}
+		}
+		if (canal) {
+			if (typeof canal.addEventListener === "function") canal.addEventListener("message", alMensaje);
+			else canal.onmessage = alMensaje;
+		}
+
 		function avisar() {
 			if (o.alCambiar) {
 				try {
 					o.alCambiar({ pendientes: st.n, estado: st.estado, persistente: !!(st.almacen && st.almacen.persistente) });
 				} catch (_) {}
+			}
+			if (st.enCiclo && st.estado !== st.estadoDifundido) {
+				st.estadoDifundido = st.estado;
+				difundir({ tipo: "estado", estado: st.estado });
 			}
 			if (!st.n) {
 				st.esperandoVacia.splice(0).forEach(function (r) { r(); });
@@ -503,47 +1117,41 @@ var BandejaSalida = (function () {
 				var mias = lista.filter(function (it) { return it.maestro_id === o.maestroId; })
 					.sort(function (a, b) { return a.seq - b.seq; });
 				st.n = mias.length;
+				st.claves = {};
+				mias.forEach(function (it) { st.claves[it.clave] = true; });
 				return mias;
 			});
 		}
 
 		/*
-			agregar(tipo, datos, descripcion, base)
-			`base`: el valor que la pantalla tiene de la base para esa llave (null = no hay fila).
-			Si ya hay una captura pendiente de la misma llave, se hereda su base y lo que este
-			dispositivo pudo haber escrito pasa a `propias`.
+			agregar(tipo, datos, descripcion, base, opciones)
+			`base`: lo que la pantalla sabe de la base para esa llave ({ captura_id, valor } o null).
+			`opciones.campos`: los campos que tocó la maestra (si no, todos); `opciones.relleno`: el
+			1 y 1 del Cierre del día (solo inserta donde no hay fila).
 		*/
-		function agregar(tipo, datos, descripcion, base) {
-			// El momento y el orden son los del toque, no los de la escritura
-			var it = {
-				clave: clave(tipo, o.maestroId, datos), tipo: tipo, maestro_id: o.maestroId,
-				seq: siguienteSeq(), capturado_en: new Date().toISOString(),
-				datos: datos, descripcion: descripcion || "",
-				base: base === undefined ? null : base, propias: [], intentado: false,
-			};
+		function agregar(tipo, datos, descripcion, base, opciones) {
+			var it = crearCaptura(tipo, o.maestroId, datos, descripcion, base, opciones);
 			// En serie: dos toques seguidos de la misma llave no se pisan la herencia
 			var hecho = st.cadena.then(function () { return listo; })
-				.then(function () { return st.almacen.obtener(it.clave); })
-				.then(function (prev) {
-					if (prev && prev.maestro_id === it.maestro_id) {
-						it.base = prev.base === undefined ? null : prev.base;
-						it.propias = (prev.propias || []).slice();
-						if (prev.intentado || st.enVuelo[prev.clave] === prev.seq) it.propias.push(valorDeseado(prev));
-						it.propias = it.propias.filter(function (v, i, arr) {
-							return !igual(v, it.base) && arr.findIndex(function (w) { return igual(v, w); }) === i;
-						}).slice(-10);
-					}
-					return st.almacen.poner(it);
+				.then(function () {
+					return st.almacen.encolar(it, function (prev, nuevo) {
+						return combinar(prev, nuevo, function (p) { return st.enVuelo[p.clave] === p.seq; });
+					});
 				});
 			st.cadena = hecho.catch(function () {});
-			return hecho.then(function () { return propios(); })
-				.then(function () { avisar(); procesar(); return it; });
+			return hecho.then(function (r) { return propios().then(function () { return r; }); })
+				.then(function (r) {
+					if (!r || !r.sinCambio) difundir({ tipo: "cambio" });
+					avisar();
+					procesar();
+					return r && r.guardada ? r.guardada : it;
+				});
 		}
 
-		function programar() {
+		function programar(ms) {
 			if (st.espera) return;
-			var ms = Math.min(esperaMax, 1000 * Math.pow(2, Math.max(0, st.intentos - 1)));
-			st.espera = setTimeout(function () { st.espera = null; procesar(); }, ms);
+			var t = ms || Math.min(esperaMax, 1000 * Math.pow(2, Math.max(0, st.intentos - 1)));
+			st.espera = setTimeout(function () { st.espera = null; procesar(); }, t);
 		}
 
 		/*
@@ -574,21 +1182,92 @@ var BandejaSalida = (function () {
 			return !!(ahora && ahora.seq !== it.seq);
 		}
 
+		function baseDe(r) {
+			return r.fila ? { captura_id: r.marca === undefined ? null : r.marca, valor: r.valor } : null;
+		}
+
 		async function terminar(it, r) {
 			await st.almacen.quitarSi(it.clave, it.seq);
+			if (r.aplicado && !it.relleno && r.escritos) {
+				await st.almacen.confirmarMarca(it.clave, it.maestro_id, it.captura_id, { confirmada: true, escritos: r.escritos, padre: r.padre });
+			}
 			var sigue = await hayMasNueva(it);
-			if (r.conflicto) {
+			var base = baseDe(r);
+			var msg = { clave: it.clave, tipoCaptura: it.tipo, datos: it.datos, base: base, valor: r.valor, id: r.rowId || null, sigue: sigue };
+			if (r.conflictos && r.conflictos.length) {
+				var texto = textoConflicto(it, r);
 				if (typeof console !== "undefined") console.warn("bandeja: conflicto, se conservó lo de la base", it.descripcion);
-				if (o.alConflicto) { try { o.alConflicto(it, { actual: r.actual, sigue: sigue, texto: textoConflicto(it, r.actual) }); } catch (_) {} }
+				if (o.alConflicto) { try { o.alConflicto(it, { actual: r.fila ? r.valor : null, sigue: sigue, texto: texto, base: base, id: r.rowId || null }); } catch (_) {} }
+				difundir(Object.assign({ tipo: "aviso", texto: texto }, msg));
 				return;
 			}
-			// Lo que escribió esta captura es "propio" para la más nueva de la misma llave
-			if (sigue) {
-				await st.almacen.cambiarSi(it.clave, function (x) { return x.seq > it.seq; }, function (x) {
-					x.propias = (x.propias || []).concat([r.valor]).slice(-10);
+			if (o.alGuardar) { try { o.alGuardar(it, { valor: r.fila ? r.valor : null, id: r.rowId || null, captura_id: base ? base.captura_id : null, fila: !!r.fila, base: base, sigue: sigue }); } catch (_) {} }
+			difundir(Object.assign({ tipo: "guardada" }, msg));
+		}
+
+		// Una sola ventana del aparato envía a la vez (si el navegador tiene Web Locks)
+		function conCerrojo(fn) {
+			var locks = null;
+			try {
+				if (o.cerrojo !== false && typeof window !== "undefined" && typeof navigator !== "undefined" &&
+					navigator.locks && typeof navigator.locks.request === "function") locks = navigator.locks;
+			} catch (_) {}
+			if (!locks) return fn(true);
+			var llamado = false;
+			return locks.request("jissez-bandeja-" + o.maestroId, { ifAvailable: true }, function (l) { llamado = true; return fn(!!l); })
+				.catch(function (e) {
+					if (llamado) throw e; // falló el envío, no el cerrojo
+					return fn(true);      // el navegador no dio el cerrojo: se envía sin él
 				});
+		}
+
+		function ctxDe(it, conMarca) {
+			return { conMarca: conMarca, marcas: function () { return st.almacen.marcas(it.clave, o.maestroId); } };
+		}
+
+		// Envía con la marca; si la base no tiene la columna, con la regla anterior (por contenido)
+		async function enviarUno(it) {
+			var conMarca = marca.disponible !== false;
+			try {
+				return await conLimite(enviar(o.sb, it, ctxDe(it, conMarca)), o.limiteMs || LIMITE_ENVIO);
+			} catch (e) {
+				if (conMarca && faltaMarca(e)) {
+					marca.disponible = false;
+					if (typeof console !== "undefined") console.warn("bandeja: la base aún no tiene captura_id; se compara por contenido");
+					return await conLimite(enviar(o.sb, it, ctxDe(it, false)), o.limiteMs || LIMITE_ENVIO);
+				}
+				throw e;
 			}
-			if (o.alGuardar) { try { o.alGuardar(it, { valor: r.valor, id: r.id || null }); } catch (_) {} }
+		}
+
+		async function enviarLote(lote) {
+			var conMarca = marca.disponible !== false;
+			try {
+				return await conLimite(enviarLoteRelleno(o.sb, lote, conMarca), o.limiteMs || LIMITE_ENVIO);
+			} catch (e) {
+				if (conMarca && faltaMarca(e)) {
+					marca.disponible = false;
+					return await conLimite(enviarLoteRelleno(o.sb, lote, false), o.limiteMs || LIMITE_ENVIO);
+				}
+				throw e;
+			}
+		}
+
+		// La captura como está guardada ahora; una del formato anterior se convierte (con su marca)
+		async function actual(x) {
+			var g = await st.almacen.obtener(x.clave);
+			if (!g || g.maestro_id !== o.maestroId) return null;
+			if (g.v === 2) return g;
+			var n = normalizar(g);
+			n.captura_id = nuevoId();
+			await st.almacen.cambiarSi(g.clave, function (y) { return y.seq === g.seq && y.v !== 2; }, function (y) {
+				Object.keys(y).forEach(function (k) { delete y[k]; });
+				Object.assign(y, n);
+			});
+			var otra = await st.almacen.obtener(g.clave);
+			if (!otra || otra.seq !== g.seq) return otra && otra.v === 2 ? otra : null;
+			if (otra.captura_id === n.captura_id) await st.almacen.anotarMarca(g.clave, o.maestroId, entradaDe(otra));
+			return otra.v === 2 ? otra : n;
 		}
 
 		async function procesar() {
@@ -597,7 +1276,33 @@ var BandejaSalida = (function () {
 			if (st.procesando) { st.otraVez = true; return; }
 			st.procesando = true;
 			if (st.espera) { clearTimeout(st.espera); st.espera = null; }
+			var envio = false;
+			try {
+				await conCerrojo(async function (tengo) {
+					if (!tengo) {
+						// Otra ventana de este aparato está enviando: avisará al terminar
+						await propios();
+						programar(3000);
+						return;
+					}
+					st.enCiclo = true;
+					try { envio = await ciclo(); } finally { st.enCiclo = false; st.estadoDifundido = null; }
+				});
+			} finally {
+				st.procesando = false;
+				avisar();
+				if (envio) difundir({ tipo: "cambio" });
+				if (st.otraVez) {
+					st.otraVez = false;
+					if (FALLAS.indexOf(st.estado) === -1 || (st.estado !== "sesion" && st.estado !== "cuenta" && !st.espera)) procesar();
+				}
+			}
+		}
+
+		// Envía lo pendiente de la cuenta, en serie. → true si algo cambió en la cola
+		async function ciclo() {
 			var sesionIntentada = false;
+			var algo = false;
 			// Sin la dueña de la cola no se envía ni se decide nada
 			async function duenaPresente() {
 				var c = await cuentaDuena();
@@ -607,78 +1312,85 @@ var BandejaSalida = (function () {
 				else st.estado = c;
 				return false;
 			}
-			try {
-				for (;;) {
-					var lista = await propios();
-					if (!lista.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; break; }
-					if (!(await duenaPresente())) break;
-					if (st.estado === "ok") { st.estado = "enviando"; avisar(); }
-					var it = lista[0];
-					// Lo que esperó en la cola (no es una captura recién hecha en línea): ver escribirSi
-					lista.forEach(function (x) { x.enCola = st.huboFalla; });
-					var lote = [it];
-					if (it.tipo === "registro" && (it.base === null || it.base === undefined) && !st.unoPorUno) {
-						lote = lista.filter(function (x) { return x.tipo === "registro" && (x.base === null || x.base === undefined); }).slice(0, 100);
+			for (;;) {
+				var lista = await propios();
+				if (!lista.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; break; }
+				if (!(await duenaPresente())) break;
+				if (st.estado === "ok") { st.estado = "enviando"; avisar(); }
+				// Lo que se envía es lo que está guardado AHORA (un toque que llegó mientras tanto ya se combinó)
+				var it = await actual(lista[0]);
+				if (!it) continue;
+				var lote = [it];
+				if (it.relleno && !st.unoPorUno) {
+					var otros = [];
+					for (var k = 1; k < lista.length && otros.length < 99; k++) {
+						if (lista[k].v === 2 && lista[k].relleno) otros.push(lista[k]);
 					}
-					for (var j = 0; j < lote.length; j++) {
-						var x = lote[j];
-						st.enVuelo[x.clave] = x.seq;
-						if (!x.intentado) {
-							await st.almacen.cambiarSi(x.clave, (function (seq) { return function (y) { return y.seq === seq; }; })(x.seq),
-								function (y) { y.intentado = true; });
-						}
-					}
-					try {
-						var rs = lote.length > 1 ? await enviarLoteRegistros(o.sb, lote) : [await enviar(o.sb, it)];
-						// Antes de dar algo por terminado: ¿sigue siendo la sesión de la dueña?
-						if (!(await duenaPresente())) break;
-						for (var i = 0; i < lote.length; i++) {
-							if (rs[i].pendiente) { st.unoPorUno = true; continue; } // ya había fila: de una en una
-							await terminar(lote[i], rs[i]);
-						}
-						st.intentos = 0;
-						st.estado = "enviando";
-					} catch (e) {
-						var tipo = tipoDeFallo(e);
-						if (tipo === "rechazo") {
-							if (lote.length > 1) { st.unoPorUno = true; continue; } // ¿cuál fue? de una en una
-							// Un "no" con la sesión de otra cuenta no es de la captura: se espera a su dueña
-							if (!(await duenaPresente())) break;
-							await st.almacen.quitarSi(it.clave, it.seq);
-							if (typeof console !== "undefined") console.warn("bandeja: la base rechazó una captura", it.descripcion, e);
-							var actual;
-							try { actual = (await leerActual(o.sb, it)).valor; } catch (_) { actual = undefined; }
-							var sigue = await hayMasNueva(it);
-							if (o.alRechazar) { try { o.alRechazar(it, explicar(e), { actual: actual, sigue: sigue }); } catch (_) {} }
-							continue;
-						}
-						if (tipo === "sesion" && !sesionIntentada) {
-							sesionIntentada = true;
-							if (await refrescarSesion()) continue;
-						}
-						if (tipo === "sesion") {
-							// Sin sesión válida no se reintenta solo: se espera a que vuelva a entrar
-							st.huboFalla = true;
-						st.estado = (await cuentaDuena()) === "cuenta" ? "cuenta" : "sesion";
-							break;
-						}
-						st.intentos++;
-						st.huboFalla = true;
-						st.estado = estadoDeRed(e);
-						programar();
-						break;
-					} finally {
-						lote.forEach(function (x) { if (st.enVuelo[x.clave] === x.seq) delete st.enVuelo[x.clave]; });
+					lote = lote.concat(otros);
+				}
+				for (var j = 0; j < lote.length; j++) {
+					var x = lote[j];
+					x.enCola = st.huboFalla; // esperó en la cola: ver escribir
+					st.enVuelo[x.clave] = x.seq;
+					if (!x.intentado) {
+						await st.almacen.cambiarSi(x.clave, (function (seq) { return function (y) { return y.seq === seq; }; })(x.seq),
+							function (y) { y.intentado = true; });
 					}
 				}
-			} finally {
-				st.procesando = false;
-				avisar();
-				if (st.otraVez) {
-					st.otraVez = false;
-					if (FALLAS.indexOf(st.estado) === -1 || (st.estado !== "sesion" && st.estado !== "cuenta" && !st.espera)) procesar();
+				try {
+					var rs = lote.length > 1 ? await enviarLote(lote) : [await enviarUno(it)];
+					// Antes de dar algo por terminado: ¿sigue siendo la sesión de la dueña?
+					if (!(await duenaPresente())) break;
+					for (var i = 0; i < lote.length; i++) {
+						if (rs[i].pendiente) { st.unoPorUno = true; lote[i].intentado = true; continue; } // ya había fila: de uno en uno
+						await terminar(lote[i], rs[i]);
+						algo = true;
+					}
+					await propios();
+					avisar(); // el aviso cuenta lo que falta mientras se envía
+					st.intentos = 0;
+					st.estado = "enviando";
+				} catch (e) {
+					var tipo = tipoDeFallo(e);
+					if (tipo === "rechazo") {
+						if (lote.length > 1) { st.unoPorUno = true; continue; } // ¿cuál fue? de uno en uno
+						// Un "no" con la sesión de otra cuenta no es de la captura: se espera a su dueña
+						if (!(await duenaPresente())) break;
+						await st.almacen.quitarSi(it.clave, it.seq);
+						algo = true;
+						if (typeof console !== "undefined") console.warn("bandeja: la base rechazó una captura", it.descripcion, e);
+						var leida;
+						try { leida = await leerActual(o.sb, it, marca.disponible !== false); } catch (_) { leida = undefined; }
+						var sigue = await hayMasNueva(it);
+						var base = leida ? (leida.fila ? { captura_id: leida.id, valor: leida.valor } : null) : undefined;
+						var explicacion = explicar(e);
+						if (o.alRechazar) {
+							try { o.alRechazar(it, explicacion, { actual: leida ? leida.valor : undefined, sigue: sigue, base: base }); } catch (_) {}
+						}
+						difundir({ tipo: "aviso", clave: it.clave, tipoCaptura: it.tipo, datos: it.datos, base: base, valor: leida ? leida.valor : undefined,
+							sigue: sigue, texto: (it.descripcion || "Una captura") + ": " + explicacion + "." });
+						continue;
+					}
+					if (tipo === "sesion" && !sesionIntentada) {
+						sesionIntentada = true;
+						if (await refrescarSesion()) continue;
+					}
+					if (tipo === "sesion") {
+						// Sin sesión válida no se reintenta solo: se espera a que vuelva a entrar
+						st.huboFalla = true;
+						st.estado = (await cuentaDuena()) === "cuenta" ? "cuenta" : "sesion";
+						break;
+					}
+					st.intentos++;
+					st.huboFalla = true;
+					st.estado = estadoDeRed(e);
+					programar();
+					break;
+				} finally {
+					lote.forEach(function (y) { if (st.enVuelo[y.clave] === y.seq) delete st.enVuelo[y.clave]; });
 				}
 			}
+			return algo;
 		}
 
 		// Reenvío inmediato: volvió la red, la página volvió a primer plano o se abrió
@@ -694,6 +1406,8 @@ var BandejaSalida = (function () {
 			procesar: reintentarYa,
 			lista: function () { return listo.then(propios); },
 			pendientes: function () { return st.n; },
+			// ¿Hay una captura pendiente de esa llave? (según la última cuenta de la cola)
+			pendienteDe: function (c) { return !!st.claves[c]; },
 			persistente: function () { return !!(st.almacen && st.almacen.persistente); },
 			estado: function () { return st.estado; },
 			vacia: function () {
@@ -711,6 +1425,7 @@ var BandejaSalida = (function () {
 					return new Promise(function (r) { st.esperandoEnvio.push(r); });
 				});
 			},
+			cerrar: function () { try { if (canal && canal.close && !o.canal) canal.close(); } catch (_) {} },
 			_estado: st,
 		};
 	}
@@ -762,7 +1477,7 @@ var BandejaSalida = (function () {
 	/*
 		Antes de cerrar sesión: si la cuenta tiene capturas sin enviar en este dispositivo, se
 		avisa y se pide confirmar. Se quedan guardadas; se envían cuando ella vuelva a entrar
-		en este dispositivo y abra Hoy. → true: se puede cerrar la sesión.
+		en este dispositivo y abra Mi Salón. → true: se puede cerrar la sesión.
 	*/
 	async function confirmarSalida(sb) {
 		var id = cuentaGuardada();
@@ -778,23 +1493,185 @@ var BandejaSalida = (function () {
 		return window.confirm((n === 1
 			? "Tienes 1 captura de Hoy sin enviar. Se queda guardada en este dispositivo y se enviará"
 			: "Tienes " + n + " capturas de Hoy sin enviar. Se quedan guardadas en este dispositivo y se enviarán") +
-			" cuando vuelvas a entrar en él y abras Hoy.\n\n¿Cerrar sesión de todos modos?");
+			" cuando vuelvas a entrar en él y abras Mi Salón.\n\n¿Cerrar sesión de todos modos?");
+	}
+
+	// ── Fuera de Hoy: lo pendiente se dice y se envía ────────────────────────────
+	var ESTILO_BOTON = "display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 1rem;" +
+		"border-radius:.75rem;font-weight:600;font-size:.875rem;text-decoration:none;cursor:pointer;box-sizing:border-box;";
+
+	/*
+		Dónde va el aviso: DENTRO del flujo de la página (arriba del contenido), nunca encima de
+		los controles. El primer contenedor visible que no es fijo (main, o el de la página).
+	*/
+	function lugarDelAviso() {
+		var main = document.querySelector("main");
+		if (main) return main;
+		var hijos = document.body ? document.body.children : [];
+		for (var i = 0; i < hijos.length; i++) {
+			var h = hijos[i];
+			if (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|NAV|HEADER|FOOTER)$/.test(h.tagName) || h.id === "app-navbar") continue;
+			var cs = window.getComputedStyle ? window.getComputedStyle(h) : null;
+			if (cs && (cs.position === "fixed" || cs.position === "sticky" || cs.position === "absolute" || cs.display === "none")) continue;
+			if (h.getBoundingClientRect && h.getBoundingClientRect().height === 0) continue;
+			return h;
+		}
+		return document.body;
+	}
+
+	function avisoFuera() {
+		var caja = document.createElement("div");
+		caja.id = "bandejaAvisoFuera";
+		caja.setAttribute("role", "status");
+		caja.setAttribute("aria-live", "polite");
+		caja.setAttribute("style", "display:none;box-sizing:border-box;width:100%;max-width:56rem;margin:0 auto 1rem;background:#fff;" +
+			"border:1px solid #bfdbfe;border-radius:1rem;padding:.75rem 1rem;font-size:.875rem;line-height:1.45;color:#1e293b;");
+		var texto = document.createElement("p");
+		texto.setAttribute("style", "margin:0");
+		var lista = document.createElement("ul");
+		lista.setAttribute("style", "margin:.5rem 0 0;padding-left:1.25rem;display:none");
+		var acciones = document.createElement("div");
+		acciones.setAttribute("style", "display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem");
+		var ir = document.createElement("a");
+		ir.href = "hoy.html";
+		ir.textContent = "Ir a Hoy";
+		ir.setAttribute("style", ESTILO_BOTON + "background:#1e3a8a;color:#fff;border:0");
+		var ocultar = document.createElement("button");
+		ocultar.type = "button";
+		ocultar.textContent = "Ocultar";
+		ocultar.setAttribute("style", ESTILO_BOTON + "background:#fff;color:#1e3a8a;border:1px solid #bfdbfe");
+		acciones.appendChild(ir);
+		acciones.appendChild(ocultar);
+		caja.appendChild(texto);
+		caja.appendChild(lista);
+		caja.appendChild(acciones);
+
+		// En el flujo: si la página vuelve a dibujar su contenedor, el aviso regresa a su lugar
+		function colocar() {
+			var lugar = lugarDelAviso();
+			if (!lugar) return;
+			if (caja.parentNode !== lugar || lugar.firstChild !== caja) lugar.insertBefore(caja, lugar.firstChild);
+		}
+		colocar();
+		try {
+			if (typeof MutationObserver === "function") {
+				new MutationObserver(function () { if (!caja.isConnected && !oculto) colocar(); })
+					.observe(document.body, { childList: true, subtree: true });
+			}
+		} catch (_) {}
+
+		var problemas = []; // [{ clave, texto }]: un renglón por dato
+		var ultimo = { pendientes: 0 };
+		var oculto = false;
+		var ocultarEn = null;
+		function mostrar(t, alerta) {
+			if (ocultarEn) { clearTimeout(ocultarEn); ocultarEn = null; }
+			texto.textContent = t;
+			caja.setAttribute("role", alerta ? "alert" : "status");
+			caja.style.borderColor = alerta ? "#fecaca" : "#bfdbfe";
+			lista.textContent = "";
+			problemas.forEach(function (p) {
+				var li = document.createElement("li");
+				li.textContent = p.texto;
+				lista.appendChild(li);
+			});
+			lista.style.display = problemas.length ? "block" : "none";
+			if (oculto) return;
+			colocar();
+			caja.style.display = "block";
+		}
+		function pintar() {
+			var n = ultimo.pendientes;
+			if (n) {
+				var cuantas = n === 1 ? "Tienes 1 captura de Hoy sin enviar." : "Tienes " + n + " capturas de Hoy sin enviar.";
+				var detalle = ultimo.estado === "red" ? " Sin señal: están guardadas en este dispositivo y se enviarán solas al volver la señal."
+					: ultimo.estado === "servidor" ? " El servidor no respondió bien; se reintentará."
+					: ultimo.estado === "sesion" ? " Tu sesión se cerró: vuelve a iniciar sesión para enviarlas."
+					: ultimo.estado === "cuenta" ? " Son de otra cuenta: se enviarán cuando ella entre en este dispositivo."
+					: " Enviando...";
+				mostrar(cuantas + detalle + (problemas.length ? " Estas no se aplicaron:" : ""), problemas.length > 0);
+				return;
+			}
+			if (problemas.length) {
+				mostrar("Se enviaron las capturas de Hoy que faltaban, salvo estas (se conservó lo que había en la base):", true);
+				return;
+			}
+			mostrar("Se enviaron las capturas de Hoy que faltaban.", false);
+			ocultarEn = setTimeout(function () { caja.style.display = "none"; }, 4000);
+		}
+		ocultar.addEventListener("click", function () {
+			oculto = true;
+			problemas = [];
+			caja.style.display = "none";
+		});
+		return {
+			estado: function (e) { ultimo = e; pintar(); },
+			problema: function (clave, t) {
+				oculto = false; // algo que no se aplicó siempre se muestra
+				problemas = problemas.filter(function (p) { return p.clave !== clave; }).concat([{ clave: clave, texto: t }]);
+				pintar();
+			},
+		};
+	}
+
+	function vigilarFuera() {
+		try {
+			if (!window.sb || typeof window.sb.from !== "function" || typeof indexedDB === "undefined" || !indexedDB || !document.body) return;
+			if (document.querySelector('script[src$="/hoy.js"], script[src="js/hoy.js"], script[src="hoy.js"]')) return; // Hoy tiene su propia bandeja
+		} catch (_) {
+			return;
+		}
+		var id = cuentaGuardada();
+		if (!id) return;
+		contarDe(id).then(function (n) {
+			if (!n) return;
+			var aviso = avisoFuera();
+			var b = crear({
+				sb: window.sb,
+				// El auth sin envolver: una falla de red al comprobar la sesión no detiene la página
+				auth: window.Lectura && window.Lectura.authDirecto ? window.Lectura.authDirecto : window.sb.auth,
+				maestroId: id,
+				alCambiar: aviso.estado,
+				alConflicto: function (it, r) { aviso.problema(it.clave, r.texto); },
+				alRechazar: function (it, explicacion) { aviso.problema(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + "."); },
+			});
+			window.addEventListener("online", function () { b.procesar(); });
+			document.addEventListener("visibilitychange", function () {
+				if (document.visibilityState === "visible") b.procesar();
+			});
+			b.iniciar();
+		}).catch(function (e) {
+			if (typeof console !== "undefined") console.warn("bandeja: no se pudo revisar lo pendiente", e);
+		});
+	}
+
+	if (typeof window !== "undefined" && typeof document !== "undefined" && window.addEventListener && typeof document.querySelector === "function") {
+		window.addEventListener("load", function () { setTimeout(vigilarFuera, 1200); });
 	}
 
 	return {
 		clave: clave,
+		CAMPOS: CAMPOS,
 		tipoDeFallo: tipoDeFallo,
 		explicar: explicar,
+		faltaMarca: faltaMarca,
 		valorDeFila: valorDeFila,
+		baseDeFila: baseDeFila,
 		valorDeseado: valorDeseado,
+		valoresPendientes: valoresPendientes,
+		normalizar: normalizar,
 		igual: igual,
 		describir: describir,
+		nuevoId: nuevoId,
+		// La pantalla que leyó la base dice si existe la columna captura_id (true/false)
+		marcaDisponible: function (v) { if (v === true || v === false) marca.disponible = v; return marca.disponible; },
 		almacenMemoria: almacenMemoria,
 		abrirAlmacen: abrirAlmacen,
 		crear: crear,
 		cuentaGuardada: cuentaGuardada,
 		contarDe: contarDe,
 		confirmarSalida: confirmarSalida,
+		vigilarFuera: vigilarFuera,
 	};
 })();
 if (typeof window !== "undefined") window.BandejaSalida = BandejaSalida;
