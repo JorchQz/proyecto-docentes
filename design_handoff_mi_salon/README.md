@@ -10,6 +10,9 @@
 >   390 px (celular). Son la referencia de **contenido y funciones**, no de estilo; el estilo actual
 >   es provisional.
 > - `capturas/tienda/`: la tienda ya diseñada, que es la referencia de **estilo**.
+> - Las capturas son de página completa. En las de celular, la barra de secciones (Tienda · Mi Salón · Sala)
+>   aparece a media página por la forma de capturar; en el teléfono va **fija abajo**. Los nombres "QA …"
+>   y los grupos son datos de prueba.
 > - `marca/`: logos, tokens de color y CSS compartido de la tienda.
 > - Junto con este paquete va el paquete de diseño de la tienda (`design_handoff_jissez/`), con los
 >   HTML originales de la tienda.
