@@ -700,6 +700,13 @@ var Navegacion = (function () {
 				var etiqueta = logoutBtn.querySelector(".jz-txt");
 				logoutBtn.disabled = true;
 				if (etiqueta) etiqueta.textContent = "Cerrando...";
+				// Privacidad en el aparato: se borran los valores capturados que la cola guardaba
+				// para decidir conflictos (marcas "propias", con la retroalimentación) y que ya no
+				// necesita ninguna captura pendiente; lo pendiente y lo que necesita se quedan.
+				// Antes de signOut: la cuenta se lee de la sesión guardada. Nunca detiene la salida.
+				if (window.BandejaSalida && window.BandejaSalida.limpiarAlSalir) {
+					try { await window.BandejaSalida.limpiarAlSalir(window.sb); } catch (_) { /* se sigue */ }
+				}
 				// Con la sesión cerrada, a la portada de la tienda. Dentro de /salon/ (la app
 				// instalable, js/app-instalada.js), al login de la app, que regresa a Hoy.
 				var enApp = !!(window.AppInstalada && window.AppInstalada.estaEnSalon());

@@ -1203,6 +1203,131 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 
 	ok("un error de la base sin su código técnico", /PGRST|código|\(error/.test(B.explicar({ status: 404, code: "PGRST205", message: "Could not find the table" })), false);
 
+	// ── 10. Privacidad al cerrar sesión: limpiar las marcas propias ──────────────
+	// (solo en el código que la tiene; con otra versión de bandeja-salida.js no aplica)
+	if (typeof B.llavesNecesarias === "function") {
+		const KA = (al) => B.clave("asistencia", "m1", asis(al, null));
+		const KC = (al, p) => B.clave("calificacion", "m1", calif(al, p, {}));
+
+		ok("llaves necesarias: la de cada pendiente y, para un relleno, la asistencia de ese día",
+			Object.keys(B.llavesNecesarias([
+				{ clave: KC("ana", "p1"), maestro_id: "m1", tipo: "calificacion" },
+				{ clave: "registro|m1|beto|" + F, maestro_id: "m1", tipo: "registro", relleno: true, datos: Object.assign(reg("beto", 1, 1), { grupo_id: "g1" }) },
+				{ clave: KA("caro"), maestro_id: "m2", tipo: "asistencia" },
+			], "m1")).sort(),
+			[KA("beto"), KC("ana", "p1"), "registro|m1|beto|" + F].sort());
+
+		await caso("limpieza sin pendientes: se borran todas las propias de la cuenta", async () => {
+			const bdR = crearBD();
+			const alm = B.almacenMemoria();
+			const b = bandeja(cliente(bdR, {}), alm);
+			b.iniciar();
+			await b.agregar("asistencia", asis("ana", "presente"), "Asistencia de Ana", null, C(["estado"]));
+			await b.agregar("calificacion", calif("ana", "p1", { nivel: "logrado", estado_entrega: "entregado", retroalimentacion: "Le costó leer en voz alta" }), "Calificación de Ana", null, C(["nivel", "estado_entrega", "retroalimentacion"]));
+			await vacia(b);
+			// Marcas de otra cuenta en el mismo aparato: no se tocan
+			await alm.anotarMarca(B.clave("asistencia", "m2", asis("zoe", null)), "m2", { id: "x", seq: 1, valores: { estado: "presente" }, grupos: [], padres: {} });
+			const antes = [(await alm.marcas(KA("ana"), "m1")).length, (await alm.marcas(KC("ana", "p1"), "m1")).length];
+			const retroAntes = (await alm.marcas(KC("ana", "p1"), "m1")).some((m) => m.valores && m.valores.retroalimentacion === "Le costó leer en voz alta");
+			const n = await alm.limpiarPropias("m1");
+			ok("antes de salir, el aparato guardaba las marcas (con la retroalimentación)", [antes, retroAntes], [[1, 1], true]);
+			ok("sin pendientes: se borran las dos llaves", n, { borradas: 2, conservadas: 0 });
+			ok("ya no queda la retroalimentación en el aparato", [(await alm.marcas(KA("ana"), "m1")).length, (await alm.marcas(KC("ana", "p1"), "m1")).length], [0, 0]);
+			ok("las de otra cuenta se quedan", (await alm.marcas(B.clave("asistencia", "m2", asis("zoe", null)), "m2")).length, 1);
+			// Una captura nueva después de volver a entrar sale de una lectura nueva: sin aviso
+			const b2 = bandeja(cliente(bdR, {}), alm);
+			b2.iniciar();
+			await b2.agregar("asistencia", asis("ana", "ausente"), "Asistencia de Ana", vistaFila("asistencia", asisDe(bdR, "ana")), C(["estado"]));
+			await vacia(b2);
+			ok("después de limpiar, capturar sobre lo leído no es conflicto", [asisDe(bdR, "ana").asistencia_estado, b2.eventos.conflictos.length], ["ausente", 0]);
+		});
+
+		/*
+			Con una captura pendiente cuya respuesta se perdió (la base ya tiene la marca propia) y
+			otro toque encima: la regla necesita la cadena propia de esa llave. Se conserva completa;
+			lo demás de la cuenta se borra. Control: sin esas marcas, el mismo envío sería un
+			conflicto falso (por eso no se borran).
+		*/
+		async function pendienteConCadena(limpiar) {
+			const bdR = crearBD();
+			bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "a1", fecha: F, asistencia_estado: "presente", ...M("asistencia", "m0") });
+			const alm = B.almacenMemoria();
+			const s = cliente(bdR, {});
+			const b = bandeja(s, alm, { esperaMax: 10000 });
+			b.iniciar();
+			await b.agregar("calificacion", calif("a2", "p1", { nivel: "logrado", estado_entrega: "entregado", retroalimentacion: "Muy bien" }), "Calificación de Beto", null, C(["nivel", "estado_entrega", "retroalimentacion"]));
+			await vacia(b);
+			s.modo.perder = 1;
+			await b.agregar("asistencia", asis("a1", "ausente"), "A1", vista({ estado: "presente" }, "m0"), C(["estado"]));
+			await dormir(30);
+			s.modo.red = true; // este aparato se queda sin señal: lo enviará otra carga (b2)
+			await b.agregar("asistencia", asis("a1", "justificada"), "A1", vista({ estado: "presente" }, "m0"), C(["estado"]));
+			await dormir(20);
+			const n = await limpiar(alm);
+			const b2 = bandeja(cliente(bdR, {}), n.alm || alm);
+			await b2.iniciar();
+			await vacia(b2);
+			return { n: n.n, fin: asisDe(bdR, "a1").asistencia_estado, avisos: b2.eventos.conflictos.length, cola: b2.pendientes(),
+				calif: (await (n.alm || alm).marcas(KC("a2", "p1"), "m1")).length };
+		}
+		await caso("limpieza con pendientes: se conserva la cadena de sus llaves", async () => {
+			const r = await pendienteConCadena(async (alm) => ({ n: await alm.limpiarPropias("m1") }));
+			ok("con pendientes: se borra lo confirmado y se conserva la llave pendiente", r.n, { borradas: 1, conservadas: 1 });
+			ok("la marca de la calificación ya enviada (con su retroalimentación) se borró", r.calif, 0);
+			ok("con la cadena conservada: gana el último toque, sin aviso falso, cola vacía", [r.fin, r.avisos, r.cola], ["justificada", 0, 0]);
+		});
+		await caso("control: sin la cadena propia, el mismo envío sería un conflicto falso", async () => {
+			const r = await pendienteConCadena(async (alm) => {
+				// Un aparato que borrara TODO: la captura pendiente sin sus marcas
+				const vacio = B.almacenMemoria();
+				for (const it of await alm.todos()) await vacio.poner(it);
+				return { n: null, alm: vacio };
+			});
+			ok("control: sin marcas propias se avisa un conflicto que no existe", [r.fin, r.avisos], ["ausente", 1]);
+		});
+
+		// El relleno del cierre necesita la asistencia del día de ese alumno (falta marcada aquí)
+		async function rellenoTrasFalta(limpiar) {
+			const bdR = crearBD();
+			const alm = B.almacenMemoria();
+			const s = cliente(bdR, {});
+			const v1 = bandeja(s, alm, { esperaMax: 10000 });
+			v1.iniciar();
+			await v1.agregar("asistencia", asis("ana", "ausente"), "Asistencia de Ana", null, C(["estado"]));
+			await vacia(v1);
+			s.modo.red = true;
+			await v1.agregar("registro", Object.assign(reg("ana", 1, 1), { grupo_id: "g1" }), "Cierre del día de Ana", null, RELLENO);
+			await dormir(20);
+			const r = await limpiar(alm);
+			const v2 = bandeja(cliente(bdR, {}), r.alm || alm);
+			await v2.iniciar();
+			await vacia(v2);
+			return { n: r.n, reg: vReg(regDe(bdR, "ana")), cola: v2.pendientes() };
+		}
+		await caso("limpieza con un relleno pendiente: se conserva la asistencia del día", async () => {
+			const r = await rellenoTrasFalta(async (alm) => ({ n: await alm.limpiarPropias("m1") }));
+			ok("relleno pendiente: la asistencia de ese alumno y día se conserva", r.n, { borradas: 0, conservadas: 1 });
+			ok("relleno pendiente: a quien se marcó con falta no se le pone 1 y 1", [r.reg, r.cola], [null, 0]);
+		});
+		await caso("control: sin la asistencia propia, el relleno se pondría a quien faltó", async () => {
+			const r = await rellenoTrasFalta(async (alm) => {
+				const vacio = B.almacenMemoria();
+				for (const it of await alm.todos()) await vacio.poner(it);
+				return { n: null, alm: vacio };
+			});
+			ok("control: sin la marca de la falta, el relleno sí se inserta", r.reg, { participacion: 1, conducta: 1 });
+		});
+
+		await caso("limpiarAlSalir sin IndexedDB ni sesión: no falla ni detiene la salida", async () => {
+			ok("sin IndexedDB: null", await B.limpiarAlSalir({ auth: { getSession: async () => ({ data: { session: { user: { id: "m1" } } } }) } }), null);
+			ok("sin sesión: null", await B.limpiarAlSalir({ auth: { getSession: async () => ({ data: { session: null } }) } }), null);
+		});
+
+		const nav = require("fs").readFileSync(require("path").join(__dirname, "..", "js", "navbar.js"), "utf8");
+		const iConf = nav.indexOf("BandejaSalida.confirmarSalida(window.sb)"), iLimp = nav.indexOf("BandejaSalida.limpiarAlSalir(window.sb)"), iSal = nav.indexOf("sb.auth.signOut()");
+		ok("la barra limpia después de confirmar y antes de cerrar la sesión", iConf !== -1 && iConf < iLimp && iLimp < iSal, true);
+	}
+
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);
 })().catch((e) => { console.log("FALLA excepción: " + (e && e.stack)); process.exit(1); });

@@ -1228,15 +1228,36 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (userError && window.Lectura && window.Lectura.errorDeRed(userError)) throw new Error('No se pudo comprobar tu sesión. Revisa tu conexión y vuelve a subir el archivo.');
       if (!user) throw new Error('No hay sesión activa para subir archivos.');
 
-      const ruta = `recursos/${user.id}/${tempRecursosId}/sesion_${num}/${file.name}`;
+      /*
+        La clave de Storage no puede llevar acentos, ñ, °, comillas ni otros signos ("Invalid
+        key" con «3° 'B'.pdf"): se normaliza con js/clave-archivo.js y el nombre ORIGINAL se
+        guarda aparte (archivo.nombre), que es el que se muestra, siempre escapado. Si dos
+        nombres quedan con la misma clave, la segunda lleva sufijo ("-2").
+      */
+      const carpeta = `recursos/${user.id}/${tempRecursosId}/sesion_${num}/`;
+      const usadas = archivosSubidos.map(function (a) { return String(a.path || ''); });
+      let ruta = carpeta + window.ClaveArchivo.unica(file.name, usadas);
       const pendingChip = document.createElement('span');
       pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800';
       pendingChip.dataset.pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       pendingChip.innerHTML = `<span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span><span title="${escapeHtml(file.name)}">${escapeHtml(truncarTexto(file.name, 30))} · Subiendo...</span>`;
       recursosFilesList?.appendChild(pendingChip);
 
-      const { error: uploadError } = await window.sb.storage.from('recursos').upload(ruta, file, { upsert: false });
-      if (uploadError) throw uploadError;
+      try {
+        // Ya existe esa clave en la carpeta (otra pestaña o un intento anterior): otro sufijo
+        for (let intento = 0; ; intento++) {
+          const { error: uploadError } = await window.sb.storage.from('recursos').upload(ruta, file, { upsert: false });
+          if (!uploadError) break;
+          const yaExiste = String(uploadError.statusCode || uploadError.status || '') === '409' ||
+            /already exists|duplicate/i.test(String(uploadError.message || uploadError.error || ''));
+          if (!yaExiste || intento >= 3) throw uploadError;
+          usadas.push(ruta);
+          ruta = carpeta + window.ClaveArchivo.unica(file.name, usadas);
+        }
+      } catch (errorSubida) {
+        pendingChip.remove(); // no se queda "Subiendo..." para siempre
+        throw errorSubida;
+      }
 
       let urlPublica = null;
       try {
@@ -1247,15 +1268,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         mostrarError(recursosFilesError, 'El archivo se subió, pero no se pudo generar el enlace seguro.');
       }
 
-      pendingChip.outerHTML = `
-        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${String(ruta)}">
-          <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span>
-          <span title="${String(file.name)}">${String(truncarTexto(file.name, 30))}</span>
-          <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${String(ruta)}" aria-label="Eliminar archivo">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
-          </button>
-        </span>`;
-
+      // El chip definitivo lo pinta renderArchivos (con el nombre original y la ruta escapados)
+      pendingChip.remove();
       archivosSubidos.push({ nombre: file.name, path: ruta, url: urlPublica });
       syncRecursosState();
       renderArchivos();

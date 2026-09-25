@@ -6,6 +6,8 @@
 
 	document.getElementById('btnCerrarSesionOnboarding')
 		?.addEventListener('click', async function () {
+			// Borra del aparato las marcas de capturas que ya no hacen falta (js/bandeja-salida.js)
+			if (window.BandejaSalida && window.BandejaSalida.limpiarAlSalir) { try { await window.BandejaSalida.limpiarAlSalir(window.sb); } catch (_) { /* se sigue */ } }
 			await window.sb.auth.signOut();
 			window.location.href = 'index.html';
 		});

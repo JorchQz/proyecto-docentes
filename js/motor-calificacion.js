@@ -348,10 +348,18 @@
 		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
 
+		/*
+			ctx.detalle ("Qué le falta", js/que-le-falta.js): las MISMAS lecturas, con más columnas
+			(número de sesión y sus PDA con el texto del catálogo; nombre del producto). No agrega
+			ninguna petición y la fórmula no cambia: solo se devuelve lo que ya se leyó.
+		*/
+		var detalle = !!ctx.detalle;
 		var sesiones = [];
 		if (proyIds.length) {
 			sesiones = await todas(function () {
-				return sb.from("sesiones").select("id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
+				return sb.from("sesiones").select(detalle
+					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda))"
+					: "id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
 			});
 		}
 		var sesionIds = sesiones.map(function (s) { return s.id; });
@@ -371,7 +379,7 @@
 		var productos = [];
 		if (sesionIds.length) {
 			productos = await todas(function () {
-				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo")
+				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo" + (detalle ? ", nombre, orden" : ""))
 					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
@@ -459,6 +467,8 @@
 				usaLegacy: usaLegacy,
 				examenAproximado: examen.aproximado,
 			};
+			// Lo que entró al cálculo de este alumno (sus productos, sus capturas y su alta)
+			if (detalle) porAlumno[a.id].detalle = { productos: misProductos, calificaciones: calificaciones, alta: alta[a.id] || null };
 		});
 
 		// Calificación propuesta: SIEMPRE la función SQL (piso por grado), en un solo viaje
@@ -473,21 +483,25 @@
 			});
 		}
 
-		return { porAlumno: porAlumno, pesos: pesos, sinProyectos: proyIds.length === 0 };
+		var salida = { porAlumno: porAlumno, pesos: pesos, sinProyectos: proyIds.length === 0 };
+		if (detalle) salida.sesiones = sesiones;
+		return salida;
 	}
 
-	// ctx = {maestroId, grupoId, alumnoId, grado, trimestre, campos} — un alumno
+	// ctx = {maestroId, grupoId, alumnoId, grado, trimestre, campos, detalle} — un alumno
 	async function cargarYCalcular(sb, ctx) {
 		var r = await cargarYCalcularGrupo(sb, {
 			maestroId: ctx.maestroId, grupoId: ctx.grupoId, trimestre: ctx.trimestre,
-			campos: ctx.campos, alumnos: [{ id: ctx.alumnoId, grado: ctx.grado }],
+			campos: ctx.campos, alumnos: [{ id: ctx.alumnoId, grado: ctx.grado }], detalle: ctx.detalle,
 		});
 		var a = r.porAlumno[ctx.alumnoId];
-		return {
+		var salida = {
 			porCampo: a.porCampo, pesos: r.pesos, asistencia: a.asistencia,
 			usaLegacy: a.usaLegacy, examenAproximado: a.examenAproximado,
 			sinProyectos: r.sinProyectos,
 		};
+		if (ctx.detalle) salida.detalle = Object.assign({ sesiones: r.sesiones || [] }, a.detalle);
+		return salida;
 	}
 
 	/*

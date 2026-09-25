@@ -78,6 +78,8 @@
 	Otras páginas: BandejaSalida.vigilarFuera() (aviso "N capturas de Hoy sin enviar" y envío).
 	Cerrar sesión (js/navbar.js, js/sala-maestros.js):
 		BandejaSalida.confirmarSalida(sb) → Promise<boolean>
+		BandejaSalida.limpiarAlSalir(sb)  → borra las marcas propias de la cuenta que ya no
+		                                     necesita ninguna captura pendiente (privacidad)
 */
 var BandejaSalida = (function () {
 	var NOMBRE_BD = "jissez-bandeja";
@@ -493,6 +495,35 @@ var BandejaSalida = (function () {
 		return marcas.slice().sort(function (a, b) { return a.seq - b.seq; }).slice(-MAX_MARCAS);
 	}
 
+	/*
+		Privacidad al cerrar sesión (limpiarPropias). Las marcas propias guardan lo que se capturó
+		(valores, incluida la retroalimentación) y solo sirven para decidir los conflictos de las
+		capturas que AÚN no llegan a la base. Una captura nueva siempre sale de una lectura
+		nueva de la base (su "vistos"), así que las marcas de lo ya confirmado no le hacen falta.
+		Lo que sí necesita la regla, mientras haya capturas pendientes de esa cuenta:
+		  - todas las marcas de la llave de cada captura pendiente (la cadena propia: su número de
+		    captura, sus grupos y sus padres; se conservan COMPLETAS, sin separar por marca);
+		  - para el relleno del cierre, las de la asistencia de ese alumno y ese día
+		    (faltoEnEsteAparato: "no se pone 1 y 1 a quien este aparato marcó con falta").
+		llavesNecesarias(pendientes, maestroId) → { llave: true } con esas llaves.
+	*/
+	function llavesNecesarias(pendientes, maestroId) {
+		var salida = {};
+		(pendientes || []).forEach(function (it) {
+			if (!it || (maestroId && it.maestro_id !== maestroId)) return;
+			if (it.clave) salida[it.clave] = true;
+			var d = it.datos || {};
+			if (it.relleno && d.grupo_id && d.alumno_id && d.fecha) {
+				salida[clave("asistencia", maestroId, { grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha })] = true;
+			}
+		});
+		return salida;
+	}
+	// ¿Se borra esta fila del almacén "propias"? Solo las de esa cuenta que ya no necesita la regla
+	function propiaSobra(r, maestroId, necesarias) {
+		return !!r && r.maestro_id === maestroId && !necesarias[r.clave];
+	}
+
 	// ── Decidir grupo por grupo ──────────────────────────────────────────────────
 	// Lo propio frente a esta captura: "superado" si es de una captura más nueva; si no, "propio"
 	function frente(it, m) { return m.seq > it.seq ? "superado" : "propio"; }
@@ -902,6 +933,17 @@ var BandejaSalida = (function () {
 				if (m) Object.assign(m, copia(cambios));
 				return Promise.resolve();
 			},
+			// Al cerrar sesión: borra las marcas propias de la cuenta que ya no necesita ninguna
+			// captura pendiente (llavesNecesarias). → { borradas, conservadas }
+			limpiarPropias: function (maestroId) {
+				var necesarias = llavesNecesarias(Object.keys(mapa).map(function (k) { return mapa[k]; }), maestroId);
+				var n = { borradas: 0, conservadas: 0 };
+				Object.keys(marcas).forEach(function (c) {
+					if (propiaSobra(marcas[c], maestroId, necesarias)) { delete marcas[c]; n.borradas++; }
+					else if (marcas[c].maestro_id === maestroId) n.conservadas++;
+				});
+				return Promise.resolve(n);
+			},
 		};
 		return a;
 	}
@@ -1110,6 +1152,32 @@ var BandejaSalida = (function () {
 			reciente. Olvidar las marcas de una llave vieja solo hace que esa llave se compare por
 			contenido; nunca pierde una captura.
 		*/
+		/*
+			Al cerrar sesión: en UNA transacción sobre "pendientes" y "propias" (una ventana que
+			encola a la vez no se cruza: encolar escribe las dos en su propia transacción), se leen
+			las capturas pendientes y se borran las marcas propias de la cuenta que ya no necesita
+			ninguna (llavesNecesarias). → { borradas, conservadas }
+		*/
+		a.limpiarPropias = function (maestroId) {
+			return mem.limpiarPropias(maestroId).then(function () {
+				return txn([ALMACEN, PROPIAS], "readwrite", function (tx, salida) {
+					var n = { borradas: 0, conservadas: 0 };
+					salida.valor = n;
+					var gp = tx.objectStore(ALMACEN).getAll();
+					gp.onsuccess = function () {
+						var necesarias = llavesNecesarias(gp.result || [], maestroId);
+						var cur = tx.objectStore(PROPIAS).openCursor();
+						cur.onsuccess = function () {
+							var c = cur.result;
+							if (!c) return;
+							if (propiaSobra(c.value, maestroId, necesarias)) { c.delete(); n.borradas++; }
+							else if (c.value && c.value.maestro_id === maestroId) n.conservadas++;
+							c.continue();
+						};
+					};
+				});
+			});
+		};
 		a.podarLlaves = function () {
 			return txn([PROPIAS], "readwrite", function (tx) {
 				var s = tx.objectStore(PROPIAS);
@@ -1638,6 +1706,52 @@ var BandejaSalida = (function () {
 			" cuando vuelvas a entrar en él y abras Mi Salón.\n\n¿Cerrar sesión de todos modos?");
 	}
 
+	/*
+		Privacidad en el aparato al cerrar sesión (js/navbar.js, después de confirmarSalida): se
+		borran del almacén "propias" las marcas de ESA cuenta que ya no necesita ninguna captura
+		pendiente (llavesNecesarias). Sin pendientes se borran todas; con pendientes se conservan
+		completas las de sus llaves (y la asistencia del día para un relleno del cierre), para que
+		la regla de conflictos siga igual cuando se envíen. No crea la base si no existe, nunca
+		toca las capturas pendientes ni lo de otra cuenta, y no detiene el cierre de sesión: si el
+		navegador no contesta en LIMITE_LIMPIEZA, se sigue sin limpiar.
+		→ Promise<{ borradas, conservadas } | null>
+	*/
+	var LIMITE_LIMPIEZA = 3000;
+	async function limpiarAlSalir(sb) {
+		var id = cuentaGuardada();
+		if (!id && sb && sb.auth && sb.auth.getSession) {
+			try {
+				var r = await sb.auth.getSession();
+				id = r && r.data && r.data.session ? r.data.session.user.id : null;
+			} catch (_) {}
+		}
+		if (!id) return null;
+		return new Promise(function (ok) {
+			var hecho = false;
+			function fin(v) { if (!hecho) { hecho = true; ok(v); } }
+			setTimeout(function () { fin(null); }, LIMITE_LIMPIEZA);
+			try {
+				if (typeof indexedDB === "undefined" || !indexedDB) { fin(null); return; }
+				var req = indexedDB.open(NOMBRE_BD);
+				// No existía: no se crea (no había nada que limpiar)
+				req.onupgradeneeded = function () { try { req.transaction.abort(); } catch (_) {} };
+				req.onerror = function (e) { if (e && e.preventDefault) e.preventDefault(); fin(null); };
+				req.onsuccess = function () {
+					var db = req.result;
+					if (!db.objectStoreNames.contains(ALMACEN) || !db.objectStoreNames.contains(PROPIAS)) { try { db.close(); } catch (_) {} fin(null); return; }
+					almacenIDB(db).limpiarPropias(id).then(function (n) {
+						try { db.close(); } catch (_) {}
+						fin(n);
+					}, function (e) {
+						try { db.close(); } catch (_) {}
+						if (typeof console !== "undefined") console.warn("bandeja: no se pudieron limpiar las marcas propias", e);
+						fin(null);
+					});
+				};
+			} catch (_) { fin(null); }
+		});
+	}
+
 	// ── Fuera de Hoy: lo pendiente se dice y se envía ────────────────────────────
 	var ESTILO_BOTON = "display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 1rem;" +
 		"border-radius:.75rem;font-weight:600;font-size:.875rem;text-decoration:none;cursor:pointer;box-sizing:border-box;";
@@ -1816,6 +1930,8 @@ var BandejaSalida = (function () {
 		cuentaGuardada: cuentaGuardada,
 		contarDe: contarDe,
 		confirmarSalida: confirmarSalida,
+		llavesNecesarias: llavesNecesarias,
+		limpiarAlSalir: limpiarAlSalir,
 		vigilarFuera: vigilarFuera,
 	};
 })();

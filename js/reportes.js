@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	alumnos = als || [];
 
 	// Todos los selectores de trimestre arrancan en el trimestre actual del grupo
-	["selectTrimestre", "selectTrimestreConc", "selectTrimBoleta", "selectTrimPda"].forEach(function (id) {
+	["selectTrimestre", "selectTrimestreConc", "selectTrimBoleta", "selectTrimPda", "selectTrimFalta"].forEach(function (id) {
 		const sel = document.getElementById(id);
 		if (sel && grupo.trimestre_actual) sel.value = String(grupo.trimestre_actual);
 	});
@@ -207,6 +207,47 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pintarGrupo("concentradoContainer", parseInt(document.getElementById("selectTrimestreConc").value, 10),
 			window.ReportesGrupo.htmlConcentrado);
 	});
+
+	// ═══════════════════════════════════════════════════════════════
+	// TAB 6 — QUÉ LE FALTA (vista de grupo)
+	// Por alumno, cuántos pendientes tiene en cada campo; al tocarlo, su detalle.
+	// Las mismas lecturas que las otras pestañas de grupo (ReporteDatos.grupoTrimestre, con
+	// más columnas y ninguna petición más); las reglas viven en js/que-le-falta.js.
+	// ═══════════════════════════════════════════════════════════════
+	let turnoFalta = 0;
+	const faltaBtn = document.getElementById("generarFaltaBtn");
+	const faltaCont = document.getElementById("faltaContainer");
+	if (faltaBtn && faltaCont) {
+		faltaBtn.addEventListener("click", async function () {
+			const miTurno = ++turnoFalta;
+			const trimestre = parseInt(document.getElementById("selectTrimFalta").value, 10) || 1;
+			faltaCont.innerHTML = "<p class='text-gray-400 text-sm'>Revisando lo registrado...</p>";
+			faltaBtn.disabled = true;
+			try {
+				if (!ctxReportes) ctxReportes = await window.ReporteDatos.contexto(window.sb);
+				const datos = await window.ReporteDatos.grupoTrimestre(window.sb, ctxReportes, trimestre,
+					{ queLeFalta: true, hoy: getLocalDateISO() });
+				if (miTurno !== turnoFalta) return;
+				// Orden de lista con el grado de hoy (el de la captura)
+				const lista = ctxReportes.alumnos.map(function (al) {
+					return { alumno: al, res: (datos.queLeFalta || {})[al.id] || null };
+				});
+				faltaCont.innerHTML = window.QueLeFalta.htmlGrupo(lista, trimestre);
+			} catch (e) {
+				if (miTurno !== turnoFalta) return;
+				console.error("qué le falta:", e);
+				faltaCont.innerHTML = "<p class='text-red-500 text-sm'>No se pudieron revisar los pendientes: " +
+					esc((e && e.message) || "error desconocido") + ". Revisa tu conexión e inténtalo de nuevo.</p>";
+			} finally {
+				if (miTurno === turnoFalta) faltaBtn.disabled = false;
+			}
+		});
+		// Tocar un alumno abre o cierra su detalle
+		faltaCont.addEventListener("click", function (e) {
+			const boton = e.target.closest ? e.target.closest("button[data-qlf-alumno]") : null;
+			if (boton) window.QueLeFalta.alternar(boton);
+		});
+	}
 
 	// ── Helpers ────────────────────────────────────────────────────
 	function colorCalif(v) {

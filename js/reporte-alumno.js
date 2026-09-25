@@ -337,7 +337,23 @@
 			"</div>";
 	}
 
-	// ── Render: 2. Desempeño por campo ────────────────────────────────────────
+	// ── Render: 2. Qué le falta ───────────────────────────────────────────────
+
+	/*
+		Lo que le falta para acreditar o avanzar, por campo (js/que-le-falta.js, calculado en
+		ReporteDatos.alumnoTrimestre con { queLeFalta: true }). Solo hechos de los datos, con
+		tono formativo; lo que es pendiente de la maestra (productos sin revisar) y una propuesta
+		sin confirmar se ven en pantalla y no se imprimen. Boleta cerrada: "Trimestre cerrado".
+	*/
+	function renderQueLeFalta(datos) {
+		var Q = window.QueLeFalta;
+		if (!Q || !datos.queLeFalta) return "";
+		return "<section class='mb-7' data-seccion='que-le-falta'>" +
+			titulo(2, "Qué le falta para avanzar", "con lo registrado hasta hoy") +
+			Q.htmlAlumno(datos.queLeFalta) + "</section>";
+	}
+
+	// ── Render: 3. Desempeño por campo ────────────────────────────────────────
 
 	function hayExamen(datos) {
 		var porCampo = (datos.motor && datos.motor.porCampo) || {};
@@ -481,9 +497,10 @@
 			.map(function (r) { return ETIQUETA_RUBRO[r] + " " + (Number(pesos[r]) || 0); }).join(" · ") +
 			(conductaPondera ? "" : " · Conducta: referencia, no pondera");
 
-		return "<section class='mb-7'>" + titulo(2, "Desempeño por campo formativo", "Pesos relativos: " + esc(pesosTexto)) +
-			"<ul class='bloque mb-3 list-disc pl-5 flex flex-col gap-1 text-xs text-gray-500 leading-relaxed'>" +
-			notas.map(function (n) { return "<li>" + n + "</li>"; }).join("") + "</ul>" +
+		// Título y notas en un mismo bloque: impreso, el título no se queda solo al pie de una página
+		return "<section class='mb-7'><div class='bloque'>" + titulo(3, "Desempeño por campo formativo", "Pesos relativos: " + esc(pesosTexto)) +
+			"<ul class='mb-3 list-disc pl-5 flex flex-col gap-1 text-xs text-gray-500 leading-relaxed'>" +
+			notas.map(function (n) { return "<li>" + n + "</li>"; }).join("") + "</ul></div>" +
 			"<div class='grid grid-cols-1 lg:grid-cols-2 print:grid-cols-2 gap-3'>" + tarjetas + "</div></section>";
 	}
 
@@ -512,7 +529,7 @@
 				cuenta.requiere_apoyo + " requiere apoyo" + (cuenta.sin ? " · " + cuenta.sin + " sin evaluar" : "") + "</p>" +
 				"<div class='grid grid-cols-1 sm:grid-cols-2 gap-x-8'>" + filas + "</div>";
 		}
-		return "<section class='bloque mb-7' data-seccion='cuaderno'>" + titulo(3, "Revisión de cuaderno", "10 criterios") + cuerpo + "</section>";
+		return "<section class='bloque mb-7' data-seccion='cuaderno'>" + titulo(4, "Revisión de cuaderno", "10 criterios") + cuerpo + "</section>";
 	}
 
 	// ── Render: 4. Habilidades básicas ────────────────────────────────────────
@@ -567,7 +584,7 @@
 		var catalogo = CH();
 		var grado = datos.alumno ? datos.alumno.grado : "";
 		if (!diag || !catalogo) {
-			return "<section class='bloque mb-7' data-seccion='habilidades'>" + titulo(4, "Habilidades básicas") +
+			return "<section class='bloque mb-7' data-seccion='habilidades'>" + titulo(5, "Habilidades básicas") +
 				nota("Sin evaluación de habilidades registrada en este trimestre." + enlaceDiagnostica()) + "</section>";
 		}
 		var etiquetas = catalogo.ETIQUETA_FLUIDEZ || ETIQUETA_FLUIDEZ_DEFECTO;
@@ -612,7 +629,7 @@
 		var matematicas = "<div class='rounded-xl border border-gray-200 p-3'>" +
 			"<h3 class='text-sm font-semibold text-gray-800 mb-1'>Matemáticas</h3>" + matesHtml + "</div>";
 
-		return "<section class='bloque mb-7' data-seccion='habilidades'>" + titulo(4, "Habilidades básicas") +
+		return "<section class='bloque mb-7' data-seccion='habilidades'>" + titulo(5, "Habilidades básicas") +
 			"<div class='grid grid-cols-1 sm:grid-cols-2 gap-3'>" + lectura + matematicas + "</div></section>";
 	}
 
@@ -666,7 +683,7 @@
 				"<div>PDA</div><div class='text-center'>Evidencias</div><div>Por nivel</div><div>Nivel predominante</div><div>Tendencia</div></div>" +
 				cuerpo + "</div>";
 		}).join("");
-		return "<section class='mb-7' data-seccion='pda'>" + titulo(5, "Avance por PDA", "Procesos de desarrollo de aprendizaje de su grado") +
+		return "<section class='mb-7' data-seccion='pda'>" + titulo(6, "Avance por PDA", "Procesos de desarrollo de aprendizaje de su grado") +
 			"<div class='bloque mb-3'>" + nota("Cada evidencia es un producto calificado que trabajó ese PDA. La tendencia compara las primeras " +
 				"evidencias con las últimas; con una sola evidencia todavía no hay tendencia (falta evidencia).") + "</div>" +
 			"<div class='space-y-3'>" + bloques + "</div></section>";
@@ -723,7 +740,7 @@
 			"<span class='font-semibold text-gray-800 text-sm'>Generales</span>" +
 			"<span class='text-xs text-gray-500'>hábitos, cuaderno, participación, conducta y asistencia (estas dos no ponderan)</span></p>";
 
-		return "<section class='mb-7' data-seccion='observaciones'>" + titulo(6, "Observaciones") +
+		return "<section class='mb-7' data-seccion='observaciones'>" + titulo(7, "Observaciones") +
 			"<div class='bloque mb-3'>" + nota("<span class='font-semibold text-blue-800'>Del docente:</span> lo escribió o ajustó el docente en la boleta. " +
 				"<span class='font-semibold text-gray-700'>Propuesta del sistema:</span> sale de lo capturado en el trimestre; el docente la revisa y puede editarla en la boleta." +
 				(cerradaDe(datos) ? " <span class='font-semibold text-emerald-800'>Como se entregó:</span> la boleta está cerrada y el texto quedó como estaba al cerrarla." : "")) + "</div>" +
@@ -750,7 +767,7 @@
 					"<p class='mt-1 text-sm text-gray-800 leading-relaxed'>&laquo;" + esc(String(r.texto).trim()) + "&raquo;</p></li>";
 			}).join("") + "</ol>";
 		}
-		return "<section class='bloque mb-7' data-seccion='retro'>" + titulo(7, "Retroalimentaciones destacadas", "las más recientes del trimestre") +
+		return "<section class='bloque mb-7' data-seccion='retro'>" + titulo(8, "Retroalimentaciones destacadas", "las más recientes del trimestre") +
 			cuerpo + "</section>";
 	}
 
@@ -792,6 +809,7 @@
 			: "";
 		return renderEncabezado(datos, info) + aviso +
 			renderResumen(datos) +
+			renderQueLeFalta(datos) +
 			renderDesempeno(datos) +
 			renderCuaderno(datos) +
 			renderHabilidades(datos) +
@@ -803,6 +821,7 @@
 
 	var api = {
 		render: render,
+		renderQueLeFalta: renderQueLeFalta,
 		renderVacio: renderVacio,
 		hayDatos: hayDatos,
 		calificacionCampo: calificacionCampo,
@@ -935,7 +954,7 @@
 				}
 				if (r.baja) poblarAlumnos(r.alumno.id);
 
-				var datos = await window.ReporteDatos.alumnoTrimestre(window.sb, ctx, r.alumno, trimestre);
+				var datos = await window.ReporteDatos.alumnoTrimestre(window.sb, ctx, r.alumno, trimestre, { queLeFalta: true, hoy: fechaHoyISO() });
 				if (miTurno !== turno) return;
 				cont.innerHTML = render(datos, {
 					escuela: ctx.escuela, ciclo: ctx.ciclo, grupo: ctx.grupo.nombre,

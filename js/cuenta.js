@@ -55,6 +55,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			logoutBtn.disabled = true;
 			logoutBtn.classList.add("opacity-70", "cursor-not-allowed");
 
+			// Borra del aparato las marcas de capturas que ya no hacen falta (js/bandeja-salida.js)
+			if (window.BandejaSalida && window.BandejaSalida.limpiarAlSalir) { try { await window.BandejaSalida.limpiarAlSalir(window.sb); } catch (_) { /* se sigue */ } }
 			var result = await window.sb.auth.signOut();
 			if (result.error) {
 				showMessage("accountMessage", "error", "No se pudo cerrar sesion: " + result.error.message);

@@ -281,6 +281,23 @@ la exportación.
    hojas "Máximos" y "Léeme" (advierte no recalcular con una plantilla que pondere la
    asistencia).
 
+6. **Qué le falta** (`js/que-le-falta.js`, 2026-09-25): por alumno, trimestre y campo, lo
+   que le falta para acreditar o avanzar, solo con hechos de los datos y en tono formativo
+   (nunca "puntos para sacar 10"): productos de sesiones ya trabajadas sin entregar o
+   incompletos; PDA con nivel predominante "Requiere apoyo" o "En proceso" (`v_avance_pda`) y
+   PDA de su grado trabajados sin evidencia, con su criterio; campo sin evidencias (juicio
+   docente); calificación (confirmada o, si no, la propuesta de la función SQL) debajo del
+   mínimo por campo de su grado ("Revisar"; nunca en 1°); faltas sin justificar como
+   referencia. Los productos que la maestra aún no revisa se listan aparte ("Docente") y no
+   cuentan como pendiente del alumno. Está en el reporte detallado (sección 2, imprimible: lo
+   de la maestra y una propuesta sin confirmar no se imprimen) y en Reportes → "Qué le falta"
+   (lista del grupo con la cuenta por campo; al tocar un alumno, su detalle). Usa las mismas
+   lecturas del motor (más columnas, ninguna petición más). **Boleta cerrada:** dice
+   "Trimestre cerrado" y no lista nada: lo entregado solo lee la foto del cierre y la foto no
+   guarda productos ni capturas. La junta no lleva lámina de pendientes: se proyecta a todas
+   las familias, lo individual no va ahí y sus "Áreas de atención" ya agregan los PDA en
+   requiere apoyo y la entrega baja del grupo.
+
 Además, en `reportes.html`: **Vista Recrea** (calificación confirmada por alumno y campo,
 lista para capturar en SIGED, con "pendiente" en lo no confirmado) y **Concentrado
 Director** (evaluación final del ciclo por alumno con su acreditación, niveles por

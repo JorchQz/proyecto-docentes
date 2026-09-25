@@ -729,13 +729,50 @@
 		return { texto: propuesto || "", delMaestro: false };
 	}
 
+	// Fecha local de la maestra, no UTC (a las 7 de la tarde en México, UTC ya es mañana)
+	function fechaLocal(d) {
+		var f = d || new Date();
+		return new Date(f.getTime() - f.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+	}
+
+	/*
+		"Qué le falta" (js/que-le-falta.js) de un alumno con lo que ya se leyó: el motor de HOY
+		con su detalle (productos, capturas y sesiones: ctx.detalle del motor, sin lecturas
+		extra), sus filas de v_avance_pda y su boleta del trimestre. La calificación que se
+		compara con el mínimo es la oficial (calificacionOficial, con el grado de hoy); sin
+		confirmar, la propuesta del motor, que ya salió de la función SQL. Una boleta cerrada
+		no lista nada (trimestre cerrado): lo entregado solo lee la foto del cierre, y la foto no
+		guarda productos ni capturas. null si la página no cargó js/que-le-falta.js.
+	*/
+	function queLeFaltaDe(ctx, alumno, mAlumno, sesiones, avancePda, boletaT, hoy) {
+		var Q = typeof window !== "undefined" ? window.QueLeFalta : null;
+		if (!Q) return null;
+		var m = mAlumno || {};
+		var calificacion = {};
+		CAMPOS.forEach(function (c) {
+			var of = calificacionOficial((boletaT || {})[c], alumno.grado);
+			var prop = m.porCampo && m.porCampo[c] ? m.porCampo[c].calificacionPropuesta : null;
+			calificacion[c] = of.confirmada ? { valor: of.valor, origen: "confirmada" }
+				: (vacio(prop) ? null : { valor: Number(prop), origen: "propuesta" });
+		});
+		return Q.calcular({
+			alumno: alumno, cerrada: boletaCerrada(boletaT), porCampo: m.porCampo || {},
+			detalle: Object.assign({ sesiones: sesiones || [] }, m.detalle || {}),
+			avancePda: (avancePda || []).filter(function (f) { return !f.alumno_id || f.alumno_id === alumno.id; }),
+			calificacion: calificacion, asistencia: m.asistencia || null,
+			hoy: hoy || fechaLocal(), regla: window.ReglasEntidad ? window.ReglasEntidad.regla(ctx.estado || null) : null,
+		});
+	}
+
 	/*
 		Todo lo de un alumno en un trimestre, listo para boleta o reporte detallado.
+		opciones.queLeFalta: además, datos.queLeFalta (las mismas lecturas, con más columnas).
 	*/
-	async function alumnoTrimestre(sb, ctx, alumno, trimestre) {
+	async function alumnoTrimestre(sb, ctx, alumno, trimestre, opciones) {
+		opciones = opciones || {};
 		var motorVivo = await window.MotorCalificacion.cargarYCalcular(sb, {
 			maestroId: ctx.maestroId, grupoId: ctx.grupo.id, alumnoId: alumno.id,
-			grado: alumno.grado, trimestre: trimestre, campos: CAMPOS,
+			grado: alumno.grado, trimestre: trimestre, campos: CAMPOS, detalle: !!opciones.queLeFalta,
 		});
 
 		var diagRes = await sb.from("evaluacion_diagnostica").select("*")
@@ -749,6 +786,7 @@
 			.eq("maestro_id", ctx.maestroId).eq("alumno_id", alumno.id).eq("trimestre", trimestre);
 		if (pdaRes.error) throw pdaRes.error;
 		var avancePda = pdaRes.data || [];
+		var avancePdaVivo = avancePda;
 
 		// alumno llega con su grado de hoy: una confirmada fuera de su escala sale "pendiente"
 		var gradoHoy = {};
@@ -786,7 +824,13 @@
 
 		var retro = await retroalimentaciones(sb, ctx, alumno.id, trimestre, 5);
 
+		// "Qué le falta": con lo de hoy (alumno con su grado de hoy); cerrada → trimestre cerrado
+		var faltante = opciones.queLeFalta
+			? queLeFaltaDe(ctx, alumno, motorVivo, (motorVivo.detalle || {}).sesiones, avancePdaVivo, boletaT, opciones.hoy)
+			: null;
+
 		return {
+			queLeFalta: faltante,
 			alumno: alumnoV, trimestre: trimestre, motor: motor, motorVivo: motorVivo,
 			cerrada: cerrada, deCierre: !!pcCierre,
 			fase: faseVisible(alumnoV.grado, foto), escala: escalaVisible(alumnoV.grado, foto),
@@ -887,10 +931,16 @@
 		{ motor: {porAlumno, pesos, sinProyectos}, diagnosticas: {alumnoId: fila},
 		  avancePda: [filas], boletas: {alumnoId: {1:{...},2:{...},3:{...}}} }
 	*/
-	async function grupoTrimestre(sb, ctx, trimestre) {
+	/*
+		opciones.queLeFalta: además, datos.queLeFalta = {alumnoId: resultado} (js/que-le-falta.js),
+		con el motor de hoy y las mismas lecturas (más columnas, ninguna petición más). Se calcula
+		antes de congelar las cerradas: esas salen "trimestre cerrado".
+	*/
+	async function grupoTrimestre(sb, ctx, trimestre, opciones) {
+		opciones = opciones || {};
 		var motor = await window.MotorCalificacion.cargarYCalcularGrupo(sb, {
 			maestroId: ctx.maestroId, grupoId: ctx.grupo.id, trimestre: trimestre,
-			alumnos: ctx.alumnos, campos: CAMPOS,
+			alumnos: ctx.alumnos, campos: CAMPOS, detalle: !!opciones.queLeFalta,
 		});
 		var ids = ctx.alumnos.map(function (a) { return a.id; });
 		var diagnosticas = {};
@@ -907,8 +957,19 @@
 			});
 		}
 		var boletas = await boletasCiclo(sb, ctx, ids);
+		var faltante = null;
+		if (opciones.queLeFalta) {
+			faltante = {};
+			var hoy = opciones.hoy || fechaLocal();
+			ctx.alumnos.forEach(function (a) {
+				faltante[a.id] = queLeFaltaDe(ctx, a, (motor.porAlumno || {})[a.id], motor.sesiones, avancePda,
+					((boletas[a.id] || {})[trimestre]) || {}, hoy);
+			});
+		}
 		// Alumnos con la boleta cerrada: como se entregó
-		return congelarCerradas(ctx, { motor: motor, diagnosticas: diagnosticas, avancePda: avancePda, boletas: boletas }, trimestre);
+		var datos = congelarCerradas(ctx, { motor: motor, diagnosticas: diagnosticas, avancePda: avancePda, boletas: boletas }, trimestre);
+		if (faltante) datos.queLeFalta = faltante;
+		return datos;
 	}
 
 	window.ReporteDatos = {
@@ -967,5 +1028,7 @@
 		alumnoTrimestre: alumnoTrimestre,
 		retroalimentaciones: retroalimentaciones,
 		grupoTrimestre: grupoTrimestre,
+		queLeFaltaDe: queLeFaltaDe,
+		fechaLocal: fechaLocal,
 	};
 })();
