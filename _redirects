@@ -1,0 +1,3 @@
+# Mi Salón como app instalable (PWA): /salon/ es una ruta virtual que sirve los mismos
+# archivos de la raíz, para que la app tenga su propio scope sin mover archivos.
+/salon/* /:splat 200
