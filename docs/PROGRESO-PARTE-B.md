@@ -867,6 +867,7 @@ evidencia oficial:
 | 18b | Acreditación de 2° a 6° | "Acredita" si el promedio de grado y los cuatro campos llegan a 6. Si el promedio llega pero algún campo no, dice "Revisar" y explica que depende del criterio de control escolar; nunca "No acredita" solo por eso |
 | 21 | Entidad | Se guarda el estado de cada maestra (onboarding y Mi cuenta; ya existe `perfiles.estado`). Por ahora las reglas son las mismas para todos; si un estado difiere, se activa su variante |
 | 22 | Eliminar cuenta | También desde la tienda (Mis compras); si hay compras, se pide escribir a soporte |
+| 18c | Redondeo de promedios | **Se redondean a un decimal** (.5 hacia arriba): la final por campo, el promedio de grado (de las cuatro finales redondeadas) y el general de cada trimestre. Evidencia: Fanny confirma que la plataforma de control escolar de Jalisco acepta un decimal y registra 6.67 como 6.7. Antes se truncaba. Los porcentajes de logro siguen truncados. La calificación entera de cada trimestre es juicio docente (Fanny puede poner 7 con 6.67), y la app ya funciona así. Las boletas oficiales de Jalisco 2025-2026 que trajo (5°) confirman enteros por trimestre, una observación corta por campo y periodo, y casillas de promedio final por campo y de grado |
 | 23 | Registro de la tienda | Solo nombre, correo y contraseña; el perfil del comprador se crea al iniciar sesión (antes no se guardaba nunca: un permiso bloqueaba el upsert y el error se ignoraba) |
 
 **Construcción y revisión de la auditoría NEM.**
