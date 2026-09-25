@@ -113,6 +113,10 @@
 			'<div id="navbarMenuPanel" class="hidden absolute right-0 top-full mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-md p-1 z-40">' +
 			'<div id="navGrupoSlot" class="hidden"></div>' +
 			menuItemsHtml +
+			// "Instalar la app" (js/app-instalada.js lo muestra solo si se puede y no está instalada)
+			'<button id="navbarInstalarBtn" type="button" class="hidden w-full min-h-[44px] flex items-center gap-2 text-left px-3 py-2 rounded-md text-sm font-medium text-blue-800 hover:bg-blue-50 transition-colors">' +
+			'<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 7v7"/><path d="m9 11 3 3 3-3"/><path d="M9 18h6"/></svg>' +
+			"Instalar la app</button>" +
 			'<button id="navbarLogoutBtn" type="button" class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-red-700 hover:bg-red-50 transition-colors">Cerrar sesión</button>' +
 			"</div>" +
 			"</div>" +
@@ -212,7 +216,9 @@
 				logoutBtn.disabled = true;
 				logoutBtn.textContent = "Cerrando...";
 				// Como en la tienda y en Sala de Maestros: con la sesión cerrada, a la portada de la
-				// tienda (antes la pantalla se quedaba en el panel)
+				// tienda (antes la pantalla se quedaba en el panel). Dentro de /salon/ (la app
+				// instalable, js/app-instalada.js), al login de la app, que regresa a Hoy.
+				var enApp = !!(window.AppInstalada && window.AppInstalada.estaEnSalon());
 				var result = null;
 				try {
 					result = window.sb ? await window.sb.auth.signOut() : null;
@@ -224,6 +230,7 @@
 					logoutBtn.textContent = "Cerrar sesión";
 					return;
 				}
+				if (enApp) { window.location.href = window.AppInstalada.urlLogin(); return; }
 				window.location.href = "tienda/index.html";
 			});
 		}

@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			salir.lastChild.textContent = "Cerrar sesión";
 			return;
 		}
-		window.location.href = "tienda/index.html";
+		// Bajo /salon/ (la app instalable), al login de la app; fuera, a la tienda como siempre
+		window.location.href = window.AppInstalada ? window.AppInstalada.salida("tienda/index.html") : "tienda/index.html";
 	});
 });

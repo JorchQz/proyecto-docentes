@@ -66,6 +66,8 @@ global.Event = function () {};
 require("../js/campos-formativos.js");
 require("../js/grupo-activo.js");
 require("../js/alcance-hoy.js");
+// La bandeja de salida (en node no hay IndexedDB: la cola vive en memoria, como sin él)
+require("../js/bandeja-salida.js");
 
 // ── Supabase falso ───────────────────────────────────────────────────────────
 const HOY = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
@@ -209,6 +211,16 @@ new Function(codigo)();
 		cierre.indexOf("ALUMNO DE SEGUNDO") !== -1 && cierre.indexOf("ALUMNO DE TERCERO") !== -1, true);
 	ok("4. cierre ofrece participación y conducta",
 		cierre.indexOf("Participación") !== -1 && cierre.indexOf("Conducta") !== -1, true);
+
+	// Capturar pasa por la bandeja de salida (js/bandeja-salida.js) y llega a la base
+	ok("la cola de guardado es la bandeja del dispositivo", !!global.window.BandejaSalida, true);
+	const clic = (lista, datos) => (elementos[lista]._listeners.click || []).forEach((fn) =>
+		fn({ target: { closest: () => ({ dataset: datos }) } }));
+	clic("asistenciaLista", { asistencia: "al-3", valor: "ausente" });
+	await new Promise((r) => setTimeout(r, 50));
+	ok("tocar una asistencia la guarda (upsert en asistencias)", escrituras.indexOf("asistencias") !== -1, true);
+	const pill = elementos.hoyEstadoGuardado || { textContent: "" };
+	ok("al vaciarse la cola: \"Todo guardado\"", pill.textContent, "Todo guardado");
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

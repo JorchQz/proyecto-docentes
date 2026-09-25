@@ -34,7 +34,21 @@ var LoginDestino = (function () {
 		return tieneSaas(perf) ? desdeTienda(destinoSaas || "dashboard.html") : "catalogo.html";
 	}
 
-	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil };
+	/*
+		La app instalable "Jissez MS" (docs/PWA-MI-SALON.md) abre este login como
+		/salon/tienda/login: en iPhone la sesión de la app solo existe dentro de /salon/.
+		Ahí, sin ?next=, una cuenta con Mi Salón entra a Hoy (sin grupo, al alta), no a la
+		última sección: la tienda no es parte de la app.
+	*/
+	function enSalon(pathname) {
+		return /^\/salon\//.test(String(pathname || ""));
+	}
+	// `destinoSaas` desde la raíz (Secciones.destinoMiSalon): el panel se cambia por Hoy
+	function destinoSalon(destinoSaas) {
+		return destinoSaas === "onboarding.html" ? destinoSaas : "hoy.html";
+	}
+
+	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil, enSalon: enSalon, destinoSalon: destinoSalon };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = LoginDestino; // pruebas en node
 
@@ -56,6 +70,24 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	var params = new URLSearchParams(location.search);
 	var nextExplicito = LoginDestino.nextSeguro(params.get("next"));
 
+	// Dentro de /salon/ (la app instalable), los enlaces a la tienda ("Volver a la tienda", el
+	// logo, el aviso de privacidad) van a la tienda de siempre, fuera de /salon/; en la app
+	// instalada se abren en el navegador. La tienda y su pago no son parte de la app.
+	var enSalon = LoginDestino.enSalon(location.pathname);
+	if (enSalon) {
+		var modoApp = false;
+		try {
+			modoApp = ["standalone", "minimal-ui", "fullscreen"].some(function (m) { return window.matchMedia("(display-mode: " + m + ")").matches; }) ||
+				window.navigator.standalone === true;
+		} catch (_) {}
+		Array.prototype.forEach.call(document.querySelectorAll("a[href]"), function (a) {
+			var href = a.getAttribute("href") || "";
+			if (!href || href.charAt(0) === "#" || /^[a-z]+:/i.test(href) || href.charAt(0) === "/") return;
+			a.setAttribute("href", "/tienda/" + href);
+			if (modoApp) { a.setAttribute("target", "_blank"); a.setAttribute("rel", "noopener"); }
+		});
+	}
+
 	var mode = "login"; // 'login' | 'register'
 
 	// Si ya hay sesión, saltar directo.
@@ -74,10 +106,15 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			.maybeSingle();
 		// Recordar si tiene Mi Salón: la primera página tras el login aparta el espacio del selector
 		if (!perf.error && Tienda.recordarSaas) { Tienda.recordarSaas(userId, LoginDestino.tieneSaas(perf)); }
-		if (!LoginDestino.tieneSaas(perf)) { return LoginDestino.porPerfil(perf); }
+		if (!LoginDestino.tieneSaas(perf)) { return enSalon ? "/tienda/catalogo.html" : LoginDestino.porPerfil(perf); }
 		// Con acceso: la última sección (js/secciones.js, que la tienda carga solo para estas
 		// cuentas). Si no se pudo cargar, Mi Salón, que es la sección de la primera vez.
 		var S = await Tienda.cargarSecciones();
+		if (enSalon) {
+			// Dentro de la app: Hoy (o el alta si aún no tiene grupo)
+			var gruposApp = await window.sb.from("grupos").select("id").eq("maestro_id", userId).limit(1);
+			return LoginDestino.porPerfil(perf, LoginDestino.destinoSalon(S ? S.destinoMiSalon(gruposApp) : "dashboard.html"));
+		}
 		var ultima = S ? S.leerUltima() : null;
 		var grupos = null;
 		if (S && S.necesitaGrupos(ultima)) {

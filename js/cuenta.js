@@ -44,7 +44,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	window.sb.auth.onAuthStateChange(function (event) {
 		if (event === "SIGNED_OUT") {
-			window.location.href = "index.html";
+			// Bajo /salon/ (la app instalable), al login de la app; fuera, como siempre
+			window.location.href = window.AppInstalada ? window.AppInstalada.salida("index.html") : "index.html";
 		}
 	});
 

@@ -98,6 +98,35 @@ var Secciones = (function () {
 		return RAIZ + r;
 	}
 
+	/*
+		App instalable "Jissez MS" (docs/PWA-MI-SALON.md): la app vive en /salon/, una ruta
+		virtual con los mismos archivos. Como las rutas salen de la ubicación de este archivo,
+		bajo /salon/ Mi Salón y Sala de Maestros se quedan en /salon/. La tienda no es parte de
+		la app: su pestaña lleva a la tienda de siempre (fuera de /salon/) y, dentro de la app
+		instalada, se abre en el navegador.
+	*/
+	function enSalon(raiz) {
+		return /\/salon\/$/.test(String(raiz || ""));
+	}
+
+	// href y atributos de la pestaña de una sección. `modoApp`: la página corre en la app.
+	function destinoPestana(clave, raiz, modoApp) {
+		var r = ruta(clave);
+		if (clave === "tienda" && enSalon(raiz)) {
+			return { href: raiz.replace(/salon\/$/, "") + r, fuera: !!modoApp };
+		}
+		return { href: raiz + r, fuera: false };
+	}
+
+	function enModoApp() {
+		try {
+			if (window.AppInstalada) return window.AppInstalada.modoApp();
+			return !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+		} catch (_) {
+			return false;
+		}
+	}
+
 	function svg(trazos, clase) {
 		return '<svg class="' + clase + '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + trazos + "</svg>";
 	}
@@ -174,9 +203,11 @@ var Secciones = (function () {
 	}
 
 	function enlaces(actual, claseA, claseIco) {
+		var modoApp = enModoApp();
 		return LISTA.map(function (s) {
 			var es = s.clave === actual;
-			return '<li><a class="' + claseA + '" href="' + url(s.ruta) + '"' + (es ? ' aria-current="true"' : "") + ">" +
+			var d = destinoPestana(s.clave, RAIZ, modoApp);
+			return '<li><a class="' + claseA + '" href="' + d.href + '"' + (d.fuera ? ' target="_blank" rel="noopener"' : "") + (es ? ' aria-current="true"' : "") + ">" +
 				svg(s.icono, claseIco) + "<span>" + s.etiqueta + "</span></a></li>";
 		}).join("");
 	}
@@ -239,6 +270,8 @@ var Secciones = (function () {
 		leerUltima: leerUltima,
 		guardarUltima: guardarUltima,
 		url: url,
+		enSalon: enSalon,
+		destinoPestana: destinoPestana,
 		montar: montar,
 		esEscritorio: esEscritorio,
 	};

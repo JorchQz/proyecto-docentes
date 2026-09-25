@@ -20,11 +20,25 @@
 	  - No se pudo leer        → aviso "No se pudo comprobar tu acceso" y la página se detiene
 	  - Sin red o error 5xx al comprobar la sesión → aviso común de js/lectura.js (no es
 	    "sin sesión": la maestra no sale); cualquier otra excepción → el mismo aviso de acceso
+
+	Dentro de /salon/ (la app instalable "Jissez MS", docs/PWA-MI-SALON.md):
+	  - el login se queda en /salon/ (relativo: /salon/tienda/login; en iPhone la sesión de la
+	    app solo existe dentro de su alcance) y regresa a la página que se estaba abriendo
+	    (?next=../hoy.html, con ".html": el login solo acepta esas rutas);
+	  - una cuenta sin acceso va al catálogo de siempre, fuera de /salon/ (la tienda no es
+	    parte de la app).
+	Fuera de /salon/ todo sigue como antes.
 */
 
 (function saasGuard() {
 	var LOGIN_URL = "tienda/login.html";
 	var TIENDA_URL = "tienda/catalogo.html";
+	if (/^\/salon\//.test(window.location.pathname)) {
+		var pagina = (window.location.pathname.split("/").pop() || "").replace(/\.html$/, "");
+		if (!/^[a-z0-9_\-]+$/i.test(pagina) || pagina === "index") pagina = "hoy";
+		LOGIN_URL = "tienda/login.html?next=" + encodeURIComponent("../" + pagina + ".html" + window.location.search + window.location.hash);
+		TIENDA_URL = "/tienda/catalogo.html";
+	}
 
 	// Se cumple SOLO cuando el acceso quedó confirmado (en los demás casos nunca): el selector
 	// de secciones guarda con ella la última sección y portal.html redirige sin adelantarse.

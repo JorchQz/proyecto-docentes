@@ -382,6 +382,13 @@ común).
 - **Seguridad:** Row-Level Security (RLS) en todas las tablas — `auth.uid() = maestro_id`,
   cada maestro solo ve sus datos (multi-tenant).
 - **Despliegue:** GitHub → Cloudflare Pages (CI/CD). Entorno local: VS Code Live Server.
+- **App instalable "Jissez MS" (PWA de Mi Salón, 2026-09-25):** `/salon/` es una ruta virtual
+  (`_redirects`) que sirve los mismos archivos de la raíz; la app instalada vive ahí
+  (`salon.webmanifest`: `scope: /salon/`, `start_url: /salon/hoy?origen=app`, `id: /mi-salon`).
+  El service worker (`sw.js`, registrado como `/salon/sw.js` solo desde páginas bajo `/salon/`)
+  solo da la página "Sin conexión" (`sin-conexion.html`); no guarda páginas ni datos de
+  Supabase. Las páginas de la raíz siguen igual, sin service worker. Detalle y cómo probarlo:
+  `docs/PWA-MI-SALON.md` §9.
 
 ### 5.1 Cómo se prueba (QA)
 
@@ -399,7 +406,8 @@ común).
   solo la ejecuta `postgres`) borra y recrea **solo** los datos de la cuenta QA. Código en
   `supabase/qa_semilla.sql`. Nunca toca maestros reales.
 - **Herramientas locales** en `.qa/` (ignorado por git): `servidor.js` (estático en
-  `127.0.0.1:5500`, no entrega archivos ocultos), `navegador.js` (Playwright con inicio de
+  `127.0.0.1:5500`, no entrega archivos ocultos; emula `/salon/` leyendo `_redirects` como
+  Cloudflare), `navegador.js` (Playwright con inicio de
   sesión real; `abrir({ cuenta: 2 })` para la segunda cuenta), `humo.js` (recorre todas las
   pantallas con los dos grupos), `aislamiento.js`, `verificar-*.js` y las carpetas de los
   revisores con sus scripts y evidencias.
@@ -565,7 +573,8 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Sala de Maestros ("Próximamente": espacio para compartir material didáctico entre docentes), protegida como Mi Salón | Página de espera (2026-09-25) | `sala-maestros.html`, `js/sala-maestros.js` |
 | Onboarding (crear grupo + alumnos + ciclo + trimestre) | Completo | `onboarding.html` |
 | Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
-| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy) | Completo (2026-09, B.1) | `hoy.html`, `js/hoy.js` |
+| **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy). Desde 2026-09-25 su cola de guardado vive en el dispositivo (IndexedDB `jissez-bandeja`): sobrevive a recargar o cerrar sin red, se reenvía al volver la red, al volver a primer plano y al abrir Hoy; escrituras idempotentes (upsert por llave; calificación con `evaluado_en` = momento de la captura y "gana la más reciente"); solo se reintenta lo de red y lo que la base rechaza se avisa y sale de la cola | Completo (2026-09, B.1; cola persistente 2026-09-25) | `hoy.html`, `js/hoy.js`, `js/bandeja-salida.js` |
+| **App instalable "Jissez MS"** (Mi Salón como PWA en `/salon/`): manifest, íconos, atajos (Pasar lista, Calificar trabajos, Reportes), página "Sin conexión", modo app (la Tienda abre en el navegador; login y cierre de sesión dentro de `/salon/`), botón "Instalar la app" en Inicio y en el menú de la cuenta (Chromium: aviso del navegador; iPhone/iPad: instrucciones) | Completo (2026-09-25, fases 1 y 2.5 de `docs/PWA-MI-SALON.md`) | `salon.webmanifest`, `sw.js`, `sin-conexion.html`, `iconos/`, `js/app-instalada.js` |
 | Asistencia (con autosave) | Completo | `asistencia.html` |
 | Mi Grupo (CRUD grupo y alumnos) | Completo | `mi-grupo.html` |
 | Crear Proyecto / Planeación (3 pasos con catálogo SEP) | Completo | `crear_proyecto.html` |

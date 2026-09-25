@@ -29,4 +29,5 @@
 /salon/sala-maestros.html /salon/sala-maestros 301
 /salon/tareas.html /salon/tareas 301
 /salon/tienda/login.html /salon/tienda/login 301
+/salon/index.html /salon/ 301
 /salon/* /:splat 200

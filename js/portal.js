@@ -13,8 +13,11 @@
 */
 
 var Portal = (function () {
-	// Ruta (desde la raíz) a la que redirige portal.html
-	function destino(ultima) {
+	// Ruta (desde la raíz) a la que redirige portal.html. Dentro de /salon/ (la app instalable,
+	// docs/PWA-MI-SALON.md) la tienda no es parte de la app: la última sección "Tienda" lleva
+	// al panel de Mi Salón.
+	function destino(ultima, enSalon) {
+		if (enSalon && ultima === "tienda") return "dashboard.html";
 		return typeof Secciones !== "undefined" && Secciones ? Secciones.ruta(ultima) : "dashboard.html";
 	}
 	return { destino: destino };
@@ -24,6 +27,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = Portal; //
 if (typeof document !== "undefined" && window.saasAcceso) {
 	window.saasAcceso.then(function () {
 		var ultima = typeof Secciones !== "undefined" && Secciones ? Secciones.leerUltima() : null;
-		window.location.replace(Portal.destino(ultima));
+		window.location.replace(Portal.destino(ultima, /^\/salon\//.test(window.location.pathname)));
 	});
 }

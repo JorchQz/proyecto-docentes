@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+	<meta name="theme-color" content="#1e3a8a">
+	<meta name="robots" content="noindex">
+	<title>Sin conexión — Jissez MS</title>
+	<!-- La muestra el service worker de la app (sw.js) cuando no hay red al abrir una página de
+	     Mi Salón. Autónoma: sin CDN ni scripts externos, con estilos en línea. -->
+	<style>
+		:root { --azul: #1e3a8a; --azul-hondo: #16276b; --papel: #faf9f4; --tinta: #1c2434; --gris: #5b6473; --linea: #e7e6df; --verde: #059669; }
+		* { box-sizing: border-box; }
+		html, body { margin: 0; min-height: 100%; }
+		body { min-height: 100vh; background: var(--papel); color: var(--tinta); font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; }
+		.barra { background: var(--azul-hondo); color: #fff; padding: 0 16px; padding-top: env(safe-area-inset-top, 0px); }
+		.barra-fila { height: 52px; display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; letter-spacing: -.01em; }
+		.barra img { width: 28px; height: 28px; border-radius: 7px; display: block; }
+		main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+		.caja { width: 100%; max-width: 30rem; background: #fff; border: 1px solid var(--linea); border-radius: 20px; padding: 28px 24px; text-align: center; box-shadow: 0 1px 3px rgba(28,36,52,.06); }
+		.icono { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; background: #eef2fb; color: var(--azul); display: flex; align-items: center; justify-content: center; }
+		h1 { margin: 0 0 8px; font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+		p { margin: 0 0 12px; color: var(--gris); font-size: 15px; line-height: 1.5; }
+		.pendientes { display: none; margin: 16px 0 4px; padding: 12px 14px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 14px; line-height: 1.45; text-align: left; }
+		.pendientes.si { display: block; }
+		button { margin-top: 12px; min-height: 48px; min-width: 44px; padding: 0 24px; border: 0; border-radius: 12px; background: var(--azul); color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+		button:hover { background: var(--azul-hondo); }
+		button:focus-visible { outline: 3px solid #f2cf6b; outline-offset: 2px; }
+		.nota { margin-top: 16px; font-size: 13px; }
+	</style>
+</head>
+<body>
+	<header class="barra">
+		<div class="barra-fila">
+			<img src="/iconos/mi-salon-192.png" alt="" onerror="this.style.display='none'">
+			<span>Jissez MS</span>
+		</div>
+	</header>
+	<main>
+		<div class="caja" role="alert">
+			<div class="icono" aria-hidden="true">
+				<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/></svg>
+			</div>
+			<h1>Sin conexión</h1>
+			<p>No hay internet en este momento. Mi Salón necesita señal para abrir sus pantallas.</p>
+			<div id="pendientes" class="pendientes"></div>
+			<button id="reintentar" type="button">Reintentar</button>
+			<p class="nota">La página se vuelve a abrir sola cuando regrese la señal.</p>
+		</div>
+	</main>
+	<script>
+		(function () {
+			function reintentar() { window.location.reload(); }
+			document.getElementById("reintentar").addEventListener("click", reintentar);
+			window.addEventListener("online", reintentar);
+
+			// Capturas de Hoy que esperan en este dispositivo (js/bandeja-salida.js). Solo se
+			// leen: si la base aún no existe, se cancela su creación para no dejarla vacía.
+			try {
+				if (!window.indexedDB) return;
+				var req = window.indexedDB.open("jissez-bandeja");
+				req.onupgradeneeded = function () { try { req.transaction.abort(); } catch (_) {} };
+				req.onerror = function (e) { if (e && e.preventDefault) e.preventDefault(); };
+				req.onsuccess = function () {
+					var db = req.result;
+					try {
+						if (!db.objectStoreNames.contains("pendientes")) { db.close(); return; }
+						var cuenta = db.transaction("pendientes", "readonly").objectStore("pendientes").count();
+						cuenta.onsuccess = function () {
+							var n = cuenta.result || 0;
+							db.close();
+							if (!n) return;
+							var caja = document.getElementById("pendientes");
+							caja.textContent = (n === 1 ? "Hay 1 captura de Hoy guardada" : "Hay " + n + " capturas de Hoy guardadas") +
+								" en este dispositivo. Se enviarán cuando vuelva la señal y abras Hoy.";
+							caja.className = "pendientes si";
+						};
+					} catch (_) { try { db.close(); } catch (__) {} }
+				};
+			} catch (_) {}
+		})();
+	</script>
+</body>
+</html>

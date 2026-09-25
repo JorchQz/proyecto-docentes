@@ -1,0 +1,4 @@
+# La app instalable de Mi Salón vive en /salon/ (ruta virtual): no se indexa en buscadores,
+# para no duplicar las páginas de la raíz.
+/salon/*
+  X-Robots-Tag: noindex

@@ -3,6 +3,15 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- App instalable "Jissez MS" (js/app-instalada.js; docs/PWA-MI-SALON.md) -->
+	<link rel="manifest" href="/salon.webmanifest">
+	<meta name="theme-color" content="#1e3a8a">
+	<link rel="apple-touch-icon" href="/iconos/apple-touch-icon-180.png">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Jissez MS">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<script src="js/app-instalada.js"></script>
 	<title>Hoy — Jissez</title>
 	<script src="https://cdn.tailwindcss.com"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -21,7 +30,7 @@
 			<div id="hoyMensaje" class="hidden rounded-xl px-4 py-3 text-sm"></div>
 
 			<!-- 1. Asistencia -->
-			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+			<section id="asistencia" class="scroll-mt-32 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 				<div class="flex items-center justify-between mb-3">
 					<h2 class="font-bold text-gray-800">1. Asistencia</h2>
 					<span id="asistenciaResumen" class="text-xs text-gray-500"></span>
@@ -30,7 +39,7 @@
 			</section>
 
 			<!-- 2. Tareas por revisar -->
-			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+			<section id="tareas" class="scroll-mt-32 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 				<div class="flex items-center justify-between mb-3">
 					<h2 class="font-bold text-gray-800">2. Tareas por revisar</h2>
 					<span id="tareasResumen" class="text-xs text-gray-500"></span>
@@ -39,7 +48,7 @@
 			</section>
 
 			<!-- 3. Sesiones de hoy -->
-			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+			<section id="sesiones" class="scroll-mt-32 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 				<div class="flex items-center justify-between mb-3">
 					<h2 class="font-bold text-gray-800">3. Sesiones de hoy</h2>
 					<span id="sesionesResumen" class="text-xs text-gray-500"></span>
@@ -48,7 +57,7 @@
 			</section>
 
 			<!-- 4. Cierre del día -->
-			<section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+			<section id="cierre" class="scroll-mt-32 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 				<div class="flex items-center justify-between mb-1">
 					<h2 class="font-bold text-gray-800">4. Cierre del día</h2>
 					<span id="cierreResumen" class="text-xs text-gray-500"></span>
@@ -72,6 +81,7 @@
 	<script src="js/alcance-hoy.js"></script>
 	<script src="js/section-shell.js"></script>
 	<script src="js/campos-formativos.js"></script>
+	<script src="js/bandeja-salida.js"></script>
 	<script src="js/hoy.js"></script>
 </body>
 </html>

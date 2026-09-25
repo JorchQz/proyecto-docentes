@@ -39,6 +39,14 @@
 				return;
 			}
 
+			// Dentro de /salon/ (la app instalable "Jissez MS", docs/PWA-MI-SALON.md) aquí solo se
+			// llega sin sesión (las páginas mandan a "index.html"): al login de la app, que con
+			// sesión salta directo y después lleva a Hoy. La tienda no es parte de la app.
+			if (/^\/salon\//.test(window.location.pathname)) {
+				window.location.replace("tienda/login.html?next=" + encodeURIComponent("../hoy.html"));
+				return;
+			}
+
 			// Última sección en este dispositivo (misma clave que Secciones.CLAVE en
 			// js/secciones.js; solo la escriben las cuentas con acceso). Sin Mi Salón ni
 			// Sala guardadas, a la tienda de inmediato, como siempre.

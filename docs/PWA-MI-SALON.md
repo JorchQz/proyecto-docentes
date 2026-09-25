@@ -481,3 +481,72 @@ Verificado directamente en producción (2026-09-25, `curl -I`):
 | Tienda dentro de la app | Se abre fuera, en el navegador |
 | Alcance ahora | Fase 1 (instalable, entra directo a Hoy, atajos, página sin conexión) + fase 2.5 (la cola de Hoy se guarda en el dispositivo y se reenvía al volver la red). La captura 100 % sin conexión (fase 3) no se hace todavía |
 | Medición de aperturas | No, por ahora (sería un dato nuevo para el aviso de privacidad) |
+
+---
+
+## 9. Lo que quedó hecho (fase 1 y fase 2.5, 2026-09-25)
+
+Rama `mi-salon-parte-b`. Probado en local contra el proyecto de pruebas, con `/salon/` emulado en `.qa/servidor.js` (lee `_redirects` igual que Cloudflare) y Chromium de Playwright.
+
+### 9.1 Archivos
+
+| Archivo | Qué hace |
+|---|---|
+| `salon.webmanifest` | `id: "/mi-salon"` (fijo para siempre), `name` "Jissez Mi Salón", `short_name` "Jissez MS", `lang` es-MX, `scope` `/salon/`, `start_url` `/salon/hoy?origen=app`, `display` standalone, `theme_color` `#1e3a8a`, `background_color` `#faf9f4`, íconos 192 y 512 (`any`) y 512 (`maskable`, con la J dentro del círculo seguro) y 3 atajos: Pasar lista (`/salon/hoy?origen=atajo#asistencia`), Calificar trabajos (`#sesiones`) y Reportes (`/salon/reportes?origen=atajo`). |
+| `iconos/` | Íconos con la J blanca de `tienda/assets/jissez-icon-white.png` sobre el azul pizarrón (generados con un canvas en Chromium: `.qa/constructor-p-pwa/iconos.js`): `mi-salon-192.png`, `mi-salon-512.png`, `mi-salon-maskable-512.png`, `apple-touch-icon-180.png` (opaco; iOS pone las esquinas) y los de los atajos. |
+| `sw.js` | Se registra como `/salon/sw.js` (alcance `/salon/`). Navegaciones: red primero y, si falla, la página "Sin conexión" guardada. Solo guarda esa página y su ícono, en un caché con `VERSION`; al activarse una versión nueva borra las anteriores. No toca otros orígenes (Supabase, CDN) ni guarda páginas, scripts o datos: con red siempre llega lo recién desplegado. **Al cambiar `sw.js` o `sin-conexion.html`, subir `VERSION`.** |
+| `sin-conexion.html` | Página autónoma (sin CDN) con la marca y "Reintentar"; se recarga sola al volver la red. Si hay capturas de Hoy guardadas en el dispositivo, dice cuántas. |
+| `js/app-instalada.js` | En el `<head>` de las 22 páginas de Mi Salón, junto con el manifest, `theme-color`, `apple-touch-icon` y los meta `apple-mobile-web-app-*` (rutas absolutas: valen desde `/` y desde `/salon/`). Registra el service worker solo bajo `/salon/`. Detecta el modo app: `display-mode: standalone` (o `minimal-ui`); en iPhone/iPad también `fullscreen` y `navigator.standalone`; y `?origen=app|atajo` (solo para esa página; no se guarda ni se manda). Pone `html.modo-app`. Botón "Instalar la app". |
+| `js/secciones.js` | Bajo `/salon/`, la pestaña Tienda va a la tienda de siempre (`/tienda/`, fuera de la app) y, en la app instalada, con `target="_blank"` (se abre en el navegador). Mi Salón y Sala de Maestros se quedan en `/salon/`. Fuera de `/salon/` nada cambia. |
+| `js/saas-guard.js`, `js/lectura.js` | Bajo `/salon/`, sin sesión se va al login **de la app** (`/salon/tienda/login?next=../<página>.html`), que regresa a la página que se abría. La capa de lectura lo hace también para las páginas que preguntan la sesión por su cuenta (antes mandaban a `index.html` y le ganaban al candado). Una cuenta sin acceso va a `/tienda/catalogo.html`. Fuera de `/salon/`, igual que antes. |
+| `js/navbar.js`, `js/section-shell.js`, `js/cuenta.js`, `js/mi-grupo.js`, `js/sala-maestros.js` | Cerrar sesión bajo `/salon/` lleva al login de la app (`?next=../hoy.html`); fuera, como antes. El menú de la cuenta trae "Instalar la app" (oculto hasta que se pueda). |
+| `index.html`, `js/portal.js` | `/salon/` (a donde llegan las salidas sin sesión) lleva al login de la app. El portal bajo `/salon/` nunca manda a la tienda. |
+| `tienda/js/login.js` | Bajo `/salon/`: sin `?next=`, una cuenta con Mi Salón entra a Hoy (sin grupo, al alta); los enlaces de la página (Volver a la tienda, logo, aviso de privacidad, términos) van a `/tienda/...` y, en la app, al navegador. En `/tienda/login` no cambia nada. |
+| `dashboard.html` | Lugar `#instalarAppSlot` para la tarjeta "Instala Mi Salón como app", al final de Inicio. |
+| `hoy.html`, `js/hoy.js`, `js/bandeja-salida.js` | Fase 2.5 (§9.3). Las secciones tienen `id` (`asistencia`, `tareas`, `sesiones`, `cierre`) y Hoy salta al `#hash` después de pintar (atajos). |
+
+### 9.2 Botón "Instalar la app"
+
+- Solo con el acceso a Mi Salón confirmado por el candado, y nunca dentro de la app.
+- **Chrome, Edge y Samsung Internet:** se guarda `beforeinstallprompt` y el botón abre el aviso del navegador. Chromium da el aviso también en las páginas de la raíz (el manifest instala la app de `/salon/`); si no llega, el botón lleva a `/salon/hoy?instalar=1`, que ofrece "Instalar" en cuanto llega el aviso o, si no llega en 4 s (ya instalada, o el navegador no lo da), explica cómo hacerlo desde el menú del navegador.
+- **iPhone y iPad:** hoja con instrucciones (Compartir → Agregar a pantalla de inicio → dejar activado "Abrir como app web" → abrir Jissez MS e iniciar sesión una vez). Desde la raíz ofrece ir primero a Mi Salón.
+- Lugares: tarjeta al final de Inicio y opción del menú de la cuenta. Iconos SVG en línea, botones de 44 px.
+
+### 9.3 La cola de Hoy en el dispositivo (fase 2.5)
+
+- Cada captura (asistencia, calificación de producto, cierre del día, retirar el cierre, retroalimentación) se guarda primero en IndexedDB (`jissez-bandeja`, almacén `pendientes`) y se envía en serie. Se borra solo cuando la base la confirmó. Sin IndexedDB, la cola vive en memoria como antes y cerrar la página pregunta.
+- **Una captura por llave** (asistencia: grupo + alumno + fecha; cierre: alumno + fecha; calificación: alumno + producto): la más reciente del dispositivo reemplaza a la anterior. Si la versión vieja iba en camino, al volver no borra la nueva.
+- **Idempotente y "gana la más reciente":** asistencia y cierre, upsert por su llave natural; retirar el cierre, borrado por llave; calificación, `evaluado_en` = momento de la captura y el `update` solo aplica si en la base no hay algo más nuevo (`evaluado_en <= captura`); si el insert choca con el índice único, se adopta la fila. Si en la base había algo más nuevo (otro dispositivo), se conserva y se avisa. Sin cambios de esquema.
+- **Reintentos solo de red** (sin respuesta, 408, 429, 5xx), con espera creciente (1 s a 30 s), y reenvío inmediato con `online`, al volver a primer plano y al abrir Hoy. Sesión vencida: se refresca y se reintenta; si ya no hay sesión, se espera sin borrar. **Cualquier otro error** (400, 403, 404, 409, un CHECK o un trigger) no se reintenta: sale de la cola y Hoy lo avisa con el alumno, el producto y la explicación.
+- **Aviso visible:** "N capturas pendientes de enviar" mientras haya algo; sin red, "Sin señal: N capturas pendientes de enviar, guardadas en este dispositivo."; al vaciarse, "Todo guardado".
+- Solo se envía lo de la cuenta con sesión (en un equipo compartido, lo de otra maestra se queda en el dispositivo). Al recargar, lo pendiente se pinta encima de lo leído de la base y el envío empieza después de pintar.
+- En la app instalada se pide `navigator.storage.persist()`.
+
+### 9.4 Cómo se verificó
+
+- `pruebas/pwa.test.js` (manifest, íconos, service worker, las 22 páginas, `_redirects`, modo app, rutas bajo `/salon/`, candado y capa de lectura sin sesión) y `pruebas/bandeja-salida.test.js` (sin red, "recargar" sobre el mismo almacén, reenviar sin duplicar, 403 y CHECK sin reintento, lote del cierre con una fila mala, la calificación más reciente gana, captura en camino, cuenta ajena, sesión vencida). `pruebas/hoy-arranque.test.js` ahora pasa por la bandeja.
+- `.qa/constructor-p-pwa/e2e.js`, en Chromium con ventana (sin ventana no existe el aviso de instalar): manifest sin errores e instalable (`Page.getInstallabilityErrors`), service worker activo en `/salon/`, `beforeinstallprompt` y `prompt()`, instalación y arranque por CDP (`PWA.install`, `PWA.launch`: abre `/salon/hoy?origen=app` en ventana standalone), los 3 atajos, el menú completo sin salir de `/salon/`, Tienda en otra ventana, cerrar sesión y login dentro de la app, abrir la app sin sesión, "Sin conexión", la cola sin red → recargar → volver la red (todo llegó una sola vez, verificado con lecturas a la base) y un 403 forzado (se avisa y se intenta una sola vez).
+- `.qa/constructor-p-pwa/ios.js` (UA de iPhone/iPad a 390, 1024 y 1280), `humo-salon.js` (las 22 páginas bajo `/salon/`), `.qa/humo.js` (la raíz, sin cambios) y `tienda-igual.js` (28 capturas de la tienda, antes y ahora, idénticas píxel por píxel).
+
+### 9.5 Cómo probarlo en una tablet real (Samsung Galaxy Tab S9 FE+)
+
+Después de publicar (el service worker exige HTTPS: no funciona con la IP local de la PC).
+
+1. **Instalar.** En Samsung Internet o Chrome, iniciar sesión en jissez.com y entrar a Mi Salón → Inicio. Al final aparece "Instala Mi Salón como app": tocar "Instalar la app" y aceptar. (También: menú de la cuenta → "Instalar la app", o el ícono "+" / "Instalar app" del navegador estando en `jissez.com/salon/hoy`.) Debe aparecer el ícono "Jissez MS" (J blanca sobre azul) en la pantalla de inicio y en el cajón de apps.
+2. **Abrir.** Tocar el ícono: abre directo en Hoy, en horizontal, sin barra del navegador. Si pide iniciar sesión, iniciar una vez: debe volver a Hoy.
+3. **Atajos.** Mantener presionado el ícono: "Pasar lista" abre Hoy en Asistencia; "Calificar trabajos", en Sesiones de hoy; "Reportes", Reportes.
+4. **Navegar.** Recorrer Inicio, Hoy, Asistencia, Actividades, Tareas, Reportes, Proyectos y el menú de la cuenta: todo dentro de la app, sin que aparezca la barra del navegador. En el menú no debe aparecer "Instalar la app".
+5. **Tienda.** Tocar "Tienda" en la barra de secciones: se abre en el navegador, no dentro de la app.
+6. **Cerrar sesión.** Menú → Cerrar sesión: queda en el login dentro de la app; al entrar, vuelve a Hoy.
+7. **Sin señal.** Con Hoy abierto, activar el modo avión. Marcar la asistencia de 3 alumnos y calificar 2 productos: abajo debe decir "Sin señal: N capturas pendientes de enviar, guardadas en este dispositivo." Cerrar la app por completo (deslizarla desde recientes). Abrirla: sale "Sin conexión" diciendo cuántas capturas esperan. Quitar el modo avión: la página se reabre sola, Hoy muestra lo capturado y abajo dice "Todo guardado". Revisar desde otro equipo que cada captura está una sola vez.
+8. **Enlace de WhatsApp.** Un enlace de producto de la tienda enviado por WhatsApp debe abrir el navegador, no la app.
+9. Si algo falla: con la tablet conectada por USB (depuración USB activada), Chrome en la PC → `chrome://inspect` muestra la consola de la app.
+
+En iPhone (si hay uno a mano): Safari → `jissez.com/salon/hoy` → Compartir → Agregar a pantalla de inicio (dejar "Abrir como app web"), abrir Jissez MS, iniciar sesión una vez, cerrar la app a la fuerza y reabrirla (la sesión sigue), probar el modo avión como en el paso 7, y la descarga del PDF de la boleta y "compartir por WhatsApp" dentro de la app.
+
+### 9.6 Pendiente o fuera de alcance
+
+- Fase 2 (abrir sin red con el shell en caché y versiones fijas de los CDN) y fase 3 (captura 100 % sin red) no se hicieron.
+- Asistencia (la pantalla aparte) tiene su propio autoguardado: su cola no vive en el dispositivo.
+- Las capturas de días anteriores que se envían tarde no revisan si la boleta del trimestre ya se cerró (§4.3, punto 6).
+- `_redirects`: falta `/salon/index.html /salon/ 301` (hoy `/salon/index.html` saldría a la raíz). Las salidas sin sesión ya no pasan por ahí, pero conviene la regla.

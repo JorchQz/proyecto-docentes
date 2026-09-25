@@ -1,0 +1,43 @@
+{
+	"id": "/mi-salon",
+	"name": "Jissez Mi Salón",
+	"short_name": "Jissez MS",
+	"description": "Pasa lista, califica y arma la boleta de tu grupo desde la tablet o el celular.",
+	"lang": "es-MX",
+	"dir": "ltr",
+	"start_url": "/salon/hoy?origen=app",
+	"scope": "/salon/",
+	"display": "standalone",
+	"theme_color": "#1e3a8a",
+	"background_color": "#faf9f4",
+	"categories": ["education", "productivity"],
+	"prefer_related_applications": false,
+	"icons": [
+		{ "src": "/iconos/mi-salon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/iconos/mi-salon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+		{ "src": "/iconos/mi-salon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+	],
+	"shortcuts": [
+		{
+			"name": "Pasar lista",
+			"short_name": "Pasar lista",
+			"description": "Asistencia de hoy",
+			"url": "/salon/hoy?origen=atajo#asistencia",
+			"icons": [{ "src": "/iconos/atajo-lista-192.png", "sizes": "192x192", "type": "image/png" }]
+		},
+		{
+			"name": "Calificar trabajos",
+			"short_name": "Calificar",
+			"description": "Productos de las sesiones de hoy",
+			"url": "/salon/hoy?origen=atajo#sesiones",
+			"icons": [{ "src": "/iconos/atajo-calificar-192.png", "sizes": "192x192", "type": "image/png" }]
+		},
+		{
+			"name": "Reportes",
+			"short_name": "Reportes",
+			"description": "Boletas y reportes del grupo",
+			"url": "/salon/reportes?origen=atajo",
+			"icons": [{ "src": "/iconos/atajo-reportes-192.png", "sizes": "192x192", "type": "image/png" }]
+		}
+	]
+}

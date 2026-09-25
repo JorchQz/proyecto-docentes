@@ -139,9 +139,32 @@
 		return new Promise(function () {});
 	}
 
+	/*
+		Dentro de /salon/ (la app instalable "Jissez MS", docs/PWA-MI-SALON.md) "sin sesión"
+		siempre lleva al login DENTRO de /salon/, que después regresa a esta página. Cada página
+		mandaba a "index.html" por su cuenta y, bajo /salon/, esa salida se salía de la app (y
+		le ganaba al candado). La promesa no se cumple: la página ya no sigue.
+	*/
+	function enSalon() {
+		try { return /^\/salon\//.test(window.location.pathname); } catch (_) { return false; }
+	}
+	function loginSalon() {
+		var pagina = (window.location.pathname.split("/").pop() || "").replace(/\.html$/, "");
+		if (!/^[a-z0-9_\-]+$/i.test(pagina) || pagina === "index") pagina = "hoy";
+		return "tienda/login.html?next=" + encodeURIComponent("../" + pagina + ".html" + window.location.search + window.location.hash);
+	}
+	function sinSesion(res) {
+		var d = res && res.data;
+		return !(d && (d.user || d.session));
+	}
+
 	function comprobarSesion(promesa) {
 		return Promise.resolve(promesa).then(function (res) {
 			if (res && res.error && errorDeRed(res.error)) return sesionSinComprobar(res.error);
+			if (enSalon() && sinSesion(res)) {
+				window.location.replace(loginSalon());
+				return new Promise(function () {});
+			}
 			return res;
 		}, function (e) {
 			if (errorDeRed(e)) return sesionSinComprobar(e);

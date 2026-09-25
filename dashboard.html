@@ -3,6 +3,15 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- App instalable "Jissez MS" (js/app-instalada.js; docs/PWA-MI-SALON.md) -->
+	<link rel="manifest" href="/salon.webmanifest">
+	<meta name="theme-color" content="#1e3a8a">
+	<link rel="apple-touch-icon" href="/iconos/apple-touch-icon-180.png">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Jissez MS">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<script src="js/app-instalada.js"></script>
 	<title>Panel — Jissez</title>
 	<script src="https://cdn.tailwindcss.com"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -25,6 +34,9 @@
 			</div>
 
 			<div id="flowContainer" class="flex flex-col gap-4"></div>
+
+			<!-- Instalar la app "Jissez MS" (js/app-instalada.js la muestra solo si se puede y no está instalada) -->
+			<div id="instalarAppSlot" class="hidden"></div>
 		</div>
 	</main>
 
