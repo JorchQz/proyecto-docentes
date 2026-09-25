@@ -14,6 +14,10 @@
 	  dispositivo la cambió o la creó, NO se pisa, se avisa y sale de la cola; retirar un
 	  cierre que otro cambió no lo borra; no depende del reloj del aparato.
 	- Una versión vieja en camino no borra la nueva ni la vuelve "conflicto".
+	- El mismo dispositivo (R12): un doble toque mientras se refresca la sesión con la respuesta
+	  perdida, y otra ventana que envía lo que capturó esta, no dan avisos falsos; una captura
+	  superada por otra más nueva del dispositivo no la pisa; un solo aviso por dato; el orden es el
+	  de captura del dispositivo, no el reloj.
 	- La cola es de la cuenta que capturó: con la sesión de otra cuenta no se envía nada.
 	- Sesión vencida se refresca y se reintenta; sin sesión se espera.
 
@@ -461,6 +465,148 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		await vacia(b7);
 		ok("respuesta perdida y otra captura: lo propio no es conflicto y queda el último valor",
 			[bd7.asistencias[0].asistencia_estado, b7.eventos.conflictos.length], ["justificada", 0]);
+	});
+
+	// 5d. (R12 a) Doble toque con el token por refrescar y la respuesta perdida: procesar() leyó la
+	// cola y espera getSession; la maestra vuelve a tocar el mismo dato en ese hueco. Lo que este
+	// dispositivo envió cuenta como propio aunque la captura vieja no llegara a marcarse
+	await caso("5d doble toque con sesión lenta y respuesta perdida", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "r1", maestro_id: "m1", grupo_id: "g1", alumno_id: "a1", fecha: F, asistencia_estado: "presente" });
+		const sR = cliente(bdR, { perder: 1 });
+		const orig = sR.auth.getSession;
+		sR.auth.getSession = async () => { await dormir(30); return orig(); }; // refresco del token con poca señal
+		const bR = bandeja(sR, B.almacenMemoria());
+		await bR.iniciar();
+		bR.agregar("asistencia", asis("a1", "ausente"), "Asistencia de Ana", { estado: "presente" }); // Falta
+		await dormir(5);
+		bR.agregar("asistencia", asis("a1", "justificada"), "Asistencia de Ana", { estado: "presente" }); // se corrige: Justificada
+		await vacia(bR, 2500);
+		ok("doble toque, sesión lenta y respuesta perdida: queda el último toque, sin aviso falso",
+			[bdR.asistencias.map((a) => a.asistencia_estado), bR.eventos.conflictos.length, bR.pendientes()], [["justificada"], 0, 0]);
+	});
+
+	// 5e. (R12 b) Dos ventanas de Hoy en el mismo dispositivo (app instalada + pestaña) comparten la
+	// cola: si la otra ventana envía lo que capturó esta, la siguiente corrección de esta no es
+	// conflicto aunque su pantalla no se haya enterado (su base sigue "sin fila")
+	await caso("5e otra ventana envía", async () => {
+		const bdV = crearBD();
+		const compartido = B.almacenMemoria(); // la cola del dispositivo (IndexedDB)
+		const s1 = cliente(bdV, { red: true }); // la ventana 1 captura sin señal
+		const v1 = bandeja(s1, compartido, { esperaMax: 10000 });
+		v1.iniciar();
+		await v1.agregar("asistencia", asis("a1", "presente"), "Asistencia de Ana", null);
+		await v1.agregar("calificacion", calif("a2", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", null);
+		await v1.agregar("registro", reg("a3", 1, 1), "Cierre de Caro", null);
+		await dormir(20);
+		const v2 = bandeja(cliente(bdV, {}), compartido); // la ventana 2 recibe "online" y envía la cola
+		await v2.iniciar();
+		await vacia(v2);
+		ok("la otra ventana envió todo", [bdV.asistencias.length, bdV.calificaciones.length, bdV.registro_diario.length, v2.pendientes()], [1, 1, 1, 0]);
+		s1.modo.red = false;
+		// La maestra corrige en la ventana 1, que sigue creyendo que no había fila
+		await v1.agregar("asistencia", asis("a1", "ausente"), "Asistencia de Ana", null);
+		await v1.agregar("calificacion", calif("a2", "p1", { nivel: "en_proceso", estado_entrega: "entregado" }), "Calificación de Beto", null);
+		await v1.agregar("registro_borrar", { alumno_id: "a3", fecha: F }, "Cierre de Caro", null); // faltó: se retira el cierre
+		await v1.procesar();
+		await vacia(v1);
+		ok("otra ventana envió: la corrección se aplica (asistencia, calificación, retiro del cierre)",
+			[bdV.asistencias.map((a) => a.asistencia_estado), bdV.calificaciones.map((c) => c.nivel), bdV.registro_diario.length], [["ausente"], ["en_proceso"], 0]);
+		ok("otra ventana envió: sin avisos falsos", [v1.eventos.conflictos.length, v2.eventos.conflictos.length], [0, 0]);
+		// Y entre aparatos sigue igual: un valor que puso OTRO aparato, que este nunca envió, es conflicto
+		bdV.asistencias[0].asistencia_estado = "presente"; // otro aparato (este ya había enviado "presente", pero lo olvidó al confirmar "ausente")
+		bdV.calificaciones[0].nivel = "requiere_apoyo";   // otro aparato; este nunca envió ese valor
+		await v2.agregar("asistencia", asis("a1", "justificada"), "Asistencia de Ana", null);
+		await v2.agregar("calificacion", calif("a2", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", vCal({ nivel: "logrado", estado_entrega: "entregado" }));
+		await vacia(v2);
+		ok("otro aparato cambió: sigue siendo conflicto (no se pisa)",
+			[bdV.asistencias.map((a) => a.asistencia_estado), bdV.calificaciones.map((c) => c.nivel), v2.eventos.conflictos.map((c) => c[0]).sort()],
+			[["presente"], ["requiere_apoyo"], ["Asistencia de Ana", "Calificación de Beto"]]);
+	});
+
+	// 5f. Una ventana con la cola leída de antes envía una captura que ya se reemplazó y que la otra
+	// ventana ya escribió con el valor nuevo: la vieja no pisa la nueva ni avisa conflicto
+	await caso("5f captura superada", async () => {
+		const bdS = crearBD();
+		bdS.asistencias.push({ id: "s1", maestro_id: "m1", grupo_id: "g1", alumno_id: "a1", fecha: F, asistencia_estado: "presente" });
+		const compartido = B.almacenMemoria();
+		const vieja = { clave: "asistencia|g1|a1|" + F, tipo: "asistencia", maestro_id: "m1", seq: 1, orden: 1, capturado_en: new Date().toISOString(),
+			datos: asis("a1", "ausente"), descripcion: "Asistencia de Ana", base: { estado: "presente" }, propias: [] };
+		// La otra ventana ya envió una más nueva (orden 2, Justificada) y llegó; esta aún trae la vieja
+		await compartido.poner(vieja);
+		if (compartido.anotar) await compartido.anotar([{ clave: vieja.clave, maestro_id: "m1", valor: { estado: "justificada" }, seq: 2, orden: 2 }]);
+		bdS.asistencias[0].asistencia_estado = "justificada";
+		const s = cliente(bdS, {});
+		const bS = bandeja(s, compartido);
+		await bS.iniciar();
+		await vacia(bS);
+		ok("captura superada por una más nueva de este dispositivo: no se escribe ni es conflicto",
+			[bdS.asistencias[0].asistencia_estado, bS.eventos.conflictos.length, s.peticiones.filter((p) => !/:select$/.test(p)).length, bS.pendientes()],
+			["justificada", 0, 0, 0]);
+	});
+
+	// 5g. (R12 menor 2) Dos toques seguidos sobre un dato que otro aparato ya cambió, ANTES del
+	// aviso: un solo aviso (con el último toque) y ninguno se aplica. Un toque DESPUÉS del aviso
+	// (la pantalla ya muestra lo de la base) se escribe normalmente
+	await caso("5g un aviso por dato", async () => {
+		const bdG = crearBD();
+		bdG.asistencias.push({ id: "g1", maestro_id: "m1", grupo_id: "g1", alumno_id: "a1", fecha: F, asistencia_estado: "ausente" }); // otro aparato
+		const bG = bandeja(cliente(bdG, { demora: 20 }), B.almacenMemoria());
+		await bG.iniciar();
+		bG.agregar("asistencia", asis("a1", "justificada"), "Asistencia de Ana", { estado: "presente" });
+		await dormir(30); // la primera ya va en camino
+		bG.agregar("asistencia", asis("a1", "presente"), "Asistencia de Ana", { estado: "presente" });
+		await vacia(bG, 2000);
+		ok("dos toques antes del aviso: un solo aviso, con el último toque, y se conserva lo de la base",
+			[bdG.asistencias.map((a) => a.asistencia_estado), bG.eventos.conflictos.length,
+				bG.eventos.conflictos.map((c) => /tu captura \(Presente\)/.test(c[1].texto) && c[1].sigue === false)[0], bG.pendientes()],
+			[["ausente"], 1, true, 0]);
+		const actual = bG.eventos.conflictos[0] ? bG.eventos.conflictos[0][1].actual : null; // lo que ahora muestra la pantalla
+		await bG.agregar("asistencia", asis("a1", "justificada"), "Asistencia de Ana", actual);
+		await vacia(bG, 2000);
+		ok("toque después del aviso: se escribe normalmente", [bdG.asistencias.map((a) => a.asistencia_estado), bG.eventos.conflictos.length], [["justificada"], 1]);
+	});
+
+	// 5h. Lo "propio" y "lo más nuevo" van por el orden de captura del dispositivo, no por el reloj
+	// (r23 d y e): un reloj adelantado que luego se corrige, o uno atrasado, no desordena nada
+	await caso("5h orden sin reloj", async () => {
+		const bdH = crearBD();
+		const compartido = B.almacenMemoria();
+		const DateReal = global.Date;
+		const conDesfase = (ms) => {
+			global.Date = class extends DateReal {
+				constructor(...a) { if (a.length) super(...a); else super(DateReal.now() + ms); }
+				static now() { return DateReal.now() + ms; }
+			};
+		};
+		try {
+			conDesfase(15 * 3600 * 1000); // reloj 15 h adelantado
+			const d1 = bandeja(cliente(bdH, {}), compartido);
+			await d1.iniciar();
+			await d1.agregar("asistencia", asis("a1", "justificada"), "Asistencia de Dani", null);
+			await vacia(d1);
+			global.Date = DateReal; // se corrige el reloj; otra ventana del mismo aparato, con la vista vieja
+			const d2 = bandeja(cliente(bdH, {}), compartido);
+			await d2.iniciar();
+			await d2.agregar("asistencia", asis("a1", "presente"), "Asistencia de Dani", null);
+			await vacia(d2);
+			ok("reloj corregido: la corrección posterior se escribe (no queda 'superada' por el reloj)",
+				[bdH.asistencias.map((a) => a.asistencia_estado), d2.eventos.conflictos.length, d2.pendientes()], [["presente"], 0, 0]);
+			// Reloj 5 h atrasado; otro aparato cambia el dato: es conflicto (ni gana por reloj ni se descarta en silencio)
+			conDesfase(-5 * 3600 * 1000);
+			const s3 = cliente(bdH, { red: true });
+			const d3 = bandeja(s3, compartido, { esperaMax: 10000 });
+			d3.iniciar();
+			await d3.agregar("asistencia", asis("a1", "ausente"), "Asistencia de Dani", { estado: "presente" });
+			bdH.asistencias[0].asistencia_estado = "justificada"; // otro aparato
+			s3.modo.red = false;
+			await d3.procesar();
+			await vacia(d3);
+			ok("reloj atrasado y otro aparato cambió: conflicto avisado, se conserva lo de la base",
+				[bdH.asistencias.map((a) => a.asistencia_estado), d3.eventos.conflictos.length], [["justificada"], 1]);
+		} finally {
+			global.Date = DateReal;
+		}
 	});
 
 	// Una captura vieja de otra versión (sin base): no pisa lo que ya hay
