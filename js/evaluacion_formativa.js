@@ -491,7 +491,7 @@ async function iniciarEvaluacionFormativa() {
 			.replace(/&/g, "&amp;")
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
-			.replace(/"/g, "&quot;");
+			.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 	}
 	function escAttr(s) {
 		return String(s || "").replace(/"/g, "&quot;").replace(/'/g, "&#39;");

@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function esc(str) {
 		return String(str === null || str === undefined ? "" : str)
-			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 	}
 
 	function formatFecha(iso) {

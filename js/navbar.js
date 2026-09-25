@@ -415,6 +415,26 @@ var Navegacion = (function () {
 		"html.jz-nav-contraida .jz-cuenta-btn{justify-content:center;padding:0}" +
 		"html.jz-nav-contraida .jz-cuenta-chev{display:none}" +
 		"html.jz-nav-contraida .jz-cuenta-menu{left:8px;right:auto;width:15rem}" +
+		// Sombra arriba/abajo cuando el menú tiene más de lo que se ve (en táctil la barra de
+		// desplazamiento no se ve)
+		".jz-lat-cuerpo{background:linear-gradient(#16276b 30%,rgba(22,39,107,0)) center top,linear-gradient(rgba(22,39,107,0),#16276b 70%) center bottom,radial-gradient(farthest-side at 50% 0,rgba(0,0,0,.55),rgba(0,0,0,0)) center top,radial-gradient(farthest-side at 50% 100%,rgba(0,0,0,.55),rgba(0,0,0,0)) center bottom;background-repeat:no-repeat;background-size:100% 36px,100% 36px,100% 16px,100% 16px;background-attachment:local,local,scroll,scroll}" +
+		"}" +
+		// Pantallas bajas (la tablet horizontal con la barra del navegador mide unos 1280×720):
+		// arriba se compacta para que Reportes quede a la vista; las zonas táctiles siguen en 44 px
+		"@media " + M_LAT + " and (max-height:860px){" +
+		".jz-lat-cabeza{min-height:52px;padding:4px 10px 0 16px}" +
+		".jz-secciones-slot{min-height:44px;margin-bottom:8px}" +
+		"html:not(.jz-nav-contraida) .jz-sel-op{flex-direction:row;gap:6px;min-height:44px;padding:0 4px}" +
+		"html:not(.jz-nav-contraida) .jz-sel-ico{width:18px;height:18px}" +
+		".jz-lat-grupo{margin-bottom:8px}" +
+		".jz-lat-grupo .jz-grupo-etq{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}" +
+		".jz-grupo-menu+.jz-grupo-menu{margin-top:6px}" +
+		".jz-titulo{padding-bottom:2px;font-size:10.5px}" +
+		".jz-cuenta{padding:4px 12px 6px}" +
+		".jz-cuenta-btn{min-height:44px}" +
+		"}" +
+		"@media " + M_LAT + " and (max-height:760px){" +
+		"html:not(.jz-nav-contraida) .jz-titulo{height:1px;padding:0;margin:0 12px 6px;overflow:hidden;color:transparent;background:rgba(255,255,255,.12)}" +
 		"}" +
 		"@media (prefers-reduced-motion:reduce){.jz-lat,.jz-velo,.jz-item,.jz-sel-op{transition:none!important}}" +
 		"@media print{.jz-nav-raiz,#app-navbar{display:none!important}html.jz-nav body{border-left:0!important}html.jz-nav body::after{display:none!important}}";
