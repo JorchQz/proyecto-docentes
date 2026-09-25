@@ -885,7 +885,24 @@ evidencia oficial:
   - "Eliminar cuenta" fallaba para cualquier maestro con onboarding (13 tablas sin cascada; `mi_salon_b10_eliminar_cuenta`).
   - jissez.com publicaba `docs/`, los SQL, las pruebas, `CLAUDE.md` y `.claude/`; se corrige con `.assetsignore`.
   - El Pixel de Meta estaba en páginas que reciben el token de recuperación en la URL; se quitó de `index.html` y `reset-password.html`.
-- **Migraciones pendientes para producción, en este orden y antes del JS:** `mi_salon_b10_eliminar_cuenta`, `mi_salon_b10_conducta`, `mi_salon_b10_textos_nem`, `mi_salon_b11_escala_2`.
+- **Revisor R8: PASS.**
+  - El caso de R7 y sus variantes ya no cierran nada sin confirmar.
+  - El texto para familias es claro.
+  - Mi cuenta, perfil del comprador, registro corto y eliminar cuenta: correctos.
+  - Recorrido de punta a punta y humo, en verde.
+  - Dos observaciones, corregidas después con una prueba que falla con el código anterior (`.qa/verificar-pestana-vieja-grado.js`):
+    - una pestaña de Reportes abierta antes de cambiar el grado mostraba, y podía mandar por WhatsApp, un 5 que ya no valía; ahora el grado se relee al generar;
+    - el reporte detallado usaba el texto de la maestra en la acreditación; ahora usa el de familias.
+- **Publicado el 2026-09-24, con autorización de Jorge en el momento:**
+  - En producción se aplicaron, en una transacción, `mi_salon_b10_eliminar_cuenta`, `mi_salon_b10_conducta`, `mi_salon_b10_textos_nem` y `mi_salon_b11_escala_2`. Producción y pruebas quedaron idénticas.
+  - Merge a `main` y push.
+  - Verificado en jissez.com:
+    - los archivos internos (`docs/`, SQL, pruebas, `CLAUDE.md`, `.claude/`, `.env.ejemplo`) dan 404;
+    - no hay Pixel en `index` ni en `reset-password`, y sí en la tienda;
+    - login → portal → Mi Salón y Hoy funcionan;
+    - el registro pide solo 3 campos y "Eliminar mi cuenta" está en Mis compras;
+    - pisos 6 (1°) y 5 (2°);
+    - datos reales sin cambios.
 
 ## Bloques detenidos
 

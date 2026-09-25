@@ -176,7 +176,38 @@ para rehacer el proyecto de pruebas están en `.qa/`, y las cadenas de conexión
 | `CLAUDE.md` | Corregida la frase de `tareas`, `calificaciones` y `evaluacion_formativa` |
 | Accesos | Solo `soporte.jissez@gmail.com`, Fanny y las cuentas QA. Los datos viejos de Fanny se respaldaron en `.qa/respaldos/` y se borraron |
 
+### Auditoría normativa de la NEM (24 de septiembre, publicada)
+
+Encargaste una investigación sobre evaluación y reportes en la NEM. Antes de cambiar nada, se
+verificó contra las fuentes primarias: DOF, DGAIR, SEP, las boletas oficiales de Jalisco y la
+investigación de Jalisco y otros estados. Todo está en `docs/referencia/`, local, junto con
+los PDF. Lo que quedó publicado:
+
+| Tema | Cómo quedó |
+|---|---|
+| Escala | 1° de 6 a 10; 2° a 6° de 5 a 10, con 5 no aprobatorio (boleta DGAIR de Jalisco, proyecto de la SCJN, guías de CDMX y Edomex) |
+| Evaluación final | Final por campo (promedio de T1 a T3 confirmados, un decimal, truncado), promedio de grado y acreditación, con la nota de que el oficial lo calcula SIGED |
+| Acreditación | "Acredita" si el promedio y los cuatro campos llegan a 6. Si solo el promedio llega, la maestra ve "Revisar" y la familia ve "la escuela la confirmará con control escolar" |
+| Conducta | Ya no pondera; se informa aparte, como pide el art. 21 de la LGE |
+| Matemáticas en 1° y 2° | Tablas como cálculo mental sin memorizar y división como reparto, según el cuaderno oficial de Fase 3 |
+| Palabras por minuto | "Referencia SEP 2010", no "estándar" |
+| Entidad | Se guarda el estado de cada maestra; las reglas son nacionales hasta que un estado difiera |
+| Trimestre | Se cambia en Mi grupo, con una sugerencia del calendario SEP 2026-2027 |
+| Nada sin confirmar | Una calificación que queda fuera de la escala (por ejemplo, si se cambia el grado) vuelve a "Elige" y no se puede cerrar |
+| Privacidad y seguridad | "Eliminar cuenta" funciona, también en la tienda (con compras, se escribe a soporte); el registro de la tienda pide solo nombre, correo y contraseña; el perfil del comprador ya se guarda; jissez.com ya no publica los archivos internos; el Pixel ya no está donde viaja el token de recuperación |
+
+Revisiones: R5, R6 y R7 dieron FAIL, un defecto cada una, todos corregidos. R8 dio PASS.
+
 ### Lo que sigue pendiente
+
+0. **Boleta real de Fanny.** Pídele una foto de una boleta del ciclo pasado, de 2° a 6°, con los
+   promedios finales y "Promovido". Con eso se confirma si SIGED trunca o redondea y cómo saca el
+   promedio de grado. También sirve una consulta por escrito a Control Escolar de la SEJ
+   (33 3030 7500).
+0. **Aviso de privacidad:** el borrador está en `docs/legal/`, con marcadores para llenar.
+   Revísalo con un abogado antes de publicarlo.
+0. **CCT en los materiales:** con el registro corto ya nadie lo captura. Si lo quieres en la
+   marca de agua, se puede agregar como dato opcional en Mis compras o en Mi cuenta.
 
 1. **IA para redactar:** falta que crees el secreto `ANTHROPIC_API_KEY` (recordatorio el
    sábado 26). Costo estimado: ~0.05 USD por boleta.
