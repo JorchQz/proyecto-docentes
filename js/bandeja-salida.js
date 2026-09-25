@@ -1,46 +1,60 @@
 /*
 	bandeja-salida.js — La cola de guardado de "Hoy" vive en el dispositivo (fase 2.5 de
-	docs/PWA-MI-SALON.md, §9.3; marca por captura, §9.8).
+	docs/PWA-MI-SALON.md, §9.3; marca por campo, §9.9).
 
 	Cada captura se guarda PRIMERO aquí (IndexedDB "jissez-bandeja", almacén "pendientes") y
 	después se envía en serie. Se borra solo cuando la base la confirmó. Si no hay IndexedDB (o
 	falla), la cola sigue en memoria y la página lo dice.
 
-	Cada captura es un dato serializable (formato 2):
-		{ v: 2, clave, tipo, maestro_id, seq, capturado_en, datos, descripcion, captura_id,
+	Cada captura es un dato serializable (formato 3):
+		{ v: 3, clave, tipo, maestro_id, seq, capturado_en, datos, descripcion, captura_id,
 		  campos, vistos, relleno?, borrar?, intentado }
 	  tipo "asistencia"      datos { grupo_id, alumno_id, fecha, estado }
-	  tipo "registro"        datos { alumno_id, fecha, participacion, conducta }   (cierre del día)
-	  tipo "registro_borrar" datos { alumno_id, fecha }                            (se retira el cierre)
+	  tipo "registro"        datos { alumno_id, fecha, participacion, conducta, grupo_id? }   (cierre del día)
+	  tipo "registro_borrar" datos { alumno_id, fecha }                                      (se retira el cierre)
 	  tipo "calificacion"    datos { id?, fecha, fila }  (fila: la de calificaciones)
 	  campos  { campo: valor } solo lo que la maestra tocó (estado; participacion, conducta;
 	          estado_entrega, nivel, puntaje, retroalimentacion)
 	  vistos  { campo: { fila, id, valor } } la versión de la base que la pantalla tenía al tocarlo
+	          (id: la marca del grupo de ese campo; null = fila sin marca o sin fila; undefined =
+	          no se sabe: se compara por contenido)
 
-	Marca por captura (columna captura_id en asistencias, calificaciones y registro_diario):
-	  - Cada escritura de Hoy pone un uuid NUEVO generado en el aparato. La "versión" de una fila
-	    es su marca. Una escritura de otra pantalla u otra versión de la app deja la fila sin
-	    marca (trigger de supabase/mi_salon_b12_captura_id_2026-09.sql); sin marca se compara por
-	    contenido, como antes.
-	  - La escritura es condicional y atómica: update ... where captura_id = <la que vio la
-	    pantalla> (sin marca: is null + el contenido de los campos que se escriben); si no había
-	    fila, insert que no pisa. Solo se escriben los campos que la maestra tocó: una ventana
-	    vieja no borra lo que otra ventana escribió en otros campos.
+	Marca por campo (supabase/mi_salon_b12_captura_id_2026-09.sql). Una columna uuid por grupo de
+	campos que Hoy escribe junto (MARCAS): asistencias.captura_id; registro_diario.
+	captura_participacion y captura_conducta; calificaciones.captura_semaforo (entrega + nivel),
+	captura_puntaje y captura_retroalimentacion.
+	  - Cada escritura de Hoy pone en los grupos que escribe un uuid NUEVO generado en el aparato
+	    (el mismo para todos los grupos de esa captura). Un insert pone en los grupos que la
+	    maestra no tocó y quedan con su valor por defecto la MARCA INICIAL ("nadie lo ha escrito":
+	    para quien no veía la fila, es lo que mostraba). Cualquier otra
+	    escritura (Asistencia, SQL, otra versión de la app) recibe del trigger una marca nueva del
+	    servidor en cada grupo que cambió. Así un cambio de ida y vuelta (A → B → A) de otro
+	    aparato o pantalla siempre deja una marca distinta.
+	  - La escritura es condicional y atómica: update ... where <marca de cada grupo escrito> =
+	    <la que vio la pantalla> (fila sin marca, de antes de la migración: is null + contenido);
+	    si no había fila, insert que no pisa. Solo se escriben los grupos tocados.
 	  - "Es mío": la marca está entre las que ESTE aparato generó para esa llave (almacén
 	    "propias", compartido por todas las ventanas, por cuenta, con poda por cantidad y no por
-	    reloj). Otro aparato nunca comparte un uuid: no hay ABA.
-	  - Si la escritura no aplicó, se lee la fila y se decide campo por campo (grupos:
-	    semáforo+entrega, puntaje, retroalimentación; participación, conducta; asistencia):
-	      * lo último que lo escribió fue una captura propia más vieja → se escribe encima, sin aviso
-	        (se sigue la cadena de marcas propias: cada una sabe sobre qué marca escribió y qué campos);
-	      * una captura propia más nueva ya lo escribió → esta captura ya no aplica (sin aviso);
-	      * otro aparato (o fila sin marca): si el campo sigue con el valor que vio la pantalla, se
-	        escribe; si otro aparato lo cambió → conflicto: NO se pisa, se avisa. Si otro aparato
-	        cambió solo OTROS campos, se escribe el campo tocado sin pisar los demás, sin aviso.
-	  - El relleno del Cierre del día (1 y 1 a todos) solo inserta donde no hay fila; nunca
-	    actualiza ni cuenta como captura de la maestra (se inserta sin marca).
-	  - Si la base aún no tiene la columna (el frontend se publicó antes que la migración), se
-	    detecta y se usa la regla anterior por contenido: el orden de despliegue no importa.
+	    reloj). Cada una se anota ANTES de enviarse, con su número de captura (seq), los grupos
+	    que tocó y la marca sobre la que se capturó cada uno (padres): una respuesta perdida o
+	    una ventana cerrada no rompen la cadena.
+	  - Si la escritura no aplicó, se lee la fila y se decide grupo por grupo:
+	      * ya tiene exactamente lo capturado → listo, sin aviso (dos aparatos pusieron lo mismo);
+	      * la marca sigue siendo la que vio la pantalla, o la pantalla no veía la fila y el grupo
+	        tiene la marca inicial con su valor por defecto → se escribe;
+	      * la marca es de una captura propia más vieja (o de un insert propio que no tocó ese
+	        grupo), o es una marca ajena que este aparato ya vio (es padre de una
+	        captura propia más vieja) → se escribe encima, sin aviso (gana el último toque);
+	      * la marca es de una captura propia más nueva → esta ya no aplica (sin aviso);
+	      * cualquier otra marca (otro aparato u otra pantalla) → conflicto: NO se pisa y se
+	        avisa, aunque el valor coincida con el que vio la pantalla.
+	  - El relleno del Cierre del día (1 y 1 a todos) solo inserta donde no hay fila (nunca
+	    actualiza ni avisa), con la marca inicial en los dos grupos, y pide la fila de vuelta: la
+	    pantalla conoce su versión. No se pone a quien este aparato marcó con falta (aunque haya
+	    sido en otra ventana) si la base lo confirma.
+	  - Si la base aún no tiene las columnas (el frontend se publicó antes que la migración), se
+	    detecta y se usa la regla anterior por contenido (un 400 en la consola por carga): la
+	    migración va ANTES que el frontend.
 
 	Otras reglas:
 	  - Una sola captura por llave: la más reciente reemplaza a la anterior y hereda sus campos
@@ -57,7 +71,7 @@
 	Uso (js/hoy.js):
 		var b = BandejaSalida.crear({ sb, auth, maestroId, alCambiar, alGuardar, alConflicto, alRechazar, alSaber });
 		b.agregar("asistencia", datos, "Asistencia de Ana", base, { campos: ["estado"] });
-		  base: lo que la pantalla sabe de la base (BandejaSalida.baseDeFila): { captura_id, valor } o null
+		  base: lo que la pantalla sabe de la base (BandejaSalida.baseDeFila): { marcas, valor } o null
 		b.iniciar();            // habilita el envío (después de pintar lo pendiente)
 		b.lista() → Promise<[capturas propias pendientes]>
 		b.pendientes(), b.persistente(), b.vacia(), b.esperarEnvio() → Promise
@@ -79,8 +93,18 @@ var BandejaSalida = (function () {
 	// Una retroalimentación muy larga no va como filtro en la URL: se compara al leer
 	var RETRO_MAX_FILTRO = 1000;
 	var RECIENTE_MS = 5000; // una captura más vieja que esto ya esperó en la cola
+	var FORMATO = 3;        // el formato de las capturas (2: 80a4375, sin publicar; sin v: 3d48d1a)
+	/*
+		La marca inicial: la pone un insert de Hoy en los grupos que la maestra NO tocó y que quedan
+		con su valor por defecto (el relleno 1 y 1 del cierre; el puntaje o la retroalimentación
+		vacíos de una calificación nueva). Dice "este grupo nadie lo ha escrito": para una pantalla
+		que no veía la fila es lo mismo que no haber fila. Cualquier escritura posterior la cambia
+		(la de Hoy trae su marca; cualquier otra recibe una del servidor), así que una ida y vuelta
+		se sigue notando.
+	*/
+	var MARCA_INICIAL = "00000000-0000-4000-8000-000000000000";
 
-	// ¿La base tiene la columna captura_id? null: aún no se sabe (se intenta con ella)
+	// ¿La base tiene las columnas de marca? null: aún no se sabe (se intenta con ellas)
 	var marca = { disponible: null };
 
 	// ── Reglas puras ─────────────────────────────────────────────────────────────
@@ -96,14 +120,31 @@ var BandejaSalida = (function () {
 		registro: ["participacion", "conducta"],
 		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion"],
 	};
-	// Campos que se deciden juntos: el semáforo implica la entrega (y "No entregó" quita el semáforo)
-	var GRUPOS = {
-		asistencia: [["estado"]],
-		registro: [["participacion"], ["conducta"]],
-		calificacion: [["estado_entrega", "nivel"], ["puntaje"], ["retroalimentacion"]],
+	/*
+		Grupos de campos que Hoy escribe y decide juntos, cada uno con su marca (la columna de la
+		base): el semáforo implica la entrega (y "No entregó" quita el semáforo).
+	*/
+	var MARCAS = {
+		asistencia: [["captura_id", ["estado"]]],
+		registro: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
+		calificacion: [["captura_semaforo", ["estado_entrega", "nivel"]], ["captura_puntaje", ["puntaje"]],
+			["captura_retroalimentacion", ["retroalimentacion"]]],
 	};
 	function familia(tipo) { return tipo === "registro_borrar" ? "registro" : tipo; }
 	function columna(f) { return f === "estado" ? "asistencia_estado" : f; }
+	// Las columnas de marca de un tipo, en el orden de MARCAS
+	function columnasMarca(tipo) { return (MARCAS[familia(tipo)] || []).map(function (g) { return g[0]; }); }
+	// La columna de marca del grupo de un campo
+	function marcaDeCampo(tipo, f) {
+		var g = (MARCAS[familia(tipo)] || []).find(function (x) { return x[1].indexOf(f) !== -1; });
+		return g ? g[0] : null;
+	}
+	// Los grupos que tocan esos campos: [[columna de marca, [los campos del grupo que están en la lista]]]
+	function gruposDe(tipo, campos) {
+		return (MARCAS[familia(tipo)] || []).map(function (g) {
+			return [g[0], g[1].filter(function (f) { return campos.indexOf(f) !== -1; })];
+		}).filter(function (g) { return g[1].length; });
+	}
 
 	var MENSAJE_RED = /failed to fetch|fetch failed|networkerror|network request failed|load failed|timeout|timed out|aborted|network/i;
 
@@ -130,12 +171,13 @@ var BandejaSalida = (function () {
 		return status > 0 ? "servidor" : "red";
 	}
 
-	// La base todavía no tiene la columna captura_id (se publicó el frontend antes que la migración)
+	// La base todavía no tiene las columnas de marca (se publicó el frontend antes que la migración)
 	function faltaMarca(e) {
 		if (!e) return false;
 		var texto = String(e.message || "") + " " + String(e.details || "") + " " + String(e.hint || "");
 		var code = String(e.code || "");
-		return /captura_id/.test(texto) && (code === "PGRST204" || code === "42703" || code === "PGRST100" || e.status === 400);
+		return /captura_(id|participacion|conducta|semaforo|puntaje|retroalimentacion)/.test(texto) &&
+			(code === "PGRST204" || code === "42703" || code === "PGRST100" || e.status === 400);
 	}
 
 	// Explicación para la maestra de por qué la base no aceptó una captura (en español; el
@@ -204,10 +246,19 @@ var BandejaSalida = (function () {
 		return null;
 	}
 
-	// Lo que la pantalla guarda como "versión que vio" de una fila leída: { captura_id, valor } o null
+	// Las marcas de una fila leída { columna: uuid | null }; una columna que no vino (lectura sin
+	// marcas) no aparece: ese grupo se compara por contenido
+	function marcasDeFila(tipo, f) {
+		var m = {};
+		if (!f) return m;
+		columnasMarca(tipo).forEach(function (c) { if (f[c] !== undefined) m[c] = f[c]; });
+		return m;
+	}
+
+	// Lo que la pantalla guarda como "versión que vio" de una fila leída: { marcas, valor } o null
 	function baseDeFila(tipo, f) {
 		if (!f) return null;
-		return { captura_id: f.captura_id === undefined ? null : f.captura_id, valor: valorDeFila(tipo, f) };
+		return { marcas: marcasDeFila(tipo, f), valor: valorDeFila(tipo, f) };
 	}
 
 	function valorCampo(fuente, f) {
@@ -217,7 +268,7 @@ var BandejaSalida = (function () {
 	}
 	function fuenteDe(it) { return familia(it.tipo) === "calificacion" ? (it.datos && it.datos.fila) || {} : it.datos || {}; }
 
-	// Formato anterior (3d48d1a): lo que la captura quería dejar, la fila completa
+	// Formato de 3d48d1a (sin `v`): lo que la captura quería dejar, la fila completa
 	function valorDeseadoLegado(it) {
 		var d = it.datos || {};
 		if (it.tipo === "registro_borrar") return null;
@@ -228,7 +279,7 @@ var BandejaSalida = (function () {
 	// Lo que la captura quiere dejar en la base (los campos que tocó; null = retirar la fila)
 	function valorDeseado(it) {
 		if (!it) return null;
-		if (it.v !== 2) return valorDeseadoLegado(it);
+		if (!it.v) return valorDeseadoLegado(it);
 		if (it.borrar) return null;
 		return Object.assign({}, it.campos || {});
 	}
@@ -286,7 +337,7 @@ var BandejaSalida = (function () {
 	function textoConflicto(it, r) {
 		var campos = [];
 		(r.conflictos || []).forEach(function (g) { campos = campos.concat(g); });
-		if (it.v !== 2) campos = CAMPOS[familia(it.tipo)];
+		if (!it.v) campos = CAMPOS[familia(it.tipo)];
 		var quedo = r.fila === false || r.valor === null || r.valor === undefined ? null : elegir(r.valor, campos);
 		var tuya = it.borrar || it.tipo === "registro_borrar" ? null : elegir(valorDeseado(it), campos);
 		return (it.descripcion || "Una captura") + ": se cambió desde otro dispositivo o pantalla (quedó: " +
@@ -296,29 +347,33 @@ var BandejaSalida = (function () {
 
 	// ── Capturas ─────────────────────────────────────────────────────────────────
 	/*
-		vistaDe(base) → { fila, id, valor }
+		vistaDe(base) → { fila, marcas, valor }
 		  null/undefined             → no había fila
-		  { captura_id, valor }      → la fila que vio la pantalla, con su marca (null = sin marca)
-		  { estado } / { nivel ... } → formato anterior (solo contenido): marca desconocida
+		  { marcas, valor }          → la fila que vio la pantalla, con la marca de cada grupo (null =
+		                               sin marca; una columna que no está = no se sabe)
+		  { estado } / { nivel ... } → formato de 3d48d1a (solo contenido): marcas desconocidas
 	*/
 	function vistaDe(base) {
-		if (base === null || base === undefined) return { fila: false, id: null, valor: null };
+		if (base === null || base === undefined) return { fila: false, marcas: null, valor: null };
 		if (typeof base === "object" && Object.prototype.hasOwnProperty.call(base, "valor")) {
-			if (base.valor === null || base.valor === undefined) return { fila: false, id: null, valor: null };
-			return { fila: true, id: base.captura_id === undefined ? null : base.captura_id, valor: base.valor };
+			if (base.valor === null || base.valor === undefined) return { fila: false, marcas: null, valor: null };
+			return { fila: true, marcas: base.marcas || {}, valor: base.valor };
 		}
-		return { fila: true, id: undefined, valor: base };
+		return { fila: true, marcas: {}, valor: base };
 	}
 
+	// La versión que vio la pantalla de un campo: { fila, id (la marca de su grupo), valor }
 	function vistoDeCampo(tipo, vista, f) {
-		return { fila: vista.fila, id: vista.id, valor: vista.fila ? normal(f, vista.valor ? vista.valor[f] : null) : predeterminado(tipo, f) };
+		if (!vista.fila) return { fila: false, id: null, valor: predeterminado(tipo, f) };
+		var m = vista.marcas ? vista.marcas[marcaDeCampo(tipo, f)] : undefined;
+		return { fila: true, id: m === undefined ? undefined : m, valor: normal(f, vista.valor ? vista.valor[f] : null) };
 	}
 
 	function crearCaptura(tipo, maestroId, datos, descripcion, base, opciones) {
 		opciones = opciones || {};
 		var fam = familia(tipo);
 		var it = {
-			v: 2, clave: clave(tipo, maestroId, datos), tipo: tipo, maestro_id: maestroId,
+			v: FORMATO, clave: clave(tipo, maestroId, datos), tipo: tipo, maestro_id: maestroId,
 			seq: 0, capturado_en: new Date().toISOString(),
 			datos: datos, descripcion: descripcion || "",
 			captura_id: nuevoId(), campos: {}, vistos: {}, propiasValor: {}, intentado: false,
@@ -337,12 +392,25 @@ var BandejaSalida = (function () {
 		return it;
 	}
 
-	// Una captura del formato anterior (3d48d1a: la fila completa y `base` por contenido) al formato 2
+	/*
+		Una captura de un formato anterior al formato 3:
+		  - 2 (80a4375, sin publicar: una sola marca por fila): conserva sus campos; la marca vista
+		    solo sigue valiendo en asistencias (misma columna); en lo demás, por contenido.
+		  - sin `v` (3d48d1a, el publicado: la fila completa y `base` por contenido).
+	*/
 	function normalizar(it) {
-		if (!it || it.v === 2) return it;
+		if (!it || it.v === FORMATO) return it;
 		var fam = familia(it.tipo);
 		var todos = CAMPOS[fam];
-		var n = Object.assign({}, it, { v: 2, legado: true, captura_id: it.captura_id || null, campos: {}, vistos: {}, propiasValor: {} });
+		if (it.v === 2) {
+			var n2 = Object.assign({}, it, { v: FORMATO, vistos: {} });
+			Object.keys(it.vistos || {}).forEach(function (f) {
+				var x = it.vistos[f] || {};
+				n2.vistos[f] = { fila: !!x.fila, id: !x.fila ? null : fam === "asistencia" ? x.id : undefined, valor: x.valor };
+			});
+			return n2;
+		}
+		var n = Object.assign({}, it, { v: FORMATO, legado: true, captura_id: it.captura_id || null, campos: {}, vistos: {}, propiasValor: {} });
 		n.borrar = it.tipo === "registro_borrar";
 		var deseado = n.borrar ? null : valorDeseadoLegado(it) || {};
 		var vista = vistaDe(it.base === undefined ? null : it.base); // sin `base`: "no existía"
@@ -402,71 +470,89 @@ var BandejaSalida = (function () {
 		return n;
 	}
 
-	// La marca propia que se anota al encolar (antes de enviar)
+	/*
+		La marca propia que se anota al encolar (ANTES de enviar, en la misma transacción que la
+		captura): su número de captura, los grupos que tocó la maestra y, de cada uno, la marca
+		sobre la que se capturó (su padre). Un insert pone la marca también en los grupos que no
+		tocó (con su valor por defecto): esos no cuentan como tocados.
+	*/
 	function entradaDe(it) {
-		return { id: it.captura_id, seq: it.seq, valores: Object.assign({}, it.campos), borrado: !!it.borrar, confirmada: false };
+		var tocados = Object.keys(it.campos || {});
+		var padres = {};
+		gruposDe(it.tipo, tocados).forEach(function (g) {
+			var v = it.vistos && it.vistos[g[1][0]];
+			if (v && v.fila && v.id) padres[g[0]] = v.id;
+		});
+		return {
+			id: it.captura_id, seq: it.seq, valores: Object.assign({}, it.campos),
+			grupos: it.relleno ? [] : gruposDe(it.tipo, tocados).map(function (g) { return g[0]; }),
+			padres: padres, borrado: !!it.borrar, relleno: !!it.relleno, confirmada: false,
+		};
 	}
 	function podar(marcas) {
 		return marcas.slice().sort(function (a, b) { return a.seq - b.seq; }).slice(-MAX_MARCAS);
 	}
 
-	// ── Decidir campo por campo ──────────────────────────────────────────────────
-	/*
-		¿Quién escribió por última vez el campo f de la fila R? → la marca propia, o null (otro
-		aparato, fila sin marca, o no se sabe). Se sigue la cadena de marcas propias: cada una
-		confirmada sabe qué campos escribió (`escritos`) y sobre qué versión (`padre`); una que se
-		aplicó pero cuya respuesta se perdió se reconoce porque el campo tiene su valor.
-	*/
-	function ultimoEscritor(f, R, marcas) {
-		if (!R.fila) {
-			// ¿La quitó este aparato? La última marca propia confirmada de la llave es un retiro
-			var ultima = null;
-			marcas.forEach(function (m) { if (m.confirmada && (!ultima || m.seq > ultima.seq)) ultima = m; });
-			return ultima && ultima.borrado ? ultima : null;
-		}
-		var porId = {};
-		marcas.forEach(function (m) { porId[m.id] = m; });
-		var id = R.id, pasos = {};
-		while (id && !pasos[id]) {
-			pasos[id] = true;
-			var m = porId[id];
-			if (!m) return null;
-			if (!m.confirmada) {
-				// Se aplicó (la fila tiene su marca) pero no se sabe qué escribió: el campo es suyo si
-				// tiene su valor (nadie más lo cambió después: la marca seguiría siendo otra)
-				return m.valores && Object.prototype.hasOwnProperty.call(m.valores, f) && igual1(R.valor[f], m.valores[f]) ? m : null;
-			}
-			if ((m.escritos || []).indexOf(f) !== -1) return m;
-			if (!m.padre || !m.padre.fila) return null;
-			id = m.padre.id;
-		}
-		return null;
-	}
+	// ── Decidir grupo por grupo ──────────────────────────────────────────────────
+	// Lo propio frente a esta captura: "superado" si es de una captura más nueva; si no, "propio"
+	function frente(it, m) { return m.seq > it.seq ? "superado" : "propio"; }
 
-	// "igual" | "propio" | "visto" | "superado" | "ajeno"
-	function estadoCampo(it, f, R, marcas, conMarca) {
-		if (!it.borrar && R.fila && igual1(R.valor[f], it.campos[f])) return "igual";
-		var quien = conMarca ? ultimoEscritor(f, R, marcas) : null;
-		if (quien) return quien.id === it.captura_id ? "igual" : quien.seq > it.seq ? "superado" : "propio";
-		var v = it.vistos[f] || { fila: false, id: null, valor: predeterminado(it.tipo, f) };
-		if (!R.fila) return v.fila ? "ajeno" : "visto";
-		if (igual1(R.valor[f], v.fila ? v.valor : predeterminado(it.tipo, f))) return "visto";
-		if ((it.legado || !conMarca) && (it.propiasValor && it.propiasValor[f] || []).some(function (x) { return igual1(x, R.valor[f]); })) return "propio";
-		return "ajeno";
+	/*
+		estadoGrupo(it, col, campos, R, marcas, conMarca) → "igual" | "visto" | "propio" | "superado" | "ajeno"
+		  col: la columna de marca del grupo; campos: los campos del grupo que tocó la captura;
+		  R: la fila ahora ({ fila, marcas, valor }); marcas: las propias de la llave (almacén "propias").
+	*/
+	function estadoGrupo(it, col, campos, R, marcas, conMarca) {
+		// Ya tiene exactamente lo capturado: listo (reenviar, o dos aparatos pusieron lo mismo)
+		if (!it.borrar && R.fila && campos.every(function (f) { return igual1(R.valor[f], it.campos[f]); })) return "igual";
+		var v = it.vistos[campos[0]] || { fila: false, id: null, valor: predeterminado(it.tipo, campos[0]) };
+		if (!R.fila) {
+			if (!v.fila) return "visto";
+			// La vio y ya no está: ¿la quitó este aparato? (su última marca propia confirmada es un retiro)
+			var ultima = null;
+			marcas.forEach(function (m) { if (m.confirmada && !m.relleno && (!ultima || m.seq > ultima.seq)) ultima = m; });
+			return ultima && ultima.borrado ? frente(it, ultima) : "ajeno";
+		}
+		var mR = conMarca && R.marcas ? R.marcas[col] : undefined;
+		if (conMarca && mR !== undefined && campos.every(function (f) { return (it.vistos[f] || {}).id !== undefined; })) {
+			if (v.fila && mR === v.id) return "visto"; // la misma versión que vio (con marca, o sin marca)
+			// Nadie ha escrito el grupo desde que se creó la fila (marca inicial, valor por defecto):
+			// para la pantalla que no veía la fila es lo que ella mostraba
+			if (!v.fila && mR === MARCA_INICIAL &&
+				campos.every(function (f) { return igual1(R.valor[f], predeterminado(it.tipo, f)); })) return "visto";
+			if (mR) {
+				var propia = marcas.find(function (m) { return m.id === mR; });
+				if (propia) {
+					if (propia.id === it.captura_id) return "igual"; // ya se aplicó (se perdió la respuesta)
+					// Un insert propio que no tocó este grupo nunca le gana a una captura
+					if (propia.grupos && propia.grupos.indexOf(col) === -1) return "propio";
+					return frente(it, propia);
+				}
+				// Una marca ajena que este aparato ya vio: otra ventana capturó sobre ella
+				var vio = marcas.filter(function (m) { return m.id !== it.captura_id && m.padres && m.padres[col] === mR; });
+				if (vio.length) return vio.some(function (m) { return m.seq > it.seq; }) ? "superado" : "propio";
+			}
+			// Otro aparato u otra pantalla la cambió después de lo que vio la pantalla (aunque el valor coincida)
+			return "ajeno";
+		}
+		// Sin marca que comparar (base sin las columnas, o captura de un formato anterior): por contenido
+		var est = campos.map(function (f) {
+			var vf = it.vistos[f] || v;
+			if (igual1(R.valor[f], vf.fila ? vf.valor : predeterminado(it.tipo, f))) return "visto";
+			if ((it.propiasValor && it.propiasValor[f] || []).some(function (x) { return igual1(x, R.valor[f]); })) return "propio";
+			return "ajeno";
+		});
+		return est.indexOf("ajeno") !== -1 ? "ajeno" : est.indexOf("propio") !== -1 ? "propio" : "visto";
 	}
 
 	// → { escribir: [campos], conflictos: [[campos]], superados: [[campos]] }
 	function decidir(it, R, marcas, conMarca) {
-		var fam = familia(it.tipo);
 		var escribir = [], conflictos = [], superados = [];
-		GRUPOS[fam].forEach(function (grupo) {
-			var campos = grupo.filter(function (f) { return Object.prototype.hasOwnProperty.call(it.campos, f); });
-			if (!campos.length) return;
-			var est = campos.map(function (f) { return estadoCampo(it, f, R, marcas, conMarca); });
-			if (est.indexOf("superado") !== -1) { superados.push(campos); return; }
-			if (est.every(function (e) { return e === "igual"; })) return;
-			if (est.indexOf("ajeno") !== -1) { conflictos.push(campos); return; }
-			escribir = escribir.concat(campos);
+		gruposDe(it.tipo, Object.keys(it.campos || {})).forEach(function (g) {
+			var est = estadoGrupo(it, g[0], g[1], R, marcas, conMarca);
+			if (est === "superado") superados.push(g[1]);
+			else if (est === "ajeno") conflictos.push(g[1]);
+			else if (est !== "igual") escribir = escribir.concat(g[1]);
 		});
 		// Retirar el cierre es todo o nada
 		if (it.borrar && (conflictos.length || superados.length)) escribir = [];
@@ -530,39 +616,47 @@ var BandejaSalida = (function () {
 		},
 	};
 
-	// Solo los campos que se escriben (una ventana vieja no pisa los demás)
-	function cambiosDe(it, campos) {
+	// Solo los campos que se escriben (una ventana vieja no pisa los demás) y, con marcas, la de
+	// esta captura en cada grupo escrito
+	function cambiosDe(it, campos, conMarca) {
 		var c = {};
 		campos.forEach(function (f) { c[columna(f)] = it.campos[f]; });
 		if (familia(it.tipo) === "calificacion") {
 			if (campos.indexOf("estado_entrega") !== -1) c.entrego = it.campos.estado_entrega === "entregado" || it.campos.estado_entrega === "incompleto";
 			c.evaluado_en = it.capturado_en;
 		}
+		if (conMarca) gruposDe(it.tipo, campos).forEach(function (g) { c[g[0]] = it.captura_id; });
 		return c;
 	}
 
-	function columnasDe(op, conMarca) { return op.columnas + (conMarca ? ", captura_id" : ""); }
+	function columnasDe(op, tipo, conMarca) { return op.columnas + (conMarca ? ", " + columnasMarca(tipo).join(", ") : ""); }
 
-	// La fila de la base, ahora → { fila, id (marca), valor, rowId }
+	// La fila de la base, ahora → { fila, marcas, valor, rowId }
 	async function leerActual(sb, it, conMarca) {
 		var op = OPS[familia(it.tipo)];
-		var res = await filtrar(sb.from(op.tabla).select(columnasDe(op, conMarca)), op.llave(it)).maybeSingle();
+		var res = await filtrar(sb.from(op.tabla).select(columnasDe(op, it.tipo, conMarca)), op.llave(it)).maybeSingle();
 		if (res.error) throw fallo(res);
 		var f = res.data;
 		return {
-			fila: !!f, id: f && conMarca && f.captura_id !== undefined ? f.captura_id : null,
+			fila: !!f, marcas: f && conMarca ? marcasDeFila(it.tipo, f) : {},
 			valor: valorDeFila(it.tipo, f), rowId: f && f.id ? f.id : null,
 		};
 	}
 
 	/*
-		"La fila sigue como la vi": por su marca o, sin marca, por el contenido de los campos que
-		se escriben. estado.id: la marca (null = fila sin marca; undefined = no se sabe: solo contenido)
+		"La fila sigue como la vi", grupo por grupo de los campos que se escriben: por su marca
+		(estado.marcas[columna]) o, sin marca, por el contenido. Marca null = fila sin marca (de
+		antes de la migración: is null y, además, el contenido); undefined = no se sabe: contenido.
 	*/
-	function condicion(q, estado, campos, contenido, conMarca) {
-		if (conMarca && estado.id) return q.eq("captura_id", estado.id);
-		if (conMarca && estado.id === null) q = q.is("captura_id", null);
-		campos.forEach(function (f) {
+	function condicion(q, estado, tipo, campos, contenido, conMarca) {
+		var porContenido = [];
+		gruposDe(tipo, campos).forEach(function (g) {
+			var id = conMarca && estado.marcas ? estado.marcas[g[0]] : undefined;
+			if (id) { q = q.eq(g[0], id); return; }
+			if (id === null) q = q.is(g[0], null);
+			porContenido = porContenido.concat(g[1]);
+		});
+		porContenido.forEach(function (f) {
 			var v = contenido ? contenido[f] : null;
 			if (f === "retroalimentacion" && v && v.length > RETRO_MAX_FILTRO) return; // se compara leyendo
 			q = v === null || v === undefined ? q.is(columna(f), null) : q.eq(columna(f), v);
@@ -570,10 +664,25 @@ var BandejaSalida = (function () {
 		return q;
 	}
 
-	function retroLargaEnCondicion(estado, campos, contenido, conMarca) {
-		if (conMarca && estado.id) return false;
-		return campos.indexOf("retroalimentacion") !== -1 && contenido && contenido.retroalimentacion &&
-			contenido.retroalimentacion.length > RETRO_MAX_FILTRO;
+	function retroLargaEnCondicion(estado, tipo, campos, contenido, conMarca) {
+		if (campos.indexOf("retroalimentacion") === -1) return false;
+		if (conMarca && estado.marcas && estado.marcas[marcaDeCampo(tipo, "retroalimentacion")]) return false;
+		return !!(contenido && contenido.retroalimentacion && contenido.retroalimentacion.length > RETRO_MAX_FILTRO);
+	}
+
+	/*
+		Un insert de Hoy lleva su marca (propia) en los grupos que tocó la maestra; en los que no tocó
+		y quedan con su valor por defecto, la marca inicial (el relleno: en los dos). Un grupo no
+		tocado con otro valor lleva la marca propia.
+	*/
+	function conMarcas(it, fila) {
+		var tocados = it.relleno ? [] : Object.keys(it.campos || {});
+		(MARCAS[familia(it.tipo)] || []).forEach(function (g) {
+			var tocado = g[1].some(function (f) { return tocados.indexOf(f) !== -1; });
+			var porDefecto = g[1].every(function (f) { return igual1(normal(f, fila[columna(f)]), predeterminado(it.tipo, f)); });
+			fila[g[0]] = !tocado && porDefecto ? MARCA_INICIAL : it.captura_id;
+		});
+		return fila;
 	}
 
 	// Una captura que esperó en la cola (sin red, reintento) no es una recién hecha en línea
@@ -582,19 +691,19 @@ var BandejaSalida = (function () {
 	}
 
 	/*
-		escribir(sb, it, estado, campos, contenido, conMarca) → { ok, fila, valor, marca, rowId }
+		escribir(sb, it, estado, campos, contenido, conMarca) → { ok, fila, valor, marcas, rowId }
 		Un solo statement: la base lo resuelve de forma atómica. ok=false: la condición no se cumplió.
-		estado.fila=false: insert que no pisa (con todos los campos).
+		estado.fila=false: insert que no pisa (con todos los campos). estado.marcas: la marca de
+		cada grupo que debe seguir en la fila.
 	*/
 	async function escribir(sb, it, estado, campos, contenido, conMarca) {
 		var op = OPS[familia(it.tipo)];
-		var cols = columnasDe(op, conMarca);
+		var cols = columnasDe(op, it.tipo, conMarca);
 		var res;
 		if (it.borrar && !estado.fila) return { ok: false }; // no había fila que retirar: se lee
 		if (!estado.fila) {
 			var fila = op.nueva(it, valoresInsert(it));
-			// El relleno del cierre no es una captura de la maestra: va sin marca
-			if (conMarca && !it.relleno) fila.captura_id = it.captura_id;
+			if (conMarca) conMarcas(it, fila);
 			if (op.conflicto) {
 				res = await sb.from(op.tabla).upsert(fila, { onConflict: op.conflicto, ignoreDuplicates: true }).select(cols);
 			} else {
@@ -605,54 +714,66 @@ var BandejaSalida = (function () {
 				if (res.error && String(res.error.code || "") === "23505") return { ok: false };
 			}
 		} else if (it.borrar) {
-			res = await condicion(filtrar(sb.from(op.tabla).delete(), op.llave(it)), estado, CAMPOS.registro, contenido, conMarca).select("id");
+			res = await condicion(filtrar(sb.from(op.tabla).delete(), op.llave(it)), estado, it.tipo, CAMPOS.registro, contenido, conMarca).select("id");
 			if (res.error) throw fallo(res);
-			return res.data && res.data.length ? { ok: true, fila: false, valor: null, marca: null, rowId: null } : { ok: false };
+			return res.data && res.data.length ? { ok: true, fila: false, valor: null, marcas: {}, rowId: null } : { ok: false };
 		} else {
-			if (retroLargaEnCondicion(estado, campos, contenido, conMarca)) {
+			if (retroLargaEnCondicion(estado, it.tipo, campos, contenido, conMarca)) {
 				var a = await leerActual(sb, it, conMarca);
 				if (!a.fila || !igual1(a.valor.retroalimentacion, contenido.retroalimentacion)) return { ok: false };
 			}
-			var cambios = cambiosDe(it, campos);
-			if (conMarca) cambios.captura_id = it.captura_id;
-			res = await condicion(filtrar(sb.from(op.tabla).update(cambios), op.llave(it)), estado, campos, contenido, conMarca).select(cols);
+			res = await condicion(filtrar(sb.from(op.tabla).update(cambiosDe(it, campos, conMarca)), op.llave(it)),
+				estado, it.tipo, campos, contenido, conMarca).select(cols);
 		}
 		if (res.error) throw fallo(res);
 		var filas = res.data ? [].concat(res.data) : [];
 		if (!filas.length) return { ok: false };
 		var f = filas[0];
-		return { ok: true, fila: true, valor: valorDeFila(it.tipo, f), marca: conMarca && f.captura_id !== undefined ? f.captura_id : null, rowId: f.id || null };
+		return { ok: true, fila: true, valor: valorDeFila(it.tipo, f), marcas: conMarca ? marcasDeFila(it.tipo, f) : {}, rowId: f.id || null };
 	}
 
-	// Todos los campos tocados se vieron en la misma versión → { fila, id }; si no, null
+	/*
+		Todos los campos tocados se vieron con fila (o todos sin fila) y los de un mismo grupo en la
+		misma versión → { fila, marcas: { columna: marca vista } }; si no, null (se lee y se decide)
+	*/
 	function vistaComun(it) {
 		var campos = Object.keys(it.campos || {});
 		if (!campos.length) return null;
 		var v0 = it.vistos[campos[0]];
 		if (!v0) return null;
-		for (var i = 1; i < campos.length; i++) {
-			var v = it.vistos[campos[i]];
-			if (!v || v.fila !== v0.fila || v.id !== v0.id) return null;
-		}
-		return { fila: v0.fila, id: v0.id };
+		var marcas = {};
+		var bien = gruposDe(it.tipo, campos).every(function (g) {
+			var a = it.vistos[g[1][0]];
+			if (!a || a.fila !== v0.fila) return false;
+			for (var i = 1; i < g[1].length; i++) {
+				var b = it.vistos[g[1][i]];
+				if (!b || b.fila !== a.fila || b.id !== a.id) return false;
+			}
+			if (a.id !== undefined) marcas[g[0]] = a.id;
+			return true;
+		});
+		return bien ? { fila: v0.fila, marcas: marcas } : null;
 	}
 
 	/*
-		enviar(sb, it, ctx) → { aplicado, fila, valor, marca, rowId, escritos?, padre?, conflictos? }
-		ctx: { conMarca, marcas: () → Promise<[marcas propias de la llave]> }
+		enviar(sb, it, ctx) → { aplicado, fila, valor, marcas, rowId, conflictos? }
+		ctx: { conMarca, marcas: () → Promise<[marcas propias de la llave]>, revisarFalta }
+		  revisarFalta: el relleno de alguien que este aparato marcó con falta (en otra ventana): si
+		  la base lo confirma, no se inserta; solo se lee la fila para que la pantalla sepa qué hay.
 		Lanza el error de la base (red, sesión o rechazo).
 	*/
 	async function enviar(sb, it, ctx) {
 		var conMarca = !!ctx.conMarca;
 		var todos = CAMPOS[familia(it.tipo)];
+		var soloLeer = !!(it.relleno && ctx.revisarFalta && (await faltaEnLaBase(sb, it)));
 		function resultado(r, extra) {
-			return Object.assign({ fila: r.fila, valor: r.valor, marca: r.marca === undefined ? null : r.marca, rowId: r.rowId || null }, extra || {});
+			return Object.assign({ fila: r.fila, valor: r.valor, marcas: r.marcas || {}, rowId: r.rowId || null }, extra || {});
 		}
 
 		// 1. Directo, sin leer (el caso normal: un aparato, una ventana, en línea)
 		if (it.relleno) {
-			if (!it.intentado) {
-				var r0 = await escribir(sb, it, { fila: false, id: null }, [], null, conMarca);
+			if (!it.intentado && !soloLeer) {
+				var r0 = await escribir(sb, it, { fila: false }, [], null, conMarca);
 				if (r0.ok) return resultado(r0, { aplicado: true });
 			}
 		} else {
@@ -662,43 +783,28 @@ var BandejaSalida = (function () {
 				var contenido = {};
 				tocados.forEach(function (f) { contenido[f] = it.vistos[f] ? it.vistos[f].valor : null; });
 				var r1 = await escribir(sb, it, comun, tocados, contenido, conMarca);
-				if (r1.ok) {
-					return resultado(r1, {
-						aplicado: true, escritos: comun.fila && !it.borrar ? tocados : todos,
-						padre: comun.id === undefined || !conMarca ? undefined : { fila: comun.fila, id: comun.id },
-					});
-				}
+				if (r1.ok) return resultado(r1, { aplicado: true });
 			}
 		}
 
-		// 2. Se lee la fila y se decide campo por campo
+		// 2. Se lee la fila y se decide grupo por grupo
 		for (var i = 0; i < MAX_INTENTOS_CAS; i++) {
 			var R = await leerActual(sb, it, conMarca);
-			if (conMarca && R.fila && R.id && R.id === it.captura_id) {
-				// Ya estaba aplicada (se perdió la respuesta)
-				return resultado({ fila: true, valor: R.valor, marca: R.id, rowId: R.rowId }, { aplicado: false, yaEstaba: true });
-			}
 			if (it.relleno) {
-				if (R.fila) return resultado({ fila: true, valor: R.valor, marca: R.id, rowId: R.rowId }, { aplicado: false });
-				var ri = await escribir(sb, it, { fila: false, id: null }, [], null, conMarca);
+				// Solo inserta donde no hay fila; si ya hay, la pantalla se entera de su versión
+				if (R.fila || soloLeer) return resultado(R, { aplicado: false });
+				var ri = await escribir(sb, it, { fila: false }, [], null, conMarca);
 				if (ri.ok) return resultado(ri, { aplicado: true });
 				continue;
 			}
 			if (it.borrar && !R.fila) return resultado({ fila: false, valor: null }, { aplicado: false });
+			// Las marcas propias se consultan siempre: una respuesta perdida de esta misma captura se
+			// reconoce por su marca (el grupo queda "igual") y no se escribe dos veces
 			var marcas = conMarca && ctx.marcas ? await ctx.marcas() : [];
 			var d = decidir(it, R, marcas, conMarca);
-			if (!d.escribir.length) {
-				return resultado({ fila: R.fila, valor: R.valor, marca: R.id, rowId: R.rowId }, { aplicado: false, conflictos: d.conflictos });
-			}
-			var estado = { fila: R.fila, id: conMarca ? R.id : undefined };
-			var rw = await escribir(sb, it, estado, d.escribir, R.valor || {}, conMarca);
-			if (rw.ok) {
-				return resultado(rw, {
-					aplicado: true, conflictos: d.conflictos,
-					escritos: R.fila && !it.borrar ? d.escribir : todos,
-					padre: conMarca ? { fila: R.fila, id: R.id } : undefined,
-				});
-			}
+			if (!d.escribir.length) return resultado(R, { aplicado: false, conflictos: d.conflictos });
+			var rw = await escribir(sb, it, { fila: R.fila, marcas: conMarca ? R.marcas : {} }, d.escribir, R.valor || {}, conMarca);
+			if (rw.ok) return resultado(rw, { aplicado: true, conflictos: d.conflictos });
 			// La fila cambió entre la lectura y la escritura: se vuelve a leer
 		}
 		// La fila cambió varias veces mientras se intentaba: se reintenta más tarde
@@ -709,20 +815,36 @@ var BandejaSalida = (function () {
 
 	/*
 		El relleno del cierre (1 y 1 a quien aún no tiene fila): un solo insert que no pisa para
-		todos. Los que no se insertaron (ya había fila) se resuelven uno por uno (solo leen).
-		→ [{ aplicado, fila, valor } | { pendiente: true }] en el orden del lote.
+		todos, con sus marcas propias, y pide las filas de vuelta (la pantalla conoce su versión).
+		Los que no se insertaron (ya había fila) se resuelven uno por uno (solo leen).
+		→ [{ aplicado, fila, valor, marcas } | { pendiente: true }] en el orden del lote.
 	*/
 	async function enviarLoteRelleno(sb, lote, conMarca) {
 		var op = OPS.registro;
-		var res = await sb.from(op.tabla).upsert(lote.map(function (it) { return op.nueva(it, valoresInsert(it)); }),
-			{ onConflict: op.conflicto, ignoreDuplicates: true }).select("alumno_id, fecha, participacion, conducta" + (conMarca ? ", captura_id" : ""));
+		var filas = lote.map(function (it) {
+			var f = op.nueva(it, valoresInsert(it));
+			return conMarca ? conMarcas(it, f) : f;
+		});
+		var res = await sb.from(op.tabla).upsert(filas, { onConflict: op.conflicto, ignoreDuplicates: true })
+			.select("alumno_id, fecha, participacion, conducta" + (conMarca ? ", " + columnasMarca("registro").join(", ") : ""));
 		if (res.error) throw fallo(res);
 		var puestas = {};
 		(res.data || []).forEach(function (f) { puestas[f.alumno_id + "|" + f.fecha] = f; });
 		return lote.map(function (it) {
 			var f = puestas[it.datos.alumno_id + "|" + it.datos.fecha];
-			return f ? { aplicado: true, fila: true, valor: valorDeFila("registro", f), marca: null, rowId: null } : { pendiente: true };
+			return f ? { aplicado: true, fila: true, valor: valorDeFila("registro", f), marcas: conMarca ? marcasDeFila("registro", f) : {}, rowId: null }
+				: { pendiente: true };
 		});
+	}
+
+	// ¿La base tiene a ese alumno con falta ese día? (antes de poner su relleno 1 y 1)
+	async function faltaEnLaBase(sb, it) {
+		var d = it.datos || {};
+		var res = await sb.from("asistencias").select("asistencia_estado").eq("maestro_id", it.maestro_id)
+			.eq("grupo_id", d.grupo_id).eq("alumno_id", d.alumno_id).eq("fecha", d.fecha).maybeSingle();
+		if (res.error) throw fallo(res);
+		var e = res.data ? res.data.asistencia_estado : null;
+		return e === "ausente" || e === "justificada";
 	}
 
 	// ── Almacenes ────────────────────────────────────────────────────────────────
@@ -762,7 +884,7 @@ var BandejaSalida = (function () {
 				var nuevo = combinarFn(prev, it);
 				if (!nuevo) return Promise.resolve({ guardada: prev, sinCambio: true });
 				mapa[it.clave] = copia(nuevo);
-				if (!nuevo.relleno) a.anotarMarca(it.clave, nuevo.maestro_id, entradaDe(nuevo));
+				if (!nuevo.relleno) a.anotarMarca(it.clave, nuevo.maestro_id, entradaDe(nuevo)); // el relleno lleva la marca inicial
 				return Promise.resolve({ guardada: copia(nuevo) });
 			},
 			marcas: function (c, maestroId) {
@@ -929,7 +1051,7 @@ var BandejaSalida = (function () {
 						if (!nuevo) { salida.valor = { guardada: gp.result || null, sinCambio: true }; return; }
 						sPend.put(nuevo);
 						salida.valor = { guardada: nuevo };
-						if (nuevo.relleno) return;
+						if (nuevo.relleno) return; // el relleno lleva la marca inicial: no es propia
 						var gr = sProp.get(it.clave);
 						gr.onsuccess = function () {
 							var r = gr.result || { clave: it.clave, maestro_id: nuevo.maestro_id, marcas: [] };
@@ -978,7 +1100,6 @@ var BandejaSalida = (function () {
 						var m = r && r.marcas.find(function (x) { return x.id === id; });
 						if (!m) return;
 						Object.assign(m, cambios);
-						if (cambios.padre === undefined) delete m.padre;
 						s.put(r);
 					};
 				}).catch(function () {});
@@ -1039,10 +1160,10 @@ var BandejaSalida = (function () {
 		  o.maestroId   la cuenta con sesión (la dueña de lo que se capture aquí)
 		  o.almacen     (pruebas) un almacén ya abierto; si no, IndexedDB o memoria
 		  o.alCambiar({ pendientes, estado: "ok"|"enviando"|"red"|"servidor"|"sesion"|"cuenta", persistente })
-		  o.alGuardar(captura, { valor, id, captura_id, fila, base, sigue })    se confirmó
+		  o.alGuardar(captura, { valor, id, fila, base, sigue })    se confirmó
 		  o.alConflicto(captura, { actual, texto, sigue, base })   otro aparato lo cambió: se conservó lo de la base
 		  o.alRechazar(captura, explicacion, { actual?, sigue, base? })    la base no la aceptó: ya salió de la cola
-		     `actual`: lo que hay en la base (undefined si no se pudo leer); `base`: { captura_id, valor }
+		     `actual`: lo que hay en la base (undefined si no se pudo leer); `base`: { marcas, valor }
 		     o null (la nueva versión que vio la pantalla); `sigue`: hay una captura más nueva de la
 		     misma llave en la cola (la pantalla sigue mostrando esa)
 		  o.alSaber(mensaje)   otra ventana de este aparato confirmó algo o avisó de un conflicto:
@@ -1125,7 +1246,7 @@ var BandejaSalida = (function () {
 
 		/*
 			agregar(tipo, datos, descripcion, base, opciones)
-			`base`: lo que la pantalla sabe de la base para esa llave ({ captura_id, valor } o null).
+			`base`: lo que la pantalla sabe de la base para esa llave ({ marcas, valor } o null).
 			`opciones.campos`: los campos que tocó la maestra (si no, todos); `opciones.relleno`: el
 			1 y 1 del Cierre del día (solo inserta donde no hay fila).
 		*/
@@ -1182,14 +1303,16 @@ var BandejaSalida = (function () {
 			return !!(ahora && ahora.seq !== it.seq);
 		}
 
+		// La nueva versión que vio la pantalla: { marcas, valor } o null (no hay fila)
 		function baseDe(r) {
-			return r.fila ? { captura_id: r.marca === undefined ? null : r.marca, valor: r.valor } : null;
+			return r.fila ? { marcas: r.marcas || {}, valor: r.valor } : null;
 		}
 
 		async function terminar(it, r) {
 			await st.almacen.quitarSi(it.clave, it.seq);
-			if (r.aplicado && !it.relleno && r.escritos) {
-				await st.almacen.confirmarMarca(it.clave, it.maestro_id, it.captura_id, { confirmada: true, escritos: r.escritos, padre: r.padre });
+			// Confirmada: se aplicó (o, un retiro, la fila ya no está); la usa la regla del retiro propio
+			if (!it.relleno && (r.aplicado || (it.borrar && !r.fila))) {
+				await st.almacen.confirmarMarca(it.clave, it.maestro_id, it.captura_id, { confirmada: true });
 			}
 			var sigue = await hayMasNueva(it);
 			var base = baseDe(r);
@@ -1201,7 +1324,7 @@ var BandejaSalida = (function () {
 				difundir(Object.assign({ tipo: "aviso", texto: texto }, msg));
 				return;
 			}
-			if (o.alGuardar) { try { o.alGuardar(it, { valor: r.fila ? r.valor : null, id: r.rowId || null, captura_id: base ? base.captura_id : null, fila: !!r.fila, base: base, sigue: sigue }); } catch (_) {} }
+			if (o.alGuardar) { try { o.alGuardar(it, { valor: r.fila ? r.valor : null, id: r.rowId || null, fila: !!r.fila, base: base, sigue: sigue }); } catch (_) {} }
 			difundir(Object.assign({ tipo: "guardada" }, msg));
 		}
 
@@ -1221,23 +1344,39 @@ var BandejaSalida = (function () {
 				});
 		}
 
-		function ctxDe(it, conMarca) {
-			return { conMarca: conMarca, marcas: function () { return st.almacen.marcas(it.clave, o.maestroId); } };
+		function ctxDe(it, conMarca, revisarFalta) {
+			return { conMarca: conMarca, revisarFalta: !!revisarFalta, marcas: function () { return st.almacen.marcas(it.clave, o.maestroId); } };
 		}
 
-		// Envía con la marca; si la base no tiene la columna, con la regla anterior (por contenido)
-		async function enviarUno(it) {
+		// Envía con las marcas; si la base no tiene las columnas, con la regla anterior (por contenido)
+		async function enviarUno(it, revisarFalta) {
 			var conMarca = marca.disponible !== false;
 			try {
-				return await conLimite(enviar(o.sb, it, ctxDe(it, conMarca)), o.limiteMs || LIMITE_ENVIO);
+				return await conLimite(enviar(o.sb, it, ctxDe(it, conMarca, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
 			} catch (e) {
 				if (conMarca && faltaMarca(e)) {
 					marca.disponible = false;
-					if (typeof console !== "undefined") console.warn("bandeja: la base aún no tiene captura_id; se compara por contenido");
-					return await conLimite(enviar(o.sb, it, ctxDe(it, false)), o.limiteMs || LIMITE_ENVIO);
+					if (typeof console !== "undefined") console.warn("bandeja: la base aún no tiene las columnas de marca; se compara por contenido");
+					return await conLimite(enviar(o.sb, it, ctxDe(it, false, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
 				}
 				throw e;
 			}
+		}
+
+		/*
+			El relleno 1 y 1 no se pone a quien ESTE aparato marcó con falta (aunque haya sido en otra
+			ventana que esta no conoce): si la última captura propia de su asistencia de ese día es una
+			falta, el relleno se envía solo y se confirma con la base antes de insertar (faltaEnLaBase;
+			una falta vieja que ya se corrigió en otra pantalla no lo impide). Sin grupo en los datos
+			(una captura de antes) no se puede saber: se inserta como siempre.
+		*/
+		async function faltoEnEsteAparato(it) {
+			var d = it.datos || {};
+			if (!it.relleno || !d.grupo_id) return false;
+			var lista = await st.almacen.marcas(clave("asistencia", o.maestroId, { grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha }), o.maestroId);
+			var ultima = null;
+			lista.forEach(function (m) { if (m.valores && m.valores.estado !== undefined && (!ultima || m.seq > ultima.seq)) ultima = m; });
+			return !!(ultima && (ultima.valores.estado === "ausente" || ultima.valores.estado === "justificada"));
 		}
 
 		async function enviarLote(lote) {
@@ -1257,17 +1396,18 @@ var BandejaSalida = (function () {
 		async function actual(x) {
 			var g = await st.almacen.obtener(x.clave);
 			if (!g || g.maestro_id !== o.maestroId) return null;
-			if (g.v === 2) return g;
+			if (g.v === FORMATO) return g;
 			var n = normalizar(g);
-			n.captura_id = nuevoId();
-			await st.almacen.cambiarSi(g.clave, function (y) { return y.seq === g.seq && y.v !== 2; }, function (y) {
+			// La de 80a4375 conserva su marca (pudo haberse enviado ya); la de 3d48d1a no tenía
+			n.captura_id = g.v === 2 && g.captura_id ? g.captura_id : nuevoId();
+			await st.almacen.cambiarSi(g.clave, function (y) { return y.seq === g.seq && y.v !== FORMATO; }, function (y) {
 				Object.keys(y).forEach(function (k) { delete y[k]; });
 				Object.assign(y, n);
 			});
 			var otra = await st.almacen.obtener(g.clave);
-			if (!otra || otra.seq !== g.seq) return otra && otra.v === 2 ? otra : null;
+			if (!otra || otra.seq !== g.seq) return otra && otra.v === FORMATO ? otra : null;
 			if (otra.captura_id === n.captura_id) await st.almacen.anotarMarca(g.clave, o.maestroId, entradaDe(otra));
-			return otra.v === 2 ? otra : n;
+			return otra.v === FORMATO ? otra : n;
 		}
 
 		async function procesar() {
@@ -1321,10 +1461,12 @@ var BandejaSalida = (function () {
 				var it = await actual(lista[0]);
 				if (!it) continue;
 				var lote = [it];
-				if (it.relleno && !st.unoPorUno) {
+				// El relleno de quien este aparato marcó con falta va solo: se confirma con la base
+				var revisarFalta = await faltoEnEsteAparato(it);
+				if (it.relleno && !revisarFalta && !st.unoPorUno) {
 					var otros = [];
 					for (var k = 1; k < lista.length && otros.length < 99; k++) {
-						if (lista[k].v === 2 && lista[k].relleno) otros.push(lista[k]);
+						if (lista[k].v === FORMATO && lista[k].relleno && !(await faltoEnEsteAparato(lista[k]))) otros.push(lista[k]);
 					}
 					lote = lote.concat(otros);
 				}
@@ -1338,7 +1480,7 @@ var BandejaSalida = (function () {
 					}
 				}
 				try {
-					var rs = lote.length > 1 ? await enviarLote(lote) : [await enviarUno(it)];
+					var rs = lote.length > 1 ? await enviarLote(lote) : [await enviarUno(it, revisarFalta)];
 					// Antes de dar algo por terminado: ¿sigue siendo la sesión de la dueña?
 					if (!(await duenaPresente())) break;
 					for (var i = 0; i < lote.length; i++) {
@@ -1362,7 +1504,7 @@ var BandejaSalida = (function () {
 						var leida;
 						try { leida = await leerActual(o.sb, it, marca.disponible !== false); } catch (_) { leida = undefined; }
 						var sigue = await hayMasNueva(it);
-						var base = leida ? (leida.fila ? { captura_id: leida.id, valor: leida.valor } : null) : undefined;
+						var base = leida ? (leida.fila ? { marcas: leida.marcas, valor: leida.valor } : null) : undefined;
 						var explicacion = explicar(e);
 						if (o.alRechazar) {
 							try { o.alRechazar(it, explicacion, { actual: leida ? leida.valor : undefined, sigue: sigue, base: base }); } catch (_) {}
@@ -1663,7 +1805,10 @@ var BandejaSalida = (function () {
 		igual: igual,
 		describir: describir,
 		nuevoId: nuevoId,
-		// La pantalla que leyó la base dice si existe la columna captura_id (true/false)
+		MARCAS: MARCAS,
+		// Las columnas de marca de un tipo (para leerlas con cada fila)
+		columnasMarca: columnasMarca,
+		// La pantalla que leyó la base dice si existen las columnas de marca (true/false)
 		marcaDisponible: function (v) { if (v === true || v === false) marca.disponible = v; return marca.disponible; },
 		almacenMemoria: almacenMemoria,
 		abrirAlmacen: abrirAlmacen,

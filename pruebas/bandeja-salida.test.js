@@ -49,6 +49,22 @@ const UNICAS = {
 	registro_diario: ["maestro_id", "alumno_id", "fecha"],
 	calificaciones: ["maestro_id", "alumno_id", "producto_sesion_id"],
 };
+/*
+	El esquema de la base con el que se prueba cada versión del código:
+	  "campo"   (código nuevo): una marca por grupo de campos y el trigger de
+	            supabase/mi_salon_b12_captura_id_2026-09.sql (en un update, el grupo que cambió sin
+	            marca nueva recibe una marca del servidor; en un insert, cada marca nula también);
+	  "fila"    (80a4375): una captura_id por fila; un update sin marca nueva la deja en null;
+	  "ninguno" (421cd57, el publicado): sin columnas de marca.
+*/
+const ESQUEMA = typeof B.columnasMarca === "function" ? "campo" : typeof B.baseDeFila === "function" ? "fila" : "ninguno";
+const GRUPOS_BD = {
+	asistencias: [["captura_id", ["asistencia_estado"]]],
+	registro_diario: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
+	calificaciones: [["captura_semaforo", ["estado_entrega", "nivel"]], ["captura_puntaje", ["puntaje"]], ["captura_retroalimentacion", ["retroalimentacion"]]],
+};
+let marcasServidor = 0;
+const marcaServidor = () => "srv-" + ++marcasServidor;
 
 /*
 	cliente(bd, modo, sesion) → { from, auth, peticiones, modo, sesion }
@@ -58,11 +74,11 @@ const UNICAS = {
 	  modo.e500 = n              → las siguientes n escrituras responden 500
 	  modo.demora = ms           → cada petición tarda
 	  modo.perder = n            → las siguientes n escrituras SÍ se aplican pero la respuesta se pierde
-	  modo.sinMarca = true       → la base aún no tiene la columna captura_id (400 si se usa)
+	  modo.sinMarca = true       → la base aún no tiene las columnas de marca (400 si se usan)
 	  modo.sesionLenta = ms      → getSession tarda (refresco del token con señal débil)
 	  sesion: la sesión del dispositivo ({ user: { id } } o null); RLS: solo se ve y escribe lo de esa cuenta
-	Como el trigger de supabase/mi_salon_b12_captura_id_2026-09.sql: un update que no trae
-	captura_id deja la fila sin marca.
+	Marcas: según ESQUEMA (arriba). Una columna captura_* que la tabla no tiene responde 400, como
+	PostgREST.
 */
 function cliente(bd, modo, sesion) {
 	modo = modo || {};
@@ -91,13 +107,13 @@ function cliente(bd, modo, sesion) {
 		if (modo.red) return { data: null, error: { message: "TypeError: Failed to fetch", code: "" }, status: 0 };
 		const escribe = q.op !== "select";
 		if (escribe) c.escrituras.push(tabla + ":" + q.op + " " + JSON.stringify(q.fila || q.filas || null) + " " + JSON.stringify(q.filtros));
-		if (modo.sinMarca) {
-			const enFilas = [].concat(q.filas || [], q.fila ? [q.fila] : []).some((f) => f && "captura_id" in f);
-			if (enFilas) return { data: null, error: { message: "Could not find the 'captura_id' column of '" + tabla + "' in the schema cache", code: "PGRST204" }, status: 400 };
-			if (q.filtros.some((f) => f[0] === "captura_id") || /captura_id/.test(q.cols || "")) {
-				return { data: null, error: { message: "column " + tabla + ".captura_id does not exist", code: "42703" }, status: 400 };
-			}
-		}
+		// Columnas de marca que la tabla no tiene (según el esquema, o ninguna con modo.sinMarca)
+		const existen = modo.sinMarca || ESQUEMA === "ninguno" ? [] : ESQUEMA === "fila" ? ["captura_id"] : GRUPOS_BD[tabla].map((g) => g[0]);
+		const falta = (c) => /^captura_/.test(c) && existen.indexOf(c) === -1;
+		const enFila = [].concat(q.filas || [], q.fila ? [q.fila] : []).map((f) => Object.keys(f || {}).find(falta)).find(Boolean);
+		if (enFila) return { data: null, error: { message: "Could not find the '" + enFila + "' column of '" + tabla + "' in the schema cache", code: "PGRST204" }, status: 400 };
+		const enConsulta = q.filtros.map((f) => f[0]).concat((q.cols || "").split(",").map((s) => s.trim())).find(falta);
+		if (enConsulta) return { data: null, error: { message: "column " + tabla + "." + enConsulta + " does not exist", code: "42703" }, status: 400 };
 		if (escribe && modo.jwt > 0) { modo.jwt--; return { data: null, error: { message: "JWT expired", code: "PGRST301" }, status: 401 }; }
 		if (escribe && modo.e500 > 0) { modo.e500--; return { data: null, error: { message: "error interno", code: "XX000" }, status: 500 }; }
 		const filas = q.filas || (q.fila && q.op === "insert" ? [q.fila] : []);
@@ -113,6 +129,18 @@ function cliente(bd, modo, sesion) {
 			if (escribe && modo.perder > 0) { modo.perder--; return { data: null, error: { message: "TypeError: Failed to fetch", code: "" }, status: 0 }; }
 			return { data, error: null, status };
 		};
+		// El trigger de marcas en un update: x es la fila, cambios lo que llega
+		const actualizar = (x, cambios) => {
+			const antes = Object.assign({}, x);
+			Object.assign(x, cambios);
+			if (ESQUEMA === "fila" && !("captura_id" in cambios)) x.captura_id = null; // 80a4375: sin marca nueva, sin marca
+			if (ESQUEMA === "campo") {
+				GRUPOS_BD[tabla].forEach(([col, campos]) => {
+					const cambio = campos.some((c) => (antes[c] === undefined ? null : antes[c]) !== (x[c] === undefined ? null : x[c]));
+					if (cambio && (antes[col] === undefined ? null : antes[col]) === (x[col] === undefined ? null : x[col])) x[col] = marcaServidor();
+				});
+			}
+		};
 		if (q.op === "insert" || q.op === "upsert") {
 			if (filas.some((f) => f.maestro_id !== yo)) {
 				return { data: null, error: { message: "new row violates row-level security policy", code: "42501" }, status: 403 };
@@ -122,10 +150,12 @@ function cliente(bd, modo, sesion) {
 				const previa = t.find((x) => UNICAS[tabla].every((k) => x[k] === f[k]));
 				if (previa) {
 					if (q.op === "upsert" && q.ignorar) continue;
-					if (q.op === "upsert") { Object.assign(previa, f); puestas.push(previa); continue; }
+					if (q.op === "upsert") { actualizar(previa, f); puestas.push(previa); continue; }
 					return { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" }, status: 409 };
 				}
 				const nueva = Object.assign({ id: "id" + bd.siguiente++ }, f);
+				// El trigger de marcas en un insert: cada marca nula recibe una del servidor
+				if (ESQUEMA === "campo") GRUPOS_BD[tabla].forEach(([col]) => { if (nueva[col] === null || nueva[col] === undefined) nueva[col] = marcaServidor(); });
 				t.push(nueva);
 				puestas.push(nueva);
 			}
@@ -134,10 +164,7 @@ function cliente(bd, modo, sesion) {
 		}
 		const elegidas = visibles.filter((x) => coincide(x, q.filtros) && cumpleOr(x, q.or));
 		if (q.op === "update") {
-			elegidas.forEach((x) => {
-				Object.assign(x, q.fila);
-				if (!("captura_id" in q.fila)) x.captura_id = null; // el trigger: sin marca nueva, sin marca
-			});
+			elegidas.forEach((x) => actualizar(x, q.fila));
 			return respuesta(q.devolver ? elegidas.map((x) => proyectar(x, q.cols)) : null, 200);
 		}
 		if (q.op === "delete") {
@@ -579,8 +606,24 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 	// ── 9. Marca por captura (R12 y R13) ─────────────────────────────────────────
 	// La base que vio la pantalla: con la marca en el código nuevo; por contenido en las versiones
 	// anteriores (3d48d1a, eadbe09), para que cada una se pruebe con lo que entiende
-	const NUEVO = typeof B.baseDeFila === "function";
-	const vista = (valor, marcaVista) => (valor === null ? null : NUEVO ? { captura_id: marcaVista === undefined ? null : marcaVista, valor } : valor);
+	const NUEVO = ESQUEMA !== "ninguno"; // con marcas (80a4375 o el nuevo)
+	const COLS = { asistencia: ["captura_id"], registro: ["captura_participacion", "captura_conducta"], calificacion: ["captura_semaforo", "captura_puntaje", "captura_retroalimentacion"] };
+	const COL_DE = { estado: "captura_id", participacion: "captura_participacion", conducta: "captura_conducta", nivel: "captura_semaforo", estado_entrega: "captura_semaforo", puntaje: "captura_puntaje", retroalimentacion: "captura_retroalimentacion" };
+	const tipoDe = (v) => ("estado" in v ? "asistencia" : "participacion" in v || "conducta" in v ? "registro" : "calificacion");
+	// Una fila sembrada con la misma marca en todos sus grupos (y captura_id, para 80a4375)
+	const M = (tipo, id) => { const o = { captura_id: id }; if (ESQUEMA === "campo") COLS[tipo].forEach((c) => { o[c] = id; }); return o; };
+	// Otro aparato escribió el campo: su marca (en el esquema de 80a4375, la de la fila)
+	const otro = (campo, id) => (ESQUEMA === "campo" ? { [COL_DE[campo]]: id } : { captura_id: id });
+	// La versión que vio la pantalla de una fila con la misma marca en todos sus grupos
+	const vista = (valor, marcaVista, tipo) => {
+		if (valor === null) return null;
+		const m = marcaVista === undefined ? null : marcaVista;
+		if (ESQUEMA === "campo") { const marcas = {}; COLS[tipo || tipoDe(valor)].forEach((c) => { marcas[c] = m; }); return { marcas, valor }; }
+		return ESQUEMA === "fila" ? { captura_id: m, valor } : valor;
+	};
+	// La versión que vio la pantalla al leer una fila de la base (como js/hoy.js)
+	const valorLocal = (tipo, f) => (tipo === "asistencia" ? { estado: f.asistencia_estado } : tipo === "registro" ? { participacion: f.participacion, conducta: f.conducta } : vCalDe(f));
+	const vistaFila = (tipo, f) => (!f ? null : ESQUEMA === "campo" ? B.baseDeFila(tipo, f) : ESQUEMA === "fila" ? { captura_id: f.captura_id || null, valor: valorLocal(tipo, f) } : valorLocal(tipo, f));
 	const marcaDe = (fila) => (fila ? fila.captura_id || null : null);
 	const asisDe = (bdX, al) => bdX.asistencias.find((a) => a.alumno_id === al);
 	const regDe = (bdX, al) => bdX.registro_diario.find((r) => r.alumno_id === al);
@@ -751,12 +794,12 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		await Bb.agregar("calificacion", calif("beto", "p1", { nivel: "en_proceso", estado_entrega: "entregado" }), "Calificación de Beto", null, C(["nivel", "estado_entrega"]));
 		await vacia(Bb);
 		let fa = asisDe(bdR, "beto"), fc = calDe(bdR, "beto", "p1");
-		await A.agregar("asistencia", asis("beto", "presente"), "Asistencia de Beto", vista({ estado: fa.asistencia_estado }, marcaDe(fa)), C(["estado"]));
-		await A.agregar("calificacion", calif("beto", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", vista(vCalDe(fc), marcaDe(fc)), C(["nivel", "estado_entrega"]));
+		await A.agregar("asistencia", asis("beto", "presente"), "Asistencia de Beto", vistaFila("asistencia", fa), C(["estado"]));
+		await A.agregar("calificacion", calif("beto", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", vistaFila("calificacion", fc), C(["nivel", "estado_entrega"]));
 		await vacia(A);
 		// B recarga (ve lo de A), se queda sin señal y toca Falta y Requiere apoyo
 		fa = asisDe(bdR, "beto"); fc = calDe(bdR, "beto", "p1");
-		const baseBa = vista({ estado: fa.asistencia_estado }, marcaDe(fa)), baseBc = vista(vCalDe(fc), marcaDe(fc));
+		const baseBa = vistaFila("asistencia", fa), baseBc = vistaFila("calificacion", fc);
 		sB.modo.red = true;
 		await Bb.agregar("asistencia", asis("beto", "ausente"), "Asistencia de Beto", baseBa, C(["estado"]));
 		await Bb.agregar("calificacion", calif("beto", "p1", { nivel: "requiere_apoyo", estado_entrega: "entregado" }), "Calificación de Beto", baseBc, C(["nivel", "estado_entrega"]));
@@ -775,9 +818,9 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 	// Otro aparato cambió OTRO campo: se aplica el tocado sin pisar el otro, sin aviso; el MISMO campo, aviso
 	await caso("campos por separado", async () => {
 		const bdR = crearBD();
-		bdR.calificaciones.push({ id: "k1", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p1", nivel: "logrado", estado_entrega: "entregado", puntaje: null, retroalimentacion: null, captura_id: "m0" });
-		bdR.calificaciones.push({ id: "k2", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p2", nivel: "logrado", estado_entrega: "entregado", puntaje: null, retroalimentacion: null, captura_id: "n0" });
-		bdR.registro_diario.push({ id: "k3", maestro_id: "m1", alumno_id: "ana", fecha: F, participacion: 1, conducta: 1, captura_id: "r0" });
+		bdR.calificaciones.push({ id: "k1", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p1", nivel: "logrado", estado_entrega: "entregado", puntaje: null, retroalimentacion: null, ...M("calificacion", "m0") });
+		bdR.calificaciones.push({ id: "k2", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p2", nivel: "logrado", estado_entrega: "entregado", puntaje: null, retroalimentacion: null, ...M("calificacion", "n0") });
+		bdR.registro_diario.push({ id: "k3", maestro_id: "m1", alumno_id: "ana", fecha: F, participacion: 1, conducta: 1, ...M("registro", "r0") });
 		const s = cliente(bdR, { red: true });
 		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
 		b.iniciar();
@@ -786,9 +829,9 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		await b.agregar("calificacion", calif("ana", "p2", { nivel: "requiere_apoyo", estado_entrega: "entregado" }), "Calificación de Ana en P2", vista(semilla, "n0"), C(["nivel", "estado_entrega"]));
 		await b.agregar("registro", reg("ana", 2, 1), "Cierre de Ana", vista({ participacion: 1, conducta: 1 }, "r0"), C(["participacion"]));
 		// Otro aparato: en P1 cambia el semáforo; en P2 también el semáforo; en el cierre, la conducta
-		Object.assign(calDe(bdR, "ana", "p1"), { nivel: "en_proceso", captura_id: "m1x" });
-		Object.assign(calDe(bdR, "ana", "p2"), { nivel: "en_proceso", captura_id: "n1x" });
-		Object.assign(regDe(bdR, "ana"), { conducta: 0, captura_id: "r1x" });
+		Object.assign(calDe(bdR, "ana", "p1"), { nivel: "en_proceso" }, otro("nivel", "m1x"));
+		Object.assign(calDe(bdR, "ana", "p2"), { nivel: "en_proceso" }, otro("nivel", "n1x"));
+		Object.assign(regDe(bdR, "ana"), { conducta: 0 }, otro("conducta", "r1x"));
 		s.modo.red = false;
 		await b.procesar();
 		await vacia(b);
@@ -805,7 +848,7 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 	// El relleno del Cierre del día solo inserta donde no hay fila (sin marca) y nunca avisa
 	await caso("relleno solo inserta", async () => {
 		const bdR = crearBD();
-		bdR.registro_diario.push({ id: "k1", maestro_id: "m1", alumno_id: "caro", fecha: F, participacion: 2, conducta: 1, captura_id: "otro" });
+		bdR.registro_diario.push({ id: "k1", maestro_id: "m1", alumno_id: "caro", fecha: F, participacion: 2, conducta: 1, ...M("registro", "otro") });
 		const s = cliente(bdR, {});
 		const b = bandeja(s, B.almacenMemoria());
 		b.iniciar();
@@ -814,7 +857,9 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		ok("relleno: no pisa la fila que ya había ni avisa; inserta la que faltaba",
 			[vReg(regDe(bdR, "caro")), vReg(regDe(bdR, "ana")), b.eventos.conflictos.length, s.escrituras.filter((e) => /update/.test(e)).length],
 			[{ participacion: 2, conducta: 1 }, { participacion: 1, conducta: 1 }, 0, 0]);
-		ok("relleno: la fila nueva va sin marca (no es captura de la maestra)", NUEVO ? regDe(bdR, "ana").captura_id || null : null, null);
+		const gAna = b.eventos.guardadas.find(([c]) => /|ana|/.test(c));
+		ok("relleno: pide la fila de vuelta; la pantalla conoce su versión (sus marcas)",
+			ESQUEMA === "campo" ? [!!regDe(bdR, "ana").captura_conducta, gAna && gAna[1].base && gAna[1].base.marcas.captura_conducta === regDe(bdR, "ana").captura_conducta] : [true, true], [true, true]);
 	});
 
 	// Otra pantalla (Asistencia) cambió la fila: el trigger le quitó la marca → se compara por contenido
@@ -825,7 +870,7 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
 		b.iniciar();
 		await b.agregar("asistencia", asis("ana", "justificada"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
-		Object.assign(asisDe(bdR, "ana"), { asistencia_estado: "ausente", captura_id: null });
+		Object.assign(asisDe(bdR, "ana"), { asistencia_estado: "ausente", captura_id: ESQUEMA === "campo" ? marcaServidor() : null });
 		s.modo.red = false;
 		await b.procesar();
 		await vacia(b);
@@ -853,7 +898,7 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 	await caso("capturas del formato anterior", async () => {
 		const bdR = crearBD();
 		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente", captura_id: null });
-		bdR.registro_diario.push({ id: "q2", maestro_id: "m1", alumno_id: "beto", fecha: F, participacion: 1, conducta: 1, captura_id: "zz" });
+		bdR.registro_diario.push({ id: "q2", maestro_id: "m1", alumno_id: "beto", fecha: F, participacion: 1, conducta: 1, ...M("registro", "zz") });
 		const alm = B.almacenMemoria();
 		const ahora = Date.now() * 1000;
 		await alm.poner({ clave: "asistencia|g1|ana|" + F, tipo: "asistencia", maestro_id: "m1", seq: ahora - 3, capturado_en: new Date().toISOString(),
@@ -902,14 +947,258 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		b.iniciar();
 		for (const al of ["ana", "beto"]) await b.agregar("registro", reg(al, 1, 1), "Cierre de " + al, null, RELLENO);
 		await vacia(b);
-		const baseAna = vista({ participacion: 1, conducta: 1 }, marcaDe(regDe(bdR, "ana")));
-		const baseBeto = vista({ participacion: 1, conducta: 1 }, marcaDe(regDe(bdR, "beto")));
-		Object.assign(regDe(bdR, "beto"), { participacion: 2, captura_id: "otro" });
+		const baseAna = vistaFila("registro", regDe(bdR, "ana"));
+		const baseBeto = vistaFila("registro", regDe(bdR, "beto"));
+		Object.assign(regDe(bdR, "beto"), { participacion: 2 }, otro("participacion", "otro"));
 		await b.agregar("registro_borrar", { alumno_id: "ana", fecha: F }, "Cierre de Ana", baseAna);
 		await b.agregar("registro_borrar", { alumno_id: "beto", fecha: F }, "Cierre de Beto", baseBeto);
 		await vacia(b);
 		ok("retiro: se quita el de Ana; el de Beto (cambiado en otro aparato) se queda y se avisa",
 			[bdR.registro_diario.map((r) => r.alumno_id), b.eventos.conflictos.map((c) => c[0])], [["beto"], ["Cierre de Beto"]]);
+	});
+
+	// ── 10. Marca por campo (R14) ────────────────────────────────────────────────
+	// Las llaves de la bandeja y la última versión que una bandeja confirmó de una llave (lo que su
+	// pantalla ve después de guardar)
+	const KA = (al) => "asistencia|g1|" + al + "|" + F;
+	const KR = (al) => "registro|m1|" + al + "|" + F;
+	const KC = (al, p) => "calificacion|m1|" + al + "|" + p;
+	const ultimaBase = (b, k) => { const g = b.eventos.guardadas.filter(([c]) => c === k).pop(); return g ? g[1].base : null; };
+	const estadoBeto = (bdX) => [asisDe(bdX, "beto").asistencia_estado, calDe(bdX, "beto", "p1").nivel, vReg(regDe(bdX, "beto"))];
+
+	/*
+		R14-FAIL 1: el OTRO aparato (A) cambia un dato y lo regresa al valor que vio B (A → B → A)
+		mientras B, sin señal, ya había capturado otro valor sobre esa versión.
+		  "hoy":      A usa Hoy: Justificada / En proceso / 2 y luego Presente / Logrado / 1
+		  "retoque":  A solo vuelve a tocar Presente y participación 1 (lo que ya había)
+		  "pantalla": A usa la pantalla Asistencia (upsert sin marca): Justificada y luego Presente
+	*/
+	async function abaOtroAparato(variante) {
+		const bdR = crearBD();
+		const sA = cliente(bdR, {}), sB = cliente(bdR, {});
+		const A = bandeja(sA, B.almacenMemoria()), Bb = bandeja(sB, B.almacenMemoria(), { esperaMax: 20 });
+		A.iniciar(); Bb.iniciar();
+		// 0) A deja a Beto en Presente / Logrado / cierre 1 y 1
+		await A.agregar("asistencia", asis("beto", "presente"), "Asistencia de Beto", null, C(["estado"]));
+		await A.agregar("calificacion", calif("beto", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Beto", null, C(["nivel", "estado_entrega"]));
+		await A.agregar("registro", reg("beto", 1, 1), "Cierre del día de Beto", null, RELLENO);
+		await vacia(A);
+		// 1) B abre Hoy (lee la base) y, sin señal, captura Falta, Requiere apoyo y participación 0
+		const bA = vistaFila("asistencia", asisDe(bdR, "beto")), bC = vistaFila("calificacion", calDe(bdR, "beto", "p1")), bR = vistaFila("registro", regDe(bdR, "beto"));
+		sB.modo.red = true;
+		await Bb.agregar("asistencia", asis("beto", "ausente"), "Asistencia de Beto", bA, C(["estado"]));
+		await Bb.agregar("calificacion", calif("beto", "p1", { nivel: "requiere_apoyo", estado_entrega: "entregado" }), "Calificación de Beto", bC, C(["nivel", "estado_entrega"]));
+		await Bb.agregar("registro", reg("beto", 0, 1), "Cierre del día de Beto", bR, C(["participacion"]));
+		await dormir(20);
+		// 2) A, en línea y DESPUÉS, sobre lo que su pantalla ve
+		const toque = async (tipo, datos, clave, campos) => { await A.agregar(tipo, datos, "A", ultimaBase(A, clave), C(campos)); await vacia(A); };
+		if (variante === "hoy") {
+			await toque("asistencia", asis("beto", "justificada"), KA("beto"), ["estado"]);
+			await toque("calificacion", calif("beto", "p1", { nivel: "en_proceso", estado_entrega: "entregado" }), KC("beto", "p1"), ["nivel", "estado_entrega"]);
+			await toque("registro", reg("beto", 2, 1), KR("beto"), ["participacion"]);
+			await toque("asistencia", asis("beto", "presente"), KA("beto"), ["estado"]);
+			await toque("calificacion", calif("beto", "p1", { nivel: "logrado", estado_entrega: "entregado" }), KC("beto", "p1"), ["nivel", "estado_entrega"]);
+			await toque("registro", reg("beto", 1, 1), KR("beto"), ["participacion"]);
+		} else if (variante === "retoque") {
+			await toque("asistencia", asis("beto", "presente"), KA("beto"), ["estado"]);
+			await toque("registro", reg("beto", 1, 1), KR("beto"), ["participacion"]);
+		} else {
+			// La pantalla Asistencia (js/asistencia.js): upsert sin marca, dos veces
+			for (const e of ["justificada", "presente"]) {
+				await sA.from("asistencias").upsert({ maestro_id: "m1", grupo_id: "g1", alumno_id: "beto", fecha: F, asistencia_estado: e }, { onConflict: "grupo_id,alumno_id,fecha" });
+			}
+		}
+		const deA = estadoBeto(bdR);
+		// 3) Vuelve la señal a B
+		sB.modo.red = false;
+		await Bb.procesar();
+		await vacia(Bb);
+		return { deA, fin: estadoBeto(bdR), avisos: Bb.eventos.conflictos.map((c) => c[0].split(" de ")[0]).sort(), cola: Bb.pendientes() };
+	}
+	await caso("R14-FAIL 1 (A usa Hoy)", async () => {
+		const r = await abaOtroAparato("hoy");
+		ok("FAIL 1 hoy: se conserva lo último de A (Presente, Logrado, 1 y 1)", r.fin, r.deA);
+		ok("FAIL 1 hoy: B avisa los tres datos y su cola queda vacía", [r.avisos, r.cola], [["Asistencia", "Calificación", "Cierre del día"], 0]);
+	});
+	await caso("R14-FAIL 1 (A solo vuelve a tocar)", async () => {
+		const r = await abaOtroAparato("retoque");
+		ok("FAIL 1 retoque: se conserva lo que A volvió a tocar; la calificación (que A no tocó) sí se aplica",
+			r.fin, ["presente", "requiere_apoyo", { participacion: 1, conducta: 1 }]);
+		ok("FAIL 1 retoque: B avisa asistencia y cierre", r.avisos, ["Asistencia", "Cierre del día"]);
+	});
+	await caso("R14-FAIL 1 (A usa la pantalla Asistencia)", async () => {
+		const r = await abaOtroAparato("pantalla");
+		ok("FAIL 1 pantalla: se conserva lo de la pantalla Asistencia (Presente); lo demás de B se aplica",
+			r.fin, ["presente", "requiere_apoyo", { participacion: 0, conducta: 1 }]);
+		ok("FAIL 1 pantalla: B avisa la asistencia", r.avisos, ["Asistencia"]);
+	});
+
+	/*
+		R14-FAIL 2: MISMO aparato, dos ventanas que comparten la cola y las marcas propias.
+		  1) v1 guarda el cierre (relleno) y pone conducta 2 a Dani;
+		  2) v1 pone participación 2: el PATCH llega a la base, pero la respuesta se pierde;
+		  3) v2 (que se abrió antes y no vio nada, o cuya lectura llegó tarde) pone conducta 0.
+		  "perdida": v1 reintenta antes del toque de v2 (encuentra su propia marca);
+		  "cerrada": v1 se cerró: su captura sigue en la cola compartida y v2 la hereda;
+		  "tardia":  la pantalla de v2 tiene la versión del relleno (su lectura salió antes de lo de v1).
+		Esperado: Dani 2/0 (gana el último toque), sin avisos, cola vacía.
+	*/
+	async function perdidaVentanaVieja(variante) {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const s1 = cliente(bdR, {}), s2 = cliente(bdR, {});
+		const v1 = bandeja(s1, alm, { esperaMax: 10000 }), v2 = bandeja(s2, alm, { esperaMax: 10000 });
+		v1.iniciar(); v2.iniciar();
+		for (const al of ["ana", "dani"]) await v1.agregar("registro", reg(al, 1, 1), "Cierre del día de " + al, null, RELLENO);
+		await vacia(v1);
+		const baseVieja = ultimaBase(v1, KR("dani"));
+		await v1.agregar("registro", reg("dani", 1, 2), "Cierre del día de Dani", baseVieja, C(["conducta"]));
+		await vacia(v1);
+		s1.modo.perder = 1;
+		await v1.agregar("registro", reg("dani", 2, 2), "Cierre del día de Dani", ultimaBase(v1, KR("dani")), C(["participacion"]));
+		await dormir(30);
+		const trasV1 = [vReg(regDe(bdR, "dani")), (await alm.todos()).length];
+		if (variante !== "cerrada") { await v1.procesar(); await vacia(v1); }
+		await v2.agregar("registro", reg("dani", 1, 0), "Cierre del día de Dani", variante === "tardia" ? baseVieja : null, C(["conducta"]));
+		await v2.procesar();
+		await vacia(v2);
+		return { trasV1, fin: vReg(regDe(bdR, "dani")), avisos: v1.eventos.conflictos.length + v2.eventos.conflictos.length, cola: (await alm.todos()).length };
+	}
+	for (const variante of ["perdida", "cerrada", "tardia"]) {
+		await caso("R14-FAIL 2 (" + variante + ")", async () => {
+			const r = await perdidaVentanaVieja(variante);
+			ok("FAIL 2 " + variante + ": el PATCH llegó y la respuesta se perdió (2/2, sigue en la cola)", r.trasV1, [{ participacion: 2, conducta: 2 }, 1]);
+			ok("FAIL 2 " + variante + ": gana el último toque (2/0), sin aviso falso, cola vacía", [r.fin, r.avisos, r.cola], [{ participacion: 2, conducta: 0 }, 0, 0]);
+		});
+	}
+
+	// Dos aparatos ponen lo mismo: listo sin aviso (aunque la marca sea de otro)
+	await caso("dos aparatos, el mismo valor", async () => {
+		const bdR = crearBD();
+		bdR.asistencias.push({ id: "q1", maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente", captura_id: "m0" });
+		const sB = cliente(bdR, { red: true });
+		const A = bandeja(cliente(bdR, {}), B.almacenMemoria()), Bb = bandeja(sB, B.almacenMemoria(), { esperaMax: 20 });
+		A.iniciar(); Bb.iniciar();
+		await Bb.agregar("asistencia", asis("ana", "ausente"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await A.agregar("asistencia", asis("ana", "ausente"), "Asistencia de Ana", vista({ estado: "presente" }, "m0"), C(["estado"]));
+		await vacia(A);
+		sB.modo.red = false;
+		await Bb.procesar();
+		await vacia(Bb);
+		ok("el mismo valor desde dos aparatos: queda, sin aviso", [asisDe(bdR, "ana").asistencia_estado, Bb.eventos.conflictos.length, Bb.pendientes()], ["ausente", 0, 0]);
+	});
+
+	// Una marca ajena que este aparato ya vio (otra ventana capturó sobre ella lo mismo que había):
+	// la ventana vieja, después, sí escribe (gana el último toque del aparato)
+	await caso("marca ajena vista por otra ventana", async () => {
+		const bdR = crearBD();
+		bdR.calificaciones.push({ id: "k1", maestro_id: "m1", alumno_id: "ana", producto_sesion_id: "p1", nivel: "logrado", estado_entrega: "entregado", puntaje: 5, retroalimentacion: null, ...M("calificacion", "s0") });
+		const alm = B.almacenMemoria();
+		const v1 = bandeja(cliente(bdR, {}), alm), v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar(); v2.iniciar();
+		const vieja = vistaFila("calificacion", calDe(bdR, "ana", "p1")); // lo que vio la ventana 1
+		// Otro aparato: semáforo En proceso y puntaje 9
+		Object.assign(calDe(bdR, "ana", "p1"), { nivel: "en_proceso", puntaje: 9 }, otro("nivel", "f1"), ESQUEMA === "campo" ? { captura_puntaje: "h1" } : {});
+		// La ventana 2 ve el semáforo nuevo pero el puntaje viejo, y captura En proceso (lo que ya hay) y puntaje 9
+		const mezcla = vistaFila("calificacion", Object.assign({}, calDe(bdR, "ana", "p1"), { puntaje: 5 }, ESQUEMA === "campo" ? { captura_puntaje: "s0" } : {}));
+		await v2.agregar("calificacion", calif("ana", "p1", { nivel: "en_proceso", estado_entrega: "entregado", puntaje: 9 }), "Calificación de Ana", mezcla, C(["nivel", "estado_entrega", "puntaje"]));
+		await vacia(v2);
+		// La ventana 1 (vieja) toca Requiere apoyo después
+		await v1.agregar("calificacion", calif("ana", "p1", { nivel: "requiere_apoyo", estado_entrega: "entregado" }), "Calificación de Ana", vieja, C(["nivel", "estado_entrega"]));
+		await vacia(v1);
+		ok("marca ajena que el aparato ya vio: gana el último toque, sin aviso; el puntaje del otro aparato queda",
+			[calDe(bdR, "ana", "p1").nivel, calDe(bdR, "ana", "p1").puntaje, v1.eventos.conflictos.length + v2.eventos.conflictos.length], ["requiere_apoyo", 9, 0]);
+	});
+
+	// Sin canal: una ventana vieja no pone el relleno 1 y 1 a quien otra ventana marcó con falta
+	await caso("relleno y falta en otra ventana", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const v1 = bandeja(cliente(bdR, {}), alm), v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar(); v2.iniciar();
+		await v1.agregar("asistencia", asis("dani", "ausente"), "Asistencia de Dani", null, C(["estado"]));
+		await vacia(v1);
+		// La ventana 2 no se enteró: guarda el cierre de todos
+		for (const al of ["ana", "dani"]) await v2.agregar("registro", Object.assign(reg(al, 1, 1), { grupo_id: "g1" }), "Cierre del día de " + al, null, RELLENO);
+		await vacia(v2);
+		const gDani = v2.eventos.guardadas.find(([c]) => c === KR("dani"));
+		ok("relleno: sí a Ana; no a Dani (este aparato la marcó con falta), sin avisos",
+			[bdR.registro_diario.map((r) => r.alumno_id), v2.eventos.conflictos.length, v2.pendientes()], [["ana"], 0, 0]);
+		ok("relleno omitido: la pantalla sabe que Dani no tiene cierre", gDani ? gDani[1].fila : "sin aviso a la pantalla", false);
+	});
+
+	// El relleno propio con la respuesta perdida: tocar después a ese alumno no da aviso falso
+	await caso("relleno con respuesta perdida", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const s1 = cliente(bdR, { perder: 1 });
+		const v1 = bandeja(s1, alm, { esperaMax: 10000 }), v2 = bandeja(cliente(bdR, {}), alm);
+		v1.iniciar();
+		await v1.agregar("registro", reg("dani", 1, 1), "Cierre del día de Dani", null, RELLENO);
+		await dormir(30);
+		await v2.agregar("registro", reg("dani", 1, 0), "Cierre del día de Dani", null, C(["conducta"]));
+		await v2.iniciar();
+		await vacia(v2);
+		ok("relleno con respuesta perdida y luego conducta 0 en otra ventana: se aplica, sin aviso",
+			[vReg(regDe(bdR, "dani")), v2.eventos.conflictos.length, (await alm.todos()).length], [{ participacion: 1, conducta: 0 }, 0, 0]);
+	});
+
+	// La marca inicial (dos aparatos, R13-t20 "dos"): B crea la calificación de Ana solo con el semáforo
+	// y guarda el cierre (relleno); A, que no veía esas filas, pone puntaje 7 a Ana y conducta 0 a
+	// Dani. Nadie había escrito esos grupos: se aplican sin aviso y lo de B se conserva
+	await caso("marca inicial: dos aparatos sin avisos falsos", async () => {
+		const bdR = crearBD();
+		const sA = cliente(bdR, { red: true });
+		const A = bandeja(sA, B.almacenMemoria(), { esperaMax: 20 }), Bb = bandeja(cliente(bdR, {}), B.almacenMemoria());
+		A.iniciar(); Bb.iniciar();
+		await A.agregar("calificacion", calif("ana", "p1", { puntaje: 7 }), "Calificación de Ana", null, C(["puntaje"]));
+		await A.agregar("registro", reg("dani", 1, 0), "Cierre del día de Dani", null, C(["conducta"]));
+		await Bb.agregar("calificacion", calif("ana", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Ana", null, C(["nivel", "estado_entrega"]));
+		await Bb.agregar("registro", reg("dani", 1, 1), "Cierre del día de Dani", null, RELLENO);
+		await vacia(Bb);
+		sA.modo.red = false;
+		await A.procesar();
+		await vacia(A);
+		const c = calDe(bdR, "ana", "p1");
+		ok("marca inicial: el semáforo de B y el puntaje de A; conducta 0 de A sobre el relleno de B; sin avisos",
+			[c.nivel, c.puntaje, vReg(regDe(bdR, "dani")), A.eventos.conflictos.length], ["logrado", 7, { participacion: 1, conducta: 0 }, 0]);
+	});
+
+	// Ida y vuelta sobre un grupo que tenía la marca inicial: B puso puntaje 5 y luego lo quitó; A (que
+	// no veía la fila) captura puntaje 3 → conflicto, se conserva lo de B
+	await caso("marca inicial: la ida y vuelta se nota", async () => {
+		const bdR = crearBD();
+		const sA = cliente(bdR, { red: true });
+		const A = bandeja(sA, B.almacenMemoria(), { esperaMax: 20 }), Bb = bandeja(cliente(bdR, {}), B.almacenMemoria());
+		A.iniciar(); Bb.iniciar();
+		await A.agregar("calificacion", calif("ana", "p1", { puntaje: 3 }), "Calificación de Ana", null, C(["puntaje"]));
+		await Bb.agregar("calificacion", calif("ana", "p1", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de Ana", null, C(["nivel", "estado_entrega"]));
+		await vacia(Bb);
+		for (const p of [5, null]) {
+			await Bb.agregar("calificacion", calif("ana", "p1", { nivel: "logrado", estado_entrega: "entregado", puntaje: p }), "Calificación de Ana", ultimaBase(Bb, KC("ana", "p1")), C(["puntaje"]));
+			await vacia(Bb);
+		}
+		sA.modo.red = false;
+		await A.procesar();
+		await vacia(A);
+		ok("marca inicial y luego ida y vuelta de otro aparato: conflicto, se conserva lo de B (sin puntaje)",
+			[calDe(bdR, "ana", "p1").puntaje, A.eventos.conflictos.map((x) => x[0])], [null, ["Calificación de Ana"]]);
+	});
+
+	// Una falta vieja anotada en este aparato que ya se corrigió en otra pantalla no impide el relleno
+	await caso("relleno: la falta anotada se confirma con la base", async () => {
+		const bdR = crearBD();
+		const alm = B.almacenMemoria();
+		const s1 = cliente(bdR, {});
+		const v1 = bandeja(s1, alm);
+		v1.iniciar();
+		await v1.agregar("asistencia", asis("ana", "ausente"), "Asistencia de Ana", null, C(["estado"]));
+		await vacia(v1);
+		// La pantalla Asistencia la corrige a Presente (sin marca: el trigger pone una del servidor)
+		await s1.from("asistencias").upsert({ maestro_id: "m1", grupo_id: "g1", alumno_id: "ana", fecha: F, asistencia_estado: "presente" }, { onConflict: "grupo_id,alumno_id,fecha" });
+		await v1.agregar("registro", Object.assign(reg("ana", 1, 1), { grupo_id: "g1" }), "Cierre del día de Ana", null, RELLENO);
+		await vacia(v1);
+		ok("falta anotada pero corregida en la base: el relleno sí se pone", vReg(regDe(bdR, "ana")), { participacion: 1, conducta: 1 });
 	});
 
 	ok("un error de la base sin su código técnico", /PGRST|código|\(error/.test(B.explicar({ status: 404, code: "PGRST205", message: "Could not find the table" })), false);

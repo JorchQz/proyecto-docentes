@@ -30,11 +30,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
 	var siguientes = [];       // próximas sesiones sin fecha del proyecto activo (para "Trabajar hoy")
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
-	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { captura_id, valor }
-	// (la marca de la última captura de Hoy y el contenido) o null = no hay fila. Cada captura lo
+	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { marcas, valor }
+	// (la marca de cada grupo de campos y el contenido) o null = no hay fila. Cada captura lo
 	// lleva como "la versión que vio" (js/bandeja-salida.js); se actualiza al confirmar (aquí o en
 	// otra ventana de este aparato), en un conflicto y tras un rechazo.
 	var enBase = {};
+	/*
+		Ninguna lectura tardía pisa una versión más nueva: cada vez que llega una versión por la
+		bandeja (confirmación, conflicto, rechazo u otra ventana) se numera; una lectura de la
+		carga anota el número al salir y, al llegar, no toca las llaves que recibieron una versión
+		después (esa versión, y lo que muestra, se quedan).
+	*/
+	var numeroVista = 0;      // cuántas versiones han llegado por la bandeja
+	var vistaNumero = {};     // llave -> número de la última versión que llegó por la bandeja
+	function ponerBase(clave, base) {
+		enBase[clave] = base;
+		vistaNumero[clave] = ++numeroVista;
+	}
+	function llegoDespues(clave, desde) { return (vistaNumero[clave] || 0) > desde; }
 	var pintado = false; // ya se dibujaron las secciones (los avisos de la bandeja pueden repintar)
 
 	var NIVELES = [
@@ -266,12 +279,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 		a recargar). `v`: el valor de la base (js/bandeja-salida.js, valorDeFila); null = no hay fila.
 	*/
 	function aplicarValor(it, v, id) {
-		if (!pintado) return;
+		// Antes de pintar (la carga sigue) solo se guarda en el estado: la lectura de la carga no
+		// lo pisa si esta versión llegó después de que salió (ver ponerBase)
+		if (!grupo) return;
 		var d = it.datos || {};
 		try {
 			if (it.tipo === "asistencia") {
 				if (d.grupo_id !== grupo.id || d.fecha !== hoy) return;
 				if (v && v.estado) asistencia[d.alumno_id] = v.estado; else delete asistencia[d.alumno_id];
+				if (!pintado) return;
 				renderAsistencia();
 				renderCierre();
 			} else if (it.tipo === "registro" || it.tipo === "registro_borrar") {
@@ -283,6 +299,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					delete registro[d.alumno_id];
 					registroGuardado[d.alumno_id] = false;
 				}
+				if (!pintado) return;
 				renderCierre();
 			} else if (it.tipo === "calificacion" && d.fila) {
 				var k = d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
@@ -290,6 +307,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { c[f] = v ? v[f] : null; });
 				if (id && !c.id) c.id = id;
 				calificaciones[k] = c;
+				if (!pintado) return;
 				renderTareas();
 				repintarSesiones();
 			}
@@ -346,7 +364,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			alCambiar: pintarBandeja,
 			// La base ya tiene lo capturado: es la nueva "versión que vio" esta pantalla
 			alGuardar: function (it, r) {
-				enBase[it.clave] = r ? r.base : null;
+				ponerBase(it.clave, r ? r.base : null);
 				if (it.tipo === "calificacion" && r && r.id) {
 					var c = calificaciones[it.datos.fila.alumno_id + "|" + it.datos.fila.producto_sesion_id];
 					if (c && !c.id) c.id = r.id;
@@ -357,13 +375,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 			},
 			// Otro dispositivo (u otra pantalla) la cambió: se conservó lo de la base y se muestra
 			alConflicto: function (it, r) {
-				enBase[it.clave] = r.base;
+				ponerBase(it.clave, r.base);
 				if (!r.sigue) aplicarValor(it, r.actual, r.id);
 				avisarBandeja(it.clave, r.texto);
 			},
 			alRechazar: function (it, explicacion, r) {
 				if (r && r.base !== undefined) {
-					enBase[it.clave] = r.base;
+					ponerBase(it.clave, r.base);
 					if (!r.sigue) aplicarValor(it, r.actual);
 				}
 				avisarBandeja(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + ".");
@@ -374,7 +392,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			alSaber: function (m) {
 				var it = { clave: m.clave, tipo: m.tipoCaptura, datos: m.datos };
 				if (!it.datos || !it.tipo) return;
-				if (m.base !== undefined) enBase[m.clave] = m.base;
+				if (m.base !== undefined) ponerBase(m.clave, m.base);
 				// `sigue` lo calculó quien envió, sobre la cola compartida del aparato; sin
 				// IndexedDB cada ventana tiene su cola y se mira la propia
 				var pendiente = m.sigue || (bandeja && !bandeja.persistente() && bandeja.pendienteDe(m.clave));
@@ -430,13 +448,44 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// todo el estado está inicializado. Las funciones se izan, las asignaciones de
 	// `var` no: arrancar aquí dejaba variables de estado en undefined.
 
-	// La marca de la última captura (captura_id) se lee con cada fila; si la base aún no tiene la
-	// columna (el frontend se publicó antes que la migración), se lee sin ella y la bandeja
-	// compara por contenido (js/bandeja-salida.js)
+	// La marca de cada grupo de campos (captura_id; captura_participacion y captura_conducta;
+	// captura_semaforo, captura_puntaje y captura_retroalimentacion) se lee con cada fila; si la
+	// base aún no tiene esas columnas (el frontend se publicó antes que la migración), se lee sin
+	// ellas (un 400 en la consola por carga) y la bandeja compara por contenido (js/bandeja-salida.js)
 	var conMarca = !(window.BandejaSalida && window.BandejaSalida.marcaDisponible() === false);
-	function conCaptura(columnas) { return columnas + (conMarca ? ", captura_id" : ""); }
+	function conCaptura(columnas, tipo) {
+		return columnas + (conMarca && window.BandejaSalida ? ", " + window.BandejaSalida.columnasMarca(tipo).join(", ") : "");
+	}
+	function faltanMarcas(error) {
+		if (!(conMarca && window.BandejaSalida && window.BandejaSalida.faltaMarca(error))) return false;
+		conMarca = false;
+		window.BandejaSalida.marcaDisponible(false);
+		return true;
+	}
+	// Una lectura con las marcas; si faltan las columnas, se repite sin ellas
+	async function conMarcas(leer) {
+		var res = await leer();
+		if (res.error && faltanMarcas(res.error)) res = await leer();
+		return res;
+	}
 	function baseDeFila(tipo, fila) {
 		return window.BandejaSalida ? window.BandejaSalida.baseDeFila(tipo, fila) : null;
+	}
+
+	/*
+		Lo leído de la base se vuelve lo que la pantalla muestra y la versión que vio, salvo en las
+		llaves que recibieron una versión por la bandeja DESPUÉS de que salió la lectura (`desde`):
+		esa es más nueva y se queda (ya está en la pantalla, ver aplicarValor).
+	*/
+	function tomarLeido(clave, desde, it, fila, poner) {
+		if (!window.BandejaSalida) { poner(); return; }
+		if (llegoDespues(clave, desde)) {
+			var nueva = enBase[clave];
+			aplicarValor(it, nueva ? nueva.valor : null, fila.id);
+			return;
+		}
+		poner();
+		enBase[clave] = baseDeFila(it.tipo, fila);
 	}
 
 	async function cargarDatosDelDia() {
@@ -444,35 +493,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// error-revisado-en: asisRes.error
 		function leerAsistencia() {
 			return window.sb.from("asistencias")
-				.select(conCaptura("alumno_id, asistencia_estado"))
+				.select(conCaptura("alumno_id, asistencia_estado", "asistencia"))
 				.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("fecha", hoy);
 		}
-		var asisRes = await leerAsistencia();
-		if (asisRes.error) {
-			if (!(conMarca && window.BandejaSalida && window.BandejaSalida.faltaMarca(asisRes.error))) throw asisRes.error;
-			conMarca = false;
-			window.BandejaSalida.marcaDisponible(false);
-			asisRes = await leerAsistencia();
-		} else if (conMarca && window.BandejaSalida) {
-			window.BandejaSalida.marcaDisponible(true);
-		}
+		var desdeAsis = numeroVista;
+		var asisRes = await conMarcas(leerAsistencia);
 		// Toda lectura fallida detiene la carga (ver el arranque): con datos a medias, el
 		// cierre del día guardaría 1 y 1 encima de lo capturado y las secciones dirían
 		// "nada pendiente"
 		if (asisRes.error) throw asisRes.error;
+		if (conMarca && window.BandejaSalida) window.BandejaSalida.marcaDisponible(true);
 		(asisRes.data || []).forEach(function (a) {
-			asistencia[a.alumno_id] = a.asistencia_estado;
-			if (window.BandejaSalida) enBase[claveDe("asistencia", { grupo_id: grupo.id, alumno_id: a.alumno_id, fecha: hoy })] = baseDeFila("asistencia", a);
+			var d = { grupo_id: grupo.id, alumno_id: a.alumno_id, fecha: hoy };
+			tomarLeido(claveDe("asistencia", d), desdeAsis, { tipo: "asistencia", datos: d }, a, function () {
+				asistencia[a.alumno_id] = a.asistencia_estado;
+			});
 		});
 
-		var regRes = await window.sb.from("registro_diario")
-			.select(conCaptura("alumno_id, participacion, conducta"))
-			.eq("maestro_id", user.id).eq("fecha", hoy);
+		// error-revisado-en: regRes.error
+		function leerRegistro() {
+			return window.sb.from("registro_diario")
+				.select(conCaptura("alumno_id, participacion, conducta", "registro"))
+				.eq("maestro_id", user.id).eq("fecha", hoy);
+		}
+		var desdeReg = numeroVista;
+		var regRes = await conMarcas(leerRegistro);
 		if (regRes.error) throw regRes.error;
 		(regRes.data || []).forEach(function (r) {
-			registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
-			registroGuardado[r.alumno_id] = true;
-			if (window.BandejaSalida) enBase[claveDe("registro", { alumno_id: r.alumno_id, fecha: hoy })] = baseDeFila("registro", r);
+			var d = { alumno_id: r.alumno_id, fecha: hoy };
+			tomarLeido(claveDe("registro", d), desdeReg, { tipo: "registro", datos: d }, r, function () {
+				registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
+				registroGuardado[r.alumno_id] = true;
+			});
 		});
 
 		// Proyectos del grupo que mira "Hoy" (js/alcance-hoy.js) → sesiones → productos.
@@ -541,14 +593,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Calificaciones ya capturadas de esos productos
 		var idsRelevantes = productos.map(function (p) { return p.id; });
-		var califs = await window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
-			return window.sb.from("calificaciones")
-				.select(conCaptura("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, fecha"))
-				.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
-		});
+		function leerCalificaciones() {
+			return window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
+				return window.sb.from("calificaciones")
+					.select(conCaptura("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, fecha", "calificacion"))
+					.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
+			});
+		}
+		var desdeCal = numeroVista;
+		var califs;
+		try {
+			califs = await leerCalificaciones();
+		} catch (e) {
+			// Sin las columnas de marca se lee otra vez sin ellas; cualquier otro error detiene la carga
+			if (!faltanMarcas(e)) throw e;
+			califs = await leerCalificaciones();
+		}
 		califs.forEach(function (c) {
-			calificaciones[c.alumno_id + "|" + c.producto_sesion_id] = c;
-			if (window.BandejaSalida) enBase[claveDe("calificacion", { fila: c })] = baseDeFila("calificacion", c);
+			var k = c.alumno_id + "|" + c.producto_sesion_id;
+			tomarLeido(claveDe("calificacion", { fila: c }), desdeCal, { tipo: "calificacion", datos: { fila: c } }, c, function () {
+				calificaciones[k] = c;
+			});
 		});
 
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
@@ -572,11 +637,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// campo: "participacion" o "conducta" (lo que tocó la maestra); sin campo, el relleno 1 y 1
-	// del cierre, que solo se inserta donde no hay fila (nunca pisa ni cuenta como captura)
+	// del cierre, que solo se inserta donde no hay fila (nunca pisa ni avisa). El grupo va para que
+	// la bandeja no rellene a quien este aparato marcó con falta en otra ventana
 	function guardarRegistro(alumnoId, campo) {
 		var v = registro[alumnoId] || { participacion: 1, conducta: 1 };
 		registroGuardado[alumnoId] = true;
-		guardar("registro", { alumno_id: alumnoId, fecha: hoy, participacion: v.participacion, conducta: v.conducta },
+		guardar("registro", { alumno_id: alumnoId, fecha: hoy, participacion: v.participacion, conducta: v.conducta, grupo_id: grupo.id },
 			"Cierre del día de " + nombreDe(alumnoId), campo ? { campos: [campo] } : { relleno: true });
 	}
 
