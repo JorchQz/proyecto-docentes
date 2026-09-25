@@ -224,6 +224,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 	}
 
+	// El aviso de privacidad es de la tienda: bajo /salon/ (la app instalable) va a /tienda/ y,
+	// dentro de la app, en otra ventana (el navegador), sin sacar a la maestra de Mi Salón
+	function enlacePrivacidad() {
+		const ai = window.AppInstalada;
+		const enSalon = !!(ai && ai.estaEnSalon && ai.estaEnSalon());
+		const enApp = !!(ai && ai.modoApp && ai.modoApp());
+		return "<a href='" + (enSalon ? "/tienda/privacidad.html" : "tienda/privacidad.html") + "'" +
+			(enApp ? " target='_blank' rel='noopener'" : "") + " class='underline'>Aviso de privacidad</a>";
+	}
+
 	// Fecha local del maestro, no UTC: a las 7 de la tarde en México, UTC ya es mañana
 	function getLocalDateISO() {
 		const ahora = new Date();
@@ -982,7 +992,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "<div class='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 mb-3 no-print'><p class='text-xs text-emerald-800'>La boleta está cerrada: los textos quedan como se entregaron.</p></div>"
 				: "<div class='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 no-print'>" +
 				"<p class='text-xs text-blue-800'>Los textos marcados como <span class='font-semibold'>propuestos</span> salen de lo que ya capturaste. Edita lo que quieras: lo que escribas queda como tuyo y no se vuelve a sobreescribir. " +
-				"No escribas datos de salud, discapacidad ni diagnósticos médicos o psicológicos (<a href='tienda/privacidad.html' class='underline'>Aviso de privacidad</a>).</p>" +
+				"No escribas datos de salud, discapacidad ni diagnósticos médicos o psicológicos (" + enlacePrivacidad() + ").</p>" +
 				"<div class='flex flex-wrap gap-2 shrink-0'>" +
 				(conIa
 					? "<button id='boletaIaBtn' type='button' title='Reescribe los textos propuestos con mejor redacción. Los que editaste no se tocan.' class='min-h-[44px] px-4 rounded-lg border border-violet-300 bg-white text-sm font-medium text-violet-700 hover:bg-violet-50'>Redactar con IA</button>"

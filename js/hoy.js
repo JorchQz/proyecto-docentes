@@ -30,6 +30,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
 	var siguientes = [];       // próximas sesiones sin fecha del proyecto activo (para "Trabajar hoy")
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
+	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja (null = no hay
+	// fila). Cada captura lleva ese valor como "la versión que vio" (concurrencia optimista,
+	// js/bandeja-salida.js); se actualiza al confirmar, en un conflicto y tras un rechazo.
+	var enBase = {};
+	var pintado = false; // ya se dibujaron las secciones (los avisos de la bandeja pueden repintar)
 
 	var NIVELES = [
 		{ valor: "logrado",        etiqueta: "Logrado",        activo: "bg-emerald-500 text-white" },
@@ -103,16 +108,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// "Todo guardado" cuando se vacía
 	function pintarBandeja(e) {
 		if (!e.pendientes) {
-			if (huboPendientes) estadoGuardado("Todo guardado", "ok");
+			// Si algo no se guardó, lo dice el aviso de arriba: no se anuncia "Todo guardado"
+			if (huboPendientes) {
+				if (avisosBandeja.length) estadoGuardado("");
+				else estadoGuardado("Todo guardado", "ok");
+			}
 			huboPendientes = false;
 			return;
 		}
 		huboPendientes = true;
 		var n = e.pendientes + (e.pendientes === 1 ? " captura pendiente de enviar" : " capturas pendientes de enviar");
+		var resguardo = e.persistente
+			? (e.pendientes === 1 ? ", guardada en este dispositivo." : ", guardadas en este dispositivo.")
+			: ". No cierres esta página.";
 		if (e.estado === "red") {
-			estadoGuardado("Sin señal: " + n + (e.persistente
-				? ", guardadas en este dispositivo."
-				: ". No cierres esta página."), "error");
+			estadoGuardado("Sin señal: " + n + resguardo, "error");
+		} else if (e.estado === "servidor") {
+			// Hubo respuesta (un error del servidor): no es falta de señal
+			estadoGuardado("No se pudo guardar por ahora; se reintentará. " + n.charAt(0).toUpperCase() + n.slice(1) + resguardo, "error");
+		} else if (e.estado === "cuenta") {
+			estadoGuardado("En este dispositivo entró otra cuenta. " + (e.pendientes === 1
+				? "1 captura pendiente de la cuenta anterior sigue guardada aquí y se enviará"
+				: e.pendientes + " capturas pendientes de la cuenta anterior siguen guardadas aquí y se enviarán") +
+				" cuando ella vuelva a entrar y abra Hoy.", "error");
 		} else if (e.estado === "sesion") {
 			estadoGuardado("Tu sesión se cerró: " + n + ". Siguen en este dispositivo; vuelve a iniciar sesión para enviarlas.", "error");
 		} else {
@@ -129,7 +147,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.textContent = "";
 		var titulo = document.createElement("p");
 		titulo.className = "font-semibold mb-1";
-		titulo.textContent = "Algunas capturas no se guardaron. Vuelve a capturarlas o recarga la página para ver lo guardado:";
+		titulo.textContent = "Algunas capturas no se guardaron. En pantalla ya está lo que quedó en la base; si hace falta, vuelve a capturarlas:";
 		el.appendChild(titulo);
 		var ul = document.createElement("ul");
 		ul.className = "list-disc pl-5 flex flex-col gap-1";
@@ -148,19 +166,57 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.classList.remove("hidden");
 	}
 
+	// Llave de la bandeja y lo que la pantalla sabe que hay en la base para esa llave
+	function claveDe(tipo, datos) { return window.BandejaSalida.clave(tipo, user.id, datos); }
+	function baseDe(tipo, datos) {
+		var v = enBase[claveDe(tipo, datos)];
+		return v === undefined ? null : v;
+	}
+
 	function guardar(tipo, datos, descripcion) {
 		if (!bandeja) return;
-		bandeja.agregar(tipo, datos, descripcion).catch(function (e) { console.error("hoy: no se pudo encolar", e); });
+		bandeja.agregar(tipo, datos, descripcion, baseDe(tipo, datos)).catch(function (e) { console.error("hoy: no se pudo encolar", e); });
+	}
+
+	/*
+		Tras un conflicto o un rechazo, la pantalla muestra lo que quedó en la base (sin esperar
+		a recargar). `v`: el valor de la base (js/bandeja-salida.js, valorDeFila); null = no hay fila.
+	*/
+	function aplicarValor(it, v) {
+		if (!pintado) return;
+		var d = it.datos || {};
+		try {
+			if (it.tipo === "asistencia") {
+				if (d.grupo_id !== grupo.id || d.fecha !== hoy) return;
+				if (v && v.estado) asistencia[d.alumno_id] = v.estado; else delete asistencia[d.alumno_id];
+				renderAsistencia();
+				renderCierre();
+			} else if (it.tipo === "registro" || it.tipo === "registro_borrar") {
+				if (d.fecha !== hoy) return;
+				if (v) {
+					registro[d.alumno_id] = { participacion: v.participacion, conducta: v.conducta };
+					registroGuardado[d.alumno_id] = true;
+				} else {
+					delete registro[d.alumno_id];
+					registroGuardado[d.alumno_id] = false;
+				}
+				renderCierre();
+			} else if (it.tipo === "calificacion" && d.fila) {
+				var k = d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
+				var c = calificaciones[k] || { alumno_id: d.fila.alumno_id, producto_sesion_id: d.fila.producto_sesion_id };
+				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { c[f] = v ? v[f] : null; });
+				calificaciones[k] = c;
+				renderTareas();
+				repintarSesiones();
+			}
+		} catch (e) {
+			console.error("hoy: no se pudo mostrar lo guardado", e);
+		}
 	}
 
 	function nombreDe(alumnoId) {
 		var a = alumnos.find(function (x) { return x.id === alumnoId; });
 		return a ? a.nombre_completo : "un alumno";
-	}
-
-	// Promesa que se cumple cuando todo lo capturado ya está en la base
-	function colaVacia() {
-		return bandeja ? bandeja.vacia() : Promise.resolve();
 	}
 
 	// Cerrar o recargar la página con capturas que NO están a salvo en el dispositivo (sin
@@ -185,16 +241,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 			auth: window.Lectura && window.Lectura.authDirecto ? window.Lectura.authDirecto : null,
 			maestroId: user.id,
 			alCambiar: pintarBandeja,
+			// La base ya tiene lo capturado: es la nueva "versión que vio" esta pantalla
 			alGuardar: function (it, r) {
+				enBase[it.clave] = r ? r.valor : null;
 				if (it.tipo !== "calificacion" || !r || !r.id) return;
 				var c = calificaciones[it.datos.fila.alumno_id + "|" + it.datos.fila.producto_sesion_id];
 				if (c && !c.id) c.id = r.id;
 			},
-			alRechazar: function (it, explicacion) {
-				avisarBandeja((it.descripcion || "Una captura") + ": " + explicacion + ".");
+			// Otro dispositivo (u otra pantalla) la cambió: se conservó lo de la base y se muestra
+			alConflicto: function (it, r) {
+				enBase[it.clave] = r.actual;
+				if (!r.sigue) aplicarValor(it, r.actual);
+				avisarBandeja(r.texto);
 			},
-			alSuperar: function (it) {
-				avisarBandeja((it.descripcion || "Una calificación") + ": ya tenía un cambio más reciente desde otro dispositivo; se conservó ese.");
+			alRechazar: function (it, explicacion, r) {
+				if (r && r.actual !== undefined) {
+					enBase[it.clave] = r.actual;
+					if (!r.sigue) aplicarValor(it, r.actual);
+				}
+				avisarBandeja((it.descripcion || "Una captura") + ": " + explicacion + ".");
 			},
 		});
 		// Volvió la red, o la app volvió a primer plano: se reenvía lo pendiente
@@ -252,7 +317,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// cierre del día guardaría 1 y 1 encima de lo capturado y las secciones dirían
 		// "nada pendiente"
 		if (asisRes.error) throw asisRes.error;
-		(asisRes.data || []).forEach(function (a) { asistencia[a.alumno_id] = a.asistencia_estado; });
+		(asisRes.data || []).forEach(function (a) {
+			asistencia[a.alumno_id] = a.asistencia_estado;
+			if (window.BandejaSalida) enBase[claveDe("asistencia", { grupo_id: grupo.id, alumno_id: a.alumno_id, fecha: hoy })] = window.BandejaSalida.valorDeFila("asistencia", a);
+		});
 
 		var regRes = await window.sb.from("registro_diario")
 			.select("alumno_id, participacion, conducta")
@@ -261,6 +329,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		(regRes.data || []).forEach(function (r) {
 			registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
 			registroGuardado[r.alumno_id] = true;
+			if (window.BandejaSalida) enBase[claveDe("registro", { alumno_id: r.alumno_id, fecha: hoy })] = window.BandejaSalida.valorDeFila("registro", r);
 		});
 
 		// Proyectos del grupo que mira "Hoy" (js/alcance-hoy.js) → sesiones → productos.
@@ -336,6 +405,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		califs.forEach(function (c) {
 			calificaciones[c.alumno_id + "|" + c.producto_sesion_id] = c;
+			if (window.BandejaSalida) enBase[claveDe("calificacion", { fila: c })] = window.BandejaSalida.valorDeFila("calificacion", c);
 		});
 
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
@@ -351,7 +421,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── Guardado ──────────────────────────────────────────────────────────────
 	// Cada guardado es una captura para la bandeja (js/bandeja-salida.js): asistencia y cierre
-	// del día van por su llave natural (upsert); la fecha es la del día en que se abrió Hoy
+	// del día van por su llave natural; la fecha es la del día en que se abrió Hoy. La bandeja
+	// solo escribe si la base sigue como la vio esta pantalla (enBase)
 	function guardarAsistencia(alumnoId, estado) {
 		guardar("asistencia", { grupo_id: grupo.id, alumno_id: alumnoId, fecha: hoy, estado: estado },
 			"Asistencia de " + nombreDe(alumnoId));
@@ -376,7 +447,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		que faltaron: ese día no participaron.
 	*/
 	function completarCierre() {
-		// Una captura por alumno; la bandeja las manda juntas en un solo upsert
+		// Una captura por alumno; la bandeja manda juntas las que aún no tienen fila (un insert)
 		alumnos.forEach(function (al) {
 			if (registroGuardado[al.id] || faltoHoy(al.id)) return;
 			if (!registro[al.id]) registro[al.id] = { participacion: 1, conducta: 1 };
@@ -395,10 +466,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	/*
-		Una calificación por (alumno, producto). El índice único es parcial, así que no
-		se puede usar upsert por conflicto: la bandeja (js/bandeja-salida.js) inserta la
-		primera vez (adoptando la fila si ya existía) y actualiza por id después, solo si en
-		la base no hay una captura más reciente (evaluado_en = momento de la captura).
+		Una calificación por (alumno, producto). La bandeja (js/bandeja-salida.js) inserta si
+		la pantalla no tenía fila y, si la tenía, actualiza solo si la base sigue con el valor
+		que vio esta pantalla; si otro dispositivo la cambió, se conserva lo suyo y se avisa.
 		El `tipo` lo pone el trigger calificaciones_tipo_desde_producto copiándolo del
 		producto. La fila se arma al capturar: es la foto de ese momento.
 	*/
@@ -427,7 +497,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			};
 			// La fecha es la del día en que se capturó por primera vez (solo va en el insert):
 			// revisar hoy una tarea de la semana pasada no la mueve (evaluado_en guarda el
-			// último cambio, y lo pone la bandeja con el momento de la captura)
+			// momento del último cambio; es informativo, no decide quién gana)
 			guardar("calificacion", { id: actual.id || null, fecha: hoy, fila: fila },
 				"Calificación de " + alumno.nombre_completo + " en " + (producto.nombre || "un producto"));
 		})();
@@ -629,6 +699,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 			? sinCalificar + " sin calificar" : "todo calificado";
 	}
 
+	// Repintar sesiones sin tirar lo que la maestra está escribiendo en una retroalimentación:
+	// si hay un cuadro con el foco, se repinta al salir de él
+	var repintarAlSalir = false;
+	function repintarSesiones() {
+		var activo = document.activeElement;
+		if (activo && activo.tagName === "TEXTAREA" && sesionesCont && sesionesCont.contains && sesionesCont.contains(activo)) {
+			repintarAlSalir = true;
+			return;
+		}
+		renderSesiones();
+	}
+
 	function bloqueProducto(producto) {
 		var deGrados = (producto.grados || []).length > 1;
 		var filas = agruparPorGrado(alumnosDeProducto(producto)).map(function (g) {
@@ -684,6 +766,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	var sesionesCont = document.getElementById("sesionesLista");
+	sesionesCont.addEventListener("focusout", function () {
+		if (!repintarAlSalir) return;
+		repintarAlSalir = false;
+		setTimeout(renderSesiones, 0);
+	});
 
 	sesionesCont.addEventListener("click", async function (e) {
 		var btnHoy = e.target.closest("button[data-trabajar-hoy], button[data-quitar-hoy]");
@@ -789,9 +876,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// La pantalla se recarga al final: primero debe quedar guardado todo lo que ya
 			// se capturó (antes la recarga cortaba la cola y se perdían marcas)
 			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
+			if (sinSenal()) { avisoSinSenal(btn, poner); return; }
 			if (bandeja && bandeja.pendientes()) {
 				btn.textContent = "Guardando lo capturado...";
-				await colaVacia();
+				// No se espera para siempre: si la cola se atora (sin red, error del servidor,
+				// sesión), se dice qué pasa y el botón vuelve
+				var envio = await bandeja.esperarEnvio();
+				if (envio !== "ok") {
+					if (envio === "red" || envio === "servidor") { avisoSinSenal(btn, poner, envio); return; }
+					btn.disabled = false;
+					btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
+					mensaje("error", "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+					return;
+				}
 			}
 			btn.textContent = poner ? "Agregando..." : "Quitando...";
 			// Quitar de hoy la regresa como estaba: sin fecha y pendiente (no "activa")
@@ -800,10 +897,30 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (res.error) throw res.error;
 			window.location.reload();
 		} catch (err) {
+			if (sinSenal() || (window.BandejaSalida && window.BandejaSalida.tipoDeFallo(err) === "red" && !err.status)) {
+				avisoSinSenal(btn, poner);
+				return;
+			}
 			btn.disabled = false;
 			btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
 			mensaje("error", "No se pudo actualizar la sesión: " + (err.message || "error desconocido"));
 		}
+	}
+
+	function sinSenal() {
+		return (typeof navigator !== "undefined" && navigator.onLine === false) || !!(bandeja && bandeja.estado() === "red");
+	}
+
+	// "Trabajar hoy" y "Quitar de hoy" cambian la sesión en la base: sin señal no se puede.
+	// Lo capturado no se pierde (sigue en este dispositivo)
+	function avisoSinSenal(btn, poner, motivo) {
+		btn.disabled = false;
+		btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
+		var accion = poner ? "agregar la sesión a hoy" : "quitar la sesión de hoy";
+		mensaje("error", motivo === "servidor"
+			? "No se pudo guardar lo capturado por ahora (el servidor no respondió bien) y sin eso no se puede " + accion +
+				". Lo capturado sigue guardado en este dispositivo y se reintentará solo. Vuelve a intentarlo en un momento."
+			: "Sin señal: no se puede " + accion + " en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 	}
 
 	/*
@@ -960,6 +1077,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			mensaje("error", "No se pudo mostrar la sección de " + par[0] + ". El resto de la pantalla sigue funcionando.");
 		}
 	});
+	pintado = true;
 	// Ya pintado lo pendiente: se habilita el envío (antes, un envío entre la lectura y la
 	// pintura podía dejar en pantalla el valor viejo)
 	if (bandeja) bandeja.iniciar();

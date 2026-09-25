@@ -68,6 +68,10 @@ const sinConexion = leer("sin-conexion.html");
 ok("Sin conexión: autónoma (sin scripts ni estilos externos) y con Reintentar",
 	!/<script src=|<link rel="stylesheet"/.test(sinConexion) && /Reintentar/.test(sinConexion) && /addEventListener\("online"/.test(sinConexion), true);
 ok("Sin conexión: no crea la base de la bandeja si no existe", /onupgradeneeded = function \(\) \{ try \{ req\.transaction\.abort\(\)/.test(sinConexion), true);
+ok("Sin conexión: con sesión cuenta solo las capturas de esa cuenta", /it\.maestro_id === yo/.test(sinConexion) && /auth-token/.test(sinConexion), true);
+const limite = Number((sw.match(/var LIMITE_NAVEGACION = (\d+);/) || [])[1]);
+ok("sw: una navegación que no contesta en 8 a 10 s muestra Sin conexión",
+	limite >= 8000 && limite <= 10000 && /conLimite\(precarga\.then[\s\S]*LIMITE_NAVEGACION\)\.catch/.test(sw), true);
 
 // ── Páginas ──────────────────────────────────────────────────────────────────
 const NO_SALON = new Set(["index.html", "reset-password.html", "sin-conexion.html"]);
@@ -92,6 +96,20 @@ ok("_redirects: el login de la tienda también", redirects.indexOf("/salon/tiend
 ok("Hoy carga la bandeja de salida antes que su script",
 	leer("hoy.html").indexOf('src="js/bandeja-salida.js"') !== -1 && leer("hoy.html").indexOf('src="js/bandeja-salida.js"') < leer("hoy.html").indexOf('src="js/hoy.js"'), true);
 ok("Inicio tiene el lugar del botón Instalar", /id="instalarAppSlot"/.test(leer("dashboard.html")), true);
+// Cerrar sesión avisa si hay capturas sin enviar: la bandeja se carga donde hay ese botón
+ok("las páginas con Cerrar sesión (barra o Sala de Maestros) cargan la bandeja antes de su script",
+	paginas.filter((f) => {
+		const t = leer(f);
+		const script = t.indexOf('src="js/navbar.js"') !== -1 ? 'src="js/navbar.js"' : t.indexOf('src="js/sala-maestros.js"') !== -1 ? 'src="js/sala-maestros.js"' : null;
+		if (!script || f === "hoy.html") return false;
+		const i = t.indexOf('src="js/bandeja-salida.js"');
+		return i === -1 || i > t.indexOf(script);
+	}), []);
+ok("Cerrar sesión pide confirmar si hay capturas pendientes (barra y Sala de Maestros)",
+	/BandejaSalida\.confirmarSalida\(window\.sb\)/.test(leer("js/navbar.js")) && /BandejaSalida\.confirmarSalida\(window\.sb\)/.test(leer("js/sala-maestros.js")), true);
+ok("boleta: el Aviso de privacidad no saca de /salon/ en la misma ventana (en la app, target=_blank)",
+	/function enlacePrivacidad\(\)[\s\S]*\/tienda\/privacidad\.html[\s\S]*target='_blank' rel='noopener'/.test(leer("js/reportes.js")) &&
+	!/<a href='tienda\/privacidad\.html' class='underline'>/.test(leer("js/reportes.js")), true);
 ok("el menú de la cuenta tiene Instalar la app (oculto hasta que se pueda)", /id="navbarInstalarBtn" type="button" class="hidden/.test(leer("js/navbar.js")), true);
 
 // ── Modo app ─────────────────────────────────────────────────────────────────

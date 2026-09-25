@@ -213,6 +213,9 @@
 		if (logoutBtn) {
 			logoutBtn.addEventListener("click", async function () {
 				panel.classList.add("hidden");
+				// Capturas de Hoy sin enviar en este dispositivo: se avisa y se pide confirmar
+				// (se quedan guardadas para cuando vuelva a entrar; js/bandeja-salida.js)
+				if (window.BandejaSalida && window.BandejaSalida.confirmarSalida && !(await window.BandejaSalida.confirmarSalida(window.sb))) return;
 				logoutBtn.disabled = true;
 				logoutBtn.textContent = "Cerrando...";
 				// Como en la tienda y en Sala de Maestros: con la sesión cerrada, a la portada de la

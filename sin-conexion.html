@@ -42,7 +42,7 @@
 				<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/></svg>
 			</div>
 			<h1>Sin conexión</h1>
-			<p>No hay internet en este momento. Mi Salón necesita señal para abrir sus pantallas.</p>
+			<p>No hay internet o la señal es muy débil en este momento. Mi Salón necesita señal para abrir sus pantallas.</p>
 			<div id="pendientes" class="pendientes"></div>
 			<button id="reintentar" type="button">Reintentar</button>
 			<p class="nota">La página se vuelve a abrir sola cuando regrese la señal.</p>
@@ -54,8 +54,24 @@
 			document.getElementById("reintentar").addEventListener("click", reintentar);
 			window.addEventListener("online", reintentar);
 
+			// La cuenta con sesión en este dispositivo (la sesión guardada de supabase-js; sin red)
+			function cuentaActual() {
+				try {
+					for (var i = 0; i < localStorage.length; i++) {
+						var k = localStorage.key(i);
+						if (!/^sb-[a-z0-9]+-auth-token$/i.test(k || "")) continue;
+						var v = JSON.parse(localStorage.getItem(k) || "null");
+						var u = v && (v.user || (v.currentSession && v.currentSession.user));
+						if (u && u.id) return u.id;
+					}
+				} catch (_) {}
+				return null;
+			}
+
 			// Capturas de Hoy que esperan en este dispositivo (js/bandeja-salida.js). Solo se
 			// leen: si la base aún no existe, se cancela su creación para no dejarla vacía.
+			// Con sesión, solo cuentan las de esa cuenta (en un equipo compartido, las de otra
+			// maestra no son suyas).
 			try {
 				if (!window.indexedDB) return;
 				var req = window.indexedDB.open("jissez-bandeja");
@@ -65,14 +81,18 @@
 					var db = req.result;
 					try {
 						if (!db.objectStoreNames.contains("pendientes")) { db.close(); return; }
-						var cuenta = db.transaction("pendientes", "readonly").objectStore("pendientes").count();
-						cuenta.onsuccess = function () {
-							var n = cuenta.result || 0;
+						var yo = cuentaActual();
+						var todas = db.transaction("pendientes", "readonly").objectStore("pendientes").getAll();
+						todas.onsuccess = function () {
+							var n = (todas.result || []).filter(function (it) { return !yo || it.maestro_id === yo; }).length;
 							db.close();
 							if (!n) return;
 							var caja = document.getElementById("pendientes");
-							caja.textContent = (n === 1 ? "Hay 1 captura de Hoy guardada" : "Hay " + n + " capturas de Hoy guardadas") +
-								" en este dispositivo. Se enviarán cuando vuelva la señal y abras Hoy.";
+							caja.textContent = yo
+								? (n === 1 ? "Tienes 1 captura de Hoy guardada" : "Tienes " + n + " capturas de Hoy guardadas") +
+									" en este dispositivo. Se enviarán cuando vuelva la señal y abras Hoy."
+								: (n === 1 ? "Hay 1 captura de Hoy guardada" : "Hay " + n + " capturas de Hoy guardadas") +
+									" en este dispositivo. Se enviarán cuando vuelva la señal y la cuenta que las capturó entre y abra Hoy.";
 							caja.className = "pendientes si";
 						};
 					} catch (_) { try { db.close(); } catch (__) {} }

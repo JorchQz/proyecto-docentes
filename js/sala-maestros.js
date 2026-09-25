@@ -31,6 +31,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	var salir = document.getElementById("salaSalir");
 	salir.addEventListener("click", async function () {
+		// Capturas de Hoy sin enviar en este dispositivo: se avisa y se pide confirmar
+		if (window.BandejaSalida && window.BandejaSalida.confirmarSalida && !(await window.BandejaSalida.confirmarSalida(window.sb))) return;
 		salir.disabled = true;
 		salir.lastChild.textContent = "Cerrando…";
 		var r = await window.sb.auth.signOut();

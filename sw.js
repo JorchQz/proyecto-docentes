@@ -4,9 +4,10 @@
 	- Se registra como /salon/sw.js con alcance /salon/ (js/app-instalada.js, solo desde páginas
 	  bajo /salon/). Por construcción no ve la tienda, el pago ni las páginas de la raíz.
 	- Navegaciones (abrir una página): RED PRIMERO. Con red, siempre llega lo recién desplegado;
-	  si la red falla, se muestra la página "Sin conexión" guardada. Las páginas en sí no se
-	  guardan todavía: sin red no podrían comprobar la sesión ni cargar sus librerías (eso es la
-	  fase 2, que primero fija las versiones de los CDN).
+	  si la red falla, o no contesta en LIMITE_NAVEGACION (señal muy débil: la página se quedaría
+	  en blanco), se muestra la página "Sin conexión" guardada, que tiene "Reintentar". Las
+	  páginas en sí no se guardan todavía: sin red no podrían comprobar la sesión ni cargar sus
+	  librerías (eso es la fase 2, que primero fija las versiones de los CDN).
 	- Solo se guarda lo que usa la página "Sin conexión" (ella misma y su ícono), en un caché
 	  con VERSION: al activarse una versión nueva se borran los cachés de las anteriores.
 	- Todo lo demás (Supabase, CDN, scripts, imágenes) pasa directo a la red: este archivo no
@@ -16,10 +17,19 @@
 	Emergencia: publicar un sw.js que en "activate" borre sus cachés y llame
 	self.registration.unregister() (docs/PWA-MI-SALON.md §4.4).
 */
-var VERSION = "salon-2026-09-25-1";
+var VERSION = "salon-2026-09-25-2";
 var CACHE = "jissez-ms-" + VERSION;
 var SIN_CONEXION = "/salon/sin-conexion";
 var GUARDADOS = [SIN_CONEXION, "/iconos/mi-salon-192.png"];
+var LIMITE_NAVEGACION = 9000; // ms
+
+// La promesa, o un error si tarda más de ms
+function conLimite(promesa, ms) {
+	return new Promise(function (ok, mal) {
+		var t = setTimeout(function () { mal(new Error("sw: la red no contestó a tiempo")); }, ms);
+		promesa.then(function (r) { clearTimeout(t); ok(r); }, function (e) { clearTimeout(t); mal(e); });
+	});
+}
 
 self.addEventListener("install", function (event) {
 	event.waitUntil(
@@ -58,10 +68,14 @@ self.addEventListener("fetch", function (event) {
 	if (url.origin !== self.location.origin) return; // Supabase, CDN, fuentes: directo a la red
 
 	if (req.mode === "navigate") {
+		var precarga = Promise.resolve(event.preloadResponse);
+		// Si se contesta con "Sin conexión" antes de que llegue la precarga, se espera a que
+		// termine (así el navegador no la cancela con un aviso en la consola)
+		event.waitUntil(precarga.catch(function () {}));
 		event.respondWith(
-			Promise.resolve(event.preloadResponse).then(function (pre) {
+			conLimite(precarga.then(function (pre) {
 				return pre || fetch(req);
-			}).catch(function () {
+			}), LIMITE_NAVEGACION).catch(function () {
 				return caches.open(CACHE).then(function (cache) { return cache.match(SIN_CONEXION); })
 					.then(function (guardada) {
 						return guardada || new Response("Sin conexión", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
