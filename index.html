@@ -5,11 +5,15 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Planeaciones NEM</title>
 	<!-- La entrada pública es la tienda de planeaciones. El SaaS completo está
-	     oculto: los usuarios con activo_saas=true entran a la pantalla principal
-	     (portal.html) tras iniciar sesión desde la tienda.
+	     oculto: solo lo ven las cuentas con activo_saas=true, que tienen el selector
+	     de secciones (Tienda, Mi Salón, Sala de Maestros; js/secciones.js).
+
+	     Entrar por la raíz lleva a la tienda, salvo a una cuenta con acceso cuya última
+	     sección en este dispositivo fue Mi Salón o Sala de Maestros: esa vuelve ahí. Solo
+	     aquí, en la raíz; elegir "Tienda" en el selector lleva directo a la tienda.
 
 	     Sin meta refresh a propósito: el reencaminamiento se decide en JS
-	     porque hay un caso que no puede resolverse con una URL fija. -->
+	     porque hay casos que no pueden resolverse con una URL fija. -->
 	<script>
 		(function () {
 			// Los enlaces de recuperación de contraseña aterrizan aquí y no en
@@ -28,7 +32,52 @@
 				window.location.replace("/reset-password" + query + hash);
 				return;
 			}
-			window.location.replace("tienda/index.html");
+
+			// Última sección en este dispositivo (misma clave que Secciones.CLAVE en
+			// js/secciones.js; solo la escriben las cuentas con acceso). Sin Mi Salón ni
+			// Sala guardadas, a la tienda de inmediato, como siempre.
+			var ultima = null;
+			try { ultima = window.localStorage.getItem("jissez.seccion"); } catch (_) {}
+			if (ultima !== "salon" && ultima !== "sala") {
+				window.location.replace("tienda/index.html");
+				return;
+			}
+
+			// Antes de desviar se confirma que hay sesión y que la cuenta tiene acceso (en un
+			// dispositivo compartido puede haber entrado un comprador). Todo sale antes de
+			// pintar la tienda; ante cualquier duda o tardanza, a la tienda.
+			var listo = false;
+			function ir(url) {
+				if (listo) return;
+				listo = true;
+				window.location.replace(url);
+			}
+			var tienda = function () { ir("tienda/index.html"); };
+			setTimeout(tienda, 6000);
+
+			function cargar(src, despues) {
+				var s = document.createElement("script");
+				s.src = src;
+				s.onload = despues;
+				s.onerror = tienda;
+				document.head.appendChild(s);
+			}
+			cargar("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", function () {
+				cargar("js/supabase.js", function () {
+					cargar("js/secciones.js", function () {
+						if (!window.sb || !window.Secciones) return tienda();
+						window.sb.auth.getSession().then(function (res) {
+							var sesion = res && res.data ? res.data.session : null;
+							if (!sesion) return tienda();
+							return window.sb.from("perfiles").select("activo_saas").eq("id", sesion.user.id).maybeSingle()
+								.then(function (perf) {
+									if (perf.error || !perf.data || perf.data.activo_saas !== true) return tienda();
+									ir(window.Secciones.destinoRaiz(ultima) || "tienda/index.html");
+								});
+						}).catch(tienda);
+					});
+				});
+			});
 		})();
 	</script>
 </head>

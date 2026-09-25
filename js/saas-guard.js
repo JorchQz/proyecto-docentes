@@ -26,6 +26,11 @@
 	var LOGIN_URL = "tienda/login.html";
 	var TIENDA_URL = "tienda/catalogo.html";
 
+	// Se cumple SOLO cuando el acceso quedó confirmado (en los demás casos nunca): el selector
+	// de secciones guarda con ella la última sección y portal.html redirige sin adelantarse.
+	var resolverAcceso = null;
+	window.saasAcceso = new Promise(function (resolver) { resolverAcceso = resolver; });
+
 	// Oculta la página hasta validar, para no mostrar el SaaS ni un instante a
 	// quien no debe verlo. Se restaura solo si el acceso es válido.
 	var rootEl = document.documentElement;
@@ -38,6 +43,7 @@
 
 	function permitir() {
 		rootEl.style.visibility = prevVisibility || "";
+		resolverAcceso(true);
 	}
 
 	// No se pudo comprobar el acceso (falló la lectura): ni se deja pasar ni se manda a la

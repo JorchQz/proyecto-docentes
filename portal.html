@@ -3,109 +3,21 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Inicio — Jissez</title>
-	<!-- Pantalla principal de tres partes (decisión 12 de Jorge, 2026-09-24): solo para cuentas
-	     con acceso al SaaS; el candado manda a la tienda a todas las demás. Sin Pixel de Meta:
-	     el SaaS no lo lleva. Usa la marca de la tienda (tokens, CSS y logotipos de tienda/). -->
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-	<script src="https://cdn.tailwindcss.com"></script>
-	<script src="tienda/js/tienda-theme.js"></script>
-	<script src="https://unpkg.com/lucide@latest"></script>
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<link rel="stylesheet" href="tienda/css/tienda.css">
+	<title>Jissez</title>
+	<!-- Ya no es una pantalla (decisión de Jorge, 2026-09-25): el selector de secciones
+	     (js/secciones.js) reemplazó a la pantalla principal de tres tarjetas. Queda solo como
+	     redirección para los enlaces viejos: sin acceso, el candado saca a la tienda; con
+	     acceso, js/portal.js lleva a la última sección. Sin Pixel de Meta. -->
+	<style>body{margin:0;font-family:system-ui,sans-serif;background:#faf9f4;color:#5b6473}</style>
 </head>
-<body class="antialiased min-h-screen flex flex-col">
+<body>
+	<p style="margin:3rem 1rem;text-align:center;font-size:15px">Abriendo Jissez…</p>
 
-	<!-- Encabezado -->
-	<header class="board-tex text-white">
-		<div class="max-w-content mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-			<span class="shrink-0 flex items-center">
-				<img src="tienda/assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">
-				<span style="display:none;color:#fff;font-weight:800;font-size:17px;letter-spacing:-.01em">Jissez</span>
-			</span>
-			<div class="flex items-center gap-2 min-w-0">
-				<span id="userEmail" class="hidden md:inline text-white/60 text-[13px] truncate max-w-[220px]"></span>
-				<button id="logoutBtn" type="button" class="inline-flex items-center gap-2 h-11 px-3.5 rounded-xl text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">
-					<i data-lucide="log-out" class="w-[18px] h-[18px]"></i>
-					<span>Cerrar sesión</span>
-				</button>
-			</div>
-		</div>
-	</header>
-
-	<main class="flex-1 w-full max-w-content mx-auto px-4 sm:px-6 py-8 sm:py-12">
-		<!-- Saludo -->
-		<section class="mb-8 sm:mb-10">
-			<p id="fechaHoy" class="text-[13px] font-semibold uppercase tracking-[0.1em] text-mute"></p>
-			<h1 class="mt-2 text-[clamp(1.6rem,3.2vw,2.4rem)] font-black tracking-tight text-ink leading-tight">
-				<span id="saludo">Hola</span>, <span id="userName" class="chalk-u" style="--accent:#79c8a6">Docente</span>
-			</h1>
-			<p class="mt-2 text-mute text-base sm:text-lg">¿A dónde quieres ir hoy?</p>
-		</section>
-
-		<!-- Tres partes -->
-		<section class="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6" aria-label="Secciones de Jissez">
-
-			<!-- Mi Salón -->
-			<a id="cardMiSalon" href="dashboard.html"
-				class="group board-tex relative overflow-hidden rounded-3xl p-6 lg:p-7 flex flex-col text-white shadow-[0_18px_40px_-20px_rgba(30,58,138,.8)] transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-blue-300">
-				<span class="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
-					<i data-lucide="notebook-pen" class="w-6 h-6"></i>
-				</span>
-				<h2 class="mt-5 text-2xl font-black tracking-tight">Mi Salón</h2>
-				<p id="miSalonTexto" class="mt-2 text-white/80 text-[15px] leading-relaxed flex-1">Tu grupo del día a día: asistencia, proyectos, evaluación y boletas.</p>
-				<span class="mt-6 inline-flex items-center justify-between gap-2 h-12 px-4 rounded-xl bg-white text-board font-bold text-[15px]">
-					<span id="miSalonAccion">Entrar a Mi Salón</span>
-					<i data-lucide="arrow-right" class="w-5 h-5 transition group-hover:translate-x-0.5"></i>
-				</span>
-			</a>
-
-			<!-- Tienda -->
-			<a id="cardTienda" href="tienda/catalogo.html"
-				class="group relative overflow-hidden rounded-3xl p-6 lg:p-7 flex flex-col bg-white border border-line shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
-				<span class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style="background:rgba(5,150,105,.1);color:#047a55">
-					<i data-lucide="store" class="w-6 h-6"></i>
-				</span>
-				<h2 class="mt-5 text-2xl font-black tracking-tight text-ink">Tienda</h2>
-				<p class="mt-2 text-mute text-[15px] leading-relaxed flex-1">Planeaciones NEM listas para imprimir o editar, y las que ya compraste.</p>
-				<span class="mt-6 inline-flex items-center justify-between gap-2 h-12 px-4 rounded-xl text-white font-bold text-[15px]" style="background:#059669">
-					<span>Ir a la tienda</span>
-					<i data-lucide="arrow-right" class="w-5 h-5 transition group-hover:translate-x-0.5"></i>
-				</span>
-			</a>
-
-			<!-- Sala de Maestros (se hará después: sin enlace) -->
-			<div id="cardSala" aria-disabled="true"
-				class="relative rounded-3xl p-6 lg:p-7 flex flex-col border-2 border-dashed border-line bg-white/60">
-				<div class="flex items-start justify-between gap-3">
-					<span class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-						<i data-lucide="users" class="w-6 h-6"></i>
-					</span>
-					<span class="inline-flex items-center h-7 px-3 rounded-full text-[12px] font-bold uppercase tracking-[0.08em] bg-amber-100 text-amber-800">Próximamente</span>
-				</div>
-				<h2 class="mt-5 text-2xl font-black tracking-tight text-ink/70">Sala de Maestros</h2>
-				<p class="mt-2 text-mute text-[15px] leading-relaxed flex-1">Un espacio para compartir material didáctico entre maestros.</p>
-				<span class="mt-6 inline-flex items-center gap-2 h-12 px-4 rounded-xl bg-slate-100 text-slate-500 font-semibold text-[15px]">
-					<i data-lucide="clock" class="w-5 h-5"></i>
-					<span>Muy pronto</span>
-				</span>
-			</div>
-		</section>
-	</main>
-
-	<footer class="border-t border-line bg-white">
-		<div class="max-w-content mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-mute">
-			<span>Jissez · Planeaciones NEM</span>
-			<a href="mailto:soporte@jissez.com" class="inline-flex items-center min-h-[44px] hover:text-ink transition">soporte@jissez.com</a>
-		</div>
-	</footer>
-
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
-	<script src="js/section-shell.js"></script>
+	<script src="js/secciones.js"></script>
 	<script src="js/portal.js"></script>
 </body>
 </html>

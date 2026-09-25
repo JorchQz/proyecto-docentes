@@ -92,6 +92,35 @@ body.con-barra-compra { padding-bottom: calc(4.75rem + env(safe-area-inset-botto
    la clase puede quedarse puesta y dejaría un hueco fantasma. */
 @media (min-width: 1024px) { body.con-barra-compra { padding-bottom: 0; } }
 
+/* ---- Selector de secciones (solo cuentas con Mi Salón) ----
+   tienda-common.js pone .jz-con-secciones en el encabezado y, encima, la fila de marca de
+   js/secciones.js (logo, Tienda / Mi Salón / Sala de Maestros y la cuenta). En PC y tablet
+   la barra de la tienda queda como su sub-navegación: sin logo ni cuenta (ya están arriba),
+   con los enlaces en carrusel y el botón de acción. En celular el encabezado no cambia (el
+   selector va abajo). Un comprador sin acceso nunca tiene esta clase. */
+@media (min-width: 768px) {
+	html.jz-secciones { scroll-padding-top: 7.5rem; }
+	header.jz-con-secciones > nav { height: 3.5rem; }
+	header.jz-con-secciones [data-logo],
+	header.jz-con-secciones > nav [data-cuenta],
+	header.jz-con-secciones > nav [data-logout],
+	header.jz-con-secciones [data-menu-toggle],
+	header.jz-con-secciones [data-mobile-menu] { display: none !important; }
+	header.jz-con-secciones [data-links] {
+		display: flex !important;
+		flex: 1 1 auto;
+		overflow-x: auto;
+		scrollbar-width: none;
+		margin-left: -0.875rem;
+		/* Si no caben (tablet vertical), el carrusel se desvanece a la derecha en vez de cortar */
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+		mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+	}
+	header.jz-con-secciones [data-links]::-webkit-scrollbar { display: none; }
+	header.jz-con-secciones [data-links] > a { flex: none; white-space: nowrap; }
+	header.jz-con-secciones [data-derecha] { display: flex !important; }
+}
+
 /* ---- FAQ / details ---- */
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }

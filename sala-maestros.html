@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sala de Maestros — Jissez</title>
+	<!-- Tercera sección de Jissez, "Próximamente" (decisión de Jorge, 2026-09-25). Protegida
+	     como Mi Salón: el candado saca a la tienda a las cuentas sin acceso. Sin Pixel de
+	     Meta: el SaaS no lo lleva. Usa la marca de la tienda (tokens, CSS y logotipos de tienda/). -->
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="tienda/js/tienda-theme.js"></script>
+	<link rel="stylesheet" href="tienda/css/tienda.css">
+	<style>
+		/* El tablero de la sala: hojas prendidas con chinchetas de gis, dibujadas en el pizarrón */
+		.sala-tablero { position: relative; width: 320px; height: 280px; }
+		.sala-hoja {
+			position: absolute; width: 164px; height: 128px; padding: 30px 18px 0;
+			border: 1.5px solid rgba(255, 255, 255, .5); border-radius: 12px;
+			background: rgba(255, 255, 255, .04);
+		}
+		.sala-hoja::before {
+			content: ""; position: absolute; top: -7px; left: 50%; width: 14px; height: 14px; margin-left: -7px;
+			border-radius: 50%; background: var(--pin); box-shadow: 0 2px 0 rgba(0, 0, 0, .18);
+		}
+		.sala-hoja i { display: block; height: 2px; margin-bottom: 12px; border-radius: 2px; background: rgba(255, 255, 255, .32); }
+	</style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+
+	<!-- La fila del selector de secciones la pone js/sala-maestros.js -->
+	<header id="salaEncabezado" class="sticky top-0 z-50"></header>
+
+	<main class="flex-1 w-full max-w-content mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
+		<section class="board-tex relative overflow-hidden rounded-3xl text-white px-6 py-10 sm:px-12 sm:py-14 lg:px-16 lg:py-20">
+			<div class="relative max-w-[30rem] xl:max-w-[36rem]">
+				<p class="inline-flex items-center gap-2 h-8 px-3 rounded-full text-[13px] font-bold" style="background:#f2cf6b;color:#16276b">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+					Próximamente
+				</p>
+				<h1 class="mt-6 font-black tracking-tight leading-[1.04] text-[clamp(2.25rem,6vw,3.75rem)]">
+					<span class="chalk-u" style="--accent:#79c8a6">Sala de Maestros</span>
+				</h1>
+				<p class="mt-5 text-white/80 text-lg sm:text-xl leading-relaxed">Un espacio para compartir material didáctico entre maestras y maestros.</p>
+			</div>
+
+			<div class="hidden lg:block absolute right-14 top-1/2 -translate-y-1/2" aria-hidden="true">
+				<div class="sala-tablero">
+					<div class="sala-hoja" style="left:0;top:38px;transform:rotate(-6deg);--pin:#f2cf6b"><i style="width:82%"></i><i style="width:64%"></i><i style="width:74%"></i></div>
+					<div class="sala-hoja" style="left:146px;top:4px;transform:rotate(4deg);--pin:#ef9277"><i style="width:70%"></i><i style="width:86%"></i><i style="width:52%"></i></div>
+					<div class="sala-hoja" style="left:92px;top:140px;transform:rotate(-2deg);--pin:#79c8a6"><i style="width:78%"></i><i style="width:58%"></i><i style="width:68%"></i></div>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<script src="js/supabase.js"></script>
+	<script src="js/lectura.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/secciones.js"></script>
+	<script src="js/sala-maestros.js"></script>
+</body>
+</html>

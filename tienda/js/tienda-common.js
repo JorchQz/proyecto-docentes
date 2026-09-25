@@ -559,7 +559,7 @@
 		// Lado derecho desktop: nombre + Salir, o Iniciar sesión.
 		var derecha = "";
 		if (session) {
-			if (nombre) { derecha += '<span class="hidden lg:inline text-white/60 text-[13px] px-2 truncate max-w-[150px]">' + esc(nombre) + '</span>'; }
+			if (nombre) { derecha += '<span data-cuenta class="hidden lg:inline text-white/60 text-[13px] px-2 truncate max-w-[150px]">' + esc(nombre) + '</span>'; }
 			derecha += '<button data-logout class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
 		} else {
 			derecha += loginDesktop;
@@ -575,17 +575,17 @@
 			'<header class="sticky top-0 z-50" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(circle at 86% 78%,rgba(255,255,255,.06),transparent 42%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,auto,4px 4px;border-bottom:1px solid rgba(255,255,255,.1)">' +
 			'<nav class="max-w-[1180px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">' +
 			// Logo
-			'<a href="index.html" class="shrink-0 flex items-center gap-2">' +
+			'<a href="index.html" data-logo class="shrink-0 flex items-center gap-2">' +
 			'<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline\'" />' +
 			'<span style="display:none;color:#fff;font-weight:800;font-size:17px;letter-spacing:-.01em">Jissez</span>' +
 			'</a>' +
 			// Enlaces centro (solo desktop)
-			'<div class="hidden ' + bp + ':flex items-center gap-1 min-w-0">' +
+			'<div data-links class="hidden ' + bp + ':flex items-center gap-1 min-w-0">' +
 			navLinks() +
 			'</div>' +
 			// Lado derecho
 			'<div class="flex items-center gap-2 shrink-0">' +
-			'<div class="hidden ' + bp + ':flex items-center gap-2">' + derecha + ctaDesktop + '</div>' +
+			'<div data-derecha class="hidden ' + bp + ':flex items-center gap-2">' + derecha + ctaDesktop + '</div>' +
 			// Botón hamburguesa (solo móvil)
 			'<button data-menu-toggle class="' + bp + ':hidden inline-flex items-center justify-center w-11 h-11 rounded-xl text-white hover:bg-white/10 transition" aria-label="Menú" aria-expanded="false">' +
 			'<i data-lucide="menu" style="width:24px;height:24px"></i>' +
@@ -630,24 +630,26 @@
 			});
 		}
 
-		// Regreso a la pantalla principal: solo para cuentas con el SaaS. Se pinta
-		// aparte, sin esperar, para que a un comprador la barra le llegue igual.
-		if (session) { enlacePortal(header, session, !!anchors); }
+		// Selector de secciones (Tienda, Mi Salón, Sala de Maestros): solo para cuentas con
+		// Mi Salón. A un comprador la barra le llega igual que siempre: nada se espera ni se
+		// carga por él.
+		if (session) { conSecciones(header, session, nombre); }
 
-		// Cerrar sesión (botón desktop y móvil).
-		header.querySelectorAll("[data-logout]").forEach(function (btn) {
-			btn.addEventListener("click", async function () {
-				header.querySelectorAll("[data-logout]").forEach(function (b) { b.disabled = true; b.textContent = "Saliendo..."; });
-				if (window.sb) { await window.sb.auth.signOut(); }
-				location.href = "index.html";
-			});
+		// Cerrar sesión (botón desktop y móvil, y el de la fila del selector, que puede
+		// llegar después): un solo oyente en el encabezado.
+		header.addEventListener("click", async function (e) {
+			var btn = e.target.closest ? e.target.closest("[data-logout]") : null;
+			if (!btn || btn.disabled) { return; }
+			header.querySelectorAll("[data-logout]").forEach(function (b) { b.disabled = true; b.textContent = "Saliendo..."; });
+			if (window.sb) { await window.sb.auth.signOut(); }
+			location.href = "index.html";
 		});
 
 		return session;
 	}
 
 	// ¿La cuenta tiene el SaaS (perfiles.activo_saas)? Solo decide si se ofrece el
-	// enlace a la pantalla principal; la protección real es js/saas-guard.js.
+	// selector de secciones; la protección real es js/saas-guard.js.
 	// Se recuerda en la pestaña para no repetir la lectura en cada página. Si la
 	// lectura falla se contesta "no" sin recordarlo: la barra queda como la de
 	// cualquier comprador y se reintenta en la siguiente página.
@@ -666,39 +668,66 @@
 		return si;
 	}
 
-	// Enlace "Mi Salón" → pantalla principal (portal.html, en la raíz) en la
-	// barra de escritorio y al inicio del menú móvil. En la portada (con anclas) la
-	// barra ya va justa: ahí el enlace ocupa el lugar del correo, que sigue en el menú.
-	function enlacePortal(header, session, enPortada) {
+	// ¿Ya se sabe en esta pestaña que la cuenta tiene el SaaS? Sin leer la base: "1", "0"
+	// o null (no se sabe todavía).
+	function saasEnPestana(uid) {
+		try {
+			var v = sessionStorage.getItem("jissez.saas." + uid);
+			return v === "1" || v === "0" ? v : null;
+		} catch (_) { return null; }
+	}
+
+	// El selector vive en js/secciones.js (uno solo para la tienda, Mi Salón y Sala de
+	// Maestros). La tienda lo carga solo cuando hace falta, desde la raíz del sitio.
+	var seccionesPromesa = null;
+	function cargarSecciones() {
+		if (window.Secciones) { return Promise.resolve(window.Secciones); }
+		if (seccionesPromesa) { return seccionesPromesa; }
+		seccionesPromesa = new Promise(function (resolver) {
+			var s = document.createElement("script");
+			s.src = "../js/secciones.js";
+			s.onload = function () { resolver(window.Secciones || null); };
+			s.onerror = function () { seccionesPromesa = null; resolver(null); };
+			document.head.appendChild(s);
+		});
+		return seccionesPromesa;
+	}
+
+	// Si en esta pestaña ya se supo que la cuenta tiene el SaaS, el selector se pide desde
+	// ya, para que el encabezado salga completo al primer pintado (sin brincar).
+	(function precargar() {
+		try {
+			for (var i = 0; i < sessionStorage.length; i++) {
+				var k = sessionStorage.key(i);
+				if (k && k.indexOf("jissez.saas.") === 0 && sessionStorage.getItem(k) === "1") { cargarSecciones(); return; }
+			}
+		} catch (_) {}
+	})();
+
+	// Pone el selector en el encabezado de una cuenta con Mi Salón y guarda "Tienda" como
+	// la última sección. En PC y tablet la fila de marca (logo, pestañas y cuenta) va
+	// encima y la barra de la tienda queda como su sub-navegación (tienda/css/tienda.css,
+	// .jz-con-secciones); en celular el encabezado no cambia y el selector va abajo.
+	function aplicarSecciones(header, S, nombre) {
+		if (!S || header.classList.contains("jz-con-secciones")) { return; }
+		S.guardarUltima("tienda");
+		var m = S.montar({ actual: "tienda", arriba: header });
+		header.classList.add("jz-con-secciones");
+		m.cuenta.innerHTML = (nombre ? '<span class="jz-sec-nombre">' + esc(nombre) + "</span>" : "") +
+			'<button type="button" data-logout class="jz-sec-boton">Salir</button>';
+	}
+
+	function conSecciones(header, session, nombre) {
+		var uid = session && session.user && session.user.id;
+		if (!uid) { return; }
+		var ya = saasEnPestana(uid);
+		if (ya === "0") { return; }
+		// Ya se sabe y el archivo ya está: en el mismo turno, antes de pintar
+		if (ya === "1" && window.Secciones) { aplicarSecciones(header, window.Secciones, nombre); return; }
 		tieneSaas(session).then(function (si) {
-			if (!si || header.querySelector("[data-portal]")) { return; }
-			var toggle = header.querySelector("[data-menu-toggle]");
-			var derecha = toggle && toggle.previousElementSibling;
-			if (derecha) {
-				var a = document.createElement("a");
-				a.href = "../portal.html";
-				a.setAttribute("data-portal", "");
-				a.title = "Mi Salón (pantalla principal)";
-				a.setAttribute("aria-label", "Mi Salón");
-				// En la portada, entre lg y xl, solo el icono (cuadro de 44 px): no cabe más
-				a.className = "inline-flex items-center justify-center gap-1.5 h-11 rounded-xl text-[15px] font-semibold text-white border border-white/30 hover:bg-white/10 transition whitespace-nowrap " +
-					(enPortada ? "min-w-[44px] px-2.5 xl:px-3.5" : "px-3.5");
-				a.innerHTML = '<i data-lucide="layout-grid" style="width:17px;height:17px"></i>' +
-					(enPortada ? '<span class="hidden xl:inline">Mi Salón</span>' : "Mi Salón");
-				var correo = derecha.querySelector("span");
-				if (enPortada && correo) { correo.style.display = "none"; }
-				derecha.insertBefore(a, derecha.firstChild);
-			}
-			var movil = header.querySelector("[data-mobile-menu] > div");
-			if (movil) {
-				var m = document.createElement("a");
-				m.href = "../portal.html";
-				m.setAttribute("data-portal", "");
-				m.className = "flex items-center gap-2 h-12 px-3 mb-1 rounded-lg text-[15px] font-semibold text-white bg-white/10 hover:bg-white/15 transition";
-				m.innerHTML = '<i data-lucide="layout-grid" style="width:18px;height:18px"></i>Mi Salón';
-				movil.insertBefore(m, movil.firstChild);
-			}
-			iconos();
+			return si ? cargarSecciones() : null;
+		}).then(function (S) {
+			if (S) { aplicarSecciones(header, S, nombre); }
 		}).catch(function () {});
 	}
 
@@ -1041,6 +1070,7 @@
 		nombreUsuario: nombreUsuario,
 		asegurarPerfil: asegurarPerfil,
 		tieneSaas: tieneSaas,
+		cargarSecciones: cargarSecciones,
 		descargarArchivo: descargarArchivo,
 		montarNav: montarNav,
 		montarFooter: montarFooter,

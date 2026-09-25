@@ -760,9 +760,10 @@ async function iniciarExamen() {
 		var navH = navbar.offsetHeight;
 		var hdrH = header.offsetHeight;
 		var tabsH = (tabsEl && !tabsEl.classList.contains("hidden")) ? tabsEl.offsetHeight : 0;
-		// reposicionar barra de pestañas debajo del header
+		// reposicionar barra de pestañas debajo del header (en PC la barra baja lo que mide la
+		// fila del selector de secciones: se toma su borde inferior real, no solo su alto)
 		if (tabsEl && !tabsEl.classList.contains("hidden")) {
-			tabsEl.style.top = (navH + hdrH) + "px";
+			tabsEl.style.top = (navbar.getBoundingClientRect().bottom + hdrH) + "px";
 		}
 		contenidoEl.style.paddingTop = (navH + hdrH + tabsH + 12) + "px";
 	}

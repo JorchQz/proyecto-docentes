@@ -1,4 +1,4 @@
-// Reglas puras del destino tras autenticar (probadas en pruebas/login-destino.test.js).
+// Reglas puras del destino tras autenticar (probadas en pruebas/portal-destino.test.js).
 var LoginDestino = (function () {
 	// ?next= a dónde ir tras autenticar. Si viene explícito (p. ej. desde
 	// checkout) se respeta. Si no, el destino depende de activo_saas.
@@ -16,17 +16,25 @@ var LoginDestino = (function () {
 		return null;
 	}
 
-	// Sin ?next=: las cuentas con el SaaS van a la pantalla principal de tres
-	// partes (Mi Salón, Tienda, Sala de Maestros); el portal decide después si
-	// Mi Salón abre el panel o el alta del grupo. El resto, al catálogo.
-	// `perf` es la respuesta de perfiles; si la lectura falla se trata como sin
-	// acceso (la tienda funciona igual y el portal no se ofrece).
-	function porPerfil(perf) {
-		var activo = !!(perf && !perf.error && perf.data && perf.data.activo_saas === true);
-		return activo ? "../portal.html" : "catalogo.html";
+	// ¿La cuenta tiene Mi Salón? `perf` es la respuesta de perfiles; si la lectura
+	// falla se trata como sin acceso (la tienda funciona igual y el selector no se ofrece).
+	function tieneSaas(perf) {
+		return !!(perf && !perf.error && perf.data && perf.data.activo_saas === true);
 	}
 
-	return { nextSeguro: nextSeguro, porPerfil: porPerfil };
+	// Una ruta desde la raíz del sitio (la que da js/secciones.js), vista desde tienda/.
+	function desdeTienda(ruta) {
+		return ruta.indexOf("tienda/") === 0 ? ruta.slice("tienda/".length) : "../" + ruta;
+	}
+
+	// Sin ?next=: las cuentas con Mi Salón vuelven a la última sección que usaron en este
+	// dispositivo (`destinoSaas`, desde la raíz: Mi Salón → panel o alta del grupo, Tienda →
+	// portada, Sala de Maestros → su página). El resto, al catálogo, como siempre.
+	function porPerfil(perf, destinoSaas) {
+		return tieneSaas(perf) ? desdeTienda(destinoSaas || "dashboard.html") : "catalogo.html";
+	}
+
+	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = LoginDestino; // pruebas en node
 
@@ -64,7 +72,18 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			.select("activo_saas")
 			.eq("id", userId)
 			.maybeSingle();
-		return LoginDestino.porPerfil(perf);
+		if (!LoginDestino.tieneSaas(perf)) { return LoginDestino.porPerfil(perf); }
+		// Con acceso: la última sección (js/secciones.js, que la tienda carga solo para estas
+		// cuentas). Si no se pudo cargar, Mi Salón, que es la sección de la primera vez.
+		var S = await Tienda.cargarSecciones();
+		var ultima = S ? S.leerUltima() : null;
+		var grupos = null;
+		if (S && S.necesitaGrupos(ultima)) {
+			// Solo decide entre el panel y el alta; si falla, el panel (destinoMiSalon), que
+			// revisa el grupo por su cuenta
+			grupos = await window.sb.from("grupos").select("id").eq("maestro_id", userId).limit(1);
+		}
+		return LoginDestino.porPerfil(perf, S ? S.destinoLogin(ultima, grupos) : "dashboard.html");
 	}
 
 	toggleLink.addEventListener("click", function (e) {

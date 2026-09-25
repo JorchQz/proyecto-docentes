@@ -69,7 +69,7 @@
 				(isActive
 					? "text-white bg-blue-700"
 					: "text-blue-100 hover:text-white hover:bg-blue-700");
-			return '<a href="' + item.href + '" class="' + cls + '">' + item.icon + item.label + "</a>";
+			return '<a href="' + item.href + '" class="' + cls + '"' + (isActive ? ' aria-current="page"' : "") + ">" + item.icon + item.label + "</a>";
 		}).join("");
 
 		var menuItemsHtml = MENU_ITEMS.map(function (item) {
@@ -91,24 +91,18 @@
 		}).join("");
 
 		return (
-			'<nav id="app-navbar" class="fixed top-0 left-0 right-0 z-30 bg-blue-800 shadow-md">' +
+			'<nav id="app-navbar" aria-label="Mi Salón" class="fixed top-0 left-0 right-0 z-30 bg-blue-800 shadow-md">' +
 			'<div class="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">' +
-			// Regreso a la pantalla principal (Mi Salón, Tienda, Sala de Maestros)
-			'<a id="navPortal" href="portal.html" title="Pantalla principal" aria-label="Pantalla principal" ' +
-			'class="shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-xl text-blue-100 hover:text-white hover:bg-blue-700 transition-colors">' +
-			'<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-			'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' +
-			"</svg>" +
-			"</a>" +
-			'<span class="shrink-0 h-6 w-px bg-blue-600" aria-hidden="true"></span>' +
 			'<div class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">' +
 			navLinksHtml +
 			"</div>" +
-			'<div class="relative shrink-0 ml-2 flex items-center gap-2">' +
+			// La cuenta: en PC sube a la fila de marca del selector de secciones; en celular
+			// se queda aquí, junto al carrusel (ver acomodarCuenta)
+			'<div id="navCuenta" class="relative shrink-0 ml-2 flex items-center gap-2">' +
 			// Nombre del grupo activo (solo aparece con 2+ grupos; lo llena js/grupo-activo.js)
 			'<span id="navGrupoActivo" class="hidden max-w-[9rem] truncate rounded-lg bg-blue-900/60 px-2 py-1 text-xs font-medium text-blue-100"></span>' +
-			'<button id="navbarMenuBtn" type="button" aria-label="Abrir menú" ' +
-			'class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-blue-600 bg-blue-700 text-white hover:bg-blue-600 transition-colors">' +
+			'<button id="navbarMenuBtn" type="button" aria-label="Abrir menú" aria-haspopup="true" aria-expanded="false" aria-controls="navbarMenuPanel" ' +
+			'class="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-blue-600 bg-blue-700 text-white hover:bg-blue-600 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300">' +
 			'<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
 			'<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>' +
 			"</svg>" +
@@ -124,10 +118,57 @@
 		);
 	}
 
+	// Con la fila de marca del selector (PC y tablet), la barra de Mi Salón baja lo que mide
+	// esa fila, y con ella lo que las páginas ponen fijo justo debajo (top-14: momento del
+	// diagnóstico, encabezados de evaluación y examen, filtros del marketplace). En celular
+	// la fila no se ve y todo queda como antes.
+	function estilosBarra(alto) {
+		if (document.getElementById("navbar-secciones-css")) return;
+		var st = document.createElement("style");
+		st.id = "navbar-secciones-css";
+		st.textContent =
+			"@media screen and (min-width:768px){" +
+			"html.jz-secciones-fija #app-navbar{top:" + alto + "px}" +
+			"html.jz-secciones-fija .fixed.top-14,html.jz-secciones-fija .sticky.top-14{top:calc(3.5rem + " + alto + "px)}" +
+			"}" +
+			// En la fila de marca (más oscura) el botón del menú va discreto, como el resto de la fila
+			".jz-sec-cuenta #navbarMenuBtn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16)}" +
+			".jz-sec-cuenta #navbarMenuBtn:hover{background:rgba(255,255,255,.16)}" +
+			".jz-sec-cuenta #navGrupoActivo{background:rgba(255,255,255,.1)}";
+		document.head.appendChild(st);
+	}
+
 	document.addEventListener("DOMContentLoaded", function () {
 		var wrapper = document.createElement("div");
 		wrapper.innerHTML = buildNavbar();
-		document.body.insertBefore(wrapper.firstChild, document.body.firstChild);
+		var nav = wrapper.firstChild;
+		document.body.insertBefore(nav, document.body.firstChild);
+
+		// Selector de secciones (Tienda, Mi Salón, Sala de Maestros): fila de marca arriba en
+		// PC y barra abajo en celular. Va DENTRO de #app-navbar (las dos piezas son fijas) para
+		// que el aviso de js/lectura.js las deje a la vista y la impresión las oculte con la barra.
+		if (window.Secciones) {
+			estilosBarra(window.Secciones.ALTO_BARRA);
+			var secciones = window.Secciones.montar({ actual: "salon", arriba: nav, abajo: nav, fija: true });
+			var cuenta = document.getElementById("navCuenta");
+			var fila = cuenta ? cuenta.parentNode : null;
+			var acomodarCuenta = function () {
+				if (!cuenta || !fila) return;
+				if (window.Secciones.esEscritorio()) {
+					if (cuenta.parentNode !== secciones.cuenta) secciones.cuenta.appendChild(cuenta);
+				} else if (cuenta.parentNode !== fila) {
+					fila.appendChild(cuenta);
+				}
+			};
+			acomodarCuenta();
+			if (window.matchMedia) {
+				var mq = window.matchMedia("(min-width: 768px)");
+				if (mq.addEventListener) mq.addEventListener("change", acomodarCuenta);
+				else if (mq.addListener) mq.addListener(acomodarCuenta);
+			}
+			// Última sección: solo cuando el candado confirmó el acceso
+			if (window.saasAcceso) window.saasAcceso.then(function () { window.Secciones.guardarUltima("salon"); });
+		}
 
 		var btn = document.getElementById("navbarMenuBtn");
 		var panel = document.getElementById("navbarMenuPanel");
@@ -137,22 +178,28 @@
 			return;
 		}
 
+		function cerrarMenu() {
+			panel.classList.add("hidden");
+			btn.setAttribute("aria-expanded", "false");
+		}
+
 		btn.addEventListener("click", function (e) {
 			e.stopPropagation();
 			panel.classList.toggle("hidden");
+			btn.setAttribute("aria-expanded", panel.classList.contains("hidden") ? "false" : "true");
 		});
 
 		document.addEventListener("click", function (e) {
 			if (!panel.classList.contains("hidden")) {
 				if (!panel.contains(e.target) && !btn.contains(e.target)) {
-					panel.classList.add("hidden");
+					cerrarMenu();
 				}
 			}
 		});
 
 		document.addEventListener("keydown", function (e) {
 			if (e.key === "Escape") {
-				panel.classList.add("hidden");
+				cerrarMenu();
 			}
 		});
 
