@@ -1,19 +1,24 @@
 /*
 	Selector de secciones de Jissez (decisión de Jorge, 2026-09-25): Tienda, Mi Salón y
 	Sala de Maestros. Es el ÚNICO componente del selector; lo usan la tienda
-	(tienda/js/tienda-common.js lo carga solo para cuentas con acceso), Mi Salón
-	(js/navbar.js) y Sala de Maestros (js/sala-maestros.js).
+	(tienda/js/tienda-common.js lo carga solo para cuentas con acceso) con montar(), y Mi
+	Salón y Sala de Maestros (js/navbar.js) con selectorNav().
 
 	Solo lo ven las cuentas con acceso a Mi Salón (perfiles.activo_saas = true). Quien lo monta
-	ya lo comprobó: el candado (js/saas-guard.js) en Mi Salón y Sala, Tienda.tieneSaas en la
-	tienda. Los compradores sin acceso nunca cargan este archivo.
+	ya lo comprobó: el candado (js/saas-guard.js) en Mi Salón y Sala (la barra lo pinta hasta
+	que se cumple window.saasAcceso), Tienda.tieneSaas en la tienda. Los compradores sin
+	acceso nunca cargan este archivo.
 
+	En la tienda (montar):
 	- En PC y tablet (768 px o más): una fila de marca arriba (logo, las tres pestañas y la
-	  cuenta). Debajo va la navegación propia de cada sección.
+	  cuenta). Debajo va la navegación propia de la tienda.
 	- En celular (menos de 768 px): una barra fija abajo con los tres iconos y su etiqueta. La
 	  página gana espacio al final (body::after) y lo que ya estaba fijo abajo (barras de
 	  guardar, barra de compra, avisos) sube lo que mide la barra (margin-bottom), para que
 	  nada quede tapado. Al imprimir no aparece.
+	En Mi Salón y Sala (selectorNav, rediseño de la navegación del 2026-09-25): arriba de la
+	barra lateral en PC y al principio del panel del menú en celular; ahí la barra de abajo es
+	la de accesos rápidos de js/navbar.js.
 
 	Última sección: se guarda por dispositivo en localStorage (jissez.seccion) y decide a dónde
 	llegan el login, la raíz (index.html) y portal.html. La primera vez, Mi Salón.
@@ -222,6 +227,8 @@ var Secciones = (function () {
 		  movilArriba  en celular la fila se queda arriba con el logo y la cuenta (sin
 		               pestañas, que van abajo). Para Sala, que no tiene otra barra.
 		`cuenta` es el hueco de la derecha de la fila: cada sección pone ahí lo suyo.
+		Hoy solo la tienda lo usa (sin fija ni movilArriba); Mi Salón y Sala dejaron de usarlo
+		con la navegación nueva (js/navbar.js, selectorNav). Las opciones se conservan.
 	*/
 	function montar(opts) {
 		opts = opts || {};
@@ -253,6 +260,29 @@ var Secciones = (function () {
 		return { barra: barra, abajo: abajo, cuenta: barra.querySelector(".jz-sec-cuenta") };
 	}
 
+	/*
+		selectorNav(actual) → HTML del selector para la navegación de Mi Salón y Sala de
+		Maestros (js/navbar.js): arriba de la barra lateral en PC y al principio del panel del
+		menú en celular. Las mismas tres secciones y los mismos destinos que las pestañas de la
+		tienda (bajo /salon/, Tienda sale de la app y, en la app instalada, se abre en el
+		navegador). Los estilos van con la barra (js/navbar.js, .jz-sel). La etiqueta visible de
+		Sala es corta; el nombre completo va en aria-label y en el tooltip.
+		Quien lo pinta ya comprobó el acceso (window.saasAcceso).
+	*/
+	var CORTAS = { tienda: "Tienda", salon: "Mi Salón", sala: "Sala" };
+	function selectorNav(actual) {
+		actual = valida(actual) ? actual : "salon";
+		var modoApp = enModoApp();
+		return '<nav aria-label="Secciones de Jissez"><ul class="jz-sel">' + LISTA.map(function (s) {
+			var es = s.clave === actual;
+			var d = destinoPestana(s.clave, RAIZ, modoApp);
+			var nombre = s.etiqueta + (d.fuera ? " (se abre en el navegador)" : "");
+			return '<li><a class="jz-sel-op" href="' + d.href + '"' + (d.fuera ? ' target="_blank" rel="noopener"' : "") +
+				' aria-label="' + nombre + '" data-tip="' + s.etiqueta + '"' + (es ? ' aria-current="true"' : "") + ">" +
+				svg(s.icono, "jz-sel-ico") + '<span class="jz-sel-txt" aria-hidden="true">' + CORTAS[s.clave] + "</span></a></li>";
+		}).join("") + "</ul></nav>";
+	}
+
 	// ¿Se ve la fila de marca de PC (y no la barra de abajo)?
 	function esEscritorio() {
 		return !!(window.matchMedia && window.matchMedia("(min-width: 768px)").matches);
@@ -273,6 +303,7 @@ var Secciones = (function () {
 		enSalon: enSalon,
 		destinoPestana: destinoPestana,
 		montar: montar,
+		selectorNav: selectorNav,
 		esEscritorio: esEscritorio,
 	};
 })();

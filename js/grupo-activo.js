@@ -11,8 +11,8 @@
 	  clave que ya leían dashboard.js y crear_proyecto.js.
 	- Si el guardado ya no existe (se borró, o es de otra cuenta), se usa el primero
 	  por fecha de creación.
-	- Con dos o más grupos, el menú de la barra de navegación muestra el selector.
-	  Cambiar de grupo recarga la pantalla para que todo lea del grupo nuevo.
+	- La navegación (js/navbar.js) muestra siempre el grupo activo; con dos o más grupos
+	  es un selector. Cambiar de grupo recarga la pantalla para que todo lea del grupo nuevo.
 */
 
 (function () {
@@ -98,33 +98,38 @@
 		window.location.reload();
 	}
 
-	// Selector dentro del menú de la barra (solo si hay 2 o más grupos)
+	/*
+		Grupo activo en la navegación (js/navbar.js pone los lugares [data-grupo-slot]: la
+		barra lateral en PC y el encabezado en celular). Siempre se ve en qué grupo se
+		trabaja; con 2 o más grupos es un selector, y elegir otro recarga la pantalla.
+	*/
+	var FLECHA = "<svg class='jz-grupo-flecha' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true' focusable='false'><path d='m6 9 6 6 6-6'/></svg>";
 	function pintarSelector(grupos, activo) {
-		var slot = document.getElementById("navGrupoSlot");
-		if (!slot || grupos.length < 2) return;
-		slot.innerHTML =
-			"<p class='px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400'>Grupo</p>" +
-			grupos.map(function (g) {
-				var esActivo = activo && g.id === activo.id;
-				return "<button type='button' data-grupo-activo='" + esc(g.id) + "' " +
-					"class='block w-full text-left px-3 py-2 min-h-[44px] rounded-md text-sm font-medium " +
-					(esActivo ? "text-blue-700 bg-blue-50" : "text-gray-800 hover:bg-gray-100") + "'" +
-					(esActivo ? " aria-current='true'" : "") + ">" + esc(g.nombre || "Grupo") + "</button>";
-			}).join("") +
-			"<div class='my-1 border-t border-gray-100'></div>";
-		slot.classList.remove("hidden");
-		slot.onclick = function (e) {
-			var btn = e.target.closest ? e.target.closest("button[data-grupo-activo]") : null;
-			if (!btn || (activo && btn.dataset.grupoActivo === activo.id)) return;
-			cambiar(btn.dataset.grupoActivo);
-		};
-
-		// El nombre del grupo activo, visible sin abrir el menú
-		var chip = document.getElementById("navGrupoActivo");
-		if (chip && activo) {
-			chip.textContent = activo.nombre || "Grupo";
-			chip.classList.remove("hidden");
-		}
+		var slots = document.querySelectorAll ? document.querySelectorAll("[data-grupo-slot]") : [];
+		if (!activo) return;
+		pintado = { grupos: grupos, activo: activo };
+		var nombre = activo.nombre || "Grupo";
+		Array.prototype.forEach.call(slots, function (slot, i) {
+			var id = "jzGrupoSel" + i;
+			if (grupos.length < 2) {
+				slot.innerHTML = "<span class='jz-grupo-etq'>Grupo</span>" +
+					"<span class='jz-grupo-nombre' tabindex='-1' title='" + esc(nombre) + "'>" + esc(nombre) + "</span>";
+				return;
+			}
+			slot.innerHTML = "<label class='jz-grupo-etq' for='" + id + "'>Grupo</label>" +
+				"<div class='jz-grupo-control'><select id='" + id + "' class='jz-grupo-select' aria-label='Grupo activo'>" +
+				grupos.map(function (g) {
+					return "<option value='" + esc(g.id) + "'" + (g.id === activo.id ? " selected" : "") + ">" + esc(g.nombre || "Grupo") + "</option>";
+				}).join("") +
+				"</select>" + FLECHA + "</div>";
+			var sel = slot.querySelector("select");
+			sel.addEventListener("change", function () {
+				if (sel.value && sel.value !== activo.id) cambiar(sel.value);
+			});
+		});
+		try {
+			document.dispatchEvent(new CustomEvent("jissez:grupo-activo", { detail: { id: activo.id, nombre: nombre, total: grupos.length } }));
+		} catch (_) {}
 	}
 
 	/*
@@ -139,7 +144,13 @@
 		guardar(id);
 	}
 
-	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, elegir: elegir, leerGuardado: leerGuardado };
+	// Si la lectura llegó antes que la navegación, ésta lo vuelve a pintar al montarse
+	var pintado = null;
+	function repintar() {
+		if (pintado) pintarSelector(pintado.grupos, pintado.activo);
+	}
+
+	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, elegir: elegir, leerGuardado: leerGuardado, repintar: repintar };
 
 	// En pantallas que no usan el grupo (Ajustes, Mi cuenta…) el selector de la barra
 	// también debe aparecer: se carga solo, con la misma consulta compartida. Si esta

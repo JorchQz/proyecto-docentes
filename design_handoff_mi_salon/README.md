@@ -93,6 +93,49 @@ Usa exactamente el sistema de la tienda (ver `marca/` y `design_handoff_jissez/R
 - **Vista de app instalada:** Mi Salón se podrá instalar como app. Al abrirla entra directo a
   Hoy, y dentro de la app se ocultan la tienda y lo que no sirve. Contempla cómo se ve en ese modo.
 
+### 3.1 Navegación construida (2026-09-25; decisiones de Jorge del mismo día)
+
+> Esto ya está hecho en la rama y sustituye lo que dicen las capturas de `capturas/actual/` sobre
+> la barra. Aplica a Mi Salón y a Sala de Maestros. La tienda conserva su diseño y su selector.
+
+Todo vive en `js/navbar.js` (se carga en el `<head>` de cada página). El selector de secciones
+sigue siendo uno solo (`js/secciones.js`) y el grupo activo lo sigue decidiendo solo
+`js/grupo-activo.js`.
+
+- **Punto de corte: 1024 px de ancho.** La Galaxy Tab S9 FE+ mide 1280×800 px CSS en horizontal
+  (barra lateral) y 800×1280 en vertical (encabezado y barra de abajo).
+- **PC y tablet horizontal (1024 px o más): barra lateral izquierda** de 256 px, azul profundo
+  (`#16276b`). De arriba abajo:
+  1. marca Jissez y el botón para contraer;
+  2. selector de secciones Tienda / Mi Salón / Sala, con la actual en blanco;
+  3. grupo activo: selector con 2 o más grupos, solo el nombre con uno;
+  4. menú: **Día a día** (Inicio, Hoy, Asistencia, Actividades, Tareas), **Planeación**
+     (Proyectos, Marketplace), **Evaluación y reportes** (Diagnóstico, Exámenes, Reportes) y
+     **Grupo** (Mi grupo), con la página actual marcada con un trazo de gis verde;
+  5. abajo, la cuenta: el nombre abre Mi cuenta, Ajustes, Instalar la app (cuando aplica) y
+     Cerrar sesión.
+  - Marca, secciones y grupo quedan fijos arriba; si el menú no cabe (800 px de alto), solo el
+    menú se desplaza y la página actual queda a la vista.
+  - **Contraída:** 72 px, solo íconos, con tooltip y nombre accesible. Se recuerda en el aparato
+    (`localStorage` "jissez.navContraida") y se aplica desde el primer pintado.
+- **Celular y tablet vertical (menos de 1024 px):**
+  - encabezado fijo de 56 px: botón de menú, nombre de la página y grupo activo;
+  - barra de accesos rápidos abajo: **Hoy, Asistencia, Reportes y Más**, con la activa marcada y
+    el área segura del iPhone. Más abre el mismo panel que el botón de menú;
+  - el panel lateral muestra, en orden: secciones, menú completo y cuenta. Tiene foco atrapado,
+    Esc y tocar fuera lo cierran, `aria-expanded` y no se desplaza el fondo.
+  - **Sala de Maestros** tiene un solo destino (su portada), así que su barra de abajo lleva
+    solo Más, en el mismo lugar que en Mi Salón.
+- **Sin brincos:** el espacio se aparta desde el `<head>`: en PC con un `border-left` del body
+  del ancho de la barra; en celular, con el `pt-16` de siempre arriba y un `body::after` abajo.
+  Lo fijo de la página empieza después de la barra lateral y, en celular, sube lo que mide la
+  barra de abajo (pies de página, avisos de Hoy).
+- **Se conserva:** los enlaces son relativos, así que bajo `/salon/` nada se sale de la app
+  salvo la Tienda, que se abre fuera. Cerrar sesión pide confirmar si hay capturas de Hoy sin
+  enviar. El selector solo aparece cuando el candado confirma `activo_saas`. Se sigue guardando
+  la última sección (`jissez.seccion`). Al imprimir no sale nada de la navegación.
+- Pruebas: `pruebas/navegacion.test.js`.
+
 ## 4. Pantallas a diseñar, en orden de prioridad
 
 Para cada pantalla diseña escritorio (1280), tablet horizontal (1024) y celular (390), con sus

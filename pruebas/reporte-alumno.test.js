@@ -450,7 +450,9 @@ ok("solo lectura: no escribe en la base", /\.(insert|update|upsert|delete)\(/.te
 ok("usa la capa de datos compartida", fuente.includes("window.ReporteDatos.alumnoTrimestre(window.sb, ctx"), true);
 
 const html = fs.readFileSync(path.join(__dirname, "..", "reporte-alumno.html"), "utf8");
-const orden = ["js/supabase.js", "js/saas-guard.js", "js/navbar.js", "js/grupo-activo.js", "js/campos-formativos.js",
+// La barra (js/navbar.js) va en el <head> desde el rediseño de la navegación (2026-09-25)
+ok("la barra se carga en el <head>", html.split("</head>")[0].indexOf("src=\"js/navbar.js\"") !== -1, true);
+const orden = ["js/supabase.js", "js/saas-guard.js", "js/grupo-activo.js", "js/campos-formativos.js",
 	"js/catalogo-habilidades.js", "js/motor-calificacion.js", "js/textos-boleta.js", "js/reglas-entidad.js", "js/reporte-datos.js", "js/reporte-alumno.js"];
 const posiciones = orden.map((s) => html.indexOf('src="' + s + '"'));
 ok("scripts en el orden de la capa compartida", posiciones.every((p, i) => p !== -1 && (i === 0 || p > posiciones[i - 1])), true);

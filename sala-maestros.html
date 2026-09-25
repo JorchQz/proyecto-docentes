@@ -12,6 +12,8 @@
 	<meta name="apple-mobile-web-app-title" content="Jissez MS">
 	<meta name="apple-mobile-web-app-status-bar-style" content="default">
 	<script src="js/app-instalada.js"></script>
+	<!-- Navegación (js/navbar.js, sección Sala): en el head, para apartar su espacio desde el primer pintado -->
+	<script src="js/navbar.js" data-seccion="sala"></script>
 	<title>Sala de Maestros — Jissez</title>
 	<!-- Tercera sección de Jissez, "Próximamente" (decisión de Jorge, 2026-09-25). Protegida
 	     como Mi Salón: el candado saca a la tienda a las cuentas sin acceso. Sin Pixel de
@@ -37,10 +39,8 @@
 		.sala-hoja i { display: block; height: 2px; margin-bottom: 12px; border-radius: 2px; background: rgba(255, 255, 255, .32); }
 	</style>
 </head>
-<body class="antialiased min-h-screen flex flex-col">
-
-	<!-- La fila del selector de secciones la pone js/sala-maestros.js -->
-	<header id="salaEncabezado" class="sticky top-0 z-50"></header>
+<body class="antialiased min-h-screen flex flex-col pt-14">
+	<!-- La navegación (barra lateral en PC, encabezado y barra de abajo en celular) la pone js/navbar.js -->
 
 	<main class="flex-1 w-full max-w-content mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
 		<section class="board-tex relative overflow-hidden rounded-3xl text-white px-6 py-10 sm:px-12 sm:py-14 lg:px-16 lg:py-20">
@@ -55,7 +55,7 @@
 				<p class="mt-5 text-white/80 text-lg sm:text-xl leading-relaxed">Un espacio para compartir material didáctico entre maestras y maestros.</p>
 			</div>
 
-			<div class="hidden lg:block absolute right-14 top-1/2 -translate-y-1/2" aria-hidden="true">
+			<div class="hidden xl:block absolute right-14 top-1/2 -translate-y-1/2" aria-hidden="true">
 				<div class="sala-tablero">
 					<div class="sala-hoja" style="left:0;top:38px;transform:rotate(-6deg);--pin:#f2cf6b"><i style="width:82%"></i><i style="width:64%"></i><i style="width:74%"></i></div>
 					<div class="sala-hoja" style="left:146px;top:4px;transform:rotate(4deg);--pin:#ef9277"><i style="width:70%"></i><i style="width:86%"></i><i style="width:52%"></i></div>

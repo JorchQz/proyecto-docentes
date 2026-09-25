@@ -221,12 +221,15 @@ function raiz(opciones) {
 
 	// ── Páginas ──────────────────────────────────────────────────────────────────
 	const paginasNavbar = fs.readdirSync(RAIZ).filter((f) => f.endsWith(".html") && /src="js\/navbar\.js"/.test(leer(f)));
+	// Desde el rediseño de la navegación (2026-09-25) la barra va en el <head> (aparta su espacio
+	// desde el primer pintado) y se monta en DOMContentLoaded, cuando el candado y el selector ya
+	// cargaron en el <body>, en ese orden
 	const malas = paginasNavbar.filter((f) => {
 		const h = leer(f);
 		const i = h.indexOf('src="js/secciones.js"'), j = h.indexOf('src="js/navbar.js"'), g = h.indexOf('src="js/saas-guard.js"');
-		return !(i !== -1 && i < j && g !== -1 && g < i);
+		return !(j !== -1 && j < h.indexOf("</head>") && i !== -1 && g !== -1 && g < i);
 	});
-	ok("Mi Salón: " + paginasNavbar.length + " páginas cargan el candado, el selector y luego la barra", malas, []);
+	ok("Mi Salón y Sala: " + paginasNavbar.length + " páginas cargan la barra en el <head>, y el candado antes que el selector", malas, []);
 
 	const sala = leer("sala-maestros.html");
 	const ordenSala = ["js/supabase.js", "js/lectura.js", "js/saas-guard.js", "js/secciones.js", "js/sala-maestros.js"].map((s) => sala.indexOf('src="' + s + '"'));
@@ -257,8 +260,13 @@ function raiz(opciones) {
 
 	// ── Pulido R10 ───────────────────────────────────────────────────────────────
 	ok("PC: la barra de abajo no existe (ni como región vacía para el lector)", /\.jz-sec-abajo-nav,\.jz-sec-abajo\{display:none\}/.test(js) && /max-width:767\.98px\)\{" \+\s*"\.jz-sec-abajo-nav\{display:block\}/.test(js), true);
+	// Rediseño de la navegación (2026-09-25): #app-navbar es el contenedor de todo (encabezado,
+	// barra lateral, barra de abajo); el selector de secciones es hermano del menú, no va anidado
+	const NAV = require("../js/navbar.js");
+	const htmlNav = NAV.construir("salon", "hoy");
 	ok("Mi Salón: #app-navbar es contenedor y la navegación va adentro (el selector no queda anidado)",
-		/'<div id="app-navbar" class="fixed/.test(navbar) && /'<nav aria-label="Mi Salón" class="max-w-4xl/.test(navbar) && !/<nav id="app-navbar"/.test(navbar), true);
+		/^<div id="app-navbar"/.test(htmlNav) && !/<nav id="app-navbar"/.test(htmlNav) &&
+		htmlNav.indexOf('id="jzNavSecciones"') < htmlNav.indexOf('<nav class="jz-menu"'), true);
 	ok("Mi Salón: cerrar sesión lleva a la tienda", /signOut\(\)[\s\S]{0,400}window\.location\.href = "tienda\/index\.html"/.test(navbar), true);
 	const formativa = leer("js/evaluacion_formativa.js");
 	ok("formativa: el ajuste toma el contenido por id, no la barra", /getElementById\("evalContenido"\)/.test(formativa) && !/querySelector\("\.max-w-4xl/.test(formativa) && /id="evalContenido"/.test(leer("evaluacion_formativa.html")), true);

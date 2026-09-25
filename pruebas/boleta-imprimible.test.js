@@ -361,7 +361,10 @@ const html = fs.readFileSync(path.join(__dirname, "..", "boleta.html"), "utf8");
 contiene("página: tamaño carta vertical", html, "@page { size: letter portrait");
 contiene("página: oculta la barra al imprimir", html, "#app-navbar, .no-print { display: none !important; }");
 contiene("página: no parte los bloques", html, ".bol-bloque { break-inside: avoid;");
-const orden = ["supabase.js", "saas-guard.js", "navbar.js", "grupo-activo.js", "campos-formativos.js",
+// La barra (js/navbar.js) va en el <head> desde el rediseño de la navegación (2026-09-25): aparta
+// su espacio desde el primer pintado. El resto sigue el orden del brief.
+ok("página: la barra se carga en el <head>", html.split("</head>")[0].indexOf("src=\"js/navbar.js\"") !== -1, true);
+const orden = ["supabase.js", "saas-guard.js", "grupo-activo.js", "campos-formativos.js",
 	"catalogo-habilidades.js", "motor-calificacion.js", "textos-boleta.js", "reporte-datos.js", "js/boleta.js"];
 const posiciones = orden.map(function (s) { return html.indexOf(s + "\"></script>"); });
 ok("página: scripts en el orden del brief",

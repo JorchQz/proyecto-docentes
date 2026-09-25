@@ -96,17 +96,19 @@ ok("_redirects: el login de la tienda también", redirects.indexOf("/salon/tiend
 ok("Hoy carga la bandeja de salida antes que su script",
 	leer("hoy.html").indexOf('src="js/bandeja-salida.js"') !== -1 && leer("hoy.html").indexOf('src="js/bandeja-salida.js"') < leer("hoy.html").indexOf('src="js/hoy.js"'), true);
 ok("Inicio tiene el lugar del botón Instalar", /id="instalarAppSlot"/.test(leer("dashboard.html")), true);
-// Cerrar sesión avisa si hay capturas sin enviar: la bandeja se carga donde hay ese botón
-ok("las páginas con Cerrar sesión (barra o Sala de Maestros) cargan la bandeja antes de su script",
+// Cerrar sesión avisa si hay capturas sin enviar: la bandeja se carga donde hay ese botón. Desde
+// el rediseño de la navegación (2026-09-25) el botón es de la barra (js/navbar.js, que va en el
+// <head> para apartar su espacio), también en Sala de Maestros. La bandeja se consulta al tocar
+// el botón, así que basta con que la página la cargue.
+ok("las páginas con Cerrar sesión (la barra, también en Sala de Maestros) cargan la bandeja",
 	paginas.filter((f) => {
 		const t = leer(f);
-		const script = t.indexOf('src="js/navbar.js"') !== -1 ? 'src="js/navbar.js"' : t.indexOf('src="js/sala-maestros.js"') !== -1 ? 'src="js/sala-maestros.js"' : null;
-		if (!script || f === "hoy.html") return false;
-		const i = t.indexOf('src="js/bandeja-salida.js"');
-		return i === -1 || i > t.indexOf(script);
+		if (t.indexOf('src="js/navbar.js"') === -1) return false;
+		return t.indexOf('src="js/bandeja-salida.js"') === -1;
 	}), []);
-ok("Cerrar sesión pide confirmar si hay capturas pendientes (barra y Sala de Maestros)",
-	/BandejaSalida\.confirmarSalida\(window\.sb\)/.test(leer("js/navbar.js")) && /BandejaSalida\.confirmarSalida\(window\.sb\)/.test(leer("js/sala-maestros.js")), true);
+ok("Sala de Maestros usa la barra (y con ella su Cerrar sesión)", /<script src="js\/navbar\.js" data-seccion="sala"><\/script>/.test(leer("sala-maestros.html")), true);
+ok("Cerrar sesión pide confirmar si hay capturas pendientes (la barra)",
+	/BandejaSalida\.confirmarSalida\(window\.sb\)/.test(leer("js/navbar.js")), true);
 ok("boleta: el Aviso de privacidad no saca de /salon/ en la misma ventana (en la app, target=_blank)",
 	/function enlacePrivacidad\(\)[\s\S]*\/tienda\/privacidad\.html[\s\S]*target='_blank' rel='noopener'/.test(leer("js/reportes.js")) &&
 	!/<a href='tienda\/privacidad\.html' class='underline'>/.test(leer("js/reportes.js")), true);
