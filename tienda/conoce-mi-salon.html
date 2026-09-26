@@ -72,7 +72,7 @@
 				Mi Salón, de Jissez
 			</span>
 			<h1 class="mt-6 font-black tracking-tight leading-[1] text-ink text-[clamp(2.4rem,5.4vw,4.2rem)]">
-				Tu salón al día,<br><span class="chalk-u" style="--accent:#79c8a6">sin Excel</span>.
+				Tu salón al día,<br><span class="chalk-u" style="--accent:#79c8a6">sin cuentas a mano</span>.
 			</h1>
 			<p class="mt-6 text-[clamp(1.05rem,1.6vw,1.25rem)] leading-relaxed text-mute max-w-xl">
 				La app para llevar el día a día de tu grupo con la Nueva Escuela Mexicana: pasas lista, calificas los trabajos con un toque y, al cierre del trimestre, la boleta sale de lo que ya capturaste. Pensada para multigrado y para la tablet del salón.
@@ -99,7 +99,7 @@
 		</div>
 		<div class="relative">
 			<div class="ms-marco">
-				<img src="../presentacion/img/ms-hoy-1280.webp" srcset="../presentacion/img/ms-hoy-640.webp 640w, ../presentacion/img/ms-hoy-1280.webp 1280w" sizes="(min-width: 1024px) 640px, 100vw" width="1280" height="800" loading="lazy" decoding="async" alt="Pantalla Hoy de Mi Salón en tablet: la lista del grupo con Presente, Falta y Justificada por alumno">
+				<img src="../presentacion/img/ms-hoy-1280.webp" srcset="../presentacion/img/ms-hoy-640.webp 640w, ../presentacion/img/ms-hoy-1280.webp 1280w" sizes="(min-width: 1024px) 640px, 100vw" width="1280" height="800" loading="eager" fetchpriority="high" decoding="async" alt="Pantalla Hoy de Mi Salón en tablet: la lista del grupo con Presente, Falta y Justificada por alumno">
 			</div>
 			<div class="hidden sm:flex absolute -bottom-5 -left-3 bg-white rounded-2xl shadow-xl border border-line px-4 py-3 rotate-[-3deg] items-center gap-3">
 				<img src="assets/jissez-icon-blue.png" alt="" width="28" height="28" class="w-7 h-7" loading="lazy">
@@ -162,12 +162,12 @@
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="notebook-pen" class="w-5 h-5"></i></span>
 				<h3 class="mt-4 font-bold text-lg text-ink">Planeación</h3>
-				<p class="mt-1.5 text-sm text-mute">Proyectos y sesiones con sus PDA por grado. Crea el tuyo o importa uno de las planeaciones de Jissez.</p>
+				<p class="mt-1.5 text-sm text-mute">Proyectos y sesiones con sus PDA por grado. Puedes crear tus proyectos o usar planeaciones de Jissez.</p>
 			</article>
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="clipboard-check" class="w-5 h-5"></i></span>
 				<h3 class="mt-4 font-bold text-lg text-ink">Evaluación</h3>
-				<p class="mt-1.5 text-sm text-mute">Formativa por PDA, que se llena al calificar; diagnóstico de cuaderno, lectura y matemáticas; y exámenes.</p>
+				<p class="mt-1.5 text-sm text-mute">Formativa por PDA, que se llena al calificar; diagnóstico de cuaderno, lectura y matemáticas; y aplicas los exámenes del catálogo de Jissez.</p>
 			</article>
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="file-text" class="w-5 h-5"></i></span>
@@ -228,7 +228,7 @@
 			<div class="reveal grid lg:grid-cols-[.85fr_1.15fr] gap-8 lg:gap-12 items-center">
 				<div class="order-2 lg:order-1">
 					<h3 class="font-black text-ink tracking-tight text-[clamp(1.5rem,2.6vw,2rem)] leading-tight">Y lo demás del salón, también.</h3>
-					<p class="mt-3 text-lg text-mute">El calendario escolar oficial con los ajustes de tu escuela, las listas de cooperación y materiales con lo reunido y lo que falta, los cumpleaños del mes y el rol de aseo, si lo usas.</p>
+					<p class="mt-3 text-lg text-mute">El calendario escolar oficial con los ajustes de tu grupo, las listas de cooperación y materiales con lo reunido y lo que falta, los cumpleaños del mes y el rol de aseo, si lo usas.</p>
 				</div>
 				<figure class="ms-captura order-1 lg:order-2">
 					<img src="../presentacion/img/ms-listas-1280.webp" srcset="../presentacion/img/ms-listas-640.webp 640w, ../presentacion/img/ms-listas-1280.webp 1280w" sizes="(min-width: 1024px) 640px, 100vw" width="1280" height="800" loading="lazy" decoding="async" alt="Lista de cooperación en Mi Salón: quién aportó, cuánto se ha reunido y cuánto falta">
@@ -254,7 +254,7 @@
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="users-round" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
 				<h3 class="mt-4 text-lg font-bold text-ink">Crea tu grupo</h3>
-				<p class="mt-1.5 text-mute">Con su nombre y sus grados; si es multigrado, marca todos los que atiendes.</p>
+				<p class="mt-1.5 text-mute">Indica tu estado, el ciclo escolar y el trimestre en curso; luego, el nombre del grupo, el tipo de organización de tu escuela y los grados que atiendes (en multigrado, márcalos todos).</p>
 			</li>
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="user-plus" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
@@ -263,8 +263,8 @@
 			</li>
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="folder-plus" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
-				<h3 class="mt-4 text-lg font-bold text-ink">Crea o importa un proyecto</h3>
-				<p class="mt-1.5 text-mute">Sus sesiones traen los trabajos a calificar y los PDA de cada grado.</p>
+				<h3 class="mt-4 text-lg font-bold text-ink">Prepara tu proyecto</h3>
+				<p class="mt-1.5 text-mute">Puedes crear tus proyectos o usar planeaciones de Jissez. Sus sesiones traen los trabajos a calificar y los PDA de cada grado.</p>
 			</li>
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="sun" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
@@ -289,7 +289,7 @@
 					<h4 class="font-bold flex items-center gap-2"><i data-lucide="tablet" class="w-5 h-5 text-gisMenta"></i> Android</h4>
 					<ol class="mt-3 space-y-2 text-[15px] text-white/85 list-decimal pl-5">
 						<li>En Chrome o Samsung Internet, entra a Mi Salón con tu cuenta.</li>
-						<li>En Inicio, al final, toca "Instalar la app" y acepta. También está en el menú de tu cuenta.</li>
+						<li>En Inicio, al final, toca "Instalar la app" y sigue los pasos. También está en el menú de tu cuenta.</li>
 						<li>Abre el ícono "Jissez MS". Mantenlo presionado para los atajos: Pasar lista, Calificar trabajos y Reportes.</li>
 					</ol>
 				</div>
@@ -339,7 +339,11 @@
 				<div data-interes-caja class="sm:w-[23rem] sm:shrink-0"></div>
 			</div>
 
-			<div class="reveal mt-10 max-w-3xl mx-auto grid sm:grid-cols-2 gap-5">
+			<!-- Qué incluye + beneficio para quien ya compró planeaciones. El beneficio lo decide
+			     js/conoce-mi-salon.js (ConoceMiSalon.beneficio): sin precio, el texto genérico de
+			     abajo; con precio, solo si PRECIOS_MI_SALON.beneficioCompradores lo define. Sin
+			     beneficio, "Qué incluye" queda solo, en una columna. -->
+			<div id="msIncluyeGrid" class="reveal mt-10 max-w-3xl mx-auto grid sm:grid-cols-2 gap-5">
 				<div class="bg-white border border-line rounded-3xl p-7">
 					<h3 class="font-bold text-ink text-lg">Qué incluye</h3>
 					<ul class="mt-4 space-y-2.5 text-[15px] text-ink">
@@ -349,10 +353,10 @@
 						<li class="flex gap-2.5"><i data-lucide="check" class="w-5 h-5 text-action shrink-0"></i> Soporte por correo en soporte@jissez.com.</li>
 					</ul>
 				</div>
-				<div class="rounded-3xl p-7 border" style="background:rgba(242,207,107,.18);border-color:rgba(242,207,107,.6)">
+				<div id="msBeneficio" class="rounded-3xl p-7 border" style="background:rgba(242,207,107,.18);border-color:rgba(242,207,107,.6)">
 					<span class="w-11 h-11 rounded-xl bg-white text-board flex items-center justify-center"><i data-lucide="gift" class="w-5 h-5"></i></span>
 					<h3 class="mt-4 font-bold text-ink text-lg">¿Ya compraste planeaciones en Jissez?</h3>
-					<p class="mt-1.5 text-ink/80">Si ya compraste planeaciones en Jissez, tendrás un beneficio especial en Mi Salón. Te lo contaremos al abrir las suscripciones.</p>
+					<p id="msBeneficioTexto" class="mt-1.5 text-ink/80">Si ya compraste planeaciones en Jissez, tendrás un beneficio especial; te lo diremos al lanzar.</p>
 				</div>
 			</div>
 		</div>
@@ -364,7 +368,7 @@
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row sm:items-center gap-4">
 		<span class="w-12 h-12 rounded-2xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="lock" class="w-6 h-6"></i></span>
 		<p class="text-ink text-[16px] leading-relaxed">
-			<strong>Tus datos y los de tus alumnos solo los ves tú,</strong> con tu cuenta. Lo que Mi Salón prepara para una familia solo lleva a su hija o hijo, y lo que es para todo el grupo no lleva nombres de otros niños, salvo que tú decidas mostrarlos.
+			<strong>Tus datos y los de tus alumnos solo los ves tú,</strong> con tu cuenta. Lo que Mi Salón prepara para una familia solo lleva a su hija o hijo. La imagen y el texto de las listas de cooperación y materiales no llevan nombres, y la presentación para la junta no los muestra salvo que tú lo actives. El rol de aseo sí lleva los nombres de los alumnos a quienes les toca: tú decides con quién lo compartes.
 			<a href="privacidad.html" class="inline-flex items-center min-h-[44px] font-semibold text-board underline underline-offset-4 hover:no-underline">Aviso de privacidad</a>
 		</p>
 	</div>
@@ -396,7 +400,7 @@
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Necesito comprar planeaciones? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
-				<p class="pb-5 text-mute leading-relaxed">No. Puedes crear tus propios proyectos y sesiones en Mi Salón. Si prefieres, importas un proyecto de las planeaciones de Jissez con sus sesiones, trabajos y PDA para empezar más rápido.</p>
+				<p class="pb-5 text-mute leading-relaxed">No. Puedes crear tus proyectos, con sus sesiones, en Mi Salón o usar planeaciones de Jissez, que ya traen sus sesiones, trabajos y PDA para empezar más rápido.</p>
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿La calificación la pone la app? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>

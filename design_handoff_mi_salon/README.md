@@ -302,7 +302,7 @@ de guardado; sin grupo (lleva al alta).
 | 24 | **Sala de Maestros (dentro)** | `sala-maestros.html` | Hoy, "Próximamente". Diseña la página de espera con la navegación de Sala | `23-sala-de-maestros/` |
 | 25 | **App instalada y sin conexión** | `/salon/hoy`, `sin-conexion.html` | Cómo se ve Mi Salón abierto como app (sin barra del navegador) y la página "Sin conexión" (con Reintentar y cuántas capturas de Hoy esperan en el aparato) | `25-app-instalada/` |
 | 26 | **Presentación de Mi Salón** (nueva) | por definir (sugerido `tienda/mi-salon.html`) | Ver §7.1 | referencia de estilo: `capturas/tienda/landing-*` |
-| 27 | **Presentación de Sala de Maestros** (nueva) | por definir (sugerido `tienda/sala-de-maestros.html`) | Ver §7.2 | referencia de estilo: `capturas/tienda/landing-*` |
+| 27 | **Presentación de Sala de Maestros** (nueva) | `tienda/conoce-sala.html` (construida, oculta y sin indexar) | Ver §7.2 | referencia de estilo: `capturas/tienda/landing-*` |
 
 ---
 
@@ -362,9 +362,25 @@ ejemplo que se note que es provisional.
 - **Para qué sirve.** Encontrar material ya probado en el aula por otras maestras (por grado y
   campo formativo) y compartir el propio. Detalle de funciones: **por definir**.
 - **Cómo adquirirlo.** **Por definir** (puede ser incluida con la cuenta o de pago). Mientras
-  tanto, la página dice "Próximamente". **No** agregues un formulario para dejar el correo
-  sin que Jorge lo decida (sería un dato nuevo para el aviso de privacidad); el llamado puede
-  ser "Conoce Mi Salón" o "Ver la tienda".
+  tanto, la página dice "Próximamente" y lleva **"La idea" + el botón "Avísame cuando abra"**
+  (decisión de Jorge, 2026-09-26; ya construida en `tienda/conoce-sala.html`, oculta y sin
+  indexar). Cómo funciona el botón (`tienda/js/interes-seccion.js`), para que el diseño lo
+  respete:
+  - **No es un formulario ni pide el correo.** Guarda en la tabla `interes_secciones` solo
+    que esa cuenta quiere el aviso de la sección y la fecha; el aviso se manda al correo de
+    la cuenta de Jissez.
+  - **Pide sesión.** Sin sesión, el botón lleva a iniciar sesión o crear la cuenta de Jissez
+    (misma cuenta de la tienda) y, al regresar a la página, el aviso se guarda solo. No hay
+    escritura anónima (evita spam). Debajo del botón, una línea lo explica.
+  - **Se puede quitar.** Ya pedido, el botón cambia a "Listo. Te avisaremos a tu correo
+    cuando abra." con el botón secundario **"Ya no quiero el aviso"**, que lo borra. Pedirlo dos veces
+    no duplica. También se borra al eliminar la cuenta.
+  - Dos lugares con el mismo control: en el pizarrón de arriba (texto claro) y en la sección
+    "¿Quieres saber cuando abra?" más abajo. Estados que hay que diseñar: cargando, visitante
+    sin sesión, pedir, guardando, listo (con "Ya no quiero el aviso"), quitando y error de
+    conexión.
+  - El aviso de privacidad ya lo cubre (qué se guarda, para qué y cómo se quita). Mi Salón
+    usa el mismo botón ("Avísame cuando esté disponible") mientras no tenga precio.
 - **Cómo usarlo.** **Por definir**; diseña la sección con 3 pasos de ejemplo (buscar, usar,
   compartir) marcados como provisionales.
 - Mismo esqueleto que la presentación de Mi Salón, para que las tres secciones se vean

@@ -1,3 +1,4 @@
+/* global tailwind */
 // Tokens de diseño compartidos para Tailwind (CDN).
 // Cargar SIEMPRE justo después de https://cdn.tailwindcss.com y antes del render,
 // para que el CDN lea esta config. Reemplaza los bloques tailwind.config inline.

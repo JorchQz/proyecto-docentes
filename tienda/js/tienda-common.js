@@ -552,7 +552,7 @@
 				var cls = act
 					? "bg-white/15 text-white font-semibold"
 					: "text-white/85 hover:bg-white/10 hover:text-white";
-				return '<a href="' + it.href + '" class="' + (extraCls || "inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] transition") + ' ' + cls + '">' + it.label + '</a>';
+				return '<a href="' + it.href + '" class="' + (extraCls || "inline-flex items-center h-11 px-3.5 rounded-lg text-[15px] transition") + ' ' + cls + '">' + it.label + '</a>';
 			}).join("");
 		}
 
@@ -567,7 +567,7 @@
 			: '';
 
 		var loginDesktop = cta
-			? '<a href="login.html" class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Iniciar sesión</a>'
+			? '<a href="login.html" class="inline-flex items-center h-11 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Iniciar sesión</a>'
 			: '<a href="login.html" class="inline-flex items-center h-11 px-4 sm:px-5 rounded-xl bg-action hover:bg-action-dark text-white font-bold text-[15px] transition" style="background-color:#059669;box-shadow:0 8px 24px -12px rgba(5,150,105,.9)">Iniciar sesión</a>';
 		var loginMobile = cta
 			? '<a href="login.html" class="flex items-center h-12 px-3 rounded-lg text-[15px] text-white/85 hover:bg-white/10 transition">Iniciar sesión</a>'
@@ -577,7 +577,7 @@
 		var derecha = "";
 		if (session) {
 			if (nombre) { derecha += '<span data-cuenta class="hidden lg:inline text-white/60 text-[13px] px-2 truncate max-w-[150px]">' + esc(nombre) + '</span>'; }
-			derecha += '<button data-logout class="inline-flex items-center h-10 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
+			derecha += '<button data-logout class="inline-flex items-center h-11 px-3.5 rounded-lg text-[15px] text-white/85 hover:bg-white/10 hover:text-white transition">Salir</button>';
 		} else {
 			derecha += loginDesktop;
 		}
@@ -592,7 +592,7 @@
 			'<header class="sticky top-0 z-50" style="background-color:#1e3a8a;background-image:radial-gradient(circle at 18% 12%,rgba(255,255,255,.08),transparent 38%),radial-gradient(circle at 86% 78%,rgba(255,255,255,.06),transparent 42%),radial-gradient(rgba(255,255,255,.05) .6px,transparent .6px);background-size:auto,auto,4px 4px;border-bottom:1px solid rgba(255,255,255,.1)">' +
 			'<nav class="max-w-[1180px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">' +
 			// Logo
-			'<a href="index.html" data-logo class="shrink-0 flex items-center gap-2">' +
+			'<a href="index.html" data-logo class="shrink-0 flex items-center gap-2 min-h-[44px]">' +
 			'<img src="assets/jissez-wordmark-white.png" alt="Jissez" style="height:28px;width:auto" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline\'" />' +
 			'<span style="display:none;color:#fff;font-weight:800;font-size:17px;letter-spacing:-.01em">Jissez</span>' +
 			'</a>' +
@@ -857,10 +857,10 @@
 			'<span style="display:none;color:#1e3a8a;font-weight:800">Jissez</span>' +
 			'<p>© ' + anio + ' Jissez · Planeaciones NEM</p>' +
 			'<div class="flex flex-wrap justify-center gap-x-5 gap-y-2">' +
-			'<a href="index.html" class="hover:text-ink transition">Inicio</a>' +
-			'<a href="catalogo.html" class="hover:text-ink transition">Catálogo</a>' +
-			'<a href="terminos.html" class="hover:text-ink transition">Términos y Condiciones</a>' +
-			'<a href="privacidad.html" class="hover:text-ink transition">Aviso de Privacidad</a>' +
+			'<a href="index.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Inicio</a>' +
+			'<a href="catalogo.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Catálogo</a>' +
+			'<a href="terminos.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Términos y Condiciones</a>' +
+			'<a href="privacidad.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Aviso de Privacidad</a>' +
 			'<a href="mailto:soporte@jissez.com" class="hover:text-ink transition">Contacto</a>' +
 			'</div>' +
 			'</div>' +

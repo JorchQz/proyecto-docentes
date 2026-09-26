@@ -12,7 +12,11 @@
 	- Sin emojis en los archivos nuevos.
 	- SQL de interes_secciones: RLS (cada quien inserta, ve y borra lo suyo; anon sin permisos;
 	  nadie actualiza) y delete_own_account sigue cubriendo todo lo de b15 más la tabla nueva.
-	- Las imágenes que usan las páginas existen y llevan tamaño explícito y carga diferida.
+	- Las imágenes que usan las páginas existen y llevan tamaño explícito y carga diferida,
+	  salvo la principal de Mi Salón (loading="eager").
+	- Beneficio para compradores (PRECIOS_MI_SALON.beneficioCompradores): genérico sin precio,
+	  oculto con precio y sin beneficio, el texto configurado cuando lo hay.
+	- Textos revisados contra el SaaS (revisor R23) y el aviso de privacidad cubre el "Avísame".
 
 	node pruebas/presentaciones.test.js
 */
@@ -75,7 +79,7 @@ const splat = redirects.indexOf("/salon/* /:splat 200");
 
 // ── 3. Precio en un solo lugar ───────────────────────────────────────────────
 const { PRECIOS_MI_SALON, ConoceMiSalon } = require(path.join(RAIZ, "tienda/js/conoce-mi-salon.js"));
-ok("configuración publicada: los precios siguen en null", [PRECIOS_MI_SALON.trimestre, PRECIOS_MI_SALON.ciclo, PRECIOS_MI_SALON.compra], [null, null, null]);
+ok("configuración publicada: los precios y el beneficio siguen en null", [PRECIOS_MI_SALON.trimestre, PRECIOS_MI_SALON.ciclo, PRECIOS_MI_SALON.compra, PRECIOS_MI_SALON.beneficioCompradores], [null, null, null, null]);
 const enNull = ConoceMiSalon.planes(PRECIOS_MI_SALON, false);
 ok("precio en null: 'Precio por anunciar' en las dos tarjetas", enNull.map((p) => p.texto), ["Precio por anunciar", "Precio por anunciar"]);
 ok("precio en null: sin botón de compra", enNull.map((p) => p.compra), [null, null]);
@@ -92,7 +96,26 @@ const htmlMs = leer("tienda/conoce-mi-salon.html");
 ok("el HTML inicial no trae botón de compra (solo lo pinta el JS con precio)", /data-compra/.test(htmlMs), false);
 ok("el HTML inicial dice 'Precio por anunciar' en las dos tarjetas", (htmlMs.match(/data-precio="pendiente">Precio por anunciar</g) || []).length, 2);
 ok("PRECIOS_MI_SALON se define solo en tienda/js/conoce-mi-salon.js", revisar.concat(PAGINAS).filter((f) => /PRECIOS_MI_SALON\s*=/.test(leer(f))), []);
-ok("beneficio para compradores, genérico y sin montos", /Si ya compraste planeaciones en Jissez, tendrás un beneficio especial/.test(htmlMs) && !/\$\s?\d|\d+\s?%/.test(htmlMs.split('id="adquirir"')[1].split("</section>")[0]), true);
+ok("beneficio para compradores, genérico y sin montos", /Si ya compraste planeaciones en Jissez, tendrás un beneficio especial; te lo diremos al lanzar\./.test(htmlMs) && !/\$\s?\d|\d+\s?%/.test(htmlMs.split('id="adquirir"')[1].split("</section>")[0]), true);
+
+// Beneficio para quien ya compró planeaciones (PRECIOS_MI_SALON.beneficioCompradores)
+const GENERICO = "Si ya compraste planeaciones en Jissez, tendrás un beneficio especial; te lo diremos al lanzar.";
+ok("beneficio: el HTML inicial trae el mismo texto genérico que el JS", htmlMs.indexOf('id="msBeneficioTexto" class="mt-1.5 text-ink/80">' + ConoceMiSalon.BENEFICIO_GENERICO + "</p>") !== -1 && ConoceMiSalon.BENEFICIO_GENERICO === GENERICO, true);
+ok("beneficio sin precio (configuración publicada, objeto vacío o null): texto genérico", [ConoceMiSalon.beneficio(PRECIOS_MI_SALON), ConoceMiSalon.beneficio({}), ConoceMiSalon.beneficio(null)], [GENERICO, GENERICO, GENERICO]);
+ok("beneficio con precio y sin beneficioCompradores: no aparece", [ConoceMiSalon.beneficio({ trimestre: 149, ciclo: null, compra: null, beneficioCompradores: null }), ConoceMiSalon.beneficio({ ciclo: 399, beneficioCompradores: "   " }), ConoceMiSalon.beneficio({ trimestre: 149, ciclo: 399 })], [null, null, null]);
+ok("beneficio con precio y con beneficioCompradores: aparece ese texto", ConoceMiSalon.beneficio({ trimestre: 149, ciclo: 399, compra: "checkout.html", beneficioCompradores: " Tu primer trimestre va sin costo. " }), "Tu primer trimestre va sin costo.");
+ok("beneficio sin precio y con beneficioCompradores: gana el texto configurado", ConoceMiSalon.beneficio({ trimestre: null, beneficioCompradores: "Un mes sin costo." }), "Un mes sin costo.");
+ok("la página pinta el beneficio desde ConoceMiSalon.beneficio y oculta la tarjeta sin él", /ConoceMiSalon\.beneficio\(PRECIOS_MI_SALON\)/.test(leer("tienda/js/conoce-mi-salon.js")) && /tarjeta\.classList\.toggle\("hidden", !t\)/.test(leer("tienda/js/conoce-mi-salon.js")), true);
+
+// Textos revisados contra el SaaS (R23)
+const textoMs = htmlMs.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+ok("el titular ya no dice 'sin Excel' (la página ofrece exportar a Excel)", [/sin Excel/i.test(textoMs), /\bExcel\b/.test(textoMs)], [false, true]);
+ok("calendario: 'los ajustes de tu grupo', no 'de tu escuela'", [/ajustes de tu grupo/.test(textoMs), /ajustes de tu escuela/.test(textoMs)], [true, false]);
+ok("instalar: 'y sigue los pasos', no 'y acepta'", [/"Instalar la app" y sigue los pasos/.test(htmlMs), /y acepta\b/.test(textoMs)], [true, false]);
+ok("no afirma que el catálogo de planeaciones está incluido", [/usar planeaciones de Jissez/.test(textoMs), /import(a|as|ar) (uno|un proyecto) de las planeaciones/.test(textoMs), /(planeaciones|catálogo)[^.]*incluid/i.test(textoMs)], [true, false, false]);
+ok("exámenes: la maestra aplica los del catálogo (no los crea)", [/aplicas los exámenes del catálogo de Jissez/.test(textoMs), /matemáticas; y exámenes\./.test(textoMs)], [true, false]);
+ok("paso 'Crea tu grupo': estado, ciclo, trimestre y tipo de organización", ["tu estado", "ciclo escolar", "trimestre en curso", "tipo de organización"].every((t) => textoMs.split("Crea tu grupo")[1].split("Da de alta")[0].indexOf(t) !== -1), true);
+ok("privacidad: no dice que lo del grupo va sin nombres (el rol de aseo sí los lleva)", [/lo que es para todo el grupo no lleva nombres/.test(textoMs), /El rol de aseo sí lleva los nombres/.test(textoMs)], [false, true]);
 ok("con acceso: 'Ir a Mi Salón' lleva al panel", (htmlMs.match(/data-ms="acceso" href="\.\.\/dashboard\.html"[^>]*>\s*Ir a Mi Salón/g) || []).length, 2);
 
 // ── 4. "Avísame": regreso del login y secciones válidas ──────────────────────
@@ -107,6 +130,15 @@ const LoginDestino = require(path.join(RAIZ, "tienda/js/login.js"));
 });
 ok("otro parámetro no guarda nada", [InteresSeccion.pidioAlRegresar("?avisame=sala", "mi_salon"), InteresSeccion.pidioAlRegresar("", "sala")], [false, false]);
 ok("secciones válidas (las del CHECK de la tabla)", ["sala", "mi_salon", "tienda", ""].map(InteresSeccion.valida), [true, true, false, false]);
+// El aviso de privacidad cubre el "Avísame" (qué guarda, para qué y cómo se quita), como dice Sala
+const priv = leer("tienda/privacidad.html");
+ok("privacidad: el Avísame en datos, finalidades y borrado, con la fecha de hoy", [
+	/Si pide que le avisemos cuando abra una sección de Jissez[^<]*guardamos su cuenta, esa petición y la fecha/.test(priv),
+	/escribirle a su correo cuando abra la sección de la que nos pidió aviso/.test(priv),
+	/puede quitar esa petición desde la misma página donde la hizo, con el botón "Ya no quiero el aviso"/.test(priv),
+	/Última actualización: 26 de septiembre de 2026/.test(priv),
+], [true, true, true, true]);
+ok("el botón que nombra el aviso de privacidad es el que pinta interes-seccion.js", /Ya no quiero el aviso/.test(leer("tienda/js/interes-seccion.js")) && /Puedes quitarlo cuando quieras desde esta página\. Más detalles en el <a href="privacidad\.html"/.test(leer("tienda/conoce-sala.html")), true);
 ok("la página de Sala monta el aviso con sesión y la de Mi Salón solo sin precio", [/InteresSeccion\.montar\(\{\s*seccion: "sala"/.test(leer("tienda/conoce-sala.html")), /ofrecerAviso/.test(leer("tienda/js/conoce-mi-salon.js"))], [true, true]);
 
 // Selector de secciones en las presentaciones: marca su sección y no la guarda como la última
@@ -157,9 +189,15 @@ PAGINAS.forEach((p) => {
 	const html = leer(p);
 	const imgs = [...html.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
 	const sinTam = imgs.filter((i) => !/\bwidth="\d+"/.test(i) || !/\bheight="\d+"/.test(i));
-	const sinLazy = imgs.filter((i) => !/loading="lazy"/.test(i));
+	// La imagen principal de Mi Salón (la tablet con Hoy, arriba) carga de inmediato; las demás, diferidas
+	const esPrincipal = (i) => /ms-hoy-1280\.webp/.test(i);
+	const sinLazy = imgs.filter((i) => !esPrincipal(i) && !/loading="lazy"/.test(i));
 	const sinAlt = imgs.filter((i) => !/\balt="/.test(i));
-	ok(p + ": imágenes con width, height, loading=lazy y alt", [sinTam.length, sinLazy.length, sinAlt.length], [0, 0, 0]);
+	ok(p + ": imágenes con width, height, loading=lazy (salvo la principal) y alt", [sinTam.length, sinLazy.length, sinAlt.length], [0, 0, 0]);
+	if (p === "tienda/conoce-mi-salon.html") {
+		const principal = imgs.filter(esPrincipal);
+		ok(p + ": la imagen principal va con loading=eager (y fetchpriority=high)", principal.length === 1 && /loading="eager"/.test(principal[0]) && /fetchpriority="high"/.test(principal[0]), true);
+	}
 	const rutas = [...html.matchAll(/(?:src|srcset)="([^"]+)"/g)].flatMap((m) => m[1].split(",").map((s) => s.trim().split(/\s+/)[0]))
 		.filter((r) => /presentacion\/img\//.test(r));
 	const faltanImg = rutas.filter((r) => !fs.existsSync(path.join(RAIZ, "tienda", r)));

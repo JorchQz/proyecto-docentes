@@ -1,3 +1,4 @@
+/* global InteresSeccion */
 /*
 	Página de presentación de Mi Salón (tienda/conoce-mi-salon.html; decisión de Jorge, 2026-09-26).
 	Publicada pero OCULTA: sin enlaces desde la tienda ni desde ningún menú, con noindex. Ver el
@@ -13,6 +14,14 @@
 	  compra     a dónde lleva el botón de compra, relativo a tienda/ (por ejemplo
 	             "checkout.html?producto=mi-salon"). Al enlace se le agrega "plan=trimestre" o
 	             "plan=ciclo" para que la compra sepa cuál eligió.
+	  beneficioCompradores
+	             texto del beneficio para quien ya compró planeaciones en Jissez, tal como se
+	             mostrará en la página (por ejemplo "Tu primer trimestre de Mi Salón va sin
+	             costo."), o null si no hay beneficio que anunciar.
+
+	Forma del objeto:
+	  { trimestre: número | null, ciclo: número | null, compra: "ruta.html?..." | null,
+	    beneficioCompradores: "texto" | null }
 	Reglas:
 	  - Un precio en null (o que no sea un número mayor que 0) muestra "Precio por anunciar" en su
 	    tarjeta y NO muestra botón de compra.
@@ -20,6 +29,10 @@
 	  - Mientras los dos precios sean null, en su lugar se ofrece "Avísame cuando esté disponible"
 	    (tabla interes_secciones, sección "mi_salon").
 	  - A una cuenta que ya tiene Mi Salón no se le ofrece comprar: ve "Ir a Mi Salón".
+	  - Tarjeta "¿Ya compraste planeaciones en Jissez?": con beneficioCompradores, muestra ese
+	    texto; sin él y sin ningún precio, el texto genérico ("tendrás un beneficio especial; te
+	    lo diremos al lanzar"); sin él y CON precio, la tarjeta no aparece (ya se lanzó y no hay
+	    beneficio que anunciar).
 	Probado en pruebas/presentaciones.test.js.
 	═══════════════════════════════════════════════════════════════════════════════════════════
 */
@@ -27,6 +40,7 @@ var PRECIOS_MI_SALON = {
 	trimestre: null,
 	ciclo: null,
 	compra: null,
+	beneficioCompradores: null,
 };
 
 var ConoceMiSalon = (function () {
@@ -77,12 +91,22 @@ var ConoceMiSalon = (function () {
 		return precioValido(cfg.trimestre) || precioValido(cfg.ciclo);
 	}
 
+	// Texto de la tarjeta de beneficio para quien ya compró planeaciones, o null si la tarjeta
+	// no aparece (reglas en el comentario de PRECIOS_MI_SALON)
+	var BENEFICIO_GENERICO = "Si ya compraste planeaciones en Jissez, tendrás un beneficio especial; te lo diremos al lanzar.";
+	function beneficio(cfg) {
+		cfg = cfg || {};
+		var b = cfg.beneficioCompradores;
+		if (typeof b === "string" && b.trim()) return b.trim();
+		return hayPrecio(cfg) ? null : BENEFICIO_GENERICO;
+	}
+
 	// ¿Se ofrece "Avísame cuando esté disponible"? Solo sin ningún precio y sin acceso.
 	function ofrecerAviso(cfg, conAcceso) {
 		return !conAcceso && !hayPrecio(cfg);
 	}
 
-	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso };
+	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, BENEFICIO_GENERICO: BENEFICIO_GENERICO };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = { PRECIOS_MI_SALON: PRECIOS_MI_SALON, ConoceMiSalon: ConoceMiSalon }; // pruebas en node
 
@@ -115,6 +139,23 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 		if (window.Tienda) Tienda.iconos();
 	}
 
+	// Tarjeta de beneficio para quien ya compró planeaciones. Sin beneficio, "Qué incluye" queda
+	// solo, en una columna centrada.
+	function pintarBeneficio() {
+		var tarjeta = document.getElementById("msBeneficio");
+		var texto = document.getElementById("msBeneficioTexto");
+		var grid = document.getElementById("msIncluyeGrid");
+		if (!tarjeta || !texto) return;
+		var t = ConoceMiSalon.beneficio(PRECIOS_MI_SALON);
+		if (t) texto.textContent = t;
+		tarjeta.classList.toggle("hidden", !t);
+		if (grid) {
+			grid.classList.toggle("sm:grid-cols-2", !!t);
+			grid.classList.toggle("max-w-3xl", !!t);
+			grid.classList.toggle("max-w-xl", !t);
+		}
+	}
+
 	function aplicarAcceso(conAcceso) {
 		raiz.classList.toggle("ms-acceso", !!conAcceso);
 		pintarPrecios(conAcceso);
@@ -123,6 +164,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	}
 
 	// Primer pintado: con la pista del <head> (ms-acceso) y los precios de la configuración
+	pintarBeneficio();
 	aplicarAcceso(raiz.classList.contains("ms-acceso"));
 
 	if (!window.Tienda) return;
