@@ -14,6 +14,10 @@
 	- Instalar en iPhone/iPad: "Abrir como app web" solo si aparece; atajos de Android con su
 	  nombre real (salon.webmanifest) y lo que abren (js/hoy.js irASeccion).
 	- Funciones nuevas nombradas en la página: existen en el código.
+	- B3 (2026-09-26): "la escala de su grado", mala señal "en Hoy o en Exámenes", la boleta de una
+	  familia solo lleva a su hija o hijo, Incompleta de una actividad, "eliges con qué grado
+	  trabajan" solo al marcar alumnos, "docentes" (nunca "maestra" o "maestro") y comillas
+	  latinas; y los textos aprobados del aviso de privacidad y los términos.
 
 	node pruebas/conoce-mi-salon-textos.test.js
 */
@@ -91,9 +95,9 @@ ok("la página pinta el encabezado desde ConoceMiSalon.encabezado", /ConoceMiSal
 
 // ── 6. Instalar: iOS exacto y atajos con su nombre real ──────────────────────
 ok("iOS: 'Abrir como app web' solo si aparece; 'Agregar a inicio'", [
-	/Si aparece "Abrir como app web", déjalo activado\./.test(texto),
-	/deja activado "Abrir como app web"/.test(texto),
-	/"Agregar a inicio" o "Agregar a pantalla de inicio"/.test(texto),
+	/Si aparece «Abrir como app web», déjalo activado\./.test(texto),
+	/deja activado «Abrir como app web»/.test(texto),
+	/«Agregar a inicio» o «Agregar a pantalla de inicio»/.test(texto),
 	/inicia sesión una vez dentro de la app/.test(texto),
 ], [true, false, true, true]);
 ok("respaldo: la hoja de instrucciones de la app dice lo mismo ('Si aparece')", /Si aparece, deja activado <strong>Abrir como app web<\/strong>/.test(leer("js/app-instalada.js")), true);
@@ -105,9 +109,9 @@ ok("manifest: los tres atajos", atajos, [
 	{ nombre: "Reportes", hash: null, ruta: "/salon/reportes" },
 ]);
 ok("la página nombra cada atajo como el manifest y dice qué abre", [
-	/"Pasar lista" abre la asistencia de hoy/.test(texto),
-	/"Calificar trabajos" abre las sesiones de hoy/.test(texto),
-	/"Reportes", los reportes del grupo/.test(texto),
+	/«Pasar lista» abre la asistencia de hoy/.test(texto),
+	/«Calificar trabajos» abre las sesiones de hoy/.test(texto),
+	/«Reportes», los reportes del grupo/.test(texto),
 ], [true, true, true]);
 const hoyHtml = leer("hoy.html");
 ok("respaldo: Hoy salta a #asistencia y #sesiones (irASeccion) y esas secciones son Asistencia y Sesiones de hoy", [
@@ -118,8 +122,8 @@ ok("respaldo: Hoy salta a #asistencia y #sesiones (irASeccion) y esas secciones 
 
 // ── 7. Funciones nuevas nombradas en la página: existen en el código ─────────
 ok("la página nombra actividades sueltas, ¿Para quién?, Incompleta y Actividades del trimestre", [
-	/Actividades sueltas/.test(texto), /¿Para quién\?/.test(texto), /márcala Incompleta/.test(texto), /"Actividades del trimestre"/.test(texto),
-	/pasarla a un proyecto del mismo trimestre/.test(texto), /eliges con qué grado trabajan/.test(texto),
+	/Actividades sueltas/.test(texto), /¿Para quién\?/.test(texto), /márcala Incompleta/.test(texto), /«Actividades del trimestre»/.test(texto),
+	/pasarla a un proyecto del mismo trimestre/.test(texto), /Si marcas alumnos, eliges con qué grado trabajan/.test(texto),
 ], [true, true, true, true, true, true]);
 const hoyJs = leer("js/hoy.js");
 ok("respaldo: Hoy agrega actividades sueltas y las pasa a un proyecto", [/id="btnSuelta"[^>]*>Actividad suelta</.test(hoyHtml), /Pasar a un proyecto/.test(hoyJs)], [true, true]);
@@ -139,6 +143,54 @@ ok("respaldo: exámenes con dos caminos y cuatro tipos de pregunta", [
 	/opción múltiple \(sugerida: se revisa sola\), verdadero o falso,\s*completar y abierta/.test(leer("js/examen-propio.js")),
 	/Capturar tocando/.test(leer("js/examen-camara.js")),
 ], [true, true, true, true]);
+
+// ── 8. B3 (textos aprobados por Jorge el 2026-09-26) ─────────────────────────
+// Todo el texto visible de la página (cuerpo, con pie; sin comentarios, scripts, estilos ni atributos)
+const visible = sinComentarios.split(/<body[^>]*>/)[1].replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ")
+	.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+ok("escala: ninguna 'escala oficial' y 'la escala de su grado' en las tres frases (más la de multigrado)", [
+	(visible.match(/escala oficial de la SEP/g) || []).length, (visible.match(/escala (de calificación )?oficial/g) || []).length,
+	(visible.match(/escala de su grado/g) || []).length,
+	/PDA por grado y, para cada alumno, la escala de su grado\./.test(visible),
+	/Calificación propuesta de cada alumno con la escala de su grado, que tú confirmas;/.test(visible),
+	/Mi Salón propone la de cada alumno con lo que capturaste y la escala de su grado;/.test(visible),
+], [0, 0, 4, true, true, true]);
+ok("mala señal: la tarjeta dice 'en Hoy o en Exámenes'", /Si la señal se va mientras capturas en Hoy o en Exámenes, lo que marcas se guarda en tu tablet/.test(visible), true);
+ok("familias: la boleta, el reporte y los mensajes solo llevan a su hija o hijo", [
+	/La boleta, el reporte y los mensajes que Mi Salón prepara para una familia solo llevan a su hija o hijo\./.test(visible),
+	/Lo que Mi Salón prepara para una familia solo lleva a su hija o hijo/.test(visible),
+], [true, false]);
+ok("Incompleta: 'no terminó una actividad en clase'", /Si un alumno no terminó una actividad en clase, márcala Incompleta/.test(visible), true);
+// "¿Con qué grado trabajan?" solo sale en el modo de alumnos de ¿Para quién? (js/hoy.js construirParaQuien)
+const conGrado = visible.split(/(?<=[.?!])\s+/).filter((o) => /eliges con qué grado trabajan/.test(o));
+ok("'eliges con qué grado trabajan' solo en el modo de alumnos", [conGrado.length, conGrado.every((o) => /^Si marcas alumnos, eliges con qué grado trabajan/.test(o))], [2, true]);
+ok("respaldo: el grado con que trabajan solo se muestra con 'Alumnos que elijo'", /data-para='alumnos'[\s\S]{0,200}¿Con qué grado trabajan\?/.test(hoyJs) && /a\.classList\.toggle\("hidden", m !== "alumnos"\)/.test(hoyJs), true);
+ok("docentes: ni 'maestra' ni 'maestro' en el texto visible", visible.match(/\bmaestr[oa]s?\b/gi) || [], []);
+ok("comillas: solo latinas en el texto visible, parejas", [
+	(visible.match(/["“”]/g) || []).length, (visible.match(/«/g) || []).length === (visible.match(/»/g) || []).length, (visible.match(/«/g) || []).length > 0,
+], [0, true, true]);
+
+// Aviso de privacidad y términos (textos legales aprobados por Jorge el 2026-09-26)
+const privacidad = leer("tienda/privacidad.html");
+const terminos = leer("tienda/terminos.html");
+ok("privacidad: exámenes y ¿Para quién? entre los datos del alumno", [
+	/las respuestas y los resultados de los exámenes que usted captura \(incluido si no presentó\)/.test(privacidad),
+	/a qué actividades se le asignó \("¿Para quién\?"\)/.test(privacidad),
+], [true, true]);
+ok("privacidad: cámara y captura sin señal en el dispositivo", [
+	/Si revisa las hojas de respuestas con la cámara, la imagen se procesa solo en su dispositivo: no se guarda ni se envía a Jissez; solo se guardan las respuestas leídas\./.test(privacidad),
+	/Si pierde la señal mientras captura en Hoy o en Exámenes, lo capturado se guarda temporalmente en su dispositivo, ligado a su cuenta, y se borra al enviarse\. Si comparte el dispositivo, cierre sesión al terminar\./.test(privacidad),
+], [true, true]);
+ok("privacidad: el navegador guarda la sesión y lo capturado sin señal (ya no 'solo la sesión')", [
+	/lo necesario para mantener su sesión iniciada\./.test(privacidad),
+	/lo necesario para mantener su sesión iniciada y, además, lo que usted capture sin señal en Mi Salón/.test(privacidad),
+], [false, true]);
+ok("privacidad: cada cuenta ve solo lo suyo; Jissez no los consulta", [
+	/Solo usted, con su cuenta, puede verlos en Mi Salón\./.test(privacidad),
+	/En Mi Salón, cada cuenta ve solo lo suyo\. Jissez no los consulta, salvo que usted nos pida ayuda o lo exija la ley\./.test(privacidad),
+], [false, true]);
+ok("términos: la calificación oficial es la que se registra en el SIGED", /Las calificaciones que propone Mi Salón son una propuesta; la oficial es la que usted confirma y registra en el SIGED\./.test(terminos.split("<h2>10.")[1].split("<h2>11.")[0]), true);
+ok("fecha de actualización de los dos textos legales", [/Última actualización: 26 de septiembre de 2026/.test(privacidad), /Última actualización: 26 de septiembre de 2026/.test(terminos)], [true, true]);
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);
