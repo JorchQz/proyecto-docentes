@@ -54,8 +54,9 @@
 --    nivel que logró. Las tres columnas van en el MISMO grupo de marca que el semáforo
 --    (captura_semaforo) de la cola sin señal de Hoy (b12): se escriben y deciden juntas.
 --
--- 4. delete_own_account: todo lo anterior (b10, b13, b14, b15, interes_secciones) más
---    producto_sesion_alumnos.
+-- 4. delete_own_account: la versión COMPLETA (b10, b13, b14, b15, interes_secciones,
+--    producto_sesion_alumnos y los exámenes de b18/b19, todo lo de b13 en adelante con guarda
+--    to_regclass), la misma letra por letra que dejan jissez_interes_secciones, b18 y b19.
 
 -- ── 1. Columnas ──────────────────────────────────────────────────────────────
 alter table public.proyectos add column if not exists tipo text not null default 'proyecto';
@@ -567,6 +568,7 @@ grant execute on function public.agregar_actividad_suelta(uuid, date, jsonb, jso
 grant execute on function public.mover_producto_a_sesion(uuid, uuid, date) to authenticated;
 
 -- ── 4. delete_own_account ────────────────────────────────────────────────────
+-- @@delete_own_account inicio (versión COMPLETA, idéntica en jissez_interes_secciones, b17, b18 y b19)
 create or replace function public.delete_own_account()
 returns void
 language plpgsql
@@ -630,9 +632,26 @@ begin
   if to_regclass('public.interes_secciones') is not null then
     execute 'delete from public.interes_secciones where usuario_id = $1' using v;
   end if;
+  -- Exámenes de Mi Salón (b18 y b19): no presentó, respuestas, resultados, preguntas y exámenes
+  if to_regclass('public.examen_alumnos') is not null then
+    execute 'delete from public.examen_alumnos where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examen_respuestas') is not null then
+    execute 'delete from public.examen_respuestas where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examen_resultados') is not null then
+    execute 'delete from public.examen_resultados where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examen_preguntas') is not null then
+    execute 'delete from public.examen_preguntas where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examenes_grupo') is not null then
+    execute 'delete from public.examenes_grupo where maestro_id = $1' using v;
+  end if;
 
   delete from auth.users where id = v;
 end $$;
 
 revoke all on function public.delete_own_account() from public, anon;
 grant execute on function public.delete_own_account() to authenticated;
+-- @@delete_own_account fin
