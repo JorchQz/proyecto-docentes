@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- App instalable "Jissez MS" (js/app-instalada.js; docs/PWA-MI-SALON.md) -->
+	<link rel="manifest" href="/salon.webmanifest">
+	<meta name="theme-color" content="#1e3a8a">
+	<link rel="apple-touch-icon" href="/iconos/apple-touch-icon-180.png">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Jissez MS">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<script src="js/app-instalada.js"></script>
+	<!-- Navegación (js/navbar.js): en el head, para apartar su espacio desde el primer pintado -->
+	<script src="js/navbar.js"></script>
+	<title>Ponte al día — Jissez</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		/* Cuadrículas (asistencia y calificaciones): la columna de nombres queda fija al desplazar */
+		.pd-fija { position: sticky; left: 0; z-index: 2; background: #fff; }
+		thead .pd-fija { z-index: 3; background: #f9fafb; }
+		.pd-tabla th, .pd-tabla td { border-bottom: 1px solid #f3f4f6; }
+	</style>
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-8 text-gray-800">
+	<div class="max-w-6xl mx-auto flex flex-col gap-5">
+		<header class="bg-blue-800 rounded-2xl shadow-md p-5 sm:p-6">
+			<h1 class="text-2xl md:text-3xl font-bold text-white">Ponte al día</h1>
+			<p id="ponteSub" class="text-blue-100 text-sm md:text-base mt-1">Cargando...</p>
+		</header>
+
+		<!-- Primera vez: qué es y cuánto toma -->
+		<section id="ponteIntro" class="hidden bg-white rounded-2xl shadow-md p-5 sm:p-6 flex flex-col gap-4" aria-labelledby="ponteIntroTitulo">
+			<h2 id="ponteIntroTitulo" class="text-xl font-bold text-gray-900">Captura lo que ya llevas del trimestre</h2>
+			<p id="ponteIntroTexto" class="text-sm text-gray-700 leading-relaxed"></p>
+			<ol class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
+				<li class="rounded-xl border border-gray-200 px-3 py-2"><span class="font-semibold">1. Tus alumnos.</span> Revisa la lista o pega más nombres.</li>
+				<li class="rounded-xl border border-gray-200 px-3 py-2"><span class="font-semibold">2. Asistencia pasada.</span> Todos asistieron; solo marcas las faltas.</li>
+				<li class="rounded-xl border border-gray-200 px-3 py-2"><span class="font-semibold">3. Trabajos y exámenes.</span> Varias actividades de una vez y su semáforo.</li>
+				<li class="rounded-xl border border-gray-200 px-3 py-2"><span class="font-semibold">4. Revisa la boleta.</span> La calificación propuesta y cómo se calculó; o captura directamente la que ya tienes.</li>
+			</ol>
+			<p class="text-xs text-gray-500">Cualquier paso se puede saltar y retomar después desde Inicio. Lo que captures aquí queda marcado como registro histórico: no llena Hoy de pendientes.</p>
+			<div class="flex flex-col sm:flex-row gap-2">
+				<button type="button" id="ponteEmpezar" class="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700">Empezar</button>
+				<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl border border-gray-300 bg-white font-semibold text-gray-700 hover:bg-gray-50">Ahora no, ir a Inicio</a>
+			</div>
+		</section>
+
+		<!-- Pasos -->
+		<nav id="pontePasos" class="hidden" aria-label="Pasos de Ponte al día">
+			<ol class="grid grid-cols-2 lg:grid-cols-4 gap-2" id="pontePasosLista"></ol>
+		</nav>
+
+		<div id="ponteMensaje" class="hidden rounded-xl px-4 py-3 text-sm" role="status" aria-live="polite"></div>
+
+		<main id="ponteContenido" class="hidden bg-white rounded-2xl shadow-md p-4 sm:p-6"></main>
+
+		<div id="ponteSalir" class="hidden flex flex-col sm:flex-row sm:justify-between gap-2">
+			<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl text-sm font-semibold text-blue-700 hover:bg-blue-50">Salir y seguir después</a>
+			<button type="button" id="ponteOcultar" class="inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100">Ya no mostrar en Inicio</button>
+		</div>
+	</div>
+
+	<!-- PDA de una actividad (opcional) -->
+	<dialog id="dlgPda" class="w-[min(40rem,calc(100vw-24px))] max-h-[calc(100dvh-24px)] rounded-2xl p-0 overflow-hidden backdrop:bg-black/40" aria-labelledby="dlgPdaTitulo"></dialog>
+	<!-- Cómo se calculó la calificación propuesta de un alumno -->
+	<dialog id="dlgCalculo" class="w-[min(44rem,calc(100vw-24px))] max-h-[calc(100dvh-24px)] rounded-2xl p-0 overflow-hidden backdrop:bg-black/40" aria-labelledby="dlgCalculoTitulo"></dialog>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/lectura.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/secciones.js"></script>
+	<script src="js/bandeja-salida.js"></script>
+	<script src="js/grupo-activo.js"></script>
+	<script src="js/leer-todo.js"></script>
+	<script src="js/section-shell.js"></script>
+	<script src="js/campos-formativos.js"></script>
+	<script src="js/calendario-sep.js"></script>
+	<script src="js/calendario-escolar.js"></script>
+	<script src="js/alcance-hoy.js"></script>
+	<script src="js/productos-hoy.js"></script>
+	<script src="js/nombres-alumno.js"></script>
+	<script src="js/reglas-entidad.js"></script>
+	<script src="js/motor-calificacion.js"></script>
+	<script src="js/reporte-datos.js"></script>
+	<script src="js/historico.js"></script>
+	<script src="js/lista-pegada.js"></script>
+	<script src="js/ponte-al-dia.js"></script>
+</body>
+</html>

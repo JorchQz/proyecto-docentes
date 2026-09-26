@@ -139,6 +139,78 @@
 		});
 	}
 
+	/*
+		Registro histórico (spec de Jorge del 2026-09-26, §4.1): dos formas de agregar alumnos,
+		"Pegar la lista" (Excel, Word o WhatsApp; js/lista-pegada.js con las reglas de
+		js/historico.js) y "Uno por uno" (el formulario de siempre). Las dos llenan la misma lista
+		`students` (y su borrador en el aparato); "Completar configuración" la guarda igual.
+		Si el trimestre del grupo ya empezó, el alta es el paso 1 de "Ponte al día" y al terminar se
+		abre el asistente (ponte-al-dia.html) en vez de Inicio; se puede saltar desde ahí.
+	*/
+	var modoPegarBtn = document.getElementById("modoPegar");
+	var modoUnoBtn = document.getElementById("modoUno");
+	var panelPegar = document.getElementById("panelPegar");
+	var panelUno = document.getElementById("panelUno");
+	function modoAlta(pegar) {
+		if (!panelPegar || !panelUno) return;
+		panelPegar.classList.toggle("hidden", !pegar);
+		panelUno.classList.toggle("hidden", pegar);
+		[[modoPegarBtn, pegar], [modoUnoBtn, !pegar]].forEach(function (x) {
+			if (!x[0]) return;
+			x[0].setAttribute("aria-selected", x[1] ? "true" : "false");
+			x[0].className = "min-h-[44px] px-4 rounded-xl text-sm font-semibold " + (x[1] ? "bg-blue-700 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200");
+		});
+	}
+	if (modoPegarBtn) modoPegarBtn.addEventListener("click", function () { modoAlta(true); });
+	if (modoUnoBtn) modoUnoBtn.addEventListener("click", function () { modoAlta(false); document.getElementById("studentLastName1").focus(); });
+
+	function montarListaPegada() {
+		var cont = document.getElementById("pegarListaCont");
+		if (!cont || !window.ListaPegada || !window.Historico) {
+			// Sin el componente, solo "Uno por uno"
+			modoAlta(false);
+			if (modoPegarBtn) modoPegarBtn.classList.add("hidden");
+			return;
+		}
+		var lista = window.ListaPegada.montar(cont, {
+			grados: shouldCaptureStudentGrade() ? currentGroupGrades : currentGroupGrades.slice(0, 1),
+			existentes: function () { return students.map(function (s) { return s.nombre_completo; }); },
+			textoBoton: function (n) { return "Agregar " + n + (n === 1 ? " alumno" : " alumnos") + " a la lista"; },
+			alConfirmar: async function (filas) {
+				var nuevos = 0;
+				filas.forEach(function (f) {
+					var grado = shouldCaptureStudentGrade() ? f.grado : (currentGroupGrades[0] || null);
+					var key = normalizeName(f.nombre_completo) + "|" + String(grado || "");
+					if (students.some(function (s) { return s.key === key; })) return;
+					students.push({ nombre_completo: f.nombre_completo, grado: grado, key: key });
+					nuevos++;
+				});
+				updateStudentsList();
+				lista.limpiar();
+				showMessage("studentsMessage", "success", nuevos + (nuevos === 1 ? " alumno agregado" : " alumnos agregados") +
+					" a la lista. Revísala abajo y presiona «Completar configuración».");
+				var destinoLista = document.getElementById("studentsList");
+				if (destinoLista && destinoLista.scrollIntoView) destinoLista.scrollIntoView({ behavior: "smooth", block: "start" });
+			},
+		});
+	}
+
+	// ¿El trimestre del grupo ya empezó? Entonces el alta es el paso 1 de "Ponte al día"
+	function hoyLocal() {
+		var d = new Date();
+		return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+	}
+	function ofrecePonteAlDia() {
+		if (!window.Historico) return false;
+		var t = parseInt(trimestreActualSelect.value, 10) || 1;
+		var hoy = hoyLocal();
+		return window.Historico.ofrecerPonteAlDia(hoy, { inicio: window.Historico.inicioDelTrimestre(t, hoy) });
+	}
+	function pintarAvisoPonte() {
+		var aviso = document.getElementById("ponteAviso");
+		if (aviso) aviso.classList.toggle("hidden", !ofrecePonteAlDia());
+	}
+
 	// ¿Quedó un alta a medias en este aparato? Se ofrece continuarla (después de conectar el
 	// tipo de organización: llenar el formulario lo usa)
 	ofrecerBorrador();
@@ -241,12 +313,15 @@
 			configureStudentGradeSelector();
 			updateStudentsList();
 			guardarBorrador();
+			montarListaPegada();
+			pintarAvisoPonte();
 			showMessage("groupMessage", "success", isEditing ? "Grupo actualizado exitosamente." : "Grupo creado exitosamente.");
 
 			setTimeout(function () {
 				stepGroup.classList.add("hidden");
 				stepStudents.classList.remove("hidden");
-				document.getElementById("studentLastName1").focus();
+				var pegar = panelPegar && !panelPegar.classList.contains("hidden") ? panelPegar.querySelector("textarea") : null;
+				(pegar || document.getElementById("studentLastName1")).focus();
 			}, 800);
 		} catch (error) {
 			showMessage(
@@ -401,8 +476,19 @@
 			// La lista ya está en la base: el borrador de este aparato ya no hace falta
 			if (window.AltaBorrador) window.AltaBorrador.borrar(userId);
 
+			// Trimestre ya empezado: sigue "Ponte al día" (paso 2, asistencia pasada); se puede saltar.
+			// Su avance queda desde ya (ponte_al_dia, mi_salon_b20): si se cierra la pestaña, Inicio lo
+			// ofrece para retomarlo. Si no se pudo guardar, el asistente lo crea al abrirse.
+			var ofrece = ofrecePonteAlDia();
+			var destino = ofrece ? "ponte-al-dia.html?desde=alta" : "dashboard.html";
+			if (ofrece) {
+				var avance = await window.sb.from("ponte_al_dia").upsert({
+					maestro_id: userId, grupo_id: currentGroupId, estado: "en_curso", paso: 2, pasos_hechos: [1],
+				}, { onConflict: "grupo_id" });
+				if (avance.error) console.error("onboarding: avance de Ponte al día", avance.error);
+			}
 			setTimeout(function () {
-				window.location.href = "dashboard.html";
+				window.location.href = destino;
 			}, 1500);
 		} catch (error) {
 			var msg = error.message || "Error desconocido";
@@ -570,6 +656,8 @@
 				if (window.GrupoActivo) window.GrupoActivo.elegir(currentGroupId);
 				configureStudentGradeSelector();
 				updateStudentsList();
+				montarListaPegada();
+				pintarAvisoPonte();
 				banner.classList.add("hidden");
 				stepGroup.classList.add("hidden");
 				stepStudents.classList.remove("hidden");
