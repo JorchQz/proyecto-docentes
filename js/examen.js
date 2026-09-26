@@ -153,9 +153,9 @@ async function iniciarExamen() {
 		var trimestre = trimestreActual();
 		var gradosGrupo = (grupo && Array.isArray(grupo.grados)) ? grupo.grados.map(String) : null;
 
-		var disponibles = lista.filter(function (ex) {
-			// Si el examen ya está asignado a otro maestro, no mostrarlo
-			if (ex.maestro_id && ex.maestro_id !== userId) return false;
+		// Plantillas del catálogo sin aplicar en este grupo y lo ya aplicado en este grupo
+		// (js/examen-plantilla.js: aplicar COPIA la plantilla, ya no la reclama)
+		var disponibles = window.ExamenPlantilla.visibles(lista, userId, grupo ? grupo.id : null).filter(function (ex) {
 			// Filtrar por grado del grupo si el examen indica grado
 			if (gradosGrupo && gradosGrupo.length && ex.grado != null) {
 				if (gradosGrupo.indexOf(String(ex.grado)) === -1) return false;
@@ -216,21 +216,20 @@ async function iniciarExamen() {
 				mostrarError("Necesitas tener un grupo creado antes de aplicar un examen.");
 				return;
 			}
+			var plantilla = lista.find(function (x) { return x.id === exId; });
+			if (!plantilla) return;
 			btn.disabled = true;
 			btn.textContent = "Aplicando...";
 			try {
-				var upd = await window.sb
+				// Se aplica una COPIA para este grupo: la plantilla sigue en el catálogo para todas
+				// las cuentas (antes se le ponía maestro_id y grupo_id y dejaba de verse para las demás)
+				var ins = await window.sb
 					.from("examenes")
-					.update({
-						maestro_id: userId,
-						grupo_id: grupo.id,
-						estado: "publicado"
-					})
-					.eq("id", exId)
-					.select()
+					.insert(window.ExamenPlantilla.copiaDeExamen(plantilla, userId, grupo.id))
+					.select("id")
 					.single();
-				if (upd.error) throw upd.error;
-				window.location.href = "examen.html?examen_id=" + exId;
+				if (ins.error) throw ins.error;
+				window.location.href = "examen.html?examen_id=" + ins.data.id;
 			} catch (err) {
 				btn.disabled = false;
 				btn.textContent = "Aplicar este examen";
