@@ -39,6 +39,7 @@ Manual testing checklist is in `docs/TESTING.md`.
 - `js/productos-hoy.js`, `js/para-quien.js` — "¿Para quién?" rules (whole group, grades or chosen students → `producto_sesion_alumnos`), loose-activity validation and the shared dialog used by Crear proyecto
 - `js/examen-modelo.js`, `js/examen.js`, `js/examen-propio.js`, `js/examen-hoja.js`, `js/examen-lector.js`, `js/examen-camara.js` — Mi Salón exams: upload results or build an exam, printable answer sheet (QR + 4 markers), in-browser camera reader, "No presentó"
 - `js/grupo-activo.js` — The only place that decides the active group (selector in the nav)
+- `js/mi-salon-acceso.js` — Read-only mode in the app (banner on Inicio, state in Mi cuenta, `data-captura` / `data-captura-zona` controls); the rule itself lives in SQL (b21)
 - `js/motor-calificacion.js` — The only grade formula; percent → grade conversion happens only in SQL (`calcular_calificacion_boleta`)
 - `js/alcance-hoy.js` — Rules shared by "Hoy", Inicio and Tareas (project scope, task due date, day-close count, paged reads past Supabase's 1000-row cap)
 - `js/textos-boleta.js`, `js/reporte-datos.js` — Report-card text proposals (Capa 1) and the data layer shared by boleta, reporte, junta and exportación
@@ -48,7 +49,7 @@ Manual testing checklist is in `docs/TESTING.md`.
 
 ### Auth & routing flow
 
-jissez.com has three sections: **Tienda** (the public store, `tienda/`), **Mi Salón** (this SaaS) and **Sala de Maestros** (`sala-maestros.html`, "Próximamente"). Only accounts with `perfiles.activo_saas = true` see Mi Salón and Sala (`js/saas-guard.js`); everyone else only sees the store.
+jissez.com has three sections: **Tienda** (the public store, `tienda/`), **Mi Salón** (this SaaS) and **Sala de Maestros** (`sala-maestros.html`, "Próximamente"). Who sees Mi Salón and Sala (`js/saas-guard.js`): accounts with `perfiles.activo_saas = true` or a `piloto` access and, once Jorge turns on the launch switch (`jissez_config.mi_salon_abierto`), every account; everyone else only sees the store. Writing is a separate rule enforced in the database (b21, `docs/CONTEXTO.md §6.5`): it needs a current access in `mi_salon_accesos` (expiry computed from `mi_salon_periodos`); without one the account is read-only (RESTRICTIVE policies on every SaaS table, `js/mi-salon-acceso.js` in the app). A new SaaS table the teacher writes must call `select public.mi_salon_candado('public.table')` in its migration.
 
 ```
 index.html (root; no content)

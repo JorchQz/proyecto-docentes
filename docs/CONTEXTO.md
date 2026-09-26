@@ -670,6 +670,89 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - Legal: `terminos.html`, `privacidad.html`; `marketplace_ordenes.terminos_aceptados_en`.
   `crear-preferencia-mp` tiene `EXIGIR_TERMINOS=false` hasta que el checkout nuevo esté servido.
 
+### 6.5 Acceso a Mi Salón: periodos, accesos, interruptor y solo lectura (b21, 2026-09-26)
+Spec de Jorge "Mi Salón, registro histórico, precios y cobros" (2026-09-26) §2, §5, §7.1 y §8.
+Migración `supabase/mi_salon_b21_acceso_2026-09.sql`; pruebas SQL `pruebas/sql/mi-salon-acceso.sql`
+(corren en pruebas dentro de `begin … rollback`); reglas del cliente en `pruebas/mi-salon-acceso.test.js`.
+
+- **`mi_salon_periodos`** (`ciclo`, `periodo` T1-T3, `orden`, `venta_desde`, `compra_tardia_desde`,
+  `registro_calificaciones`, `boletas_fin`, `vence`): el calendario, cargado con 2026-2027 (T1 vence
+  18-dic-2026, T2 9-abr-2027, T3 30-jul-2027). Lectura pública; escribe solo `es_admin()` (panel →
+  Mi Salón → Calendario de periodos). Un CHECK exige el orden de las fechas.
+- **`mi_salon_accesos`** (`docente_id`, `ciclo`, `periodos[]`, `origen` ∈ `gratis_t1` · `pago` ·
+  `piloto` · `regalo_admin`, `pago_id`, `precio_pagado`, `tipo_precio` ∈ `fundador` · `lista` ·
+  `cupon`, `producto`, `vence_fijo`, `desde`, `notas`). **El vencimiento no se guarda:**
+  `mi_salon_vence(acceso)` = el `vence` más tardío de sus periodos en `mi_salon_periodos` (o
+  `vence_fijo`, solo para un regalo con fecha); el acceso termina al iniciar el día siguiente, hora
+  del centro (`mi_salon_fin`). Una compra que cruza de ciclo son dos filas con el mismo `pago_id`
+  (índice único `(pago_id, ciclo)`: el webhook es idempotente); la del ciclo aún no cargado no suma
+  y se extiende sola al cargarlo. El cliente solo lee sus filas; escriben el trigger de alta, los RPC
+  del admin y el service role (cobros).
+- **Alta:** trigger `mi_salon_alta_cuenta` (AFTER INSERT en `auth.users`) da `gratis_t1` a toda
+  cuenta creada hasta el vencimiento del periodo gratis (`jissez_config.gratis_ciclo/gratis_periodo`,
+  hoy 2026-2027 T1); el respaldo de la migración se lo dio a las cuentas existentes. **Sin prueba de
+  14 días (decisión de Jorge, 2026-09-26):** una cuenta creada desde el 19-dic-2026 no recibe acceso:
+  entra en solo lectura hasta que compre. Piloto: `piloto` a todo el ciclo (QA en pruebas con b21c;
+  soporte y Fanny en producción con `mi_salon_b21b_piloto_produccion_2026-09.sql`, con el OK de Jorge).
+- **Interruptor de lanzamiento** (`jissez_config.mi_salon_abierto`, una fila, lectura pública, lo
+  cambia solo el admin con `admin_mi_salon_interruptor`). Apagado: todo como antes, Mi Salón solo lo
+  ven las cuentas con `activo_saas` o con acceso `piloto`, la presentación sigue sin enlaces y no hay
+  correo de bienvenida. Encendido: toda cuenta ve Mi Salón (sin acceso vigente, en solo lectura), la
+  tienda enlaza `conoce-mi-salon` (menú y pies, `tienda-common.js`), la presentación ofrece crear la
+  cuenta con el T1 gratis y las cuentas creadas desde entonces reciben la bienvenida.
+- **`activo_saas` convive así:** sigue siendo la llave manual para VER Mi Salón con el interruptor
+  apagado (el piloto, QA). Ya no da permiso de escribir por sí solo: escribir exige acceso vigente.
+  Hasta el 18-dic todas las cuentas tienen `gratis_t1`, así que nadie cambia de comportamiento; las
+  cuentas del piloto tienen además `piloto` hasta el 30-jul-2027. Para dar Mi Salón a alguien más
+  con el interruptor apagado: panel → Mi Salón → Dar acceso → "Piloto".
+- **Estado para la app:** columna calculada `perfiles.mi_salon` (jsonb: `abierto`, `visible`,
+  `vigente`, `tiene_acceso`, `origen`, `ciclo`, `periodos`, `vence`, `solo_lectura_desde`,
+  `dias_restantes`, `piloto`, `bienvenida_pendiente`) que el candado (`js/saas-guard.js`), el login y
+  la tienda leen con `activo_saas` en UNA consulta (`select=activo_saas,mi_salon`); RPC
+  `mi_salon_estado()`; `mi_salon_acceso_vigente(uid, momento)` (security invoker: cada quien solo ve
+  lo suyo). Si la base no tiene la columna, el cliente cae a leer solo `activo_saas`.
+- **Solo lectura EN EL SERVIDOR:** políticas RESTRICTIVE `acceso_mi_salon_ins/upd/del` (helper
+  `mi_salon_candado(tabla)`) en todas las tablas del SaaS que escribe el docente; sin acceso vigente,
+  INSERT/UPDATE/DELETE fallan con 42501 y la pista `mi_salon_solo_lectura` (nunca un "0 filas"
+  silencioso). No llevan candado: `perfiles`, `interes_secciones`, la tienda, los catálogos y
+  `ponte_al_dia` (el estado del asistente, no es captura). **Una tabla nueva del SaaS debe llamar a
+  `select public.mi_salon_candado('public.tabla')` en su migración.** Los RPC que escriben son
+  security invoker (pasan por las políticas); `incrementar_uso_criterio` (definer) no cuenta sin
+  acceso; `delete_own_account` siempre funciona (salvo una cuenta con un PAGO de Mi Salón: soporte).
+  Nunca se borran datos por falta de pago.
+- **Capturas sin señal:** la cola (`js/bandeja-salida.js`) manda en cada envío la cabecera
+  `x-capturado-en` con la hora del aparato. Sin acceso vigente, la base acepta la captura si esa hora
+  cae dentro de un acceso y no han pasado 48 h desde que ese acceso venció; la hora se acota (no más
+  de 10 min en el futuro ni de 30 días atrás), así que mentir con ella da a lo más 48 h. Lo que la base
+  rechaza por solo lectura NO sale de la cola: estado `acceso`, aviso en Hoy/Exámenes/las demás
+  páginas, y se reintenta al abrir, al volver la red o a primer plano.
+- **En la app** (`js/mi-salon-acceso.js`, cargado tras el candado): banner fijo en Inicio ("Tu acceso
+  terminó el [fecha]. Tus datos están guardados. Renueva para seguir capturando." → hoy lleva a
+  `tienda/conoce-mi-salon.html`; cobros lo cambia a la compra, `MiSalonAcceso.COMPRA`), estado en Mi
+  cuenta, aviso corto en las demás páginas y los controles marcados `data-captura` /
+  `data-captura-zona` se ven deshabilitados y explican por qué al tocarlos. Un 403 de solo lectura en
+  cualquier página (evento `jissez:solo-lectura` de `js/supabase.js`) avisa igual. Imprimir, exportar y
+  la presentación siguen; la redacción con IA (`redactar-boleta`) exige acceso vigente.
+- **Correo de bienvenida:** Edge `bienvenida-mi-salon` (la pide el login cuando
+  `mi_salon.bienvenida_pendiente`); vuelve a decidir en el servidor (Mi Salón abierto, cuenta creada
+  desde que se abrió, con `gratis_t1`, correo confirmado), aparta la fila `mi_salon_correos
+  (docente_id, 'bienvenida')` antes de enviar (idempotente) y la libera si Resend falla. La fecha sale
+  de `mi_salon_periodos`.
+- **Panel** (`tienda/admin.html` → Mi Salón, `tienda/js/admin-mi-salon.js`): interruptor, métricas
+  (cuentas, nuevas desde el lanzamiento, con grupo, "Ponte al día" = alguna captura con
+  `es_historico`, boleta del T1 generada/cerrada, pagos del T2), docentes con origen, periodos, vence,
+  monto y tipo de precio, exportación a Excel por estado, dar/extender/quitar acceso (regalo o
+  piloto) y el calendario. Precios y cupo fundador: lugar reservado para cobros (b22).
+- **Encender el lanzamiento (con el OK de Jorge):** panel → Mi Salón → "Abrir Mi Salón", o en SQL:
+  `select public.admin_mi_salon_interruptor(true);` ejecutado como el admin (en el editor SQL de
+  Supabase, que no tiene sesión de admin: `update public.jissez_config set mi_salon_abierto = true,
+  mi_salon_abierto_desde = coalesce(mi_salon_abierto_desde, now()), actualizado_en = now() where id;`).
+  Indexación de las presentaciones (no se puede con lógica: el buscador lee el HTML y la cabecera):
+  en el mismo despliegue, quitar `<meta name="robots" content="noindex, nofollow">` de
+  `tienda/conoce-mi-salon.html` (y de `tienda/conoce-sala.html` si también se lanza Sala) y las reglas
+  `/tienda/conoce-mi-salon`, `/tienda/conoce-mi-salon.html` (y las de `conoce-sala`) de `/_headers`;
+  ajustar `pruebas/presentaciones.test.js` §1 a "indexadas".
+
 ---
 
 ## 7. Estado de los módulos
