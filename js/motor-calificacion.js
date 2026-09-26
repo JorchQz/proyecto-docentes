@@ -6,7 +6,9 @@
 	  productos_sesion (qué es calificable, de qué grados, de qué campo)
 	  calificaciones   (nivel / puntaje / estado_entrega por alumno y producto)
 	  registro_diario  (participación y conducta, una vez al día, global)
-	  examenes + respuestas_examen + banco_preguntas (examen por campo, del grado del alumno)
+	  examenes_grupo + examen_resultados / examen_preguntas + examen_respuestas (exámenes de
+	  Mi Salón, b18: aciertos / preguntas por campo, del grado del alumno) y, si existen,
+	  examenes + respuestas_examen + banco_preguntas (modelo anterior del catálogo, aproximado)
 
 	Reglas (docs/CONTEXTO.md §3 y docs/PRODUCTO-MI-SALON.md §B.2-B.5):
 	  - La ASISTENCIA no pondera nunca (Acuerdo 10/09/23, art. 7 I d). Se calcula solo
@@ -506,6 +508,139 @@
 	}
 
 	/*
+		Exámenes de Mi Salón (supabase/mi_salon_b18_examenes_2026-09.sql; decisión de Jorge del
+		2026-09-26). Dos caminos, los dos dan ACIERTOS y PREGUNTAS por campo formativo:
+		  - 'resultados': la maestra captura, por campo, aciertos de cada alumno (examen_resultados).
+		  - 'propio': una pregunta vale 1 (puntosRespuestaExamen). Opción múltiple y verdadero o
+		    falso se califican solas contra la clave (vacía o doble marca = 0); completar y
+		    abierta, a mano: correcta 1, parcial 0.5, incorrecta 0.
+		Solo cuenta lo CAPTURADO: una pregunta sin fila para ese alumno (o una abierta sin
+		calificar) no entra ni a favor ni en contra, como un trabajo sin calificar. Un alumno sin
+		nada capturado en un examen no tiene ese examen.
+	*/
+	function puntosRespuestaExamen(pregunta, fila) {
+		if (!pregunta || !fila) return null;
+		if (pregunta.tipo === "opcion_multiple" || pregunta.tipo === "verdadero_falso") {
+			return fila.respuesta && pregunta.clave && String(fila.respuesta).toUpperCase() === String(pregunta.clave).toUpperCase() ? 1 : 0;
+		}
+		if (fila.resultado === "correcta") return 1;
+		if (fila.resultado === "parcial") return 0.5;
+		if (fila.resultado === "incorrecta") return 0;
+		return null;
+	}
+
+	/*
+		aciertosExamenSalon(examen, datos, alumnoId) → { LEN: { aciertos, preguntas } } (solo los
+		campos con algo capturado). datos = { preguntas: [{id, examen_id, tipo, campo, clave}],
+		respuestas: [{examen_id, pregunta_id, alumno_id, respuesta, resultado}],
+		resultados: [{examen_id, alumno_id, campo, preguntas, aciertos}] }
+	*/
+	function aciertosExamenSalon(examen, datos, alumnoId) {
+		var salida = {};
+		function sumar2(campo, a, p) {
+			if (!salida[campo]) salida[campo] = { aciertos: 0, preguntas: 0 };
+			salida[campo].aciertos += a;
+			salida[campo].preguntas += p;
+		}
+		if (examen.modo === "resultados") {
+			(datos.resultados || []).forEach(function (r) {
+				if (r.examen_id !== examen.id || r.alumno_id !== alumnoId) return;
+				var p = Number(r.preguntas), a = Number(r.aciertos);
+				if (!(p > 0) || isNaN(a)) return;
+				sumar2(r.campo, Math.max(0, Math.min(p, a)), p);
+			});
+			return salida;
+		}
+		var porPregunta = {};
+		(datos.respuestas || []).forEach(function (r) {
+			if (r.examen_id === examen.id && r.alumno_id === alumnoId) porPregunta[r.pregunta_id] = r;
+		});
+		(datos.preguntas || []).forEach(function (p) {
+			if (p.examen_id !== examen.id) return;
+			var v = puntosRespuestaExamen(p, porPregunta[p.id]);
+			if (v === null) return;
+			sumar2(p.campo, v, 1);
+		});
+		return salida;
+	}
+
+	// La tabla aún no existe (frontend publicado antes que la migración b18): sin exámenes nuevos
+	function faltaTabla(error) {
+		return !!error && (error.code === "42P01" || error.code === "PGRST205" || /does not exist|schema cache/i.test(error.message || ""));
+	}
+
+	async function leerExamenesSalon(sb, ctx, ids) {
+		var vacio = { examenes: [], preguntas: [], respuestas: [], resultados: [] };
+		var exRes = await sb.from("examenes_grupo").select("id, modo, grados, trimestre, created_at")
+			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre).order("id");
+		if (exRes.error) { if (faltaTabla(exRes.error)) return vacio; throw exRes.error; }
+		var examenes = exRes.data || [];
+		if (!examenes.length || !ids.length) return Object.assign(vacio, { examenes: examenes });
+		var propios = examenes.filter(function (e) { return e.modo === "propio"; }).map(function (e) { return e.id; });
+		var deResultados = examenes.filter(function (e) { return e.modo === "resultados"; }).map(function (e) { return e.id; });
+		var preguntas = [], respuestas = [], resultados = [];
+		if (propios.length) {
+			preguntas = await todas(function () {
+				return sb.from("examen_preguntas").select("id, examen_id, tipo, campo, clave").in("examen_id", propios).order("id");
+			});
+			respuestas = await todas(function () {
+				return sb.from("examen_respuestas").select("examen_id, pregunta_id, alumno_id, respuesta, resultado")
+					.in("examen_id", propios).in("alumno_id", ids).order("id");
+			});
+		}
+		if (deResultados.length) {
+			resultados = await todas(function () {
+				return sb.from("examen_resultados").select("examen_id, alumno_id, campo, preguntas, aciertos")
+					.in("examen_id", deResultados).in("alumno_id", ids).order("id");
+			});
+		}
+		return { examenes: examenes, preguntas: preguntas, respuestas: respuestas, resultados: resultados };
+	}
+
+	/*
+		Examen del trimestre, por campo, para cada alumno: los exámenes de Mi Salón de su grado
+		(todos los del trimestre, sumando aciertos y preguntas) y, si hay datos del modelo
+		anterior (catálogo: examenes + respuestas_examen + banco_preguntas), también el de su
+		grado, que cuenta como tantas preguntas como tenía en ese campo.
+		→ { alumnoId: { porCampo: {LEN: 0..1}, aproximado, aciertos: {LEN: {aciertos, preguntas}} } }
+		aproximado solo si entró el examen del modelo anterior.
+	*/
+	async function examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
+		var viejos = await examenesAnteriores(sb, ctx, alumnos, ids, campos, alta, altaInstante);
+		var nuevos = await leerExamenesSalon(sb, ctx, ids);
+		var salida = {};
+		alumnos.forEach(function (a) {
+			var acc = {}, aproximado = false;
+			var viejo = viejos[a.id];
+			if (viejo) {
+				campos.forEach(function (c) {
+					var n = viejo.preguntas[c];
+					if (!(n > 0) || viejo.porCampo[c] === undefined) return;
+					acc[c] = { aciertos: viejo.porCampo[c] * n, preguntas: n };
+					aproximado = true;
+				});
+			}
+			nuevos.examenes.forEach(function (ex) {
+				if ((ex.grados || []).map(Number).indexOf(a.grado) === -1) return;
+				var r = aciertosExamenSalon(ex, nuevos, a.id);
+				Object.keys(r).forEach(function (c) {
+					if (campos.indexOf(c) === -1) return;
+					if (!acc[c]) acc[c] = { aciertos: 0, preguntas: 0 };
+					acc[c].aciertos += r[c].aciertos;
+					acc[c].preguntas += r[c].preguntas;
+				});
+			});
+			var porCampo = {};
+			Object.keys(acc).forEach(function (c) {
+				if (acc[c].preguntas > 0) porCampo[c] = Math.min(1, acc[c].aciertos / acc[c].preguntas);
+			});
+			if (Object.keys(porCampo).length) salida[a.id] = { porCampo: porCampo, aproximado: aproximado, aciertos: acc };
+		});
+		return salida;
+	}
+
+	/*
+		Modelo ANTERIOR (catálogo, ya no se ofrece en Mi Salón; sus datos se siguen leyendo).
 		Examen del trimestre DEL GRADO DE CADA ALUMNO (en multigrado hay un examen por
 		grado; tomar cualquiera mezclaba grados). Si hay varios del mismo grado, manda el
 		más reciente. Solo los exámenes DEL GRUPO: una maestra con dos grupos del mismo
@@ -517,9 +652,9 @@
 		examenCuentaDesdeAlta): si el examen se aplicó antes de su alta y no lo contestó, no
 		le cuenta; el alumno queda sin examen y el rubro se reparte como cualquier rubro
 		sin datos. alta = {id: "AAAA-MM-DD" | null}, altaInstante = {id: created_at}.
-		→ { alumnoId: { porCampo: {LEN: 0..1}, aproximado } }
+		→ { alumnoId: { porCampo: {LEN: 0..1}, preguntas: {LEN: n}, aproximado } }
 	*/
-	async function examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
+	async function examenesAnteriores(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
 		alta = alta || {};
 		altaInstante = altaInstante || {};
 		var salida = {};
@@ -578,10 +713,10 @@
 			if (A && alta[a.id] && !A.examenCuentaDesdeAlta(alta[a.id], altaInstante[a.id],
 				aplicado[ex.id], !!contesto[a.id + "|" + ex.id])) return; // se aplicó antes de que llegara
 			var valor = (ex.valor_total && ex.total_preguntas) ? Number(ex.valor_total) / Number(ex.total_preguntas) : 1;
-			var max = {}, obt = {};
+			var max = {}, obt = {}, cuantas = {};
 			ex.preguntas_ids.forEach(function (id) {
 				var c = cfPorPregunta[id];
-				if (c) max[c] = (max[c] || 0) + valor;
+				if (c) { max[c] = (max[c] || 0) + valor; cuantas[c] = (cuantas[c] || 0) + 1; }
 			});
 			respuestas.forEach(function (r) {
 				if (r.alumno_id !== a.id || r.examen_id !== ex.id) return;
@@ -592,7 +727,7 @@
 			campos.forEach(function (campo) {
 				if (max[campo] > 0) porCampo[campo] = Math.min(1, (obt[campo] || 0) / max[campo]);
 			});
-			salida[a.id] = { porCampo: porCampo, aproximado: true };
+			salida[a.id] = { porCampo: porCampo, preguntas: cuantas, aproximado: true };
 		});
 		return salida;
 	}
@@ -668,6 +803,8 @@
 		},
 		rubroDeProducto: rubroDeProducto,
 		puntajeProducto: puntajeProducto,
+		puntosRespuestaExamen: puntosRespuestaExamen,
+		aciertosExamenSalon: aciertosExamenSalon,
 		calcularPorcentajes: calcularPorcentajes,
 		cargarYCalcular: cargarYCalcular,
 		cargarYCalcularGrupo: cargarYCalcularGrupo,
