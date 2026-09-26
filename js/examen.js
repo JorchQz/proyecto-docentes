@@ -86,7 +86,7 @@ async function iniciarExamen() {
 		return '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">' +
 			'<p class="text-gray-600 text-base font-medium">' + escapeHtml(texto) + '</p>' +
 			(subtexto ? '<p class="text-gray-400 text-sm mt-1">' + escapeHtml(subtexto) + '</p>' : '') +
-			'<a href="dashboard.html" class="inline-block mt-4 text-blue-600 underline text-sm font-medium">Volver al Dashboard</a>' +
+			'<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-3 mt-4 text-blue-600 underline text-sm font-medium">Volver a Inicio</a>' +
 			'</div>';
 	}
 	function puntosPorPregunta() {

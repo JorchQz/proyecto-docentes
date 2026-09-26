@@ -39,6 +39,8 @@ const ob = leer("onboarding.html"), obj = leer("js/onboarding.js");
 ok("onboarding: las 6 casillas de grado con ancho de 44", (ob.match(/<label class="flex items-center gap-2 min-h-\[44px\] min-w-\[44px\] pr-2 select-none cursor-pointer">/g) || []).length, 6);
 ok("onboarding: Eliminar alumno de 44x44", /eliminarBtn\.className = "shrink-0 inline-flex items-center justify-center min-h-\[44px\] min-w-\[44px\]/.test(obj), true);
 
+ok("exámenes: 'Volver a Inicio' del estado vacío con alto de 44", leer("js/examen.js").includes('<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-3 mt-4'), true);
+
 const tc = leer("tienda/js/tienda-common.js");
 ok("tienda: logo del encabezado con alto de 44", tc.includes('data-logo class="shrink-0 flex items-center gap-2 min-h-[44px]"'), true);
 ok("tienda: enlaces del encabezado h-11 (no h-10)", /inline-flex items-center h-10 px-3\.5/.test(tc), false);

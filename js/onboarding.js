@@ -81,7 +81,7 @@
 		var subtituloEl = document.getElementById("onboardingSubtitulo");
 		var volverEl = document.getElementById("onboardingVolver");
 		if (tituloEl) tituloEl.textContent = "Crear otro grupo";
-		if (subtituloEl) subtituloEl.textContent = "Tus grupos actuales no cambian: este se agrega y queda como tu grupo activo. Puedes cambiar de grupo en la barra de arriba.";
+		if (subtituloEl) subtituloEl.textContent = "Tus grupos actuales no cambian: este se agrega y queda como tu grupo activo. Después cambias de grupo con el selector de grupo del menú.";
 		if (volverEl) volverEl.classList.remove("hidden");
 		document.title = "Crear otro grupo — Jissez";
 	}
