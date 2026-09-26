@@ -721,7 +721,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── Piezas de UI ──────────────────────────────────────────────────────────
 	function chip(texto, activo, clasesActivo, atributos) {
-		return "<button type='button' " + atributos + " class='min-h-[44px] px-3 rounded-xl text-sm font-semibold transition-colors " +
+		return "<button type='button' " + atributos + " class='min-h-[44px] min-w-[44px] px-3 rounded-xl text-sm font-semibold transition-colors " +
 			(activo ? clasesActivo : "bg-gray-100 text-gray-600 hover:bg-gray-200") + "'>" + esc(texto) + "</button>";
 	}
 
@@ -1352,7 +1352,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: gradosGrupo;
 		}
 		function campoLargo(corto) { return window.CamposFormativos ? window.CamposFormativos.largo(corto) : corto; }
-		var claseOpcion = "flex items-start gap-3 min-h-[44px] rounded-xl border border-gray-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
+		var estiloOpcion = "flex items-start gap-3 min-h-[44px] rounded-xl border border-gray-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
 
 		// Sección "PDA que evalúa (opcional)"
 		function construirPda(cuerpo) {
@@ -1438,7 +1438,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				refs.pdaSesion.appendChild(t);
 				deSesion.forEach(function (r) {
 					var l = document.createElement("label");
-					l.className = claseOpcion;
+					l.className = estiloOpcion;
 					l.innerHTML = "<input type='checkbox' name='pdaSesion' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (pda.quitadosSesion[r.id] ? "" : " checked") + ">" +
 						"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(r.grado) + "°</span> · " + esc(textoPda(r)) + "</span>";
 					l.querySelector("input").value = r.id;
@@ -1533,7 +1533,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (!deGrados.length) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Este contenido no tiene PDA para los grados elegidos.</p>"); return; }
 			deGrados.forEach(function (p) {
 				var l = document.createElement("label");
-				l.className = claseOpcion;
+				l.className = estiloOpcion;
 				l.innerHTML = "<input type='checkbox' name='pdaCatalogo' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (pda.marcadosCatalogo[p.id] ? " checked" : "") + ">" +
 					"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(p.grado) + "°</span> · " + esc(p.pda || "") + "</span>";
 				l.querySelector("input").value = p.id;

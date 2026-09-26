@@ -119,6 +119,14 @@ function sbLento(grupos) {
 	const iElegir = js.indexOf("GrupoActivo.elegir(currentGroupId)");
 	ok("onboarding.js elige el grupo recién creado después de insertarlo", iInsert !== -1 && iElegir > iInsert, true);
 
+	// "Crear otro grupo" (Jorge, 2026-09-26: una maestra puede tener grupos en escuelas distintas)
+	const mg = leer("mi-grupo.html");
+	ok("Mi grupo: Crear otro grupo lleva al alta en modo grupo nuevo", mg.includes('id="newGroupBtn" href="onboarding.html?nuevo=1"'), true);
+	ok("onboarding: el modo grupo nuevo cambia los textos y ofrece volver sin crear",
+		[js.includes("/[?&]nuevo=1\\b/.test(window.location.search)"), js.includes('"Crear otro grupo"'), html.includes('id="onboardingVolver" href="mi-grupo.html"')], [true, true, true]);
+	ok("onboarding: un grupo nuevo se INSERTA (el update solo es del grupo que se está editando en esta alta)",
+		/if \(isEditing\) \{\s*result = await window\.sb\.from\("grupos"\)\.update\(payload\)\.eq\("id", currentGroupId\)/.test(js), true);
+
 	console.log(fallos ? "\n" + fallos + " FALLAS" : "\nTODO OK");
 	process.exit(fallos ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

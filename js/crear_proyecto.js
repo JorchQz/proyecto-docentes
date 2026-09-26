@@ -544,9 +544,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         const seleccionados = getContenidoSeleccionado();
         chipsContainer.innerHTML = seleccionados.map(function (item) {
           return `
-            <span class="contenido-chip inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium" data-contenido-id="${escapeHtml(item.id)}" data-contenido-texto="${escapeHtml(item.contenido || '')}">
-              <span>${escapeHtml(item.contenido || '')}</span>
-              <button type="button" class="remove-contenido-btn inline-flex items-center justify-center text-blue-500 hover:text-blue-800 hover:bg-blue-200 h-11 w-11 -my-3 -mr-3 rounded-full transition" data-id="${escapeHtml(item.id)}" aria-label="Quitar contenido">
+            <span class="contenido-chip inline-flex max-w-full items-center gap-1 min-h-[44px] pl-3 pr-0 py-0 rounded-3xl bg-blue-100 text-blue-800 text-sm font-medium" data-contenido-id="${escapeHtml(item.id)}" data-contenido-texto="${escapeHtml(item.contenido || '')}">
+              <span class="min-w-0 break-words py-1.5">${escapeHtml(item.contenido || '')}</span>
+              <button type="button" class="remove-contenido-btn shrink-0 inline-flex items-center justify-center text-blue-500 hover:text-blue-800 hover:bg-blue-200 h-11 w-11 rounded-full transition" data-id="${escapeHtml(item.id)}" aria-label="Quitar contenido">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
               </button>
             </span>`;
@@ -590,7 +590,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                   const checked = selectedPdaIds.includes(String(item.id)) ? 'checked' : '';
                   const criterio = item.criterio_valoracion ? `<div class="text-xs text-gray-400 mt-1">${escapeHtml(item.criterio_valoracion)}</div>` : '';
                   return `
-                    <label class="flex items-start gap-3 cursor-pointer">
+                    <label class="flex items-start gap-3 min-h-[44px] py-2.5 cursor-pointer">
                       <input type="checkbox" name="pda_ids" value="${escapeHtml(item.id)}" data-pda-id="${escapeHtml(item.id)}" class="form-checkbox h-5 w-5 text-blue-600 rounded-lg border-gray-300 focus:ring-blue-500 mt-0.5" ${checked}>
                       <div class="flex-1">
                         <div class="text-sm text-gray-800">${escapeHtml(item.pda || '')}</div>
@@ -628,7 +628,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         } else {
           dropdown.innerHTML = resultados.map(function (item) {
             return `
-              <div class="contenido-option px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer" data-id="${escapeHtml(item.id)}" data-texto="${escapeHtml(item.contenido || '')}">
+              <div class="contenido-option flex items-center min-h-[44px] px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer" data-id="${escapeHtml(item.id)}" data-texto="${escapeHtml(item.contenido || '')}">
                 ${escapeHtml(item.contenido || '')}
               </div>`;
           }).join('');
@@ -1250,10 +1250,10 @@ document.addEventListener("DOMContentLoaded", async function () {
       recursosFilesList.innerHTML = archivosSubidos.map(function (archivo) {
         const etiqueta = truncarTexto(archivo.nombre || '', 30);
         return `
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${escapeHtml(archivo.path || '')}">
+          <span class="inline-flex max-w-full items-center gap-2 min-h-[44px] pl-3 pr-0 py-0 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${escapeHtml(archivo.path || '')}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span>
-            <span title="${escapeHtml(archivo.nombre || '')}">${escapeHtml(etiqueta)}</span>
-            <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -my-3 -mr-3 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
+            <span class="min-w-0 break-words" title="${escapeHtml(archivo.nombre || '')}">${escapeHtml(etiqueta)}</span>
+            <button type="button" class="resource-remove-file shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
           </span>`;
@@ -1266,10 +1266,10 @@ document.addEventListener("DOMContentLoaded", async function () {
       recursosLinksList.innerHTML = linksAgregados.map(function (link, index) {
         const titulo = link.titulo && String(link.titulo).trim() ? String(link.titulo).trim() : truncarTexto(link.url || '', 30);
         return `
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
+          <span class="inline-flex max-w-full items-center gap-2 min-h-[44px] pl-3 pr-0 py-0 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
-            <span title="${escapeHtml(link.url || '')}">${escapeHtml(titulo)}</span>
-            <button type="button" class="resource-remove-link inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -my-3 -mr-3 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
+            <span class="min-w-0 break-words" title="${escapeHtml(link.url || '')}">${escapeHtml(titulo)}</span>
+            <button type="button" class="resource-remove-link shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
           </span>`;

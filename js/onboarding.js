@@ -70,6 +70,23 @@
 	var userId = sessionResult.data.session.user.id;
 
 	/*
+		Modo "grupo nuevo" (onboarding.html?nuevo=1, desde Mi grupo → Crear otro grupo): una
+		maestra puede tener grupos en escuelas distintas (Jorge, 2026-09-26). Es la misma alta:
+		inserta un grupo NUEVO (nunca toca los que ya tiene), lo deja como grupo activo
+		(GrupoActivo.elegir) y al terminar abre Inicio con él. Solo cambian los textos y hay un
+		enlace para volver sin crear nada.
+	*/
+	if (/[?&]nuevo=1\b/.test(window.location.search)) {
+		var tituloEl = document.getElementById("onboardingTitulo");
+		var subtituloEl = document.getElementById("onboardingSubtitulo");
+		var volverEl = document.getElementById("onboardingVolver");
+		if (tituloEl) tituloEl.textContent = "Crear otro grupo";
+		if (subtituloEl) subtituloEl.textContent = "Tus grupos actuales no cambian: este se agrega y queda como tu grupo activo. Puedes cambiar de grupo en la barra de arriba.";
+		if (volverEl) volverEl.classList.remove("hidden");
+		document.title = "Crear otro grupo — Jissez";
+	}
+
+	/*
 		Entidad de la maestra (decisión 21): se guarda en perfiles.estado. Si ya la había
 		elegido (un segundo grupo), queda propuesta.
 		lectura-opcional: solo propone lo que ya guardó; si falla, el selector queda en
@@ -425,7 +442,7 @@
 
 		students.forEach(function (student, index) {
 			var div = document.createElement("div");
-			div.className = "flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl shadow-sm";
+			div.className = "flex items-center justify-between gap-3 p-4 bg-white border border-gray-200 rounded-2xl shadow-sm";
 			var gradeText =
 				typeof student.grado === "number"
 					? "<span class='inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 mr-2'>" +
@@ -440,7 +457,7 @@
 			nombreSpan.appendChild(document.createTextNode(student.nombre_completo || ""));
 			var eliminarBtn = document.createElement("button");
 			eliminarBtn.type = "button";
-			eliminarBtn.className = "text-red-600 hover:text-red-700 font-medium";
+			eliminarBtn.className = "shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 -my-2 rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 font-medium";
 			eliminarBtn.setAttribute("data-index", index);
 			eliminarBtn.textContent = "Eliminar";
 			div.appendChild(nombreSpan);

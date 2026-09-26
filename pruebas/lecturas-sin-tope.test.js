@@ -42,6 +42,7 @@ const ACOTADAS = [
 	["dashboard.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
 	["dashboard.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
 	["hoy.js", "sesiones_pda", ".eq(\"sesion_id\", sesion.id)", "los PDA de una sesión (ligar lo que se agrega en clase)"],
+	["hoy.js", "catalogo_pda", ".eq(\"contenido_id\", c.id)", "los PDA de un contenido del catálogo (unos cuantos por grado)"],
 	["crear_proyecto.js", "sesiones", ".eq('proyecto_id', id)", "las sesiones de un proyecto"],
 	["evaluacion_diagnostica.js", "evaluacion_diagnostica", ".eq(\"momento\", momentoActual)", "un grupo en un momento: uno por alumno"],
 	["evaluacion_formativa.js", "evaluacion_formativa", ".eq(\"sesion_id\", sesionId)", "una sesión"],

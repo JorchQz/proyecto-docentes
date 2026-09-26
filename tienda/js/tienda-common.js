@@ -861,7 +861,7 @@
 			'<a href="catalogo.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Catálogo</a>' +
 			'<a href="terminos.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Términos y Condiciones</a>' +
 			'<a href="privacidad.html" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Aviso de Privacidad</a>' +
-			'<a href="mailto:soporte@jissez.com" class="hover:text-ink transition">Contacto</a>' +
+			'<a href="mailto:soporte@jissez.com" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition">Contacto</a>' +
 			'</div>' +
 			'</div>' +
 			'</footer>';
