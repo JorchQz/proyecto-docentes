@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── Estado local ──────────────────────────────────────────────────────────
 	let todosLosProyectos = [];
 	let proyectoActivoId  = null;
+	let grupoActivo       = null; // para el trimestre de una copia
 	let toastEl           = null;
 
 	// ── Init ──────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// grupo falla, GrupoActivo.cargar detiene la página él mismo
 		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
 		const grupoActivoId = activo.grupo ? activo.grupo.id : null;
+		grupoActivo = activo.grupo || null;
 
 		let consulta = window.sb
 			.from("proyectos")
@@ -235,10 +237,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function renderAcciones(id, estado) {
 		const btnBase = "inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-xl transition min-h-[44px]";
 
+		// Duplicar (decisión de Jorge del 2026-09-26): en cualquier estado; la copia sale sin fechas ni calificaciones
+		const duplicar = '<button data-action="duplicar" data-id="' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Duplicar</button>';
+
 		if (estado === "borrador") {
 			return (
 				'<button data-action="iniciar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Iniciar</button>' +
 				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>Editar</a>' +
+				duplicar +
 				'<button data-action="eliminar" data-id="' + id + '" class="' + btnBase + ' border border-red-200 text-red-600 hover:bg-red-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Eliminar</button>'
 			);
 		}
@@ -246,25 +252,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (estado === "activo") {
 			return (
 				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver y editar sesiones</a>' +
-				'<button data-action="pausar" data-id="' + id + '" class="' + btnBase + ' border border-amber-300 text-amber-700 hover:bg-amber-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pausar</button>'
+				'<button data-action="pausar" data-id="' + id + '" class="' + btnBase + ' border border-amber-300 text-amber-700 hover:bg-amber-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pausar</button>' +
+				duplicar
 			);
 		}
 
 		if (estado === "pausado") {
 			return (
 				'<button data-action="reanudar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Reanudar</button>' +
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver y editar sesiones</a>'
+				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver y editar sesiones</a>' +
+				duplicar
 			);
 		}
 
 		if (estado === "completado") {
 			return (
 				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver sesiones</a>' +
-				'<button data-action="clonar" data-id="' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Clonar</button>'
+				duplicar
 			);
 		}
 
-		return '<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver proyecto</a>';
+		return '<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver proyecto</a>' + duplicar;
 	}
 
 	// =========================================================================
@@ -283,7 +291,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (action === "pausar")    { pausarProyecto(id);    return; }
 		if (action === "reanudar")  { reanudarProyecto(id);  return; }
 		if (action === "eliminar")  { eliminarProyecto(id);  return; }
-		if (action === "clonar")    { clonarProyecto(id);    return; }
+		if (action === "duplicar")  { duplicarProyecto(id);  return; }
 	}
 
 	// =========================================================================
@@ -340,15 +348,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		await cargarProyectos();
 	}
 
-	async function clonarProyecto(id) {
+	/*
+		Duplicar (antes "Clonar", solo en completados; decisión de Jorge del 2026-09-26: en
+		cualquier estado). La copia es un borrador con el plan completo y sus sesiones, SIN
+		fechas, estado de sesión ni calificaciones (ProyectoEdicion.copiaDeSesion).
+	*/
+	async function duplicarProyecto(id) {
 		// La lista trae solo lo que se muestra: el proyecto completo (grupo, escenario,
-		// contenidos) se lee aquí. Antes se clonaba sin grupo_id y la base lo rechazaba siempre
+		// contenidos) se lee aquí. Antes se copiaba sin grupo_id y la base lo rechazaba siempre
 		let original;
 		try {
 			original = await window.Lectura.uno(window.sb.from("proyectos").select("*").eq("id", id).maybeSingle());
 		} catch (e) {
-			console.error("clonar: lectura del proyecto", e);
-			mostrarToast("No se pudo leer el proyecto, así que no se clonó. Revisa tu conexión.", "error");
+			console.error("duplicar: lectura del proyecto", e);
+			mostrarToast("No se pudo leer el proyecto, así que no se duplicó. Revisa tu conexión.", "error");
 			return;
 		}
 		if (!original) {
@@ -356,9 +369,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
-		// Trimestre: si es 3 queda en 3, si no incrementa
-		const trimOrig = parseInt(original.trimestre, 10) || 1;
-		const trimNuevo = trimOrig < 3 ? trimOrig + 1 : 3;
+		// Trimestre de la copia: el que el grupo trabaja ahora (como un proyecto nuevo); se cambia en el paso 1
+		const trimNuevo = window.ProyectoEdicion.trimestreDeCopia(original, grupoActivo);
 
 		const nuevoProyecto = {
 			maestro_id:        user.id,
@@ -379,10 +391,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		};
 
 		/*
-			Las sesiones se copian también (antes el clon quedaba vacío): el plan de cada una, sin
-			fecha, sin estado y sin calificaciones, y se materializan sus PDA y productos como al
-			crear un proyecto. Se leen ANTES de crear el clon; si algo falla después, el clon se
-			borra (en cascada) para no dejar un proyecto a medias.
+			Las sesiones se copian también: el plan de cada una, sin fecha, sin estado y sin
+			calificaciones, y se materializan sus PDA y productos como al crear un proyecto. Se
+			leen ANTES de crear la copia; si algo falla después, la copia se borra (en cascada)
+			para no dejar un proyecto a medias.
 		*/
 		let sesiones;
 		try {
@@ -391,8 +403,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 					.order("numero_sesion").order("id");
 			});
 		} catch (e) {
-			console.error("clonar: lectura de sesiones", e);
-			mostrarToast("No se pudieron leer las sesiones del proyecto, así que no se clonó. Revisa tu conexión.", "error");
+			console.error("duplicar: lectura de sesiones", e);
+			mostrarToast("No se pudieron leer las sesiones del proyecto, así que no se duplicó. Revisa tu conexión.", "error");
 			return;
 		}
 
@@ -403,7 +415,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.single();
 
 		if (error) {
-			mostrarToast("No se pudo clonar el proyecto.", "error");
+			mostrarToast("No se pudo duplicar el proyecto.", "error");
 			return;
 		}
 		try {
@@ -422,15 +434,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 				});
 			}
 		} catch (e) {
-			console.error("clonar: sesiones", e);
+			console.error("duplicar: sesiones", e);
 			await window.sb.from("proyectos").delete().eq("id", creado.id);
-			mostrarToast("No se pudo clonar el proyecto: " + (e && e.humano ? e.message : "revisa tu conexión e inténtalo de nuevo."), "error");
+			mostrarToast("No se pudo duplicar el proyecto: " + (e && e.humano ? e.message : "revisa tu conexión e inténtalo de nuevo."), "error");
 			await cargarProyectos();
 			return;
 		}
 		mostrarToast(sesiones.length
-			? "Proyecto clonado con sus " + sesiones.length + (sesiones.length === 1 ? " sesión." : " sesiones.")
-			: "Proyecto clonado (no tenía sesiones).");
+			? "Proyecto duplicado con sus " + sesiones.length + (sesiones.length === 1 ? " sesión" : " sesiones") + ", sin fechas ni calificaciones. La copia es un borrador."
+			: "Proyecto duplicado (no tenía sesiones). La copia es un borrador.");
 		await cargarProyectos();
 	}
 

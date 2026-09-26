@@ -2092,11 +2092,20 @@ document.addEventListener("DOMContentLoaded", async function () {
     return con;
   }
 
-  // Proyecto en curso: trimestre y grados fijos; los campos que ya tiene no se quitan
+  /*
+    Proyecto en curso: el trimestre queda fijo; los grados y campos que ya tiene no se quitan,
+    pero se pueden agregar (decisión de Jorge del 2026-09-26: llega un alumno de 5°, se agrega
+    el grado y sus trabajos aparecen solo en las sesiones que faltan; lo trabajado no cambia).
+  */
   function bloquearPaso1EnCurso(proyecto) {
     const motivo = 'El proyecto ya se está trabajando: esto queda como se calificó.';
     if (trimestreSelect) { trimestreSelect.disabled = true; trimestreSelect.title = motivo; }
-    gradosCheckboxes?.querySelectorAll('input').forEach(function (cb) { cb.disabled = true; cb.title = motivo; });
+    const gradosGuardados = (Array.isArray(proyecto.grados) ? proyecto.grados : []).map(String);
+    gradosCheckboxes?.querySelectorAll("input[name='grados']").forEach(function (cb) {
+      if (gradosGuardados.indexOf(cb.value) !== -1) { cb.checked = true; cb.disabled = true; cb.title = motivo; }
+    });
+    const todosGrados = document.getElementById('selectAllGrados');
+    if (todosGrados) { todosGrados.checked = false; }
     const camposGuardados = (Array.isArray(proyecto.campos_formativos) ? proyecto.campos_formativos : []).map(String);
     formPaso1.querySelectorAll('input[name="campos_formativos"]').forEach(function (cb) {
       if (camposGuardados.indexOf(cb.value) !== -1) { cb.disabled = true; cb.title = motivo; }
@@ -2515,28 +2524,38 @@ document.addEventListener("DOMContentLoaded", async function () {
     Proyecto que YA EXISTE (también uno iniciado): cada sesión se corrige en su lugar.
       - Se vuelve a revisar al guardar qué está trabajado (otra pestaña o Hoy pudieron
         empezar una sesión después de abrir esta pantalla).
+      - Solo se manda PATCH de las sesiones que cambiaron (ProyectoEdicion.cambiosDeSesion).
       - Sesión trabajada: solo su texto (ProyectoEdicion.soloTexto).
       - Sesión sin trabajar: la fila completa y su trazabilidad al día, sin duplicar
         (materializarSesiones es idempotente y en la reedición quita lo que se quitó del plan).
       - Sesión nueva: se inserta; su id queda en el bloque, así un reintento la actualiza en
         vez de insertarla otra vez.
       - Sesión quitada de la pantalla: se borra solo si sigue sin trabajar.
+      - Carrera (R24-r08): entre la revisión y la escritura otra pestaña pudo trabajar y
+        calificar una sesión. El borrado y el PATCH completo llevan la condición "sin fecha"
+        en la misma petición y el materializador vuelve a revisar justo antes de escribir;
+        si alguna sesión se quedó fuera, se avisa "Mientras editabas…" y no se dice "guardado".
+      - Agregar un grado a un proyecto trabajado (decisión de Jorge del 2026-09-26): sus
+        trabajos aparecen solo en las sesiones sin trabajar (se materializan todas las
+        pendientes con los grados nuevos); lo trabajado no cambia.
   */
   async function guardarEdicion(user, proyectoPayload, blocks) {
+    const PE = window.ProyectoEdicion;
     const actuales = await window.LeerTodo.paginas(function () {
-      return window.sb.from('sesiones').select('id, fecha, numero_sesion')
+      return window.sb.from('sesiones').select('*')
         .eq('proyecto_id', proyectoId).order('numero_sesion').order('id');
     });
     const conCal = await leerSesionesConCalificaciones(proyectoId);
     const existe = {};
     const originales = (actuales || []).map(function (s) {
       existe[s.id] = s;
-      return { id: s.id, trabajada: window.ProyectoEdicion.sesionTrabajada(s, conCal) };
+      return { id: s.id, trabajada: PE.sesionTrabajada(s, conCal) };
     });
-    const bloques = Array.from(blocks).map(function (b) { return { sesionId: b.dataset.sesionId || null }; });
-    const plan = window.ProyectoEdicion.planGuardado(originales, bloques, trabajadasAlAbrir);
+    const lista = Array.from(blocks);
+    const bloques = lista.map(function (b) { return { sesionId: b.dataset.sesionId || null }; });
+    const plan = PE.planGuardado(originales, bloques, trabajadasAlAbrir);
     const numeroDe = function (id) {
-      const i = Array.from(blocks).findIndex(function (b) { return b.dataset.sesionId === id; });
+      const i = lista.findIndex(function (b) { return b.dataset.sesionId === id; });
       return i === -1 ? (existe[id] && existe[id].numero_sesion) : i + 1;
     };
     if (plan.trabajadasDesdeQueAbrio.length) {
@@ -2551,67 +2570,89 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (perdida) {
       throw errorHumano('Una de las sesiones ya no existe (¿se borró en otro dispositivo?). Recarga la página; no se guardó nada.');
     }
-
-    const { error: pError } = await window.sb.from('proyectos').update(proyectoPayload).eq('id', proyectoId);
-    if (pError) throw pError;
-
-    if (plan.borrar.length) {
-      const { error: delErr } = await window.sb.from('sesiones').delete()
-        .in('id', plan.borrar).eq('maestro_id', user.id);
-      if (delErr) throw delErr;
-      plan.borrar.forEach(function (id) { delete sesionesOriginales[id]; });
+    // Con algo trabajado: el trimestre no cambia y los grados y campos que ya tenía no se quitan
+    const hayTrabajadas = originales.some(function (o) { return o.trabajada; });
+    if (hayTrabajadas && proyectoOriginal) {
+      const faltan = function (antes, ahora) {
+        const a = (ahora || []).map(String);
+        return (antes || []).map(String).filter(function (x) { return a.indexOf(x) === -1; });
+      };
+      if (Number(proyectoOriginal.trimestre) !== Number(proyectoPayload.trimestre) ||
+          faltan(proyectoOriginal.grados, proyectoPayload.grados).length ||
+          faltan(proyectoOriginal.campos_formativos, proyectoPayload.campos_formativos).length) {
+        throw errorHumano('Este proyecto ya se está trabajando: su trimestre no cambia y no se quitan sus grados ni sus campos formativos (sí puedes agregar). Recarga la página; no se guardó nada.');
+      }
     }
 
-    const paraMaterializar = [];
-    const anteriores = {};
+    // Qué escribir de cada sesión: solo lo que cambió respecto a lo que hay en la base
+    const existentes = [];
     const nuevas = [];
     const bloquesNuevos = [];
-    const lista = Array.from(blocks);
-    for (let i = 0; i < lista.length; i++) {
-      const block = lista[i];
+    lista.forEach(function (block, i) {
       const fila = payloadDeBloque(block, i, user.id);
       const id = block.dataset.sesionId || null;
       if (!id) {
         nuevas.push(Object.assign({ proyecto_id: proyectoId }, fila));
         bloquesNuevos.push(block);
-        continue;
+        return;
       }
-      const trabajada = window.ProyectoEdicion.sesionTrabajada(existe[id], conCal);
-      const cambios = trabajada ? window.ProyectoEdicion.soloTexto(fila) : fila;
-      const { data: guardada, error: uErr } = await window.sb.from('sesiones').update(cambios)
-        .eq('id', id).eq('maestro_id', user.id).select(COLUMNAS_MATERIALIZAR).single();
-      if (uErr) throw uErr;
-      if (!trabajada) {
-        paraMaterializar.push(guardada);
-        if (sesionesOriginales[id]) anteriores[id] = sesionesOriginales[id];
-      }
-    }
-    if (nuevas.length) {
-      const { data: insertadas, error: iErr } = await window.sb.from('sesiones').insert(nuevas).select(COLUMNAS_MATERIALIZAR);
-      if (iErr) throw iErr;
-      (insertadas || []).forEach(function (s) {
-        paraMaterializar.push(s);
-        // numero_sesion = posición en la pantalla (payloadDeBloque)
-        const block = lista[Number(s.numero_sesion) - 1];
-        if (block && bloquesNuevos.indexOf(block) !== -1 && !block.dataset.sesionId) block.dataset.sesionId = s.id;
-        sesionesOriginales[s.id] = s;
+      const actual = existe[id];
+      const trabajada = PE.sesionTrabajada(actual, conCal);
+      existentes.push({
+        id: id,
+        trabajada: trabajada,
+        completa: trabajada ? {} : PE.cambiosDeSesion(fila, actual),
+        texto: PE.cambiosDeSesion(PE.soloTexto(fila), actual),
+        actual: actual,
       });
-    }
+    });
+
+    const { error: pError } = await window.sb.from('proyectos').update(proyectoPayload).eq('id', proyectoId);
+    if (pError) throw pError;
+
+    const r = await PE.guardarSesiones(window.sb, {
+      maestroId: user.id,
+      proyectoId: proyectoId,
+      columnas: COLUMNAS_MATERIALIZAR,
+      borrar: plan.borrar,
+      existentes: existentes,
+      nuevas: nuevas,
+    });
+    (r.borradas || []).forEach(function (id) { delete sesionesOriginales[id]; });
+    (r.insertadas || []).forEach(function (s) {
+      // numero_sesion = posición en la pantalla (payloadDeBloque)
+      const block = lista[Number(s.numero_sesion) - 1];
+      if (block && bloquesNuevos.indexOf(block) !== -1 && !block.dataset.sesionId) block.dataset.sesionId = s.id;
+      sesionesOriginales[s.id] = s;
+    });
+
+    const paraMaterializar = r.materializar.concat(r.insertadas || []);
+    // La fila de antes de cada sesión que ya existía: con ella el materializador quita lo que
+    // salió del plan (también la tarea "para todos" de los grados de antes, si se agregó un grado)
+    const anteriores = {};
+    r.materializar.forEach(function (s) { if (existe[s.id]) anteriores[s.id] = existe[s.id]; });
+    let resumen = { omitidas: [], carrera: [] };
     if (paraMaterializar.length) {
-      await window.materializarSesiones(paraMaterializar, user.id, {
-        gradosProyecto: paso1Data.grados || [],
+      resumen = await window.materializarSesiones(paraMaterializar, user.id, {
+        gradosProyecto: proyectoPayload.grados || [],
         gradosProyectoAnterior: proyectoOriginal ? proyectoOriginal.grados : null,
-        camposProyecto: paso1Data.campos_formativos || [],
+        camposProyecto: proyectoPayload.campos_formativos || [],
         origenTrabajo: 'maestro',
         origenTarea: 'maestro',
         anteriores: anteriores,
+        soloSinTrabajar: true,
       });
     }
     // Un reintento parte de lo que ya quedó guardado
     paraMaterializar.forEach(function (s) {
       sesionesOriginales[s.id] = Object.assign({}, sesionesOriginales[s.id] || {}, s);
     });
-    if (proyectoOriginal) proyectoOriginal = Object.assign({}, proyectoOriginal, { grados: paso1Data.grados });
+    if (proyectoOriginal) proyectoOriginal = Object.assign({}, proyectoOriginal, { grados: proyectoPayload.grados });
+
+    const enCarrera = Array.from(new Set([].concat(r.noBorradas || [], r.soloTexto || [], resumen.omitidas || [], resumen.carrera || [])));
+    if (enCarrera.length) {
+      throw errorHumano(PE.avisoCarrera(enCarrera.map(numeroDe).sort(function (a, b) { return a - b; })));
+    }
     return proyectoId;
   }
 

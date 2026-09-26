@@ -148,8 +148,129 @@
 		return r;
 	}
 
-	// ── Clonar ──────────────────────────────────────────────────────────────────
-	// Copia de una sesión para un proyecto clonado: el plan sí, sin fecha, estado, notas ni calificaciones
+	// ── Solo lo que cambió ──────────────────────────────────────────────────────
+	// jsonb guarda las llaves en otro orden: se comparan con las llaves ordenadas
+	function estable(v) {
+		if (Array.isArray(v)) return "[" + v.map(estable).join(",") + "]";
+		if (v && typeof v === "object") {
+			return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + estable(v[k]); }).join(",") + "}";
+		}
+		return JSON.stringify(v === undefined ? null : v);
+	}
+	function vacio(v) { return v === null || v === undefined || v === ""; }
+	function mismoValor(a, b) {
+		if (vacio(a) && vacio(b)) return true;
+		if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+		return estable(a) === estable(b);
+	}
+	/*
+		cambiosDeSesion(fila, original) → solo las columnas que cambiaron respecto a lo guardado
+		(sin maestro_id ni proyecto_id). Sin original (no se sabe cómo estaba): la fila completa.
+		Así el guardado solo manda PATCH de las sesiones que la maestra cambió.
+	*/
+	function cambiosDeSesion(fila, original) {
+		var out = {};
+		Object.keys(fila || {}).forEach(function (k) {
+			if (k === "maestro_id" || k === "proyecto_id") return;
+			if (!original || !mismoValor(fila[k], original[k])) out[k] = fila[k];
+		});
+		return out;
+	}
+
+	/*
+		Escrituras protegidas contra la carrera "revisé que no estaba trabajada → escribo"
+		(R24-r08): entre la revisión y la escritura, otra pestaña pudo trabajar la sesión en Hoy
+		(le pone fecha) y calificarla. Por eso el borrado y la actualización completa llevan en
+		el MISMO DELETE/PATCH la condición fecha IS NULL, y se cuenta qué filas se afectaron: una
+		sesión que no se afectó es una que se empezó a trabajar mientras tanto.
+		(Hoy solo califica sesiones con fecha: "Trabajar hoy" pone la fecha antes de que aparezcan
+		sus productos para calificar.)
+	*/
+	async function borrarSinTrabajar(sb, ids, maestroId) {
+		ids = (ids || []).filter(Boolean);
+		if (!ids.length) return { borradas: [], intactas: [] };
+		var res = await sb.from("sesiones").delete()
+			.in("id", ids).eq("maestro_id", maestroId).is("fecha", null).select("id");
+		if (res.error) throw res.error;
+		var borradas = (res.data || []).map(function (r) { return r.id; });
+		return { borradas: borradas, intactas: ids.filter(function (id) { return borradas.indexOf(id) === -1; }) };
+	}
+	// → la fila guardada, o null si la sesión ya tenía fecha (no se tocó)
+	async function actualizarSinTrabajar(sb, id, cambios, maestroId, columnas) {
+		var res = await sb.from("sesiones").update(cambios)
+			.eq("id", id).eq("maestro_id", maestroId).is("fecha", null).select(columnas);
+		if (res.error) throw res.error;
+		return (res.data && res.data[0]) || null;
+	}
+
+	/*
+		guardarSesiones(sb, t) — las escrituras de sesiones de un proyecto que ya existe.
+		t: { maestroId, proyectoId, columnas,
+		     borrar: [ids sin trabajar que la pantalla quitó],
+		     existentes: [{ id, trabajada, completa, texto, actual }]
+		       completa: cambios de la fila completa (sesión sin trabajar), ya reducidos a lo que cambió
+		       texto: cambios solo de texto (ProyectoEdicion.soloTexto), ya reducidos
+		       actual: la fila como está en la base (para materializar sin volver a leerla)
+		     nuevas: [filas para insertar] }
+		→ { materializar: [filas], cambiadas: { id: true } (las que recibieron PATCH completo),
+		    borradas: [ids], insertadas: [filas], noBorradas: [ids], soloTexto: [ids] }
+		  noBorradas: se iban a borrar pero ya se estaban trabajando (siguen, con sus calificaciones).
+		  soloTexto: se iba a cambiar lo evaluado pero ya se estaban trabajando: solo se guardó su
+		  texto, como en cualquier sesión trabajada.
+	*/
+	async function guardarSesiones(sb, t) {
+		var r = { materializar: [], cambiadas: {}, insertadas: [], noBorradas: [], soloTexto: [] };
+		var bor = await borrarSinTrabajar(sb, t.borrar, t.maestroId);
+		r.noBorradas = bor.intactas;
+		r.borradas = bor.borradas;
+		for (var i = 0; i < (t.existentes || []).length; i++) {
+			var e = t.existentes[i];
+			if (e.trabajada) {
+				if (Object.keys(e.texto || {}).length) {
+					var rt = await sb.from("sesiones").update(e.texto).eq("id", e.id).eq("maestro_id", t.maestroId);
+					if (rt.error) throw rt.error;
+				}
+				continue;
+			}
+			if (!Object.keys(e.completa || {}).length) {
+				// Sin cambios: se materializa con lo que hay (por si cambiaron los grados del proyecto)
+				if (e.actual) r.materializar.push(e.actual);
+				continue;
+			}
+			var guardada = await actualizarSinTrabajar(sb, e.id, e.completa, t.maestroId, t.columnas);
+			if (guardada) {
+				r.materializar.push(guardada);
+				r.cambiadas[e.id] = true;
+				continue;
+			}
+			// Se empezó a trabajar mientras tanto: solo su texto
+			r.soloTexto.push(e.id);
+			if (Object.keys(e.texto || {}).length) {
+				var rt2 = await sb.from("sesiones").update(e.texto).eq("id", e.id).eq("maestro_id", t.maestroId);
+				if (rt2.error) throw rt2.error;
+			}
+		}
+		if ((t.nuevas || []).length) {
+			var ins = await sb.from("sesiones").insert(t.nuevas).select(t.columnas);
+			if (ins.error) throw ins.error;
+			r.insertadas = ins.data || [];
+		}
+		return r;
+	}
+
+	// Aviso cuando algo se empezó a trabajar a media escritura (nunca dice "guardado")
+	function avisoCarrera(numeros) {
+		var n = (numeros || []).filter(function (x) { return x !== null && x !== undefined && x !== ""; });
+		var una = n.length <= 1;
+		var cuales = una ? "la sesión " + (n[0] || "") : "las sesiones " + n.slice(0, -1).join(", ") + " y " + n[n.length - 1];
+		return "Mientras editabas, se empezó a trabajar " + cuales.trim() + " (en Hoy o en otro dispositivo). " +
+			(una ? "Esa sesión no se borró ni cambió su" : "Esas sesiones no se borraron ni cambiaron su") +
+			" campo formativo, PDA ni tareas: " + (una ? "quedó" : "quedaron") + " con sus calificaciones. " +
+			"El resto de tus cambios se escribió. Recarga la página para revisar cómo quedó antes de seguir editando.";
+	}
+
+	// ── Duplicar ────────────────────────────────────────────────────────────────
+	// Copia de una sesión para un proyecto duplicado: el plan sí, sin fecha, estado, notas ni calificaciones
 	var CAMPOS_PLAN_SESION = [
 		"numero_sesion", "duracion", "campo_formativo", "momento",
 		"inicio_todos", "inicio_diferenciado", "inicio_actividades",
@@ -157,6 +278,16 @@
 		"cierre_todos", "cierre_diferenciado", "cierre_actividades", "cierre_tareas",
 		"pda_sesion", "recursos", "criterios_evaluacion", "observaciones",
 	];
+	// Trimestre de una copia: el que el grupo trabaja ahora (como un proyecto nuevo); sin él, el
+	// del original. Antes "Clonar" (solo en completados) pasaba al trimestre siguiente, lo que no
+	// tiene sentido al duplicar un borrador o un proyecto activo.
+	function trimestreDeCopia(original, grupo) {
+		var delGrupo = parseInt(grupo && grupo.trimestre_actual, 10);
+		if (delGrupo >= 1 && delGrupo <= 3) return delGrupo;
+		var delOriginal = parseInt(original && original.trimestre, 10);
+		return delOriginal >= 1 && delOriginal <= 3 ? delOriginal : 1;
+	}
+
 	function copiaDeSesion(sesion, proyectoId, maestroId) {
 		var fila = { proyecto_id: proyectoId, maestro_id: maestroId, estado_sesion: "pendiente", fecha: null };
 		CAMPOS_PLAN_SESION.forEach(function (k) { if (sesion && k in sesion) fila[k] = sesion[k]; });
@@ -170,7 +301,9 @@
 		validarPaso1: validarPaso1, claveCatalogo: claveCatalogo,
 		sesionTrabajada: sesionTrabajada, CAMPOS_TEXTO_SESION: CAMPOS_TEXTO_SESION, soloTexto: soloTexto,
 		sesionesSinCampo: sesionesSinCampo, planGuardado: planGuardado,
-		CAMPOS_PLAN_SESION: CAMPOS_PLAN_SESION, copiaDeSesion: copiaDeSesion,
+		cambiosDeSesion: cambiosDeSesion, borrarSinTrabajar: borrarSinTrabajar,
+		actualizarSinTrabajar: actualizarSinTrabajar, guardarSesiones: guardarSesiones, avisoCarrera: avisoCarrera,
+		CAMPOS_PLAN_SESION: CAMPOS_PLAN_SESION, copiaDeSesion: copiaDeSesion, trimestreDeCopia: trimestreDeCopia,
 	};
 	if (typeof window !== "undefined") window.ProyectoEdicion = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

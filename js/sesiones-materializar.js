@@ -32,6 +32,10 @@
 	  opts.origenTrabajo / opts.origenTarea: 'backfill' | 'importado' | 'maestro'.
 	  opts.anteriores: { [sesionId]: fila anterior } en una reedición (permite borrar lo quitado).
 	  opts.gradosProyectoAnterior: grados del proyecto antes de la reedición.
+	  opts.soloSinTrabajar: vuelve a revisar justo antes de escribir que cada sesión siga sin
+	    fecha ni calificaciones; las que se empezaron a trabajar no se tocan (carrera R24-r08).
+	  resumen: { insertados, borrados, conservados, omitidas: [sesiones no tocadas por
+	    trabajadas], carrera: [sesiones que se trabajaron a media escritura] }.
 	y, para las pruebas, SesionesMaterializar.planificar (la regla sin base de datos).
 
 	Requiere js/campos-formativos.js cargado antes.
@@ -164,6 +168,7 @@
 			spdaInsertar: [], spdaActualizar: [], spdaBorrar: [],
 			productosInsertar: [], productosActualizar: [], productosBorrar: [],
 			campoPorSesion: {},
+			clavesPlan: {}, // reedición: { sesionId: { claveSpda: true } } de los PDA del plan nuevo
 		};
 
 		// Primero se valida el campo de TODAS: si falta en una, no se escribe nada
@@ -194,8 +199,16 @@
 					plan.spdaActualizar.push({ id: ya.id, criterio_aplicado: r.criterio_aplicado });
 				}
 			});
+			// Reedición: solo se quita lo que venía del plan anterior (un PDA que se agregó desde Hoy
+			// para una actividad no es del plan y se queda, como la actividad misma)
 			if (anterior) {
-				spdaExist.forEach(function (r) { if (!deseadas[claveSpda(r)]) plan.spdaBorrar.push(r.id); });
+				var delPlanAnterior = {};
+				spdaDeseados(anterior).forEach(function (r) { delPlanAnterior[claveSpda(r)] = true; });
+				spdaExist.forEach(function (r) {
+					var k = claveSpda(r);
+					if (!deseadas[k] && delPlanAnterior[k]) plan.spdaBorrar.push(r.id);
+				});
+				plan.clavesPlan[ses.id] = deseadas;
 			}
 
 			// ── productos ──
@@ -260,6 +273,27 @@
 		return filas;
 	}
 
+	// { sesionId: true } de las que tienen fecha (se trabajaron en Hoy)
+	async function sesionesConFecha(sb, ids) {
+		var con = {};
+		if (!ids.length) return con;
+		var filas = await todas(ids, function (lote) {
+			return sb.from("sesiones").select("id, fecha").in("id", lote).order("id");
+		});
+		filas.forEach(function (f) { if (f.fecha) con[f.id] = true; });
+		return con;
+	}
+
+	// { sesionId: true } de las trabajadas: con fecha o con alguna calificación
+	async function sesionesTrabajadas(sb, ids) {
+		var con = await sesionesConFecha(sb, ids);
+		var cal = await todas(ids, function (lote) {
+			return sb.from("calificaciones").select("sesion_id").in("sesion_id", lote).order("id");
+		});
+		cal.forEach(function (c) { if (c.sesion_id) con[c.sesion_id] = true; });
+		return con;
+	}
+
 	function sinGuionBajo(p) {
 		var limpio = {};
 		Object.keys(p).forEach(function (k) { if (k.charAt(0) !== "_") limpio[k] = p[k]; });
@@ -272,11 +306,26 @@
 		CF();
 		opts = Object.assign({}, opts || {}, { maestroId: maestroId });
 		sesiones = (sesiones || []).filter(function (s) { return s && s.id; });
-		var resumen = { insertados: 0, borrados: 0, conservados: 0 };
+		var resumen = { insertados: 0, borrados: 0, conservados: 0, omitidas: [], carrera: [] };
 		if (!sesiones.length) return resumen;
 		// Valida el campo de todas ANTES de leer o escribir
 		sesiones.forEach(function (s) { campoDeSesion(s, opts); });
 		var ids = sesiones.map(function (s) { return s.id; });
+
+		/*
+			opts.soloSinTrabajar (reedición desde crear_proyecto): justo antes de escribir se revisa
+			otra vez que cada sesión siga sin trabajar (sin fecha ni calificaciones). Una que se
+			empezó a trabajar mientras tanto no se toca y se reporta en resumen.omitidas.
+		*/
+		if (opts.soloSinTrabajar) {
+			var trabajadas = await sesionesTrabajadas(sb, ids);
+			resumen.omitidas = ids.filter(function (id) { return trabajadas[id]; });
+			if (resumen.omitidas.length) {
+				sesiones = sesiones.filter(function (s) { return !trabajadas[s.id]; });
+				ids = sesiones.map(function (s) { return s.id; });
+				if (!sesiones.length) return resumen;
+			}
+		}
 
 		var spda = await todas(ids, function (lote) {
 			return sb.from("sesiones_pda").select("id, sesion_id, pda_id, grado, criterio_aplicado")
@@ -293,21 +342,40 @@
 
 		var plan = planificar(sesiones, { spda: spda, productos: productos }, opts);
 
-		// ── Borrar (solo reedición): nunca un producto con calificaciones ni un PDA con evidencia
+		/*
+			── Borrar (solo reedición): nunca un producto con calificaciones ni un PDA con evidencia.
+			Borrar un producto borra en cascada sus calificaciones, y "sin calificaciones" no cabe en
+			un solo DELETE de PostgREST (no filtra por otra tabla). Por eso: (1) JUSTO ANTES se
+			revisa que ni el producto tenga calificaciones ni su sesión tenga fecha; (2) se borra
+			pidiendo las filas borradas; (3) DESPUÉS se confirma que su sesión siga sin fecha y
+			cuántas filas se borraron. La ventana que queda es la de un viaje de red entre la
+			revisión (1) y el borrado (2): si en ese instante otra pestaña trabaja la sesión y
+			califica ese producto, la calificación se pierde; el paso (3) lo detecta y se avisa
+			(resumen.carrera) en vez de decir "guardado".
+		*/
 		if (plan.productosBorrar.length) {
+			var sesionDeProducto = {};
+			productos.forEach(function (p) { sesionDeProducto[p.id] = p.sesion_id; });
 			var conCal = await todas(plan.productosBorrar, function (lote) {
 				return sb.from("calificaciones").select("producto_sesion_id").in("producto_sesion_id", lote).order("id");
 			});
 			var ocupados = {};
 			conCal.forEach(function (c) { ocupados[c.producto_sesion_id] = true; });
-			var borrarProd = plan.productosBorrar.filter(function (id) { return !ocupados[id]; });
+			var sesionesDeBorrar = Array.from(new Set(plan.productosBorrar.map(function (id) { return sesionDeProducto[id]; }).filter(Boolean)));
+			var conFechaAntes = await sesionesConFecha(sb, sesionesDeBorrar);
+			var borrarProd = plan.productosBorrar.filter(function (id) { return !ocupados[id] && !conFechaAntes[sesionDeProducto[id]]; });
 			resumen.conservados += plan.productosBorrar.length - borrarProd.length;
+			sesionesDeBorrar.forEach(function (s) { if (conFechaAntes[s] && resumen.carrera.indexOf(s) === -1) resumen.carrera.push(s); });
 			if (borrarProd.length) {
-				var resBP = await sb.from("productos_sesion").delete().in("id", borrarProd);
+				var resBP = await sb.from("productos_sesion").delete().in("id", borrarProd).select("id, sesion_id");
 				if (resBP.error) throw resBP.error;
-				resumen.borrados += borrarProd.length;
+				var borrados = resBP.data || [];
+				resumen.borrados += borrados.length;
+				var conFechaDespues = await sesionesConFecha(sb, Array.from(new Set(borrados.map(function (b) { return b.sesion_id; }))));
+				Object.keys(conFechaDespues).forEach(function (s) { if (resumen.carrera.indexOf(s) === -1) resumen.carrera.push(s); });
+				var idsBorrados = borrados.map(function (b) { return b.id; });
+				productos = productos.filter(function (p) { return idsBorrados.indexOf(p.id) === -1; });
 			}
-			productos = productos.filter(function (p) { return borrarProd.indexOf(p.id) === -1; });
 		}
 		if (plan.spdaBorrar.length) {
 			var conEv = await todas(plan.spdaBorrar, function (lote) {
@@ -361,6 +429,28 @@
 		}) : [];
 		var yaLigado = {};
 		ligas.forEach(function (l) { yaLigado[l.producto_sesion_id + "|" + l.sesion_pda_id] = true; });
+
+		// Reedición: una liga de un producto que NO es del campo de la sesión con un PDA del plan
+		// sobra (p. ej. se cambió el campo de la sesión y el PDA se quedó): se quita. Las ligas con
+		// PDA agregados desde Hoy para esa actividad no son del plan y se quedan.
+		var spdaPorId = {};
+		spda.forEach(function (r) { spdaPorId[r.id] = r; });
+		var prodPorId = {};
+		productos.forEach(function (p) { prodPorId[p.id] = p; });
+		var sobran = ligas.filter(function (l) {
+			var p = prodPorId[l.producto_sesion_id], r = spdaPorId[l.sesion_pda_id];
+			if (!p || !r || r.sesion_id !== p.sesion_id) return false;
+			var clavesPlan = plan.clavesPlan[p.sesion_id];
+			if (!clavesPlan || !clavesPlan[claveSpda(r)]) return false;
+			return p.campo !== plan.campoPorSesion[p.sesion_id];
+		});
+		for (var s = 0; s < sobran.length; s++) {
+			var resDL = await sb.from("producto_sesion_pda").delete()
+				.eq("producto_sesion_id", sobran[s].producto_sesion_id).eq("sesion_pda_id", sobran[s].sesion_pda_id);
+			if (resDL.error) throw resDL.error;
+			delete yaLigado[sobran[s].producto_sesion_id + "|" + sobran[s].sesion_pda_id];
+		}
+		resumen.ligasQuitadas = sobran.length;
 		var nuevas = [];
 		productos.forEach(function (prod) {
 			if (prod.campo !== plan.campoPorSesion[prod.sesion_id]) return;
