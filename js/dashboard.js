@@ -11,6 +11,11 @@
 	     activo con "Trabajar hoy" (le pone la fecha de hoy, igual que en "Hoy").
 	  3. Terminar sesión: la marca como completada con notas opcionales. Ya no escribe la
 	     tabla vieja `tareas`: las tareas son productos de la sesión y se revisan en "Hoy".
+
+	Próximos cumpleaños (decisión de Jorge, 2026-09-26): una línea discreta en el encabezado,
+	el mismo día y hasta 7 días antes (Cumpleanos.DIAS_AVISO_INICIO), con enlace a Calendario →
+	Cumpleaños. Solo alumnos activos del grupo activo; usa la lectura de alumnos que Inicio ya
+	hace (con la fecha de nacimiento). Si nadie cumple en esos días, no se muestra nada.
 */
 
 let user = null;
@@ -95,7 +100,7 @@ async function cargarGrupoYAlumnos() {
 	// Sin la lista no se sigue (lanza): "0 alumnos" y todo en verde contradiría a "Hoy"
 	alumnos = (await window.Lectura.uno(window.sb
 		.from("alumnos")
-		.select("id, nombre_completo, grado, num_lista, created_at")
+		.select("id, nombre_completo, grado, num_lista, created_at, estatus, fecha_nacimiento")
 		.eq("grupo_id", grupoId)
 		.eq("estatus", "activo")
 		.order("grado")
@@ -103,6 +108,26 @@ async function cargarGrupoYAlumnos() {
 	// Alta tarde: misma regla que "Hoy" (js/alcance-hoy.js)
 	alumnos.forEach((a) => { a.alta = window.AlcanceHoy.fechaAlta(a.created_at, grupo.created_at); });
 	document.getElementById("welcomeSub").textContent = (grupo.nombre || "Grupo") + " · " + alumnos.length + " alumnos";
+	pintarAvisoCumples();
+}
+
+// ── Próximos cumpleaños (una línea en el encabezado) ────────────────────────
+// Pastel de Lucide ("cake"), en línea como en Calendario
+const ICONO_PASTEL = "<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>" +
+	"<path d='M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8'/><path d='M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1'/><path d='M2 21h20'/><path d='M7 8v3'/><path d='M12 8v3'/><path d='M17 8v3'/><path d='M7 4h.01'/><path d='M12 4h.01'/><path d='M17 4h.01'/></svg>";
+function pintarAvisoCumples() {
+	const aviso = document.getElementById("avisoCumples");
+	const K = window.Cumpleanos;
+	if (!aviso || !K) return;
+	const lista = K.paraInicio(alumnos, getLocalDateISO());
+	if (!lista.length) { aviso.classList.add("hidden"); aviso.innerHTML = ""; return; }
+	// Toda la línea es el enlace a Calendario → Cumpleaños: en el celular no agrega otro renglón
+	aviso.innerHTML =
+		"<a href='calendario.html#cumpleanos' class='group flex items-center gap-2 min-h-[44px] -my-1.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-white'>" +
+		"<span class='self-start mt-3 text-pink-200'>" + ICONO_PASTEL + "</span>" +
+		"<span class='min-w-0 flex-1 break-words py-1.5'><span class='font-semibold text-white'>Próximos cumpleaños:</span> " + escapeHtml(K.textoInicio(lista)) + "</span>" +
+		"<span class='shrink-0 font-semibold text-white underline underline-offset-2 group-hover:text-blue-100'>Ver<span class='hidden sm:inline'> cumpleaños</span></span></a>";
+	aviso.classList.remove("hidden");
 }
 
 // ── 1. Tu día: lo que falta de hoy ──────────────────────────────────────────

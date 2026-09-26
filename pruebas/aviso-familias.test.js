@@ -2,7 +2,8 @@
 	Aviso para las familias en Mi grupo (js/aviso-familias.js; decisión de Jorge, 2026-09-25):
 	  - el texto dice lo que la maestra lleva en Mi Salón (lista, asistencia, calificaciones y
 	    trabajos, participación y conducta, diagnóstico, observaciones, ficha con fecha de
-	    nacimiento, género y datos del tutor, incidencias: lo mismo que el Aviso de privacidad),
+	    nacimiento, género y datos del tutor, incidencias y, desde el 2026-09-26, las listas de
+	    cooperación y materiales: lo mismo que el Aviso de privacidad),
 	    que solo ella lo ve y que pueden pedirle corregirlo o borrarlo; al final, "Más información:
 	    jissez.com/tienda/privacidad" (Jorge, 2026-09-26); sin emojis;
 	  - Compartir por WhatsApp: wa.me sin número, con el texto;
@@ -36,6 +37,10 @@ const delAlumno = (priv.match(/<li><strong>Del alumno:<\/strong>([^<]*)<\/li>/) 
 ok("cada dato del alumno que lista el aviso de privacidad sale en el aviso a las familias",
 	["asistencia", "calificaciones", "participación", "conducta", "diagnóstico", "observaciones", "fecha de nacimiento", "género"].map((p) => [delAlumno.indexOf(p) !== -1, t.indexOf(p) !== -1]),
 	["asistencia", "calificaciones", "participación", "conducta", "diagnóstico", "observaciones", "fecha de nacimiento", "género"].map(() => [true, true]));
+// Decisión de Jorge (2026-09-26): también las listas de cooperación y materiales (b15)
+ok("también menciona las listas de cooperación y materiales (como el aviso de privacidad)",
+	[/el registro de incidencias y las listas de cooperación y materiales del grupo \(quién entregó y cuánto aportó\)\./.test(t),
+		/<li><strong>Listas de cooperación y materiales del grupo, si usted las usa:<\/strong>/.test(priv)], [true, true]);
 ok("termina con «Más información: jissez.com/tienda/privacidad»", [/ Más información: jissez\.com\/tienda\/privacidad$/.test(t), A.ENLACE_PRIVACIDAD], [true, "jissez.com/tienda/privacidad"]);
 ok("dice que solo ella lo ve y que pueden pedir corregir o borrar", [/Solo yo veo esa información/.test(t), /corrijo o lo borro/.test(t)], [true, true]);
 ok("dice que es Mi Salón, herramienta personal (no oficial)", /Mi Salón, una herramienta personal/.test(t), true);
@@ -68,6 +73,20 @@ ok("privacidad: calendario y rol de aseo en los datos, la imagen con nombres que
 ok("privacidad: incidencias en dos tantos por alumno y el resumen solo para el expediente",
 	[/dos hojas por cada alumno, las dos solo con el nombre de ese alumno y firmadas por su familia/.test(txtPriv), /el resumen con todos los nombres es solo para el expediente del docente/.test(txtPriv),
 		/imprime una hoja para cada familia/.test(txtPriv)], [true, true, false]);
+// Listas aprobadas por Jorge (2026-09-26), con las sugerencias de R21
+ok("privacidad: listas publicadas (sin comentarios de propuesta) y con fecha de actualización",
+	[/PROPUESTA|PENDIENTE DE APROBACI/.test(priv), /<p class="mt-2 text-mute">Última actualización: \d{1,2} de [a-z]+ de 2026<\/p>/.test(priv)], [false, true]);
+ok("privacidad: Mi Salón no pone nombres en lo de las familias; la descripción y las columnas son texto de la docente",
+	[/En la imagen y el texto de una lista para las familias, Mi Salón no pone nombres de alumnos/.test(txtPriv),
+		/La descripción de la lista y los nombres de sus columnas son texto que usted escribe y salen tal cual en esa imagen y ese texto; le pedimos no escribir en ellos nombres de alumnos\./.test(txtPriv)],
+	[true, true]);
+ok("privacidad: «Recordar por WhatsApp» y la imagen de las listas en el punto 4; imágenes e impresiones de las listas y los mensajes en el 6",
+	[/Cuando usted toca "Escribir por WhatsApp" o "Recordar por WhatsApp", o comparte el rol de aseo o la imagen de una lista, es su propio dispositivo el que abre WhatsApp/.test(txtPriv),
+		/imágenes del rol de aseo, imágenes e impresiones de las listas, archivos de Excel\), así como los mensajes que haya enviado con "Escribir por WhatsApp" o "Recordar por WhatsApp", quedan bajo su cuidado/.test(txtPriv)],
+	[true, true]);
+ok("privacidad: finalidad de mostrar los próximos cumpleaños (Calendario e Inicio) con la fecha de nacimiento que captura la docente",
+	/mostrarle los próximos cumpleaños de sus alumnos \(en Calendario y en Inicio\), con la fecha de nacimiento que usted captura/.test(txtPriv), true);
+ok("privacidad: nada nuevo sobre «dato patrimonial» (queda como pregunta para Jorge)", /patrimonial/i.test(txtPriv), false);
 ok("privacidad: sin emojis", SIMBOLOS.test(txtPriv), false);
 
 console.log(fallos ? "\n" + fallos + " FALLAS" : "\nTODAS PASAN");

@@ -4,8 +4,8 @@
 
 	Un párrafo simple, en primera persona de la maestra: la lista, la asistencia, las
 	calificaciones y los trabajos, la participación y la conducta, el diagnóstico, sus
-	observaciones, la ficha (fecha de nacimiento, género, datos del tutor) y el registro de
-	incidencias; solo ella los ve; pueden pedirle corregirlos o borrarlos; al final, "Más
+	observaciones, la ficha (fecha de nacimiento, género, datos del tutor), el registro de
+	incidencias y las listas de cooperación y materiales (Jorge, 2026-09-26); solo ella los ve; pueden pedirle corregirlos o borrarlos; al final, "Más
 	información: jissez.com/tienda/privacidad" (decisión de Jorge, 2026-09-26). En Mi grupo, con tres botones:
 	  - Copiar (portapapeles; si el navegador no deja, se selecciona el texto para copiarlo a mano);
 	  - Compartir por WhatsApp (https://wa.me/?text=..., sin número: ella elige el chat);
@@ -21,7 +21,8 @@
 	var TEXTO = "Estimadas familias: les informo que llevo el registro del grupo en Mi Salón, una herramienta personal " +
 		"para mi trabajo como docente. Ahí anoto la lista del grupo, la asistencia, las calificaciones y los trabajos, " +
 		"la participación y la conducta, el diagnóstico (cuaderno, lectura y matemáticas), mis observaciones, la ficha de " +
-		"cada alumno (fecha de nacimiento, género y datos de la madre, padre o tutor) y el registro de incidencias. Solo yo " +
+		"cada alumno (fecha de nacimiento, género y datos de la madre, padre o tutor), el registro de incidencias y las " +
+		"listas de cooperación y materiales del grupo (quién entregó y cuánto aportó). Solo yo " +
 		"veo esa información. Si algún dato de su hija o hijo está mal, o si quieren que lo borre, díganmelo y lo corrijo o " +
 		"lo borro. Más información: " + ENLACE_PRIVACIDAD;
 

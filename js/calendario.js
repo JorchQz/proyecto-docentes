@@ -91,12 +91,14 @@
 	}
 	/*
 		Nota de un cumpleaños que cae en un día sin clase (se muestra igual, decisión de Jorge):
-		"Cae en fin de semana", "Sin clase: Vacaciones…", "Fuera del periodo de clases"; "" si hay clase.
+		"Cae en fin de semana", "Sin clase: Vacaciones…"; "" si hay clase. Fuera de los ciclos
+		escolares cargados (por ejemplo, en el ciclo que sigue) no se sabe si habrá clase: solo se
+		dice si cae en fin de semana, nunca "Fuera del periodo de clases" (R21).
 	*/
 	function notaDia(t) {
 		if (!t || t.clase) return "";
 		if (t.tipo === "fin_semana") return "Cae en fin de semana";
-		if (t.tipo === "fuera_ciclo") return "Fuera del periodo de clases";
+		if (t.tipo === "fuera_ciclo") return t.fecha && (C.diaSemana(t.fecha) === 0 || C.diaSemana(t.fecha) === 6) ? "Cae en fin de semana" : "";
 		return "Sin clase: " + (t.motivo || t.etiqueta || "día sin clase");
 	}
 
@@ -121,7 +123,7 @@
 	/*
 		htmlMes(mes, ajustes, hoy, cumples) → la cuadrícula del mes (lunes a domingo) con un botón por día.
 		mes "AAAA-MM" · ajustes: filas o mapa (CalendarioSEP) · hoy "AAAA-MM-DD"
-		cumples (opcional): { "AAAA-MM-DD": [{nombre, edad}] } (Cumpleanos.porFecha): un pastel
+		cumples (opcional): { "AAAA-MM-DD": [{nombre, edad}] } (Cumpleanos.delMes): un pastel
 		discreto abajo a la izquierda; los nombres solo en el nombre accesible y al tocar el día.
 	*/
 	function htmlMes(mes, ajustes, hoy, cumples) {
@@ -302,7 +304,9 @@
 		var ajustes = [];            // filas de calendario_ajustes del grupo
 		var todos = [], activos = []; // alumnos del grupo (todos, para bajas) y activos en orden de lista
 		var roles = {};              // "AAAA-MM" → fila de roles_aseo
-		var cumples = { lista: [], sinFecha: 0 }, cumplesPorFecha = {}; // js/cumpleanos.js
+		var cumples = { lista: [], sinFecha: 0 }; // js/cumpleanos.js
+		// El pastel del mes marca TODOS los cumpleaños de ese mes, también los que ya pasaron (R21)
+		function cumplesDelMes(m) { return window.Cumpleanos ? window.Cumpleanos.delMes(todos, m) : {}; }
 		var hoy = C.hoyLocal();
 		var ciclo = C.cicloVigente(hoy);
 		var meses = ciclo ? C.mesesDelCiclo(ciclo) : [];
@@ -424,7 +428,7 @@
 
 		function pintarMes() {
 			el.mesTitulo.textContent = C.nombreMes(mesVista);
-			el.grid.innerHTML = htmlMes(mesVista, ajustes, hoy, cumplesPorFecha);
+			el.grid.innerHTML = htmlMes(mesVista, ajustes, hoy, cumplesDelMes(mesVista));
 			var dias = C.diasDelMes(mesVista);
 			var n = C.diasDeClase(dias[0], dias[dias.length - 1], ajustes).length;
 			el.mesResumen.textContent = n === 1 ? "1 día de clase este mes" : n + " días de clase este mes";
@@ -483,8 +487,9 @@
 			var h = "<p class='text-xs font-semibold uppercase tracking-wide text-gray-500'>" + esc(C.fechaLarga(fecha)) + "</p>" +
 				"<h2 id='dlgDiaTitulo' class='mt-1 text-lg font-bold text-gray-900'>" + esc(t.tipo === "clase" ? "Día de clase" : t.etiqueta) + "</h2>";
 			if (t.motivo && t.tipo !== "clase") h += "<p class='mt-1 text-sm text-gray-700 break-words'>" + esc(t.motivo) + "</p>";
-			if (cumplesPorFecha[fecha]) {
-				h += "<p class='mt-2 flex items-start gap-2 text-sm text-pink-800'>" + pastel("h-4 w-4 shrink-0 mt-0.5") + "<span class='break-words'>Cumpleaños de " + esc(textoCumples(cumplesPorFecha[fecha])) + ".</span></p>";
+			var cumDia = cumplesDelMes(fecha.slice(0, 7))[fecha];
+			if (cumDia) {
+				h += "<p class='mt-2 flex items-start gap-2 text-sm text-pink-800'>" + pastel("h-4 w-4 shrink-0 mt-0.5") + "<span class='break-words'>Cumpleaños de " + esc(textoCumples(cumDia)) + ".</span></p>";
 			}
 			h += "<p class='mt-2 text-sm " + (t.clase ? "text-emerald-700" : "text-gray-600") + "'>" + (t.clase ? "Hay clase con los alumnos." : "No hay clase con los alumnos.") + "</p>";
 			if (t.ajuste) {
@@ -992,7 +997,7 @@
 			if (pestana === "aseo" && roles[aseo.mes]) {
 				el.impresion.innerHTML = htmlImpresionRol({ mes: C.nombreMes(aseo.mes), escuela: escuela, grupo: meta.grupo }, datosSalida().semanas);
 			} else {
-				el.impresion.innerHTML = htmlImpresionMes(meta, mesVista, ajustes, hoy, cumplesPorFecha);
+				el.impresion.innerHTML = htmlImpresionMes(meta, mesVista, ajustes, hoy, cumplesDelMes(mesVista));
 			}
 		}
 		window.addEventListener("beforeprint", prepararImpresion);
@@ -1037,7 +1042,6 @@
 
 			el.subtitulo.textContent = (grupo.nombre || "Grupo") + (ciclo ? " · Ciclo " + ciclo.ciclo : "") + (escuela ? " · " + escuela : "");
 			cumples = window.Cumpleanos ? window.Cumpleanos.proximos(todos, hoy) : { lista: [], sinFecha: 0 };
-			cumplesPorFecha = window.Cumpleanos ? window.Cumpleanos.porFecha(cumples.lista) : {};
 			pintarCumples();
 			pintarCalendario();
 			pintarAseo();
