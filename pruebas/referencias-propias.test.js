@@ -90,6 +90,11 @@ const EXCEPCIONES = {
 	// B15 (supabase/mi_salon_b15_listas_2026-09.sql): nacen con la revisión en su política
 	listas_grupo: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
 	listas_valores: "sus políticas de insert y update ya exigen que la lista (abierta) y la columna sean del maestro y que el alumno sea suyo y del mismo grupo que la lista",
+	// B18 (supabase/mi_salon_b18_examenes_2026-09.sql): nacen con la revisión en su política
+	examenes_grupo: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	examen_preguntas: "sus políticas de insert y update ya exigen que el examen sea del maestro y de modo 'propio'",
+	examen_resultados: "sus políticas de insert y update ya exigen que el examen (modo 'resultados') sea del maestro y que el alumno sea suyo y del mismo grupo que el examen",
+	examen_respuestas: "sus políticas de insert y update ya exigen que el examen (modo 'propio') y la pregunta de ESE examen sean del maestro y que el alumno sea suyo y del mismo grupo",
 };
 
 // 1. Políticas por tabla
