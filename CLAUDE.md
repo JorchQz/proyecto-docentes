@@ -33,7 +33,9 @@ Manual testing checklist is in `docs/TESTING.md`.
 
 - `js/supabase.js` — Supabase client init with hardcoded public URL/anon key
 - `js/section-shell.js` — Shared utilities: `bindMainMenu()`, `getTeacherNameFromUser()`
-- `js/navbar.js` — Shared nav rendered on every protected page
+- `js/navbar.js` — Shared nav rendered on every protected page (sidebar / hamburger; loaded in `<head>`)
+- `js/secciones.js`, `js/saas-guard.js` — Section switcher (Tienda / Mi Salón / Sala) and the Mi Salón access gate
+- `js/bandeja-salida.js` — Offline queue for "Hoy" (IndexedDB, per-field capture marks)
 - `js/grupo-activo.js` — The only place that decides the active group (selector in the nav)
 - `js/motor-calificacion.js` — The only grade formula; percent → grade conversion happens only in SQL (`calcular_calificacion_boleta`)
 - `js/alcance-hoy.js` — Rules shared by "Hoy", Inicio and Tareas (project scope, task due date, day-close count, paged reads past Supabase's 1000-row cap)
@@ -44,14 +46,24 @@ Manual testing checklist is in `docs/TESTING.md`.
 
 ### Auth & routing flow
 
+jissez.com has three sections: **Tienda** (the public store, `tienda/`), **Mi Salón** (this SaaS) and **Sala de Maestros** (`sala-maestros.html`, "Próximamente"). Only accounts with `perfiles.activo_saas = true` see Mi Salón and Sala (`js/saas-guard.js`); everyone else only sees the store.
+
 ```
-index.html (login/register)
-  → onboarding.html (create group → add students)   [first-time users]
-  → dashboard.html                                    [returning users]
-    → asistencia.html, mi-grupo.html, reportes.html, crear_proyecto.html, ...
+index.html (root; no content)
+  → tienda/index.html                                  [visitors, buyers without Mi Salón]
+  → last section on this device (localStorage "jissez.seccion", js/secciones.js)
+                                                       [accounts with Mi Salón]
+tienda/login.html (login/register; ?next= returns to the origin page)
+  → onboarding.html (create group → add students)     [first-time Mi Salón users]
+  → dashboard.html (Inicio)                            [returning users]
+    → hoy.html, asistencia.html, mi-grupo.html, reportes.html, crear_proyecto.html, ...
 ```
 
-Protected pages check session on load and redirect to `index.html` if unauthenticated.
+Protected pages check the session and the Mi Salón access on load; without a session they go to the login, without access to the store.
+
+**Installable app "Jissez MS"** (`docs/PWA-MI-SALON.md`): the same pages served under the virtual path `/salon/` (`_redirects`), with `salon.webmanifest`, `sw.js` (network-first + offline page) and an offline queue for "Hoy" in IndexedDB (`js/bandeja-salida.js`: per-field capture marks, never overwrites another device silently). Links must stay relative so nothing leaves `/salon/`; the store opens outside the app.
+
+**Navigation** (`js/navbar.js`, loaded in `<head>`): left sidebar from 1024 px wide (collapsible), header + hamburger panel + bottom quick-access bar below 1024 px. The section switcher (Tienda / Mi Salón / Sala) is painted only after access is confirmed.
 
 ### Data model (core tables)
 
@@ -68,6 +80,8 @@ Full, verified schema is in `docs/CONTEXTO.md §6`. Quick reference:
 | `sesiones_pda`, `productos_sesion`, `producto_sesion_pda` | structured traceability per session: PDAs-by-grade with criteria, and gradable products; materialized by `js/sesiones-materializar.js` on import/create |
 | `calificaciones`, `evaluacion_formativa`, `tareas` | `calificaciones` is written in "Hoy" as each product is graded; `evaluacion_formativa` is filled by a trigger on grading (plus the teacher's adjustment) and links to `sesiones_pda` via `sesion_pda_id`; `tareas` is deprecated (0 rows, nothing writes it) |
 | `boleta_trimestral`, `registro_diario`, `banco_criterios_pda` | report-card text/grades per campo formativo, daily participation/conduct log, and per-PDA criteria suggestions |
+| `calendario_ajustes`, `roles_aseo` | per-group adjustments to the official SEP calendar (`js/calendario-sep.js`, data only: attendance % still counts the days the teacher took roll) and the optional cleaning roster; page `calendario.html` |
+| `listas_grupo`, `listas_columnas`, `listas_valores` | per-group cooperation/materials lists (checkbox, text, peso amounts); anything shared with families carries NO student names; closed lists are a read-only record; page `listas.html` |
 
 Campo formativo convention: legacy tables store the long name ("Lenguajes", …); new tables (`productos_sesion`, `boleta_trimestral`) store short codes (`LEN`/`SAB`/`ETI`/`DHL`). The mapping lives ONLY in `js/campos-formativos.js` and is applied on write.
 
@@ -80,4 +94,6 @@ Campo formativo convention: legacy tables store the long name ("Lenguajes", …)
 
 ## Module status
 
-All 16 modules are complete (auth, onboarding, dashboard, asistencia, mi-grupo, crear_proyecto, planeación, actividades, tareas, reportes with boleta PDF/WhatsApp, mi-cuenta, ajustes, evaluación formativa, evaluación diagnóstica, exámenes, marketplace). Full table and remaining debt in `docs/CONTEXTO.md §7`. "Mi salón" Parte B (daily capture screen "Hoy", grade engine, auto-generated report texts, printable boleta, detailed report, parents' meeting, export) is built on branch `mi-salon-parte-b` and described in `docs/PRODUCTO-MI-SALON.md`; progress and reviewer verdicts are in `docs/PROGRESO-PARTE-B.md`. Merging to `main` is Jorge's decision. New product or legal decisions (weights, attendance states, reading of the Acuerdo) still need Jorge's explicit go-ahead.
+All 16 modules are complete (auth, onboarding, dashboard, asistencia, mi-grupo, crear_proyecto, planeación, actividades, tareas, reportes with boleta PDF/WhatsApp, mi-cuenta, ajustes, evaluación formativa, evaluación diagnóstica, exámenes, marketplace). Full table and remaining debt in `docs/CONTEXTO.md §7`. "Mi salón" Parte B (daily capture screen "Hoy", grade engine, auto-generated report texts, printable boleta, detailed report, parents' meeting, export) is described in `docs/PRODUCTO-MI-SALON.md`; progress and reviewer verdicts are in `docs/PROGRESO-PARTE-B.md`. Later additions (all published): "Qué le falta" per student, student ficha, school/principal per group, incidents with signatures, notice for families, SEP calendar, cleaning roster, cooperation lists and birthdays.
+
+Deployment: a push to `main` deploys jissez.com automatically (Cloudflare Worker "jissez"); work happens on `mi-salon-parte-b` and each publish, and each SQL migration applied to production, needs Jorge's explicit go-ahead at that moment. Production Supabase is `cluvaxxqvhtxxiwctpnl`; all QA runs against the test project `raoxdxwgsxbqlzdnndly` (never load-test production). New product or legal decisions (weights, attendance states, reading of the Acuerdo, privacy wording) still need Jorge's explicit go-ahead.
