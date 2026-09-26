@@ -286,6 +286,20 @@ ok("XLSX: hoja principal = encabezados + filas", hojas["Concentrado"].aoa.length
 ok("XLSX: hoja Máximos con los mismos encabezados", hojas["Máximos"].aoa[0], ESPERADAS);
 ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 
+// Ajustes del grupo al calendario oficial (calendario.html, b14): hoja "Calendario" solo si hay
+{
+	const ajustes = [{ fecha: "2026-10-12", tipo: "festividad_local", motivo: "Fiesta\npatronal" }, { fecha: "2026-10-30", tipo: "con_clase", motivo: null }];
+	const wbCal = E.libroXLSX(XLSXFalso, tabla, { grupo: "QA", trimestre: 1, ajustesCalendario: ajustes });
+	ok("XLSX con ajustes del calendario: cuarta hoja «Calendario»", wbCal.SheetNames, ["Concentrado", "Máximos", "Léeme", "Calendario"]);
+	ok("hoja Calendario: fecha, día, qué es y motivo (en una línea)", hojas["Calendario"].aoa, [
+		["Fecha", "Día", "Qué es", "Motivo"],
+		["2026-10-12", "lunes", "Sin clase: festividad local", "Fiesta patronal"],
+		["2026-10-30", "viernes", "Con clase (ajuste al calendario oficial)", ""],
+	]);
+	ok("Léeme explica la hoja Calendario solo si está", [E.hojaLeeme({ ajustesCalendario: ajustes }).some((f) => f[0] === "Calendario"), E.hojaLeeme({}).some((f) => f[0] === "Calendario")], [true, false]);
+	ok("sin ajustes: tres hojas, como siempre", E.libroXLSX(XLSXFalso, tabla, { ajustesCalendario: [] }).SheetNames, ["Concentrado", "Máximos", "Léeme"]);
+}
+
 // ── Boleta cerrada y juicio docente (decisiones de Jorge 5, 6 y 7) ─────────
 {
 	const RD = window.ReporteDatos;

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- App instalable "Jissez MS" (js/app-instalada.js; docs/PWA-MI-SALON.md) -->
+	<link rel="manifest" href="/salon.webmanifest">
+	<meta name="theme-color" content="#1e3a8a">
+	<link rel="apple-touch-icon" href="/iconos/apple-touch-icon-180.png">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Jissez MS">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<script src="js/app-instalada.js"></script>
+	<!-- Navegación (js/navbar.js): en el head, para apartar su espacio desde el primer pintado -->
+	<script src="js/navbar.js"></script>
+	<title>Calendario — Jissez</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		[hidden] { display: none !important; }
+		dialog.cal-dlg { width: min(30rem, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 0; border-radius: 1rem; box-shadow: 0 24px 48px -16px rgba(15, 23, 42, .45); }
+		dialog.cal-dlg::backdrop { background: rgba(15, 23, 42, .5); }
+		#zonaImpresion { display: none; }
+		@media print {
+			@page { size: letter portrait; margin: 12mm; }
+			body { padding: 0 !important; background: #fff !important; }
+			body > *:not(#zonaImpresion) { display: none !important; }
+			#zonaImpresion { display: block !important; color: #111827; font-family: 'Segoe UI', Roboto, Arial, sans-serif; }
+			.imp-etq { font-size: 11pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #1e3a8a; margin: 0; }
+			.imp-titulo { font-size: 24pt; font-weight: 800; margin: 2pt 0 4pt; }
+			.imp-sub { font-size: 12pt; margin: 0; color: #374151; }
+			.imp-tabla, .imp-mes { margin-top: 12pt; }
+			.imp-tabla table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+			.imp-tabla th, .imp-tabla td { border: 1px solid #9ca3af; padding: 4pt; vertical-align: top; font-size: 11pt; }
+			.imp-tabla th { background: #f3f4f6; }
+			.imp-tabla td span { display: block; }
+			.imp-mes button { min-height: 58pt !important; box-shadow: none !important; }
+			.imp-mes .hidden { display: block !important; }
+			.imp-leyenda { list-style: none; padding: 0; margin: 10pt 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4pt 12pt; }
+			.imp-fuente { margin-top: 10pt; font-size: 9pt; color: #4b5563; }
+			* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+		}
+	</style>
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-8 text-gray-800">
+	<main id="calPagina" class="max-w-5xl mx-auto flex flex-col gap-4">
+		<header class="bg-blue-800 rounded-2xl shadow-md p-6">
+			<h1 class="text-2xl md:text-3xl font-bold text-white">Calendario escolar</h1>
+			<p id="calSubtitulo" class="text-blue-100 text-sm md:text-base mt-1">Cargando...</p>
+		</header>
+
+		<div role="tablist" aria-label="Calendario y rol de aseo" class="flex gap-1 p-1 rounded-xl bg-gray-200/70 self-start max-w-full overflow-x-auto">
+			<button id="tabCalendario" type="button" role="tab" data-tab="calendario" aria-controls="panelCalendario" aria-selected="true" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-white text-blue-800 shadow-sm">Calendario</button>
+			<button id="tabAseo" type="button" role="tab" data-tab="aseo" aria-controls="panelAseo" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold text-gray-600">Rol de aseo</button>
+		</div>
+
+		<div id="calMensaje" class="hidden" role="status" aria-live="polite"></div>
+
+		<!-- ═══ Calendario ═══ -->
+		<section id="panelCalendario" role="tabpanel" aria-labelledby="tabCalendario" class="flex flex-col gap-4">
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+				<div id="calHoy" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"></div>
+				<div id="calProximo" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"></div>
+				<div id="calCuenta" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"></div>
+			</div>
+
+			<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 sm:p-5">
+				<div class="flex flex-wrap items-center gap-2 mb-3">
+					<button id="calAnterior" type="button" aria-label="Mes anterior" class="inline-flex items-center justify-center h-11 w-11 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+					</button>
+					<h2 id="calMesTitulo" class="flex-1 min-w-[8rem] text-center text-lg sm:text-xl font-bold text-gray-900" aria-live="polite"></h2>
+					<button id="calSiguiente" type="button" aria-label="Mes siguiente" class="inline-flex items-center justify-center h-11 w-11 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+					</button>
+				</div>
+				<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+					<p id="calMesResumen" class="text-sm text-gray-600"></p>
+					<div class="flex gap-2">
+						<button id="calIrHoy" type="button" class="min-h-[44px] px-4 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Ir a hoy</button>
+						<button id="calImprimir" type="button" class="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+							Imprimir mes
+						</button>
+					</div>
+				</div>
+				<div id="calGrid"><p class="text-sm text-gray-400">Cargando...</p></div>
+				<p class="mt-3 text-xs text-gray-500">Toca un día para ver qué es. En un día de lunes a viernes puedes marcar una suspensión de tu grupo o, si tu escuela lo cambió, que sí hay clase.</p>
+			</div>
+
+			<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+				<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+					<h3 class="font-bold text-gray-800 mb-3">Qué significa cada color</h3>
+					<ul id="calLeyenda" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2"></ul>
+				</div>
+				<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+					<h3 class="font-bold text-gray-800 mb-2">Ajustes de tu grupo</h3>
+					<div id="calAjustesLista"><p class="text-sm text-gray-400">Cargando...</p></div>
+				</div>
+			</div>
+
+			<footer class="text-xs text-gray-500 px-1">
+				<p><span id="calFuente">Fuente: Calendario escolar SEP 2026-2027 (DOF 15-07-2026). Tu entidad o escuela puede ajustarlo.</span>
+				<a id="calFuenteLink" href="https://dof.gob.mx/nota_detalle.php?codigo=5793645&amp;fecha=15/07/2026" target="_blank" rel="noopener" class="inline-flex items-center min-h-[44px] font-semibold text-blue-700 underline underline-offset-2">Ver el acuerdo en el DOF</a></p>
+			</footer>
+		</section>
+
+		<!-- ═══ Rol de aseo ═══ -->
+		<section id="panelAseo" role="tabpanel" aria-labelledby="tabAseo" class="flex flex-col gap-4" hidden>
+			<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<h2 class="font-bold text-gray-800 mb-3">Configuración</h2>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div>
+						<label for="aseoMes" class="block text-sm font-medium text-gray-700">Mes</label>
+						<select id="aseoMes" class="mt-1 block w-full min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-sm"></select>
+					</div>
+					<div>
+						<p id="aseoPorDiaEtq" class="text-sm font-medium text-gray-700">Alumnos por día</p>
+						<div id="aseoPorDia" role="radiogroup" aria-labelledby="aseoPorDiaEtq" class="mt-1 flex flex-wrap gap-2"></div>
+					</div>
+					<div class="md:col-span-2">
+						<div id="aseoContinuarFila" class="mb-3" hidden>
+							<label class="flex items-start gap-3 min-h-[44px] cursor-pointer">
+								<input id="aseoContinuar" type="checkbox" class="mt-1 h-5 w-5 shrink-0 rounded border-gray-300">
+								<span id="aseoContinuarTexto" class="text-sm text-gray-800"></span>
+							</label>
+						</div>
+						<label for="aseoInicio" class="block text-sm font-medium text-gray-700">Empieza con</label>
+						<select id="aseoInicio" class="mt-1 block w-full min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-sm disabled:bg-gray-100 disabled:text-gray-500"></select>
+						<p class="mt-1 text-xs text-gray-500">Solo alumnos activos del grupo, en orden de lista. Se reparten los días de clase del mes según el calendario (con los ajustes de tu grupo); los días sin clase se saltan.</p>
+					</div>
+				</div>
+				<div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+					<button id="aseoGenerar" type="button" class="min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">Generar y guardar</button>
+					<p id="aseoEstado" class="text-sm text-gray-600" aria-live="polite"></p>
+				</div>
+			</div>
+
+			<div id="aseoAviso" class="hidden" role="status"></div>
+
+			<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+					<h2 id="aseoTitulo" class="font-bold text-gray-800">Rol de aseo</h2>
+					<div id="aseoVista" class="flex gap-1 p-1 rounded-xl bg-gray-100" role="group" aria-label="Vista del rol">
+						<button type="button" data-vista="lista" aria-pressed="true" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold">Lista</button>
+						<button type="button" data-vista="calendario" aria-pressed="false" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold">Calendario</button>
+					</div>
+				</div>
+				<div id="aseoPreview"><p class="text-sm text-gray-400">Cargando...</p></div>
+				<p class="mt-3 text-xs text-gray-500">Toca un nombre en la lista para cambiarlo por otro alumno ese día.</p>
+			</div>
+
+			<div id="aseoSalida" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5" hidden>
+				<h2 class="font-bold text-gray-800 mb-3">Compartir con las familias</h2>
+				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+					<button id="aseoImagen" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"/><path d="m14 19 3 3v-5.5"/><path d="m17 22 3-3"/><circle cx="9" cy="9" r="2"/></svg>
+						Guardar como imagen
+					</button>
+					<button id="aseoCompartir" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl border border-emerald-600 text-emerald-700 text-sm font-semibold hover:bg-emerald-50" hidden>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>
+						Compartir
+					</button>
+					<button id="aseoCopiar" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+						Copiar texto
+					</button>
+					<button id="aseoImprimir" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+						Imprimir
+					</button>
+				</div>
+				<p class="mt-2 text-xs text-gray-500">La imagen es vertical, para verse bien en el celular. En el celular, Compartir la manda directo a WhatsApp.</p>
+			</div>
+		</section>
+	</main>
+
+	<!-- Un día del calendario -->
+	<dialog id="dlgDia" class="cal-dlg" aria-labelledby="dlgDiaTitulo">
+		<div class="p-5 sm:p-6">
+			<div id="dlgDiaCuerpo"></div>
+			<div class="mt-5 flex justify-end">
+				<button type="button" data-cerrar class="min-h-[44px] px-5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cerrar</button>
+			</div>
+		</div>
+	</dialog>
+
+	<!-- Confirmación -->
+	<dialog id="dlgConfirmar" class="cal-dlg" aria-labelledby="dlgConfirmarTitulo">
+		<div class="p-5 sm:p-6">
+			<h2 id="dlgConfirmarTitulo" data-titulo class="text-lg font-bold text-gray-900"></h2>
+			<p data-texto class="mt-2 text-sm text-gray-700 break-words"></p>
+			<div class="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+				<button type="button" data-cerrar class="min-h-[44px] px-5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancelar</button>
+				<button type="button" data-ok class="min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold">Confirmar</button>
+			</div>
+		</div>
+	</dialog>
+
+	<!-- Cambiar a un alumno de un día del rol -->
+	<dialog id="dlgCambio" class="cal-dlg" aria-labelledby="dlgCambioTitulo">
+		<div class="p-5 sm:p-6">
+			<h2 id="dlgCambioTitulo" class="text-lg font-bold text-gray-900">Cambiar alumno</h2>
+			<p data-texto class="mt-2 text-sm text-gray-700"></p>
+			<label for="dlgCambioSel" class="block mt-4 text-sm font-medium text-gray-700">Le toca a</label>
+			<select id="dlgCambioSel" class="mt-1 block w-full min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-sm"></select>
+			<div class="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+				<button type="button" data-cerrar class="min-h-[44px] px-5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancelar</button>
+				<button type="button" data-ok class="min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">Guardar cambio</button>
+			</div>
+		</div>
+	</dialog>
+
+	<div id="zonaImpresion"></div>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/lectura.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/secciones.js"></script>
+	<script src="js/bandeja-salida.js"></script>
+	<script src="js/grupo-activo.js"></script>
+	<script src="js/section-shell.js"></script>
+	<script src="js/calendario-sep.js"></script>
+	<script src="js/rol-aseo.js"></script>
+	<script src="js/calendario.js"></script>
+</body>
+</html>

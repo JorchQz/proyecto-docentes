@@ -49,6 +49,7 @@ var Navegacion = (function () {
 		diagnostico: '<path d="m8 11 2 2 4-4"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 		examen: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/>',
 		reportes: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+		calendario: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
 		// El grupo (mochila): distinto del ícono de Sala de Maestros
 		grupo: '<path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 10h8"/><path d="M8 18h8"/><path d="M8 22v-6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>',
 		sala: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>',
@@ -84,6 +85,7 @@ var Navegacion = (function () {
 			] },
 			{ titulo: "Grupo", items: [
 				{ clave: "mi-grupo", href: "mi-grupo.html", etiqueta: "Mi grupo", icono: "grupo" },
+				{ clave: "calendario", href: "calendario.html", etiqueta: "Calendario", icono: "calendario" },
 			] },
 		],
 		sala: [
@@ -113,7 +115,7 @@ var Navegacion = (function () {
 		evaluacion_diagnostica: "Diagnóstico", evaluacion_formativa: "Evaluación formativa", examen: "Exámenes",
 		reportes: "Reportes", boleta: "Boleta", "reporte-alumno": "Reporte del alumno", junta: "Junta de padres",
 		exportar: "Exportar", "mi-grupo": "Mi grupo", "mi-cuenta": "Mi cuenta", ajustes: "Ajustes",
-		"sala-maestros": "Sala de Maestros",
+		"sala-maestros": "Sala de Maestros", calendario: "Calendario",
 	};
 
 	// Accesos rápidos de la barra de abajo (celular y tablet vertical). Sala tiene un solo

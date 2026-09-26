@@ -110,9 +110,10 @@ ok("página actual", ["/salon/hoy", "/hoy.html", "/x/reportes", "/", "/salon/"].
 ok("marcado en el menú (las páginas hijas marcan a su sección)",
 	["hoy", "crear_proyecto", "boleta", "mi-cuenta", "evaluacion_formativa", "sala-maestros"].map((p) => N.activoDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["hoy", "planeacion", "reportes", "mi-cuenta", null, "sala-maestros"]);
-ok("los mismos destinos de antes (barra y menú), sin agregar ni quitar",
+// calendario.html: Calendario escolar y rol de aseo, en el grupo "Grupo" (2026-09-25)
+ok("los mismos destinos de antes (barra y menú), sin agregar ni quitar, más Calendario",
 	(htmlSalon.match(/href="[a-z_\-]+\.html"/g) || []).map((h) => h.slice(6, -1)).filter((v, i, t) => t.indexOf(v) === i).sort(),
-	["actividades.html", "ajustes.html", "asistencia.html", "dashboard.html", "evaluacion_diagnostica.html", "examen.html",
+	["actividades.html", "ajustes.html", "asistencia.html", "calendario.html", "dashboard.html", "evaluacion_diagnostica.html", "examen.html",
 		"hoy.html", "marketplace.html", "mi-cuenta.html", "mi-grupo.html", "planeacion.html", "reportes.html", "tareas.html"]);
 ok("títulos del encabezado", ["hoy", "boleta", "reporte-alumno", "sala-maestros", "otra"].map((p) => N.tituloDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["Hoy", "Boleta", "Reporte del alumno", "Sala de Maestros", "Mi Salón"]);
