@@ -11,6 +11,9 @@
 //   body: { accion: "redactar", alumno_id, ciclo, trimestre }
 //         → { secciones: [{ campo, copiados: [cuadros] }], modelo }
 //
+// Acceso: "redactar" exige acceso VIGENTE a Mi Salón (RPC mi_salon_puede_escribir, b21); en
+// solo lectura responde 403 con hint "mi_salon_solo_lectura" antes de llamar a la API.
+//
 // Qué guarda (con la sesión del maestro, así que RLS aplica):
 //   - Siempre: texto_autogenerado.ia = { fortalezas, areas_oportunidad, sugerencias,
 //     generado_en, modelo } en cada fila del trimestre que no esté cerrada. Con la
@@ -151,15 +154,25 @@ Deno.serve(async (req: Request) => {
     if (body.accion !== "redactar") {
       return jsonResponse({ error: "Acción desconocida" }, 400);
     }
-    if (!llave) {
-      return jsonResponse({ error: "La redacción con IA no está configurada" }, 503);
+    // Acceso VIGENTE a Mi Salón (b21, spec 2026-09-26 §5.4): en solo lectura no se usa la IA.
+    // Se revisa ANTES de llamar a la API (no se paga una redacción que no se podría guardar).
+    // Si la base aún no tiene la función (b21 sin aplicar), el requisito de antes: activo_saas.
+    const acceso = await sb.rpc("mi_salon_puede_escribir");
+    if (acceso.error) {
+      const { data: perfil } = await sb.from("perfiles").select("activo_saas")
+        .eq("id", maestroId).maybeSingle();
+      if (!perfil || !perfil.activo_saas) {
+        return jsonResponse({ error: "Tu cuenta no tiene acceso a Mi Salón" }, 403);
+      }
+    } else if (acceso.data !== true) {
+      return jsonResponse({
+        error: "Tu acceso a Mi Salón terminó: puedes ver e imprimir la boleta, pero la redacción con IA necesita un acceso activo.",
+        hint: "mi_salon_solo_lectura",
+      }, 403);
     }
 
-    // Mismo requisito que el resto del SaaS: perfil con acceso activo
-    const { data: perfil } = await sb.from("perfiles").select("activo_saas")
-      .eq("id", maestroId).maybeSingle();
-    if (!perfil || !perfil.activo_saas) {
-      return jsonResponse({ error: "Tu cuenta no tiene acceso a Mi salón" }, 403);
+    if (!llave) {
+      return jsonResponse({ error: "La redacción con IA no está configurada" }, 503);
     }
 
     const alumnoId = String(body.alumno_id || "");
