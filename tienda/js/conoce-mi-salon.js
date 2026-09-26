@@ -101,12 +101,27 @@ var ConoceMiSalon = (function () {
 		return hayPrecio(cfg) ? null : BENEFICIO_GENERICO;
 	}
 
+	/*
+		Título y texto de "Cómo adquirirlo" según cuántos precios hay (R25b): con uno solo no se
+		ofrece elegir y el título nombra solo ese plan; el otro sigue con "Precio por anunciar".
+		Sin ningún precio, el modelo decidido (trimestre o ciclo), sin "Elige": aún no hay qué elegir.
+	*/
+	var CUENTA_TIENDA = "Con tu suscripción entras con la misma cuenta de la tienda.";
+	function encabezado(cfg) {
+		cfg = cfg || {};
+		var t = precioValido(cfg.trimestre), c = precioValido(cfg.ciclo);
+		if (t && c) return { titulo: "Suscripción por trimestre o por ciclo escolar.", texto: "Elige lo que te acomode. " + CUENTA_TIENDA };
+		if (t) return { titulo: "Suscripción por trimestre.", texto: CUENTA_TIENDA + " El precio por ciclo escolar se anunciará pronto." };
+		if (c) return { titulo: "Suscripción por ciclo escolar.", texto: CUENTA_TIENDA + " El precio por trimestre se anunciará pronto." };
+		return { titulo: "Suscripción por trimestre o por ciclo escolar.", texto: CUENTA_TIENDA };
+	}
+
 	// ¿Se ofrece "Avísame cuando esté disponible"? Solo sin ningún precio y sin acceso.
 	function ofrecerAviso(cfg, conAcceso) {
 		return !conAcceso && !hayPrecio(cfg);
 	}
 
-	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, BENEFICIO_GENERICO: BENEFICIO_GENERICO };
+	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, encabezado: encabezado, BENEFICIO_GENERICO: BENEFICIO_GENERICO };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = { PRECIOS_MI_SALON: PRECIOS_MI_SALON, ConoceMiSalon: ConoceMiSalon }; // pruebas en node
 
@@ -163,7 +178,17 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 		if (aviso) aviso.classList.toggle("hidden", !ConoceMiSalon.ofrecerAviso(PRECIOS_MI_SALON, conAcceso));
 	}
 
+	// Título y texto de "Cómo adquirirlo" según cuántos precios hay (ConoceMiSalon.encabezado)
+	function pintarEncabezado() {
+		var e = ConoceMiSalon.encabezado(PRECIOS_MI_SALON);
+		var titulo = document.getElementById("msPreciosTitulo");
+		var texto = document.getElementById("msPreciosTexto");
+		if (titulo) titulo.textContent = e.titulo;
+		if (texto) texto.textContent = e.texto;
+	}
+
 	// Primer pintado: con la pista del <head> (ms-acceso) y los precios de la configuración
+	pintarEncabezado();
 	pintarBeneficio();
 	aplicarAcceso(raiz.classList.contains("ms-acceso"));
 

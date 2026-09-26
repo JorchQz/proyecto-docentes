@@ -46,7 +46,10 @@
   vacío ("Catálogo en camino") porque en pruebas no hay planeaciones publicadas; de Crear
   proyecto solo está el paso 1; de la Junta solo la portada (son 9 diapositivas); no hay boleta
   confirmada ni cerrada; la ficha del alumno se edita **dentro de la página** de Mi grupo (no es
-  un diálogo).
+  un diálogo). Tampoco lo que se agregó el 26 de septiembre, después de las capturas: la
+  pantalla nueva de **Exámenes** (`11-examenes/` es la anterior, la del catálogo), el diálogo
+  **"¿Para quién?"**, las actividades sueltas ("Actividad suelta" en Hoy y "Actividades del
+  trimestre" en Proyectos) y "Incompleta" con "Pendientes de la clase anterior" en Hoy.
 
 ### Índice de capturas
 
@@ -104,8 +107,12 @@ Lo que hace:
   (Logrado / En proceso / Requiere apoyo) y hacer el cierre del día (participación y
   conducta). Todo en una sola pantalla: **Hoy**.
 - **Planeación:** proyectos del grupo (hechos a mano o importados del Marketplace), con sus
-  sesiones, productos y PDA por grado.
-- **Evaluación y reportes:** diagnóstico (cuaderno, lectura y matemáticas), exámenes, boleta
+  sesiones, productos y PDA por grado, y actividades o tareas **sueltas**, sin proyecto, que
+  después se pueden pasar a un proyecto del mismo trimestre. Cada actividad o tarea es para
+  todo el grupo, para uno o varios grados o para los alumnos que se marquen ("¿Para quién?").
+- **Evaluación y reportes:** diagnóstico (cuaderno, lectura y matemáticas), exámenes (crear el
+  propio en Mi Salón, con hoja de respuestas que se revisa con la cámara de la tablet, o solo
+  subir los resultados de cualquier examen), boleta
   trimestral con calificación **propuesta** que la maestra **confirma**, reporte por alumno,
   "Qué le falta" a cada alumno, presentación para la junta, vista para capturar en la
   plataforma oficial y exportación a Excel.
@@ -251,11 +258,12 @@ de guardado; sin grupo (lleva al alta).
 
 | # | Pantalla | Archivo | Propósito | Estados a diseñar | Capturas |
 |---|---|---|---|---|---|
-| 1 | **Hoy** | `hoy.html` | La pantalla más importante. En una sola página con scroll: 1) **Asistencia** (Presente / Falta / Justificada, un toque por alumno); 2) **Tareas por revisar** (Entregó / Incompleta / No entregó / Justificada; en multigrado, agrupadas por grado); 3) **Sesiones de hoy**: por producto, semáforo por alumno, "Detalle" con puntaje 0-10 opcional y retroalimentación con frases rápidas, "Agregar producto"; 4) **Cierre del día**: participación y conducta 0 · 1 · 2 (valor normal 1; solo se tocan las excepciones) y "Guardar el cierre de hoy". "Trabajar hoy" trae las siguientes sesiones del proyecto. Se guarda al tocar, sin botón de guardar. | Normal; multigrado (productos por grado); sin sesiones hoy / sin proyecto; **sin señal** ("se guardará al volver", aviso fijo abajo); conflicto con otro aparato (aviso); nadie asistió; día ya cerrado; grupo sin alumnos | `02-hoy/` |
+| 1 | **Hoy** | `hoy.html` | La pantalla más importante. En una sola página con scroll: 1) **Asistencia** (Presente / Falta / Justificada, un toque por alumno); 2) **Tareas por revisar** (Entregó / Incompleta / No entregó / Justificada; en multigrado, agrupadas por grado); entre 2 y 3, **Pendientes de la clase anterior** (solo si hay: actividades que quedaron "Incompleta" y hoy toca revisar, según el calendario SEP y los ajustes del grupo; por alumno "Lo completó" con el nivel que logró o "Sigue incompleta"; se revisa una sola vez; si el alumno faltó, queda pendiente); 3) **Sesiones de hoy**: por producto, semáforo por alumno más "Incompleta", "Detalle" con puntaje 0-10 opcional y retroalimentación con frases rápidas; por producto, "Para quién", "Renombrar", "Quitar" y, en una actividad suelta, "Pasar a un proyecto" (del mismo trimestre); "Agregar actividad o tarea" en cada sesión y **"Actividad suelta"** (sin proyecto: se guarda en "Actividades del trimestre"), las dos con el diálogo **"¿Para quién?"** (fila 28); 4) **Cierre del día**: participación y conducta 0 · 1 · 2 (valor normal 1; solo se tocan las excepciones) y "Guardar el cierre de hoy". "Trabajar hoy" trae las siguientes sesiones del proyecto. Se guarda al tocar, sin botón de guardar. | Normal; multigrado (productos por grado); con pendientes de la clase anterior; con actividad suelta; alumno que trabaja con otro grado ("Trabaja con 2°"); sin sesiones hoy / sin proyecto; **sin señal** ("se guardará al volver", aviso fijo abajo); conflicto con otro aparato (aviso); nadie asistió; día ya cerrado; grupo sin alumnos | `02-hoy/` |
 | 2 | **Inicio** | `dashboard.html` | Resumen del día y puerta a Hoy: qué falta (asistencia, cierre, productos por calificar, tareas por revisar), proyecto activo y plan de la sesión, **próximos cumpleaños** (una línea discreta en el encabezado: como mucho 3 nombres "y N más", con enlace a Calendario → Cumpleaños), avisos ("elige tu estado") y la tarjeta "Instala Mi Salón como app" al final | Normal; con cumpleaños; día completo; sin proyecto; grupo vacío; error con Reintentar | `01-inicio/` |
 | 3 | **Asistencia** | `asistencia.html` | Lista por fecha con tres opciones por alumno, "Presentes los que faltan" y cambio de fecha; mismas reglas que Hoy | Normal; día sin datos; guardando o error | `03-asistencia/` |
 | 4 | **Mi grupo** | `mi-grupo.html` | Datos del grupo (nombre, organización, grados, **escuela y director(a) del grupo**, niñas y niños), **trimestre actual** con sugerencia del calendario SEP, **aviso a las familias** (texto listo con Copiar, Compartir por WhatsApp e Imprimir) y alumnos: número de lista, nombre, grado, alta, edición, baja y borrado. La **ficha del alumno** (todo opcional): fecha de nacimiento, género (Niña / Niño / Prefiero no decir), nombre y teléfono del tutor, con botón de WhatsApp al tutor | Normal; con ficha y aviso; editando la ficha; grupo vacío; multigrado; confirmación de borrado (explica que sale de las incidencias) | `17-mi-grupo/` |
 | 5 | **Primeros pasos** | `onboarding.html` | Primer uso: crear el grupo (nombre, escuela, **estado**, organización, grados, ciclo, trimestre) y dar de alta a los alumnos | Paso 1; paso 2; errores de validación | `24-onboarding/` |
+| 28 | **Diálogo "¿Para quién?"** (nuevo) | `hoy.html`, `crear_proyecto.html` (`js/hoy.js`, `js/para-quien.js`) | A quién le toca una actividad o tarea (decisión de Jorge, 2026-09-26; el alumno **sigue en su grado oficial** para la boleta y el examen). Aparece en tres lugares: 1) en Hoy, al **agregar** una actividad o tarea (a una sesión o suelta): "Todo el grupo", "Uno o varios grados" (solo en multigrado; casillas 1°, 2°...) o "Alumnos que elijo" (lista de alumnos agrupada por grado, con "¿Con qué grado trabajan?": "Cada uno con el suyo" o "Con 2° (siguen en su grado para la boleta)"); el mismo diálogo de agregar (título "Agregar actividad o tarea" o, sin proyecto, "Actividad o tarea suelta") pide nombre, "¿Qué es?" ("Actividad en clase" o "Tarea para casa"), campo formativo, PDA, en una suelta "Día de la actividad" y, en una tarea, "Día en que se revisa la tarea" (por omisión, el siguiente día de clase); 2) en Hoy, **"Para quién"** de un producto ya creado ("¿Para quién es «nombre»?"): lista de alumnos para marcar; quien ya tiene calificación sale marcado y **bloqueado**; 3) en **Crear proyecto**, por sesión, para cada trabajo y tarea del plan (fila 15). En la fila del alumno, la nota "Trabaja con 2°"; en el producto, el rótulo de para quién ("3° y 4°", "2 alumnos de 3°", "2° + 2 alumnos de 3°") | Cada modo (grupo, grados, alumnos); grupo de un solo grado (sin "Uno o varios grados"); editar con alumnos bloqueados; sin marcar a nadie (aviso "Marca al menos un alumno."); sin señal (aviso: necesita señal); celular (diálogo de pantalla casi completa) | sin capturas: se agregó después |
 
 ### Prioridad 2: fin de trimestre (boleta y reportes)
 
@@ -279,8 +287,8 @@ de guardado; sin grupo (lleva al alta).
 
 | # | Pantalla | Archivo | Propósito | Capturas |
 |---|---|---|---|---|
-| 14 | **Proyectos** | `planeacion.html` | Proyectos del grupo (estado, trimestre, campos), iniciar, clonar, "Nuevo proyecto" e ir al Marketplace | `06-proyectos/` |
-| 15 | **Crear proyecto** | `crear_proyecto.html` | Asistente de 3 pasos: datos del proyecto; contenidos y PDA por grado; sesiones con actividades (para todos o por grado), criterios sugeridos y productos. Un proyecto en curso se abre solo para consulta | `07-crear-proyecto/` |
+| 14 | **Proyectos** | `planeacion.html` | Proyectos del grupo (estado, trimestre, campos), iniciar, clonar, "Nuevo proyecto" e ir al Marketplace. Arriba, **Actividades del trimestre**: las actividades y tareas sueltas (sin proyecto) con tipo, campo, fecha y trimestre, "Agregar actividad suelta" (abre Hoy con el diálogo) y, en cada una, "Pasar a un proyecto" (diálogo: elegir un proyecto y una sesión del mismo trimestre; se mueve con sus calificaciones) | `06-proyectos/` (sin Actividades del trimestre: se agregó después de las capturas) |
+| 15 | **Crear proyecto** | `crear_proyecto.html` | Asistente de 3 pasos: datos del proyecto; contenidos y PDA por grado; sesiones con actividades (para todos o por grado), criterios sugeridos y productos. En cada sesión, la lista de lo que se va a calificar (el trabajo de cada grado y cada tarea del cierre) con su **"¿Para quién?"** (fila 28): por omisión los alumnos de su grado; se puede quitar a alguno o sumar alumnos de otro grado (lo agregado en Hoy se maneja en Hoy). Un proyecto iniciado se puede seguir editando en lo no trabajado; lo que ya tiene fecha o calificaciones queda fijo (un alumno con calificación sale marcado y bloqueado en "¿Para quién?") | `07-crear-proyecto/` (solo paso 1, sin "¿Para quién?") |
 | 16 | **Marketplace** | `marketplace.html` | Importar planeaciones hechas al grupo, con vista previa de sesiones; estado vacío mientras no haya publicadas | `08-marketplace/` |
 | 17 | **Actividades** | `actividades.html` | Plan de la sesión del día por momento | `04-actividades/` |
 | 18 | **Tareas** | `tareas.html` | Seguimiento de las tareas: cuándo vencen, cuántos alumnos faltan, "Quedó sin revisar"; la revisión se captura en Hoy | `05-tareas/` |
@@ -291,7 +299,7 @@ de guardado; sin grupo (lleva al alta).
 |---|---|---|---|---|
 | 19 | **Diagnóstico** | `evaluacion_diagnostica.html` | Por alumno: cuaderno (10 criterios), fluidez lectora (palabras por minuto contra la "referencia SEP 2010" de su grado) y comprensión, matemáticas **según su grado** (1°: 4 habilidades, 2°: 7, 3° a 6°: 8) y observaciones; Anterior / Siguiente entre alumnos; momento "Inicio de ciclo" o "T1 · boleta" | `09-diagnostico/` |
 | 20 | **Evaluación formativa** | `evaluacion_formativa.html` | Semáforo por PDA y por alumno en una sesión, con observaciones. Se llega desde una sesión (no está en el menú) | `10-evaluacion-formativa/` |
-| 21 | **Exámenes** | `examen.html` | Lista de exámenes y captura de respuestas por alumno | `11-examenes/` |
+| 21 | **Exámenes** | `examen.html` | Los exámenes del catálogo se venden en la tienda y **ya no son parte de Mi Salón** (lo que una maestra ya había aplicado sale abajo como "Exámenes anteriores del catálogo", con la vista anterior). La pantalla nueva tiene: **Lista** de exámenes del grupo por trimestre, cada uno con su estado (sin aplicar, en revisión "N de M", calificado), su camino ("Creado en Mi Salón" o "Solo resultados"), grados y fecha, y "Nuevo examen". **Nuevo examen** (diálogo): elegir uno de **dos caminos** —"Crear mi examen" o "Solo subir resultados"—, nombre, trimestre, fecha (opcional), grados que lo presentan (multigrado) y, en "Solo subir resultados", cuántas preguntas tenía de cada campo formativo. **Solo subir resultados:** tabla alumnos × campos formativos, un número de aciertos por casilla (validado contra el número de preguntas), total y porcentaje por alumno; sirve con cualquier examen (propio, de la tienda o revisado a mano). **Crear mi examen**, en pestañas: *Preguntas* (opción múltiple, sugerida porque se revisa sola; verdadero o falso; completar; abierta; cada una con su campo formativo; subir, bajar, editar, borrar; "Duplicar" el examen), *Imprimir* ("Imprimir examen" en carta y las hojas de respuestas: "Imprimir hojas con nombre", una por alumno con su QR, o "Imprimir hojas sin nombre"; la hoja lleva 4 cuadros negros en las esquinas y círculos solo para opción múltiple y verdadero o falso), *Revisar* ("Escanear hojas" con la cámara de la tablet o, sin cámara, tocar la letra que marcó cada alumno, con "Siguiente alumno" y "En blanco"), *A mano* (completar y abiertas: por pregunta, cada alumno correcta, parcial o incorrecta) y *Resultados* (aciertos / preguntas por campo de cada alumno). **Revisar con la cámara** (pantalla completa, fondo oscuro): vista en vivo con recuadro guía, se captura sola al ver los 4 cuadros o con "Capturar"; luego **confirmar lo leído**: la hoja enderezada con cada respuesta en verde (coincide con la clave), rojo (no coincide) o amarillo (dudosa, vacía o doble marca), tocar un círculo la cambia, "Repetir foto" o "Guardar y seguir" (vuelve a la cámara). En la hoja genérica, o si no se leyó el QR, se elige al alumno. La foto se procesa en la tablet y no se sube. **No presentó:** botón por alumno y examen: no cuenta ni a favor ni en contra. **Sin señal:** las capturas (la letra tocada o escaneada, la calificación a mano, los aciertos y "No presentó") se guardan en la tablet y se envían solas al volver la señal, con la misma cola de Hoy; crear o editar el examen y sus preguntas sí necesita señal. **Estados a diseñar:** lista vacía (explica los dos caminos); lista con exámenes y con anteriores del catálogo; diálogo Nuevo examen (sin camino elegido, con cada camino); tabla de resultados (vacía, a medias, casilla con error, sin señal); editor de preguntas (cada tipo); imprimir; revisar tocando; cámara (buscando hoja, capturando, sin permiso de cámara); confirmar lo leído (con dudosas); a mano; resultados; alumno "No presentó"; capturas sin enviar (sin señal); confirmar eliminar | `11-examenes/` (es la pantalla **anterior**, la del catálogo: úsala solo como referencia de datos) |
 
 ### Prioridad 6: cuenta, Sala y app
 
@@ -301,59 +309,79 @@ de guardado; sin grupo (lleva al alta).
 | 23 | **Mi cuenta** | `mi-cuenta.html` | Nombre, trato (profesora / profesor), estado donde da clases | `22-mi-cuenta/` |
 | 24 | **Sala de Maestros (dentro)** | `sala-maestros.html` | Hoy, "Próximamente". Diseña la página de espera con la navegación de Sala | `23-sala-de-maestros/` |
 | 25 | **App instalada y sin conexión** | `/salon/hoy`, `sin-conexion.html` | Cómo se ve Mi Salón abierto como app (sin barra del navegador) y la página "Sin conexión" (con Reintentar y cuántas capturas de Hoy esperan en el aparato) | `25-app-instalada/` |
-| 26 | **Presentación de Mi Salón** (nueva) | por definir (sugerido `tienda/mi-salon.html`) | Ver §7.1 | referencia de estilo: `capturas/tienda/landing-*` |
+| 26 | **Presentación de Mi Salón** (nueva) | `tienda/conoce-mi-salon.html` (construida, oculta y sin indexar; precio en `tienda/js/conoce-mi-salon.js`) | Ver §7.1 | referencia de estilo: `capturas/tienda/landing-*` |
 | 27 | **Presentación de Sala de Maestros** (nueva) | `tienda/conoce-sala.html` (construida, oculta y sin indexar) | Ver §7.2 | referencia de estilo: `capturas/tienda/landing-*` |
 
 ---
 
-## 7. Páginas de presentación (nuevas, por construir)
+## 7. Páginas de presentación (nuevas, ya construidas y ocultas)
 
 Son las **cartas de presentación** de cada sección, igual que la tienda tiene la suya
 (`capturas/tienda/landing-*`). Son **públicas** (sin sesión), con la navegación y el pie de la
 tienda, el mismo lenguaje visual del landing (pizarrón, gis, tarjetas grandes) y **un solo
 llamado a la acción** principal. Diseña tablet horizontal, tablet vertical y celular.
 
+Las dos **ya están construidas** (decisión de Jorge, 2026-09-26): `tienda/conoce-mi-salon.html`
+y `tienda/conoce-sala.html`. Están publicadas pero **ocultas**: sin enlaces desde la tienda ni
+desde ningún menú y sin indexar (`noindex` y la regla de `/_headers`); se ven con el enlace
+directo. El comentario del `<head>` de cada una dice dónde irán los enlaces al lanzarlas. El
+diseño puede partir de ellas: su contenido ya se revisó contra el código.
+
 Lo marcado **(por definir)** lo decide Jorge: diséñalo con un lugar claro y un texto de
 ejemplo que se note que es provisional.
 
 ### 7.1 Mi Salón
 
-- **Qué es.** Promesa en una línea, por ejemplo: "Pasa lista y califica en minutos; la boleta
-  se arma sola." Debajo, una frase: la herramienta diaria para tu grupo de primaria, hecha
-  para la Nueva Escuela Mexicana y para grupos multigrado.
-- **Para qué sirve.** Tres beneficios con capturas reales (Hoy en tablet y en celular):
-  1. **Multigrado de verdad:** cada alumno se califica en lo de su grado, con los PDA de su
-     grado.
-  2. **Boleta NEM que sale sola:** calificación propuesta que tú confirmas, textos de
-     fortalezas y áreas por campo formativo, boleta imprimible y "Qué le falta" a cada alumno.
-  3. **Reportes para la junta y para tu director:** presentación para proyectar, concentrado,
-     vista para capturar en la plataforma oficial y Excel.
-  Y una franja con lo demás: asistencia, diagnóstico, exámenes, incidencias con documento
-  para firmar, calendario escolar SEP, cumpleaños, rol de aseo y listas de cooperación.
-- **Cómo se ve en el aula.** La tablet en horizontal en el escritorio de la maestra; el antes
-  (Excel por campo, máximos a mano, textos desde cero) y el después.
-- **Cómo adquirirlo.**
-  - Hoy Mi Salón es **por invitación** (piloto). Llamado a la acción: **"Pedir acceso"**
-    (a dónde lleva: **por definir**).
-  - Quien ya compró planeaciones en la tienda lo recibirá **gratis o con promoción**
-    (**por definir**).
-  - Después será una **suscripción por trimestre o por ciclo escolar**. Precio **por definir**:
-    deja el espacio de la tarjeta de precio, con el mismo estilo de las tarjetas de precios
-    del landing de la tienda.
-  - Con acceso, el llamado cambia a **"Entrar a Mi Salón"**.
-- **Cómo usarlo** (4 pasos, como "Elige tu paquete / Paga seguro / Descarga e imprime" de la
-  tienda): 1) entra con tu cuenta de Jissez; 2) crea tu grupo y da de alta a tus alumnos;
-  3) pasa lista y califica cada día en **Hoy**; 4) al cerrar el trimestre, confirma la boleta
-  e imprímela. Más: **instala la app** en tu tablet o celular (Chrome y Samsung Internet:
-  botón "Instalar"; iPhone y iPad: Compartir → Agregar a pantalla de inicio).
-- **Privacidad en lenguaje simple:** solo tú ves los datos de tus alumnos; lo que se comparte
-  con las familias no lleva nombres de otros alumnos; puedes borrar tu cuenta. Enlace al aviso
-  de privacidad.
-- **Preguntas frecuentes:** ¿funciona en celular y tablet? (sí); ¿hay que instalar algo? (no;
-  se puede instalar como app); ¿qué pasa si se va la señal? (lo capturado en Hoy se guarda en
-  el aparato y se envía al volver la señal). **No prometas "funciona sin internet"**: solo Hoy
-  guarda sin señal. ¿Sustituye la boleta oficial? (no, es un complemento).
-- Testimonios: solo con permiso; deja el espacio.
+**Ya construida** en `tienda/conoce-mi-salon.html` (oculta y sin indexar). El precio se configura
+en un solo lugar, `PRECIOS_MI_SALON` de `tienda/js/conoce-mi-salon.js` (hoy en `null`). Con la
+navegación de la tienda y su menú de anclas (Qué es, Para qué sirve, Cómo se usa, Cómo
+adquirirlo, Preguntas). Secciones, en orden:
+
+- **Portada.** "Tu salón al día, sin cuentas a mano." con la tablet mostrando Hoy; botones
+  "Cómo adquirirlo" (con acceso: **"Ir a Mi Salón"**) y "Cómo se usa"; debajo, Multigrado ·
+  Tablet, computadora y celular · Alineada a la NEM.
+- **Qué es.** "La libreta del salón, hecha app." Cuatro tarjetas: hecha para la NEM, pensada
+  para multigrado, aguanta la mala señal (solo lo que se captura en Hoy) y se instala como app.
+- **Para qué sirve.** Nueve tarjetas: Hoy; Planeación (crear tus propios proyectos o
+  actividades sueltas; las planeaciones de Jissez, **próximamente**); Evaluación (formativa y
+  diagnóstico); **Exámenes** (crearlo en Mi Salón con hoja de respuestas que se revisa con la
+  cámara o tocando la letra, o subir los resultados de cualquier examen; el catálogo de
+  exámenes se vende en la tienda y **no** se menciona como parte de Mi Salón); Boleta y
+  reportes; Qué le falta a cada alumno; Mi grupo; Organización; Incidencias con firmas. Luego
+  el bloque **"La planeación te guía, pero no te amarra."** con tres piezas: actividades
+  sueltas, "¿Para quién?" e "Incompleta" (se revisa el siguiente día de clase). Y cuatro
+  capturas reales con su texto (calificar en Sesiones de hoy, la boleta, Qué le falta y
+  listas de cooperación).
+- **Cómo se usa.** Seis pasos (entra o crea tu cuenta; crea tu grupo; da de alta a tus
+  alumnos; prepara tu proyecto; trabaja en Hoy; cierra el trimestre con la boleta) y el
+  recuadro **"Instálala en tu tablet"**: Android (Chrome o Samsung Internet: "Instalar la
+  app" en Inicio o en el menú de la cuenta; atajos "Pasar lista", "Calificar trabajos" y
+  "Reportes" al mantener presionado el ícono) e iPad o iPhone (Safari: Compartir → "Agregar a
+  inicio"; "Abrir como app web" solo si aparece; iniciar sesión una vez dentro de la app).
+- **Cómo adquirirlo.** Suscripción por trimestre o por ciclo escolar. El título y el texto
+  dependen de cuántos precios hay: sin precio, el modelo sin "Elige"; con uno solo, solo ese
+  plan; con los dos, "Elige lo que te acomode". Cada tarjeta dice "Precio por anunciar" o el
+  precio con "Suscribirme por trimestre" / "Suscribirme por el ciclo" (solo con precio y
+  enlace de compra). Mientras no haya ningún precio, el bloque "El precio se anunciará
+  pronto." con el botón **"Avísame cuando esté disponible"**: el mismo control de Sala (§7.2:
+  pide sesión, no pide el correo, se puede quitar con "Ya no quiero el aviso"). Abajo, "Qué
+  incluye" y la tarjeta "¿Ya compraste planeaciones en Jissez?" (beneficio **por definir**:
+  `beneficioCompradores`). Con acceso: "Ya tienes Mi Salón en tu cuenta." e "Ir a Mi Salón".
+- **Privacidad en una franja,** con frases que se pueden verificar: en Mi Salón cada cuenta ve
+  solo lo suyo (otras maestras no ven tu grupo); las fotos de las hojas de respuestas se leen
+  en la tablet y no se suben; lo que se prepara para una familia solo lleva a su hija o hijo;
+  las listas para las familias no llevan nombres y el rol de aseo sí. Enlace al aviso de
+  privacidad.
+- **Preguntas frecuentes** (7): ¿funciona sin internet?, ¿sirve para multigrado?, ¿en qué
+  aparatos?, ¿quién ve mis datos?, ¿necesito comprar planeaciones?, ¿cómo funcionan los
+  exámenes? y ¿la calificación la pone la app? **No prometas "funciona sin internet"**: solo
+  Hoy guarda sin señal. ¿Sustituye la boleta oficial? No, es un complemento (SIGED).
+- **Cierre** en pizarrón: "Llega al cierre del trimestre con la boleta casi lista."
+- Testimonios: solo con permiso; deja el espacio. Pixel de Meta: solo al lanzarla.
+
+Estados a diseñar: visitante sin precio (Avísame: sin sesión, pedir, guardando, listo con "Ya
+no quiero el aviso", error); con un solo precio; con los dos precios; con beneficio para
+compradores; cuenta que ya tiene Mi Salón.
 
 ### 7.2 Sala de Maestros
 
@@ -441,7 +469,8 @@ ejemplo que se note que es provisional.
   celdas tocables, totales y resumen arriba (Listas, Concentrado, Vista Recrea, Exportar).
 - **Pestañas:** con desplazamiento y flechas cuando no caben (Reportes, Calendario, Listas).
 - **Diálogos:** título, texto, acciones (Cancelar a la izquierda, acción a la derecha; la
-  destructiva en rojo). En celular, de pantalla casi completa o como hoja desde abajo.
+  destructiva en rojo). En celular, de pantalla casi completa o como hoja desde abajo. El de
+  **"¿Para quién?"** (fila 28) se usa en Hoy y en Crear proyecto: diséñalo una vez.
 - **Avisos fijos:** indicador de guardado (guardando, guardado, error, **sin señal: se
   guardará al volver**), capturas pendientes de Hoy en otras páginas, conflicto con otro
   aparato.

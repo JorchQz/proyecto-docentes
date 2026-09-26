@@ -129,7 +129,7 @@
 			<div class="bg-paper border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-gisCoral/25 text-gisCoral flex items-center justify-center"><i data-lucide="layers" class="w-5 h-5"></i></span>
 				<h3 class="mt-4 font-bold text-lg text-ink">Pensada para multigrado</h3>
-				<p class="mt-1.5 text-sm text-mute">Un grupo con varios grados: cada alumno se califica solo en los trabajos y PDA de su grado.</p>
+				<p class="mt-1.5 text-sm text-mute">Un grupo con varios grados: cada alumno se califica en los trabajos de su grado o en los que tú le asignes, y en la boleta sigue en su grado.</p>
 			</div>
 			<div class="bg-paper border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-gisCielo/25 text-board flex items-center justify-center"><i data-lucide="wifi-off" class="w-5 h-5"></i></span>
@@ -153,7 +153,7 @@
 			<h2 class="mt-3 font-black tracking-tight text-ink text-[clamp(1.9rem,3.6vw,2.9rem)] leading-tight">Del pase de lista<br>a la <span class="chalk-u thin" style="--accent:#ef9277">junta con familias</span>.</h2>
 		</div>
 
-		<div class="reveal mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+		<div class="reveal mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="sun" class="w-5 h-5"></i></span>
 				<h3 class="mt-4 font-bold text-lg text-ink">Hoy</h3>
@@ -162,12 +162,17 @@
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="notebook-pen" class="w-5 h-5"></i></span>
 				<h3 class="mt-4 font-bold text-lg text-ink">Planeación</h3>
-				<p class="mt-1.5 text-sm text-mute">Proyectos y sesiones con sus PDA por grado. Puedes crear tus proyectos o usar planeaciones de Jissez.</p>
+				<p class="mt-1.5 text-sm text-mute">Crea tus propios proyectos, con sus sesiones y los PDA de cada grado, o actividades sueltas sin proyecto. Próximamente, también las planeaciones de Jissez.</p>
 			</article>
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="clipboard-check" class="w-5 h-5"></i></span>
 				<h3 class="mt-4 font-bold text-lg text-ink">Evaluación</h3>
-				<p class="mt-1.5 text-sm text-mute">Formativa por PDA, que se llena al calificar; diagnóstico de cuaderno, lectura y matemáticas; y exámenes: subes los resultados de cualquier examen o creas el tuyo, con hoja de respuestas que revisas con la cámara de la tablet.</p>
+				<p class="mt-1.5 text-sm text-mute">Formativa por PDA, que se llena al calificar, y diagnóstico de cuaderno, lectura y matemáticas de cada alumno.</p>
+			</article>
+			<article class="bg-white border border-line rounded-2xl p-5">
+				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="scan-line" class="w-5 h-5"></i></span>
+				<h3 class="mt-4 font-bold text-lg text-ink">Exámenes</h3>
+				<p class="mt-1.5 text-sm text-mute">Creas tu examen en Mi Salón e imprimes la hoja de respuestas, que revisas con la cámara de la tablet o tocando la letra. O subes los resultados de cualquier examen. Los dos cuentan en la boleta.</p>
 			</article>
 			<article class="bg-white border border-line rounded-2xl p-5">
 				<span class="w-11 h-11 rounded-xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="file-text" class="w-5 h-5"></i></span>
@@ -196,6 +201,32 @@
 			</article>
 		</div>
 
+		<!-- Flujo libre (decisiones de Jorge del 2026-09-26): actividades sueltas (js/hoy.js
+		     agregarProducto sin sesión; "Actividades del trimestre" en planeacion.html; "Pasar a un
+		     proyecto" del mismo trimestre, js/pasar-a-proyecto.js), "¿Para quién?"
+		     (ProductosHoy.planAsignacion) e Incompleta (AlcanceHoy.cambiosIncompleta: se revisa el
+		     siguiente día de clase; las tareas vencen igual, AlcanceHoy.venceTarea) -->
+		<div class="reveal mt-10 bg-white border border-line rounded-3xl p-6 sm:p-8">
+			<h3 class="font-black text-ink tracking-tight text-[clamp(1.4rem,2.4vw,1.8rem)] leading-tight">La planeación te guía, pero no te amarra.</h3>
+			<div class="mt-6 grid md:grid-cols-3 gap-6">
+				<div>
+					<span class="w-11 h-11 rounded-xl bg-gisMenta/25 text-action-dark flex items-center justify-center"><i data-lucide="list-plus" class="w-5 h-5"></i></span>
+					<h4 class="mt-3 font-bold text-ink">Actividades sueltas</h4>
+					<p class="mt-1.5 text-sm text-mute">¿Improvisaste una actividad o una tarea? Agrégala en Hoy sin proyecto: se guarda en "Actividades del trimestre", cuenta para la boleta y después puedes pasarla a un proyecto del mismo trimestre.</p>
+				</div>
+				<div>
+					<span class="w-11 h-11 rounded-xl bg-gisCielo/25 text-board flex items-center justify-center"><i data-lucide="user-check" class="w-5 h-5"></i></span>
+					<h4 class="mt-3 font-bold text-ink">¿Para quién?</h4>
+					<p class="mt-1.5 text-sm text-mute">Cada actividad o tarea es para todo el grupo, para uno o varios grados o para los alumnos que marques, y eliges con qué grado trabajan. Para la boleta, cada alumno sigue en su grado.</p>
+				</div>
+				<div>
+					<span class="w-11 h-11 rounded-xl bg-gisAmarillo/25 text-board flex items-center justify-center"><i data-lucide="hourglass" class="w-5 h-5"></i></span>
+					<h4 class="mt-3 font-bold text-ink">Incompleta</h4>
+					<p class="mt-1.5 text-sm text-mute">Si un alumno no terminó en clase, márcala Incompleta: Hoy te la muestra el siguiente día de clase, según el calendario de la SEP y los ajustes de tu grupo, y al revisarla vale el nivel que logró. Las tareas, igual: se revisan el siguiente día de clase, salvo que elijas otro día.</p>
+				</div>
+			</div>
+		</div>
+
 		<!-- Capturas reales de la app (grupo de muestra con nombres ficticios) -->
 		<div class="mt-16 lg:mt-20 space-y-16 lg:space-y-20">
 			<div class="reveal grid lg:grid-cols-[1.15fr_.85fr] gap-8 lg:gap-12 items-center">
@@ -204,7 +235,7 @@
 				</figure>
 				<div>
 					<h3 class="font-black text-ink tracking-tight text-[clamp(1.5rem,2.6vw,2rem)] leading-tight">Califica mientras recorres las bancas.</h3>
-					<p class="mt-3 text-lg text-mute">En "Sesiones de hoy" aparecen los trabajos de la planeación. Tocas Logrado, En proceso o Requiere apoyo, y cada calificación deja evidencia en los PDA que evalúa. Se guarda al tocar, sin botón de guardar.</p>
+					<p class="mt-3 text-lg text-mute">En "Sesiones de hoy" aparece un trabajo por grado de cada sesión, que puedes renombrar, y las actividades que agregues en plena clase. Tocas Logrado, En proceso o Requiere apoyo, y cada calificación deja evidencia en los PDA que evalúa. Se guarda al tocar, sin botón de guardar.</p>
 				</div>
 			</div>
 			<div class="reveal grid lg:grid-cols-[.85fr_1.15fr] gap-8 lg:gap-12 items-center">
@@ -264,12 +295,12 @@
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="folder-plus" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
 				<h3 class="mt-4 text-lg font-bold text-ink">Prepara tu proyecto</h3>
-				<p class="mt-1.5 text-mute">Puedes crear tus proyectos o usar planeaciones de Jissez. Sus sesiones traen los trabajos a calificar y los PDA de cada grado.</p>
+				<p class="mt-1.5 text-mute">Crea tus propios proyectos: cada sesión trae los PDA de cada grado, un trabajo por grado para calificar y las tareas que planees. Si un día improvisas, agrega actividades sueltas. Las planeaciones de Jissez llegarán próximamente.</p>
 			</li>
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="sun" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
 				<h3 class="mt-4 text-lg font-bold text-ink">Trabaja en Hoy</h3>
-				<p class="mt-1.5 text-mute">Cada día: la lista, los trabajos y el cierre del día. Unos minutos, desde la tablet.</p>
+				<p class="mt-1.5 text-mute">Cada día: la lista, las tareas por revisar, los trabajos de las sesiones y el cierre del día. Ahí mismo renombras un trabajo o agregas actividades y tareas.</p>
 			</li>
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-action/12 text-action-dark flex items-center justify-center"><i data-lucide="file-check-2" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
@@ -290,15 +321,15 @@
 					<ol class="mt-3 space-y-2 text-[15px] text-white/85 list-decimal pl-5">
 						<li>En Chrome o Samsung Internet, entra a Mi Salón con tu cuenta.</li>
 						<li>En Inicio, al final, toca "Instalar la app" y sigue los pasos. También está en el menú de tu cuenta.</li>
-						<li>Abre el ícono "Jissez MS". Mantenlo presionado para los atajos: Pasar lista, Calificar trabajos y Reportes.</li>
+						<li>Abre el ícono "Jissez MS". Si lo mantienes presionado, salen sus atajos: "Pasar lista" abre la asistencia de hoy, "Calificar trabajos" abre las sesiones de hoy y "Reportes", los reportes del grupo.</li>
 					</ol>
 				</div>
 				<div class="rounded-2xl bg-white/[.06] border border-white/15 p-5">
 					<h4 class="font-bold flex items-center gap-2"><i data-lucide="share" class="w-5 h-5 text-gisMenta"></i> iPad o iPhone</h4>
 					<ol class="mt-3 space-y-2 text-[15px] text-white/85 list-decimal pl-5">
 						<li>En Safari, abre jissez.com/salon/hoy.</li>
-						<li>Toca Compartir y luego "Agregar a pantalla de inicio"; deja activado "Abrir como app web".</li>
-						<li>Abre "Jissez MS" e inicia sesión una vez.</li>
+						<li>Toca Compartir (el cuadro con la flecha hacia arriba) y elige "Agregar a inicio" o "Agregar a pantalla de inicio", según tu versión. Si aparece "Abrir como app web", déjalo activado.</li>
+						<li>Abre "Jissez MS" desde tu pantalla de inicio e inicia sesión una vez dentro de la app.</li>
 					</ol>
 				</div>
 			</div>
@@ -311,8 +342,10 @@
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-16 lg:py-24">
 		<div class="reveal max-w-2xl mx-auto text-center">
 			<span class="text-sm font-bold uppercase tracking-[0.14em] text-action">Cómo adquirirlo</span>
-			<h2 class="mt-3 font-black text-ink tracking-tight text-[clamp(1.9rem,3.6vw,2.9rem)] leading-tight">Suscripción por trimestre o por ciclo escolar.</h2>
-			<p class="mt-4 text-lg text-mute">Elige lo que te acomode. Con tu suscripción entras con la misma cuenta de la tienda.</p>
+			<!-- Título y texto según cuántos precios hay: los pinta js/conoce-mi-salon.js
+			     (ConoceMiSalon.encabezado). Este es el mismo texto que sale sin ningún precio. -->
+			<h2 id="msPreciosTitulo" class="mt-3 font-black text-ink tracking-tight text-[clamp(1.9rem,3.6vw,2.9rem)] leading-tight">Suscripción por trimestre o por ciclo escolar.</h2>
+			<p id="msPreciosTexto" class="mt-4 text-lg text-mute">Con tu suscripción entras con la misma cuenta de la tienda.</p>
 		</div>
 
 		<!-- Ya tiene Mi Salón -->
@@ -368,7 +401,7 @@
 	<div class="max-w-content mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row sm:items-center gap-4">
 		<span class="w-12 h-12 rounded-2xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="lock" class="w-6 h-6"></i></span>
 		<p class="text-ink text-[16px] leading-relaxed">
-			<strong>Tus datos y los de tus alumnos solo los ves tú,</strong> con tu cuenta. Lo que Mi Salón prepara para una familia solo lleva a su hija o hijo. La imagen y el texto de las listas de cooperación y materiales no llevan nombres, y la presentación para la junta no los muestra salvo que tú lo actives. El rol de aseo sí lleva los nombres de los alumnos a quienes les toca: tú decides con quién lo compartes.
+			<strong>En Mi Salón, cada cuenta ve solo lo suyo:</strong> los datos de tu grupo se abren con tu cuenta y otras maestras no los ven. Al revisar un examen con la cámara, la foto de la hoja se lee en tu tablet y no se sube; solo se guardan las respuestas. Lo que Mi Salón prepara para una familia solo lleva a su hija o hijo. La imagen y el texto de las listas de cooperación y materiales no llevan nombres, y la presentación para la junta no los muestra salvo que tú lo actives. El rol de aseo sí lleva los nombres de los alumnos a quienes les toca: tú decides con quién lo compartes.
 			<a href="privacidad.html" class="inline-flex items-center min-h-[44px] font-semibold text-board underline underline-offset-4 hover:no-underline">Aviso de privacidad</a>
 		</p>
 	</div>
@@ -388,7 +421,7 @@
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Sirve para grupos multigrado? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
-				<p class="pb-5 text-mute leading-relaxed">Sí. Un grupo puede tener varios grados: cada alumno solo se califica en los trabajos de su grado, con los PDA y criterios de su grado, y su boleta usa la escala de su grado.</p>
+				<p class="pb-5 text-mute leading-relaxed">Sí. Un grupo puede tener varios grados. Cada actividad es para todo el grupo, para uno o varios grados o para los alumnos que marques; así, un alumno que va a otro ritmo puede trabajar con los PDA de otro grado. Para la boleta sigue en su grado, con la escala de su grado.</p>
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿En qué aparatos funciona? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
@@ -396,11 +429,15 @@
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Quién ve mis datos y los de mis alumnos? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
-				<p class="pb-5 text-mute leading-relaxed">Solo tú, con tu cuenta. Jissez los guarda para darte el servicio y no los usa para publicidad. No pedimos la CURP. Los detalles están en el <a href="privacidad.html" class="font-semibold text-board underline underline-offset-4">aviso de privacidad</a>.</p>
+				<p class="pb-5 text-mute leading-relaxed">En Mi Salón, solo tu cuenta: la base de datos le da a cada cuenta únicamente lo suyo, así que otras maestras no ven tu grupo. Jissez los guarda para darte el servicio y no los usa para publicidad. No pedimos la CURP. Las fotos de las hojas de respuestas se leen en tu tablet y no se suben. Los detalles están en el <a href="privacidad.html" class="font-semibold text-board underline underline-offset-4">aviso de privacidad</a>.</p>
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Necesito comprar planeaciones? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
-				<p class="pb-5 text-mute leading-relaxed">No. Puedes crear tus proyectos, con sus sesiones, en Mi Salón o usar planeaciones de Jissez, que ya traen sus sesiones, trabajos y PDA para empezar más rápido.</p>
+				<p class="pb-5 text-mute leading-relaxed">No. Creas tus propios proyectos en Mi Salón, con sus sesiones y los PDA de cada grado, o agregas actividades y tareas sueltas, sin proyecto, que después puedes pasar a un proyecto del mismo trimestre. Próximamente podrás usar también planeaciones de Jissez en Mi Salón.</p>
+			</details>
+			<details class="reveal bg-white border border-line rounded-2xl px-5">
+				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Cómo funcionan los exámenes? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+				<p class="pb-5 text-mute leading-relaxed">Tienes dos caminos. Puedes crear tu examen en Mi Salón, con preguntas de opción múltiple, verdadero o falso, completar y abiertas, e imprimir el examen y la hoja de respuestas: las de opción múltiple y verdadero o falso las revisas con la cámara de la tablet o tocando la letra que marcó cada alumno, y las de completar y abiertas las calificas tú. O, con un examen que ya tienes, solo subes cuántos aciertos sacó cada alumno en cada campo formativo. Los dos cuentan en el rubro de examen de la boleta.</p>
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿La calificación la pone la app? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>

@@ -4,9 +4,10 @@
 -- reemplazada (la misma de mi_salon_b10_eliminar_cuenta_2026-09.sql con una línea más). No toca
 -- filas existentes. Se puede correr dos veces ("if not exists" / "create or replace" / los
 -- constraints y políticas se crean solo si faltan).
--- Aplicada en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción solo con la confirmación de Jorge y
--- ANTES de publicar el frontend (Mi grupo lee las columnas nuevas; sin ellas la lista de alumnos
--- no se puede leer).
+-- Aplicada en PRUEBAS (raoxdxwgsxbqlzdnndly) y en PRODUCCIÓN el 26 de septiembre de 2026 (con la
+-- confirmación de Jorge, junto con b13a, b14 y b15 y antes de publicar el frontend: Mi grupo lee
+-- las columnas nuevas; sin ellas la lista de alumnos no se puede leer). Si se vuelve a correr,
+-- correr después mi_salon_b13a_ficha_mexico_2026-09.sql (b13a reemplaza el trigger de esta).
 --
 -- 1. Ficha del alumno (todo opcional; SIN CURP, decisión de Jorge):
 --      alumnos.fecha_nacimiento  date   entre 1990 y 2100 (CHECK) y nunca futura (trigger BEFORE

@@ -112,10 +112,12 @@ const textoMs = htmlMs.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 ok("el titular ya no dice 'sin Excel' (la página ofrece exportar a Excel)", [/sin Excel/i.test(textoMs), /\bExcel\b/.test(textoMs)], [false, true]);
 ok("calendario: 'los ajustes de tu grupo', no 'de tu escuela'", [/ajustes de tu grupo/.test(textoMs), /ajustes de tu escuela/.test(textoMs)], [true, false]);
 ok("instalar: 'y sigue los pasos', no 'y acepta'", [/"Instalar la app" y sigue los pasos/.test(htmlMs), /y acepta\b/.test(textoMs)], [true, false]);
-ok("no afirma que el catálogo de planeaciones está incluido", [/usar planeaciones de Jissez/.test(textoMs), /import(a|as|ar) (uno|un proyecto) de las planeaciones/.test(textoMs), /(planeaciones|catálogo)[^.]*incluid/i.test(textoMs)], [true, false, false]);
+// 2026-09-26 (Jorge): la importación de planeaciones de Jissez a Mi Salón va después del piloto;
+// hoy solo "próximamente" (pruebas/conoce-mi-salon-textos.test.js fija los textos nuevos)
+ok("no afirma que el catálogo de planeaciones está incluido", [/(puedes|o) usar planeaciones de Jissez/.test(textoMs), /import(a|as|ar) (uno|un proyecto) de las planeaciones/.test(textoMs), /(planeaciones|catálogo)[^.]*incluid/i.test(textoMs)], [false, false, false]);
 // 2026-09-26 (Jorge): los exámenes del catálogo se venden en la tienda y no son parte de Mi Salón
-ok("exámenes: subir resultados o crear el suyo; ya no se aplican los del catálogo",
-	[/aplicas los exámenes del catálogo/.test(textoMs), /subes los resultados de cualquier examen o creas el tuyo/.test(textoMs), /matemáticas; y exámenes\./.test(textoMs)], [false, true, false]);
+ok("exámenes: crear el suyo o subir resultados; ya no se aplican los del catálogo",
+	[/aplicas los exámenes del catálogo/.test(textoMs), /Creas tu examen en Mi Salón[^.]*\. O subes los resultados de cualquier examen\./.test(textoMs), /matemáticas; y exámenes\./.test(textoMs)], [false, true, false]);
 ok("paso 'Crea tu grupo': estado, ciclo, trimestre y tipo de organización", ["tu estado", "ciclo escolar", "trimestre en curso", "tipo de organización"].every((t) => textoMs.split("Crea tu grupo")[1].split("Da de alta")[0].indexOf(t) !== -1), true);
 ok("privacidad: no dice que lo del grupo va sin nombres (el rol de aseo sí los lleva)", [/lo que es para todo el grupo no lleva nombres/.test(textoMs), /El rol de aseo sí lleva los nombres/.test(textoMs)], [false, true]);
 ok("con acceso: 'Ir a Mi Salón' lleva al panel", (htmlMs.match(/data-ms="acceso" href="\.\.\/dashboard\.html"[^>]*>\s*Ir a Mi Salón/g) || []).length, 2);
