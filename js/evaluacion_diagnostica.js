@@ -217,9 +217,9 @@ async function iniciarDiagnostico() {
 		document.querySelectorAll(".momento-btn").forEach(function (btn) {
 			var m = btn.dataset.momento;
 			if (m === momentoActual) {
-				btn.className = "momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] bg-emerald-500 text-white";
+				btn.className = "momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[44px] bg-emerald-500 text-white";
 			} else {
-				btn.className = "momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] bg-blue-700 text-blue-100 hover:bg-blue-600";
+				btn.className = "momento-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[44px] bg-blue-700 text-blue-100 hover:bg-blue-600";
 			}
 		});
 	}
@@ -487,7 +487,7 @@ async function iniciarDiagnostico() {
 			'<input id="inputPPM" type="text" inputmode="numeric" ' +
 			'value="' + (ppm != null ? escHtml(String(ppm)) : "") + '" ' +
 			'placeholder="Ej: 45" ' +
-			'class="w-full max-w-[160px] rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
+			'class="w-full max-w-[160px] min-h-[44px] rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
 			'</div>' +
 			buildFilaSemaforo("lectura", "comprension", "Comprensión lectora", comprension) +
 			'</div>' +

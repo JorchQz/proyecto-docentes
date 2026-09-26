@@ -1,3 +1,4 @@
+/* global html2pdf */ // html2pdf.bundle.min.js (CDN, reportes.html)
 document.addEventListener("DOMContentLoaded", async function () {
 	if (!window.sb) {
 		window.location.href = "index.html";

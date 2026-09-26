@@ -511,7 +511,8 @@
 	// ── Render: 3. Cuaderno ───────────────────────────────────────────────────
 
 	function enlaceDiagnostica() {
-		return " <a href='evaluacion_diagnostica.html' class='no-print text-blue-700 underline'>Registrar en Evaluación diagnóstica</a>";
+		// Zona táctil de 44 px (en el celular también se toca), sin cambiar cómo se lee la nota
+		return " <a href='evaluacion_diagnostica.html' class='no-print inline-flex items-center min-h-[44px] align-middle text-blue-700 underline'>Registrar en Evaluación diagnóstica</a>";
 	}
 
 	function renderCuaderno(datos) {

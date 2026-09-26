@@ -166,7 +166,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   // ---------- Helpers para crear elementos ----------
   function makeCheckbox(name, value, labelText) {
     const lbl = document.createElement('label');
-    lbl.className = 'inline-flex items-center gap-2 cursor-pointer select-none';
+    lbl.className = 'inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none';
     lbl.innerHTML = `<input type="checkbox" name="${name}" value="${value}"
       class="form-checkbox h-5 w-5 text-blue-600 rounded-lg border-gray-300 focus:ring-blue-500">
       <span class="text-gray-800">${labelText}</span>`;
@@ -175,7 +175,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   function makeSelectAll(id, text, handler) {
     const lbl = document.createElement('label');
-    lbl.className = 'inline-flex items-center gap-2 cursor-pointer select-none font-semibold text-blue-700';
+    lbl.className = 'inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none font-semibold text-blue-700';
     lbl.innerHTML = `<input type="checkbox" id="${id}"
       class="form-checkbox h-5 w-5 text-blue-600 rounded-lg border-gray-300 focus:ring-blue-500">
       <span>${text}</span>`;
@@ -399,7 +399,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             <div>
               <label class="block text-xs font-semibold text-blue-700 mb-1">${escapeHtml(fase || 'Fase')}</label>
               <textarea name="contenido_${escapeHtml(fase || 'unico')}" rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 placeholder="Contenido para ${escapeHtml(fase || 'este campo')}...">${escapeHtml(textosGuardados[index] || '')}</textarea>
             </div>`;
         });
@@ -412,7 +412,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             <div>
               <label class="block text-xs font-semibold text-blue-700 mb-1">${grado}°</label>
               <textarea name="pda_${grado}" rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 placeholder="PDA para ${grado}°...">${escapeHtml(val)}</textarea>
             </div>`;
         });
@@ -464,7 +464,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div class="catalogo-fases flex gap-1 mb-3${fasesCampo.length > 1 ? '' : ' hidden'}"></div>
           <div class="relative">
             <input type="text" placeholder="Buscar contenido oficial SEP..."
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+              class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
             <div class="catalogo-dropdown absolute left-0 right-0 mt-1 z-50 bg-white shadow-lg border border-gray-200 rounded-xl hidden max-h-64 overflow-y-auto"></div>
           </div>
           <div class="catalogo-chips mt-3 flex flex-wrap gap-2"></div>
@@ -506,7 +506,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           return `
             <span class="contenido-chip inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium" data-contenido-id="${escapeHtml(item.id)}" data-contenido-texto="${escapeHtml(item.contenido || '')}">
               <span>${escapeHtml(item.contenido || '')}</span>
-              <button type="button" class="remove-contenido-btn inline-flex items-center justify-center text-blue-500 hover:text-blue-800 hover:bg-blue-200 p-0.5 rounded-full transition" data-id="${escapeHtml(item.id)}" aria-label="Quitar contenido">
+              <button type="button" class="remove-contenido-btn inline-flex items-center justify-center text-blue-500 hover:text-blue-800 hover:bg-blue-200 h-11 w-11 -my-3 -mr-3 rounded-full transition" data-id="${escapeHtml(item.id)}" aria-label="Quitar contenido">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
               </button>
             </span>`;
@@ -568,8 +568,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         tabsContainer.innerHTML = fasesCampo.map(function (fase) {
           const activa = fase === faseActiva;
           const clases = activa
-            ? 'px-3 py-1 text-sm rounded-lg bg-blue-600 text-white font-medium cursor-pointer'
-            : 'px-3 py-1 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer';
+            ? 'min-h-[44px] px-3 py-1 text-sm rounded-lg bg-blue-600 text-white font-medium cursor-pointer'
+            : 'min-h-[44px] px-3 py-1 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer';
           return '<button type="button" class="fase-tab ' + clases + '" data-fase="' + escapeHtml(fase) + '">' + escapeHtml(fase) + '</button>';
         }).join('');
       }
@@ -839,7 +839,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         <div class="item-list-container mt-3 border-t border-gray-200 pt-3" data-key="${listKey}" data-placeholder="${placeholder}">
           <p class="text-xs font-semibold text-gray-500 mb-1.5">${sectionLabel}</p>
           <div class="item-list flex flex-col gap-1.5"></div>
-          <button type="button" class="add-item-btn mt-1.5 flex items-center gap-1.5 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition">
+          <button type="button" class="add-item-btn mt-1.5 flex items-center gap-1.5 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg min-h-[44px] px-3 py-1.5 hover:bg-blue-50 transition">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             ${addLabel}
           </button>
@@ -854,7 +854,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         <div>
           <label class="block text-xs font-semibold text-blue-700 mb-1">${isNum ? g + '°' : 'Grupo ' + g}</label>
           <textarea name="${key}_grado_${g}" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
+            class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
             placeholder="${isNum ? 'Descripción para ' + g + '°...' : 'Descripción para este grupo...'}"></textarea>
           ${makeItemList(`${key}_act_dif_${g}`, isNum ? `Actividad para ${g}°...` : 'Actividad...', 'Agregar actividad', 'Actividades')}
           ${includeTareas ? makeItemList(`${key}_tarea_dif_${g}`, isNum ? `Tarea para ${g}°...` : 'Tarea...', 'Agregar tarea', 'Tareas para casa') : ''}
@@ -867,24 +867,24 @@ document.addEventListener("DOMContentLoaded", async function () {
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
           <span class="font-bold ${col.text} text-sm uppercase tracking-wide">${label}</span>
           <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs">
-            <button type="button" class="mode-btn-todos px-3 py-1.5 bg-blue-600 text-white font-medium transition">
+            <button type="button" class="mode-btn-todos min-h-[44px] px-3 py-1.5 bg-blue-600 text-white font-medium transition">
               Igual para todos
             </button>
-            <button type="button" class="mode-btn-dif px-3 py-1.5 bg-white text-gray-600 font-medium transition hover:bg-gray-50">
+            <button type="button" class="mode-btn-dif min-h-[44px] px-3 py-1.5 bg-white text-gray-600 font-medium transition hover:bg-gray-50">
               Diferenciado
             </button>
           </div>
         </div>
         <div class="mode-todos-panel">
           <div class="flex items-center gap-2 mb-1">
-            <button type="button" class="list-format-btn flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition" data-active="false" title="Activar lista con viñetas (• )">
+            <button type="button" class="list-format-btn flex items-center gap-1 text-xs min-h-[44px] px-3 py-0.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition" data-active="false" title="Activar lista con viñetas (• )">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
               Lista
             </button>
             <span class="at-hint text-xs text-gray-400 hidden">Escribe @ para citar una actividad</span>
           </div>
           <textarea name="${key}_todos" rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
+            class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
             placeholder="Descripción de ${label.toLowerCase()} para todos los grados..."></textarea>
           ${makeItemList(`${key}_act_todos`, 'Actividad en clase...', 'Agregar actividad', 'Actividades')}
           ${includeTareas ? makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', 'Agregar tarea', 'Tareas para casa') : ''}
@@ -948,7 +948,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       items.forEach(function (item) {
         const opt = document.createElement('button');
         opt.type = 'button';
-        opt.className = 'w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 flex items-center gap-2';
+        opt.className = 'w-full text-left min-h-[44px] px-3 py-1.5 text-sm hover:bg-blue-50 flex items-center gap-2';
         opt.innerHTML = '<span class="font-mono text-blue-600 text-xs font-bold shrink-0">' + escapeHtml(item.ref) + '</span>' +
           (item.text
             ? '<span class="text-gray-600 truncate">' + escapeHtml(item.text) + '</span>'
@@ -1045,12 +1045,12 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">Duración (opcional)</label>
             <input type="text" name="duracion" placeholder="50 minutos"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+              class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">Campo formativo</label>
             <select name="campo_formativo"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+              class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
               ${(function(){ const r = buildCampoFormativoOptions(); return r.disabled ? 'disabled' : ''; })()}>
               ${buildCampoFormativoOptions().html}
             </select>
@@ -1058,7 +1058,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div class="md:col-span-2">
             <label class="block text-xs font-medium text-gray-500 mb-1">Secuencia</label>
             <select name="momento"
-              class="session-momento w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+              class="session-momento w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
               ${buildSecuenciaOptions()}
             </select>
           </div>
@@ -1076,7 +1076,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div class="space-y-5">
             <div>
               <div class="text-xs font-semibold text-gray-500 mb-2">Archivos</div>
-              <input type="file" multiple class="w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+              <input type="file" multiple class="w-full min-h-[44px] text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 border border-gray-300 rounded-xl px-3 py-2 bg-white">
               <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
               <div class="resource-files-list mt-3 flex flex-wrap gap-2"></div>
             </div>
@@ -1084,13 +1084,13 @@ document.addEventListener("DOMContentLoaded", async function () {
               <div class="text-xs font-semibold text-gray-500 mb-2">Links externos</div>
               <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
                 <input type="url"
-                  class="resource-link-url w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                  class="resource-link-url w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
                   placeholder="Pega la URL del link...">
                 <input type="text"
-                  class="resource-link-title w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                  class="resource-link-title w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
                   placeholder="Nombre del link (opcional)">
                 <button type="button"
-                  class="resource-link-add px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition">
+                  class="resource-link-add min-h-[44px] px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition">
                   Agregar
                 </button>
               </div>
@@ -1099,7 +1099,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             </div>
           </div>` : `
           <textarea name="recursos" rows="2"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+            class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
             placeholder="Materiales necesarios..."></textarea>`}
         </div>
 
@@ -1116,7 +1116,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                 <div class="${ultimo ? '' : 'border-b border-gray-100 pb-3 mb-3'}">
                   <div class="text-xs font-semibold text-blue-700 mb-2">Grado ${grado}°</div>
                   <select name="pda_select_grado_${grado}"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+                    class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
                     <option value="">Selecciona PDA para ${grado}°...</option>
                     ${opciones.map(function (pda) {
                       return `<option value="${String(pda.id)}">${String(pda.pda || '')}</option>`;
@@ -1124,7 +1124,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                   </select>
                   <div id="sugerencia_grado_${grado}" class="hidden text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1"></div>
                   <textarea name="criterio_grado_${grado}" rows="2"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
+                    class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
                     placeholder="Criterio de evaluación para ${grado}°..."></textarea>
                 </div>`;
             }).join('')}
@@ -1136,14 +1136,14 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
             <textarea name="observaciones" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+              class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
               placeholder="Notas adicionales..."></textarea>
           </div>
         </div>
 
         <!-- Botón eliminar -->
         <div class="flex justify-end pt-2 border-t border-gray-100">
-          <button type="button" class="btn-eliminar bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 text-sm font-bold px-4 py-2 rounded-xl transition">
+          <button type="button" class="btn-eliminar bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 text-sm font-bold min-h-[44px] px-4 py-2 rounded-xl transition">
             Eliminar sesión
           </button>
         </div>
@@ -1198,7 +1198,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${escapeHtml(archivo.path || '')}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span>
             <span title="${escapeHtml(archivo.nombre || '')}">${escapeHtml(etiqueta)}</span>
-            <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
+            <button type="button" class="resource-remove-file inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -my-3 -mr-3 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
           </span>`;
@@ -1214,7 +1214,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
             <span title="${escapeHtml(link.url || '')}">${escapeHtml(titulo)}</span>
-            <button type="button" class="resource-remove-link inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
+            <button type="button" class="resource-remove-link inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -my-3 -mr-3 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
           </span>`;
@@ -1438,7 +1438,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <textarea name="${key}_item" rows="1"
             class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden break-words"
             placeholder="${placeholder}" style="min-height:2.1rem"></textarea>
-          <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 p-0.5 rounded-full transition mt-1.5 shrink-0" aria-label="Eliminar">
+          <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -mt-1.5 -mb-3 rounded-full transition shrink-0" aria-label="Eliminar">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
           </button>`;
         const ta = newRow.querySelector('textarea');
@@ -1546,7 +1546,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <div class="${ultimo ? '' : 'border-b border-gray-100 pb-3 mb-3'}">
             <div class="text-xs font-semibold text-blue-700 mb-2">Grado ${grado}°</div>
             <select name="pda_select_grado_${grado}"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+              class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
               <option value="">Selecciona PDA para ${grado}°...</option>
               ${opciones.map(function (pda) {
                 return `<option value="${escapeHtml(pda.id)}"${String(pda.id) === savedVal ? ' selected' : ''}>${escapeHtml(pda.pda || '')}</option>`;
@@ -1554,7 +1554,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             </select>
             <div id="sugerencia_grado_${grado}" class="hidden text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1"></div>
             <textarea name="criterio_grado_${grado}" rows="2"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
+              class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2"
               placeholder="Criterio de evaluación para ${grado}°...">${escapeHtml(savedCrit)}</textarea>
           </div>`;
       });
@@ -2194,7 +2194,8 @@ document.addEventListener("DOMContentLoaded", async function () {
             txtLink.textContent = (link.titulo || link.url || '');
             const btnLink = document.createElement('button');
             btnLink.type = 'button';
-            btnLink.className = 'remove-link-btn text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold';
+            btnLink.className = 'remove-link-btn inline-flex items-center justify-center h-11 w-11 -my-3 -mr-3 text-gray-400 hover:text-red-500 transition text-base font-bold';
+            btnLink.setAttribute('aria-label', 'Quitar link');
             btnLink.textContent = '×';
             chip.appendChild(txtLink);
             chip.appendChild(document.createTextNode(' '));
@@ -2224,7 +2225,8 @@ document.addEventListener("DOMContentLoaded", async function () {
             txtArch.textContent = (archivo.nombre || '');
             const btnArch = document.createElement('button');
             btnArch.type = 'button';
-            btnArch.className = 'remove-archivo-btn text-gray-400 hover:text-red-500 transition ml-1 text-xs font-bold';
+            btnArch.className = 'remove-archivo-btn inline-flex items-center justify-center h-11 w-11 -my-3 -mr-3 text-gray-400 hover:text-red-500 transition text-base font-bold';
+            btnArch.setAttribute('aria-label', 'Quitar archivo');
             btnArch.textContent = '×';
             chip.appendChild(txtArch);
             chip.appendChild(document.createTextNode(' '));

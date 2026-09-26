@@ -355,7 +355,7 @@ var Navegacion = (function () {
 		".jz-abajo-op[aria-current]::before{content:'';position:absolute;top:0;left:50%;width:36px;margin-left:-18px;height:3px;border-radius:0 0 3px 3px;background:#059669}" +
 		".jz-abajo-op:focus-visible{outline:2px solid #1e3a8a;outline-offset:-4px;border-radius:12px}" +
 		// Tooltip de la barra contraída
-		".jz-saltar{position:fixed;top:8px;left:8px;z-index:6;padding:12px 16px;border-radius:12px;background:#fff;color:#1e3a8a;font-weight:700;text-decoration:none;box-shadow:0 8px 24px -8px rgba(15,23,42,.5);transform:translateY(-200%)}" +
+		".jz-saltar{position:fixed;top:8px;left:8px;z-index:6;padding:12px 16px;line-height:20px;min-height:44px;box-sizing:border-box;border-radius:12px;background:#fff;color:#1e3a8a;font-weight:700;text-decoration:none;box-shadow:0 8px 24px -8px rgba(15,23,42,.5);transform:translateY(-200%)}" +
 		".jz-saltar:focus{transform:none;outline:2px solid #1e3a8a;outline-offset:2px}" +
 		".jz-cuenta-menu .jz-item:focus-visible{outline-color:#1e3a8a}" +
 		".jz-tip{position:fixed;z-index:5;max-width:16rem;padding:6px 10px;border-radius:8px;background:#0f172a;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;box-shadow:0 6px 16px -6px rgba(15,23,42,.5)}" +

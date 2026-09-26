@@ -317,7 +317,7 @@ function crearCardSesion(sesion, esDeHoy) {
 			a.target = "_blank";
 			a.rel = "noopener noreferrer";
 			a.href = r.url;
-			a.className = "text-sm border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50";
+			a.className = "inline-flex items-center min-h-[44px] text-sm border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50";
 			a.textContent = r.titulo;
 			wrap.appendChild(a);
 		});
