@@ -370,7 +370,7 @@
 			["Asistencia", "La asistencia no es criterio de acreditación (Acuerdo 10/09/23, art. 7). Por eso NO debe usarse esta exportación para recalcular calificaciones con una plantilla que pondere la asistencia (por ejemplo, una que le dé 10 % a la asistencia). Las columnas de asistencia son solo dato de referencia."],
 			["Examen", "El examen por campo es APROXIMADO: el banco de preguntas no guarda el valor de cada pregunta, así que el máximo de cada campo se estima como valor total del examen entre número de preguntas."],
 			["Documento", "Mi salón es un complemento de la boleta oficial (SIGED). Este archivo no es un documento oficial de la SEP."],
-			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación. El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
+			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación. «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero. El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
 			[],
 			["COLUMNA", "DE DÓNDE SALE"],
 			["Alumno / Grado", "Alumnos activos del grupo, en orden de grado y número de lista."],
@@ -414,6 +414,37 @@
 		return letras + (fila + 1);
 	}
 
+	// ── Hoja Incidencias (B13) ───────────────────────────────────────────────
+	/*
+		hojaIncidencias(incidencias, nombrePorId) → filas (aoa) con encabezado.
+		incidencias: [{ fecha, hora, asunto, descripcion, acuerdos, created_at,
+		                incidencia_alumnos: [{ alumno_id }] }] del grupo, cualquier orden.
+		nombrePorId: { alumno_id: "Nombre" } (los alumnos que siguen en el grupo).
+		Todas las del grupo (no son de un trimestre), la más reciente primero.
+	*/
+	var HOJA_INCIDENCIAS = "Incidencias";
+	var ENC_INCIDENCIAS = ["Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"];
+	function hojaIncidencias(incidencias, nombrePorId) {
+		nombrePorId = nombrePorId || {};
+		var lista = (incidencias || []).slice().sort(function (a, b) {
+			var ka = String(a.fecha || "") + " " + String(a.hora || ""), kb = String(b.fecha || "") + " " + String(b.hora || "");
+			return ka === kb ? 0 : (ka < kb ? 1 : -1);
+		});
+		if (!lista.length) return [ENC_INCIDENCIAS, ["Sin incidencias registradas en este grupo."]];
+		return [ENC_INCIDENCIAS].concat(lista.map(function (inc) {
+			var nombres = (inc.incidencia_alumnos || []).map(function (v) { return nombrePorId[v.alumno_id]; }).filter(Boolean);
+			return [
+				inc.fecha || "",
+				inc.hora ? String(inc.hora).slice(0, 5) : "",
+				inc.asunto || "",
+				nombres.length ? nombres.join("; ") : "Sin alumnos (se eliminaron del grupo)",
+				inc.descripcion || "",
+				inc.acuerdos || "",
+				inc.created_at ? String(inc.created_at).slice(0, 10) : "",
+			];
+		}));
+	}
+
 	function libroXLSX(XLSX, tabla, meta) {
 		var wb = XLSX.utils.book_new();
 		var hoja1 = XLSX.utils.aoa_to_sheet([tabla.encabezados].concat(tabla.filas));
@@ -437,6 +468,13 @@
 		hoja3["!cols"] = [{ wch: 34 }, { wch: 120 }];
 		XLSX.utils.book_append_sheet(wb, hoja3, HOJA_LEEME);
 
+		// Incidencias del grupo (solo si la página las leyó: meta.incidencias es una lista)
+		if (meta && Array.isArray(meta.incidencias)) {
+			var hoja4 = XLSX.utils.aoa_to_sheet(hojaIncidencias(meta.incidencias, meta.nombrePorId));
+			hoja4["!cols"] = [{ wch: 12 }, { wch: 7 }, { wch: 40 }, { wch: 40 }, { wch: 80 }, { wch: 60 }, { wch: 14 }];
+			XLSX.utils.book_append_sheet(wb, hoja4, HOJA_INCIDENCIAS);
+		}
+
 		wb.Props = { Title: "Concentrado por alumno", Author: "Mi salón" };
 		return wb;
 	}
@@ -457,6 +495,8 @@
 		HOJA_PRINCIPAL: HOJA_PRINCIPAL,
 		HOJA_MAXIMOS: HOJA_MAXIMOS,
 		HOJA_LEEME: HOJA_LEEME,
+		HOJA_INCIDENCIAS: HOJA_INCIDENCIAS,
+		hojaIncidencias: hojaIncidencias,
 		encabezados: encabezados,
 		redondear1: redondear1,
 		construir: construir,
@@ -668,6 +708,29 @@
 			return promesaSheetJS;
 		}
 
+		/*
+			Incidencias del grupo para la hoja «Incidencias» del Excel (B13), con el nombre de cada
+			alumno involucrado que sigue en el grupo. Si no se pueden leer, se lanza: el Excel no
+			sale incompleto sin avisar.
+		*/
+		async function leerIncidencias() {
+			var filas = await window.LeerTodo.paginas(function () {
+				return window.sb.from("incidencias")
+					.select("id, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo))")
+					.eq("maestro_id", ctx.maestroId)
+					.eq("grupo_id", ctx.grupo.id)
+					.order("fecha", { ascending: false })
+					.order("id", { ascending: true });
+			});
+			var nombrePorId = {};
+			filas.forEach(function (f) {
+				(f.incidencia_alumnos || []).forEach(function (v) {
+					if (v.alumnos && v.alumnos.nombre_completo) nombrePorId[v.alumno_id] = v.alumnos.nombre_completo;
+				});
+			});
+			return { incidencias: filas, nombrePorId: nombrePorId };
+		}
+
 		async function descargarXLSX() {
 			if (!tabla) return;
 			var original = el.xlsx.innerHTML;
@@ -675,11 +738,13 @@
 			el.xlsx.textContent = "Preparando Excel...";
 			try {
 				var XLSX = await cargarSheetJS();
+				var inc = await leerIncidencias();
 				var wb = libroXLSX(XLSX, tabla, {
 					grupo: ctx.grupo.nombre, ciclo: ctx.ciclo, trimestre: trimestre,
 					escuela: ctx.escuela, maestro: ctx.maestroNombre, fecha: hoyISO(),
 					alumnos: tabla.filas.length,
 					escala: window.MotorCalificacion ? window.MotorCalificacion.ESCALA_NIVEL : null,
+					incidencias: inc.incidencias, nombrePorId: inc.nombrePorId,
 				});
 				XLSX.writeFile(wb, nombre("xlsx"), { compression: true });
 			} catch (e) {

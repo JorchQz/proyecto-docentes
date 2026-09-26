@@ -68,6 +68,16 @@
 					<div>
 						<p class="text-sm text-gray-500">Total de Alumnos</p>
 						<p id="groupStudentsCount" class="text-lg font-semibold text-gray-800">Cargando...</p>
+						<!-- Niñas y niños: solo si alguna ficha tiene el dato (js/ficha-alumno.js) -->
+						<p id="groupGenderCount" class="hidden text-sm text-gray-600 mt-0.5"></p>
+					</div>
+					<div>
+						<p class="text-sm text-gray-500">Escuela</p>
+						<p id="groupSchool" class="text-lg font-semibold text-gray-800 break-words">Cargando...</p>
+					</div>
+					<div>
+						<p class="text-sm text-gray-500">Director(a)</p>
+						<p id="groupDirector" class="text-lg font-semibold text-gray-800 break-words">Cargando...</p>
 					</div>
 				</div>
 
@@ -156,6 +166,12 @@
 						<div>
 							<label for="editGroupSchool" class="block text-sm font-medium text-gray-800">Escuela (opcional)</label>
 							<input id="editGroupSchool" type="text" maxlength="120" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+							<p class="text-xs text-gray-500 mt-1">La de este grupo: si das clases en otra escuela, cada grupo lleva la suya.</p>
+						</div>
+						<div>
+							<label for="editGroupDirector" class="block text-sm font-medium text-gray-800">Director o directora (opcional)</label>
+							<input id="editGroupDirector" type="text" maxlength="120" autocomplete="off" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Nombre completo">
+							<p class="text-xs text-gray-500 mt-1">Aparece en la línea de firma de las incidencias. Si lo dejas vacío, la línea queda en blanco.</p>
 						</div>
 						<div class="md:col-span-2">
 							<label for="editGroupDescription" class="block text-sm font-medium text-gray-800">Descripción (opcional)</label>
@@ -201,8 +217,49 @@
 									<p class="text-xs text-gray-500 mt-1">Selecciona el grado correspondiente para este alumno.</p>
 								</div>
 							</div>
-							<div class="mt-3">
-								<button id="addStudentBtn" type="button" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">+ Agregar Alumno</button>
+
+							<!-- Ficha del alumno (todo opcional; reglas en js/ficha-alumno.js) -->
+							<fieldset class="mt-5 border-t border-gray-200 pt-4">
+								<legend class="sr-only">Ficha del alumno (opcional)</legend>
+								<p class="font-semibold text-gray-800" aria-hidden="true">Ficha del alumno <span class="font-normal text-gray-500">(opcional)</span></p>
+								<p class="text-xs text-gray-500 mt-0.5">Solo para ti. Puedes llenarla ahora o después, al editar al alumno.</p>
+								<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<label for="editStudentBirthdate" class="block text-sm font-medium text-gray-800">Fecha de nacimiento</label>
+										<input type="date" id="editStudentBirthdate" class="block w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-blue-500 focus:border-blue-500">
+									</div>
+									<div>
+										<label for="editStudentGender" class="block text-sm font-medium text-gray-800">Género</label>
+										<select id="editStudentGender" class="block w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-blue-500 focus:border-blue-500">
+											<option value="">Sin dato</option>
+											<option value="nina">Niña</option>
+											<option value="nino">Niño</option>
+											<option value="prefiero_no_decir">Prefiero no decir</option>
+										</select>
+									</div>
+									<div>
+										<label for="editStudentTutorName" class="block text-sm font-medium text-gray-800">Madre, padre o tutor</label>
+										<input type="text" id="editStudentTutorName" maxlength="120" autocomplete="off" class="block w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Nombre completo">
+									</div>
+									<div>
+										<label for="editStudentTutorPhone" class="block text-sm font-medium text-gray-800">Teléfono del tutor</label>
+										<div class="flex flex-col sm:flex-row gap-2">
+											<input type="tel" id="editStudentTutorPhone" inputmode="tel" maxlength="20" autocomplete="off" aria-describedby="editStudentTutorPhoneHelp" class="block w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="33 1234 5678">
+											<a id="editStudentWhatsApp" href="#" target="_blank" rel="noopener noreferrer" class="hidden shrink-0 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg border border-emerald-300 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors">
+												<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+												Escribir por WhatsApp
+											</a>
+										</div>
+										<p id="editStudentTutorPhoneHelp" class="text-xs text-gray-500 mt-1">10 dígitos con lada. Si lo escribes con +52, se quita solo.</p>
+									</div>
+								</div>
+							</fieldset>
+
+							<div class="mt-4">
+								<div class="flex flex-wrap gap-2">
+									<button id="addStudentBtn" type="button" class="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">+ Agregar Alumno</button>
+									<button id="cancelStudentEditBtn" type="button" class="hidden inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-medium hover:bg-gray-300 transition-colors">Cancelar edición</button>
+								</div>
 							</div>
 						</div>
 
@@ -232,6 +289,7 @@
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>
 	<script src="js/calendario-escolar.js"></script>
+	<script src="js/ficha-alumno.js"></script>
 	<script src="js/mi-grupo.js"></script>
 </body>
 </html>

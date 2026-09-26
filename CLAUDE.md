@@ -59,8 +59,9 @@ Full, verified schema is in `docs/CONTEXTO.md §6`. Quick reference:
 
 | Table | Key columns |
 |---|---|
-| `grupos` | `maestro_id`, `nombre`, `tipo_organizacion`, `grados` (array), `es_multigrado`, `ciclo_escolar` |
-| `alumnos` | `grupo_id`, `maestro_id`, `nombre_completo`, `grado` (1–6), `num_lista`, `estatus` |
+| `grupos` | `maestro_id`, `nombre`, `tipo_organizacion`, `grados` (array), `es_multigrado`, `ciclo_escolar`, `escuela`, `director_nombre` (per group) |
+| `alumnos` | `grupo_id`, `maestro_id`, `nombre_completo`, `grado` (1–6), `num_lista`, `estatus`; optional ficha: `fecha_nacimiento`, `genero`, `tutor_nombre`, `tutor_telefono` (`js/ficha-alumno.js`) |
+| `incidencias`, `incidencia_alumnos` | per-group incident log + involved students; saved via `guardar_incidencia()`; page `incidencias.html` |
 | `asistencias` | `maestro_id`, `grupo_id`, `alumno_id`, `fecha`, `asistencia_estado` (`presente`/`ausente`/`justificada`) |
 | `proyectos` | `maestro_id`, `grupo_id`, `titulo`, `trimestre`, `metodologia`, `escenario`, `campos_formativos` (array), `estado`, `contenidos_pda` (jsonb), `visible_mercado` |
 | `sesiones` | `proyecto_id`, `numero_sesion`, `momento`, `*_todos`/`*_diferenciado`/`*_actividades`/`cierre_tareas` (jsonb), `pda_sesion`, `estado_sesion` |
