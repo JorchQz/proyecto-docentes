@@ -56,9 +56,45 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 
 	// ── Tabs ───────────────────────────────────────────────────────
+	/*
+		En pantallas angostas (390 px) las pestañas no caben y se desplazan de lado: un degradado
+		con flecha en cada borde avisa que hay más de ese lado, y la pestaña elegida se lleva a
+		la vista (solo la barra se mueve, nunca la página).
+	*/
+	const tabsBarra = document.getElementById("tabsBarra");
+	const tabsMasIzq = document.getElementById("tabsMasIzq");
+	const tabsMasDer = document.getElementById("tabsMasDer");
+	function marcarBordesTabs() {
+		if (!tabsBarra) return;
+		const resto = tabsBarra.scrollWidth - tabsBarra.clientWidth - tabsBarra.scrollLeft;
+		if (tabsMasIzq) tabsMasIzq.classList.toggle("hidden", tabsBarra.scrollLeft <= 2);
+		if (tabsMasDer) tabsMasDer.classList.toggle("hidden", resto <= 2);
+	}
+	function tabALaVista(btn, suave) {
+		if (!tabsBarra || !btn) return;
+		const margen = 40; // el ancho del degradado: la pestaña no queda debajo de él
+		const izq = btn.offsetLeft - tabsBarra.offsetLeft;
+		const der = izq + btn.offsetWidth;
+		let destino = tabsBarra.scrollLeft;
+		if (izq - margen < tabsBarra.scrollLeft) destino = Math.max(0, izq - margen);
+		else if (der + margen > tabsBarra.scrollLeft + tabsBarra.clientWidth) destino = der + margen - tabsBarra.clientWidth;
+		if (destino === tabsBarra.scrollLeft) { marcarBordesTabs(); return; }
+		if (suave && typeof tabsBarra.scrollTo === "function") tabsBarra.scrollTo({ left: destino, behavior: "smooth" });
+		else tabsBarra.scrollLeft = destino;
+		marcarBordesTabs();
+	}
+	if (tabsBarra && typeof tabsBarra.addEventListener === "function") {
+		tabsBarra.addEventListener("scroll", marcarBordesTabs, { passive: true });
+		if (typeof window.addEventListener === "function") window.addEventListener("resize", marcarBordesTabs);
+		marcarBordesTabs();
+		// La pestaña activa al cargar (la primera) ya está a la vista; si no, se lleva
+		tabALaVista(tabsBarra.querySelector(".tab-btn.border-blue-600"), false);
+	}
+
 	document.querySelectorAll(".tab-btn").forEach(function (btn) {
 		btn.addEventListener("click", function () {
 			const tab = btn.dataset.tab;
+			tabALaVista(btn, true);
 			document.querySelectorAll(".tab-btn").forEach(function (b) {
 				b.classList.remove("text-blue-700", "border-blue-600", "bg-blue-50");
 				b.classList.add("text-gray-500", "border-transparent");

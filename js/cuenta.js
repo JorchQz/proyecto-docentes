@@ -49,6 +49,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	});
 
+	/*
+		Código muerto hoy (revisado 2026-09-25, R18): ninguna página tiene #logoutBtn desde el
+		rediseño de la navegación. Cerrar sesión es el botón de la barra (#navbarLogoutBtn en
+		js/navbar.js), que pide confirmar si hay capturas sin enviar y limpia el aparato
+		(BandejaSalida). Se deja por si vuelve un botón propio en la página; no se agregan botones.
+	*/
 	if (logoutBtn) {
 		logoutBtn.addEventListener("click", async function () {
 			closeMainMenu();

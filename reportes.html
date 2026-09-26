@@ -47,7 +47,10 @@
 
 		<!-- Tabs -->
 		<div class="bg-white rounded-2xl shadow-md overflow-hidden">
-			<div class="flex border-b overflow-x-auto">
+			<!-- En pantallas angostas las pestañas se desplazan de lado: un degradado con flecha en
+			     el borde avisa que hay más (js/reportes.js lo muestra solo si hay más de ese lado) -->
+			<div class="relative">
+			<div id="tabsBarra" class="flex border-b overflow-x-auto">
 				<button id="tabAsistencia" data-tab="asistencia"
 					class="tab-btn flex-1 shrink-0 whitespace-nowrap px-4 min-h-[44px] py-4 text-sm font-semibold text-blue-700 border-b-2 border-blue-600 bg-blue-50 transition">
 					Asistencia
@@ -72,6 +75,13 @@
 					class="tab-btn flex-1 shrink-0 whitespace-nowrap px-4 min-h-[44px] py-4 text-sm font-semibold text-gray-500 border-b-2 border-transparent hover:bg-gray-50 transition">
 					Qué le falta
 				</button>
+			</div>
+			<div id="tabsMasIzq" aria-hidden="true" class="hidden pointer-events-none absolute left-0 top-0 bottom-px w-10 flex items-center justify-start pl-1 bg-gradient-to-r from-white via-white/90 to-transparent text-gray-400">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+			</div>
+			<div id="tabsMasDer" aria-hidden="true" class="hidden pointer-events-none absolute right-0 top-0 bottom-px w-10 flex items-center justify-end pr-1 bg-gradient-to-l from-white via-white/90 to-transparent text-gray-400">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+			</div>
 			</div>
 
 			<!-- Tab: Asistencia -->

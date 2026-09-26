@@ -16,6 +16,11 @@
 	  - PDA del trimestre con nivel predominante "Requiere apoyo" o "En proceso" (v_avance_pda,
 	    la misma vista de "Avance por PDA") y PDA de su grado trabajados en sesiones ya dadas
 	    que todavía no tienen evidencia (sesiones_pda), con el texto del catálogo y su criterio.
+	    Un PDA sin evidencia NO es pendiente del alumno si tiene productos ligados
+	    (producto_sesion_pda) y todos los de ese alumno están justificados, en "no aplica" o sin
+	    revisar: lo justificado no se le pide, y lo sin revisar es de la maestra (queda solo como
+	    "Docente · Por revisar"). Sin productos ligados, o con alguno sin entregar, incompleto o
+	    ya revisado, sigue como "Mostrar evidencia del PDA".
 	  - Campo sin evidencias en el trimestre: queda a juicio docente (decisión 5 de Jorge).
 	  - Campo con la calificación (la confirmada; si no hay, la propuesta del motor, que ya
 	    salió de la función SQL) debajo del mínimo por campo de su grado y su entidad
@@ -25,6 +30,9 @@
 	    pondera; ya se muestra en el reporte).
 	Boleta del trimestre cerrada: lo entregado lee solo la foto del cierre y la foto no guarda
 	productos ni capturas, así que no se lista nada: se dice "trimestre cerrado".
+	Trimestre sin trabajo todavía (ninguna sesión ya dada desde su alta, ningún producto con
+	algo que decir, ninguna evidencia ni porcentaje): no se listan "sin evidencias" en los
+	cuatro campos; se dice "Todavía no hay trabajo registrado en este trimestre" (sinTrabajo).
 
 	Arriba, funciones puras (se prueban en node: pruebas/que-le-falta.test.js); abajo, el HTML
 	para el Reporte del alumno y para la vista de grupo de Reportes.
@@ -102,12 +110,14 @@
 		  hoy:          "AAAA-MM-DD"
 		  regla:        ReglasEntidad.regla(estado)
 		}
-		→ { cerrada, campos: {LEN: {productos, porRevisar, pda, sinEvidencias, revisar, pendientes}},
+		→ { cerrada, sinTrabajo, campos: {LEN: {productos, porRevisar, pda, sinEvidencias, revisar, pendientes}},
 		    faltas: {sinJustificar, dias} | null, total, porRevisar }
+		(cada sesiones_pda puede traer producto_sesion_pda: [{producto_sesion_id}], los productos
+		ligados a ese PDA en esa sesión)
 	*/
 	function calcular(e) {
 		e = e || {};
-		if (e.cerrada) return { cerrada: true, campos: {}, faltas: null, total: 0, porRevisar: 0 };
+		if (e.cerrada) return { cerrada: true, sinTrabajo: false, campos: {}, faltas: null, total: 0, porRevisar: 0 };
 		var grado = Number(e.alumno && e.alumno.grado);
 		var hoy = e.hoy || "";
 		var det = e.detalle || {};
@@ -124,18 +134,27 @@
 		}
 
 		// ── Productos ──
+		/*
+			Situación de cada producto del alumno (los de su grado y su alta; los mismos que el
+			motor): "fuera" (justificado o no aplica), "falta" (sin entregar o incompleto),
+			"revisado" (con nivel o puntaje) o "sin_revisar".
+		*/
+		var situacion = {};
 		var productos = (det.productos || []).slice().sort(function (a, b) {
 			var sa = sesionPorId[a.sesion_id] || {}, sb = sesionPorId[b.sesion_id] || {};
 			return (Number(sa.numero_sesion) || 0) - (Number(sb.numero_sesion) || 0) ||
 				String(sa.fecha || "").localeCompare(String(sb.fecha || "")) || (Number(a.orden) || 0) - (Number(b.orden) || 0);
 		});
 		productos.forEach(function (p) {
+			var cal = (det.calificaciones || {})[p.id] || null;
+			var estado = cal ? cal.estado_entrega : null;
+			var valorP = M ? M.puntajeProducto(cal) : (cal && (cal.nivel || !vacio(cal.puntaje)) ? 1 : null);
+			situacion[p.id] = estado === "justificado" || estado === "no_aplica" ? "fuera"
+				: (estado === "no_entregado" || estado === "incompleto" ? "falta" : (valorP !== null ? "revisado" : "sin_revisar"));
 			var rubro = M ? M.rubroDeProducto(p.tipo) : (p.tipo === "tarea" ? "tareas" : "trabajos");
 			var c = codigoCampo(p.campo);
 			if (!rubro || !campos[c]) return; // un "examen" como producto no es de este rubro (motor)
 			var s = sesionPorId[p.sesion_id] || {};
-			var cal = (det.calificaciones || {})[p.id] || null;
-			var estado = cal ? cal.estado_entrega : null;
 			var item = {
 				id: p.id, nombre: texto(p.nombre) || "Producto", tarea: rubro === "tareas",
 				sesion: vacio(s.numero_sesion) ? null : Number(s.numero_sesion), fecha: s.fecha || null,
@@ -143,8 +162,7 @@
 			if (estado === "justificado" || estado === "no_aplica") return; // fuera del máximo, como en el motor
 			if (estado === "no_entregado") { campos[c].productos.push(Object.assign(item, { estado: "no_entregado" })); return; }
 			if (estado === "incompleto") { campos[c].productos.push(Object.assign(item, { estado: "incompleto" })); return; }
-			var valor = M ? M.puntajeProducto(cal) : (cal && (cal.nivel || !vacio(cal.puntaje)) ? 1 : null);
-			if (valor !== null) return; // ya revisado
+			if (valorP !== null) return; // ya revisado
 			// Sin revisar: solo si ya le tocaba (sesión dada; la tarea, ya vencida)
 			var cuando = item.tarea
 				? (A ? A.venceTarea(p.fecha_entrega, s.fecha || null) : (p.fecha_entrega || s.fecha || null))
@@ -167,7 +185,10 @@
 			(s.sesiones_pda || []).forEach(function (sp) {
 				if (Number(sp.grado) !== grado) return;
 				var k = clavePda(sp);
-				var t = trabajados[k] || (trabajados[k] = { clave: k, campo: c, texto: "", criterio: "", sesiones: [], fecha: "" });
+				var t = trabajados[k] || (trabajados[k] = { clave: k, campo: c, texto: "", criterio: "", sesiones: [], fecha: "", productos: [] });
+				(sp.producto_sesion_pda || []).forEach(function (l) {
+					if (l && l.producto_sesion_id && t.productos.indexOf(l.producto_sesion_id) === -1) t.productos.push(l.producto_sesion_id);
+				});
 				var txt = textoCatalogo(sp) || texto(sp.criterio_aplicado) || SIN_CRITERIO;
 				if (!t.texto) t.texto = txt;
 				if (!vacio(s.numero_sesion) && t.sesiones.indexOf(Number(s.numero_sesion)) === -1) t.sesiones.push(Number(s.numero_sesion));
@@ -180,6 +201,11 @@
 			var f = evidencia[k];
 			t.sesiones.sort(function (a, b) { return a - b; });
 			if (!f) {
+				// Sus productos ligados, de este alumno (los de otro grado, inactivos o de antes de su
+				// alta no están en det.productos). Todos justificados, "no aplica" o sin revisar:
+				// no es pendiente del alumno (lo sin revisar ya sale como "Docente · Por revisar").
+				var suyos = t.productos.filter(function (id) { return situacion[id]; });
+				if (suyos.length && suyos.every(function (id) { return situacion[id] === "fuera" || situacion[id] === "sin_revisar"; })) return;
 				campos[t.campo].pda.push({ clave: k, texto: t.texto, criterio: t.criterio, nivel: null, evidencias: 0, sesiones: t.sesiones });
 				return;
 			}
@@ -222,6 +248,15 @@
 			}
 		});
 
+		// Trimestre sin trabajo todavía: ni sesiones ya dadas (desde su alta), ni productos o PDA
+		// que listar, ni evidencias, ni porcentaje. Los cuatro "sin evidencias" no dicen nada útil.
+		var sinTrabajo = !(det.sesiones || []).some(trabajada) && !Object.keys(evidencia).length &&
+			CAMPOS.every(function (c) {
+				var x = campos[c], pc = (e.porCampo || {})[c];
+				return !x.productos.length && !x.porRevisar.length && !x.pda.length && (!pc || vacio(pc.porcentaje));
+			});
+		if (sinTrabajo) CAMPOS.forEach(function (c) { campos[c].sinEvidencias = false; });
+
 		var total = 0, porRevisar = 0;
 		CAMPOS.forEach(function (c) {
 			var x = campos[c];
@@ -236,7 +271,7 @@
 			var sin = Number(a.total) - Number(a.presentes || 0);
 			if (sin > 0) faltas = { sinJustificar: sin, dias: Number(a.total) };
 		}
-		return { cerrada: false, campos: campos, faltas: faltas, total: total, porRevisar: porRevisar };
+		return { cerrada: false, sinTrabajo: sinTrabajo, campos: campos, faltas: faltas, total: total, porRevisar: porRevisar };
 	}
 
 	// ── Frases (tono formativo, apto para la maestra y para la junta con las familias) ──
@@ -305,6 +340,11 @@
 	var NOTA = "Solo hechos registrados en Mi salón: productos de sesiones ya trabajadas, el avance por PDA y la escala de su grado. " +
 		"No son puntos ni metas nuevas: la calificación es juicio del docente.";
 	var TEXTO_CERRADO = "La boleta de este trimestre ya se cerró: lo entregado queda como está y lo que falte se trabaja en el siguiente trimestre.";
+	var TEXTO_SIN_TRABAJO = "Todavía no hay trabajo registrado en este trimestre.";
+	var DETALLE_SIN_TRABAJO = "Cuando haya sesiones ya dadas o productos, aquí aparecerá lo que le falta para avanzar en cada campo formativo.";
+
+	// Sin trabajo y sin nada que decir (una confirmada debajo del mínimo sí se dice)
+	function soloSinTrabajo(res) { return !!(res && !res.cerrada && res.sinTrabajo && !res.total && !res.porRevisar); }
 
 	function chipCampo(c) {
 		return "<span class='inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] font-bold text-white' style='background:" +
@@ -343,6 +383,13 @@
 			return "<div class='rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900' data-qlf-cerrado>" +
 				"<p class='font-semibold'>Trimestre cerrado</p><p class='mt-1 leading-relaxed'>" + esc(TEXTO_CERRADO) + "</p></div>";
 		}
+		if (soloSinTrabajo(res)) {
+			var faltasST = res.faltas
+				? "<p class='mt-1 text-xs text-gray-500'>Faltas sin justificar en el trimestre: " + res.faltas.sinJustificar + " de " + res.faltas.dias + " días registrados (dato de referencia).</p>"
+				: "";
+			return "<div class='rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700' data-qlf-sin-trabajo>" +
+				"<p class='font-semibold text-gray-800'>" + esc(TEXTO_SIN_TRABAJO) + "</p><p class='mt-1 leading-relaxed'>" + esc(DETALLE_SIN_TRABAJO) + "</p>" + faltasST + "</div>";
+		}
 		var bloques = CAMPOS.map(function (c) {
 			var x = res.campos[c] || campoVacio();
 			var lista = frases(x);
@@ -380,6 +427,14 @@
 	function htmlGrupo(lista, trimestre) {
 		if (!lista || !lista.length) return "<p class='text-gray-400'>Sin alumnos activos en el grupo.</p>";
 		var abiertos = lista.filter(function (f) { return f.res && !f.res.cerrada; });
+		// Nadie tiene trabajo registrado en el trimestre (por ejemplo, el 2 recién empezado): un
+		// solo aviso en lugar de una lista de "sin evidencias"
+		if (abiertos.length && abiertos.length === lista.length && abiertos.every(function (f) { return soloSinTrabajo(f.res); })) {
+			return "<div class='rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-700' data-qlf-resumen data-qlf-sin-trabajo>" +
+				"<p class='font-semibold text-gray-800'>Todavía no hay trabajo registrado en el trimestre " + esc(trimestre) + ".</p>" +
+				"<p class='mt-1 leading-relaxed'>" + esc(DETALLE_SIN_TRABAJO) + "</p></div>";
+		}
+		var sinTrabajoN = abiertos.filter(function (f) { return soloSinTrabajo(f.res); }).length;
 		var conPendientes = abiertos.filter(function (f) { return f.res.total > 0; }).length;
 		var cerrados = lista.length - abiertos.length;
 		var porRevisar = abiertos.reduce(function (s, f) { return s + (f.res.porRevisar || 0); }, 0);
@@ -388,12 +443,15 @@
 			"<p class='mt-1 leading-relaxed'>El número de cada campo cuenta lo que le falta al alumno: entregas, PDA por reforzar o sin evidencia, " +
 			"campo sin evidencias (juicio docente) y calificación por revisar. Toca un alumno para ver el detalle." +
 			(porRevisar ? " Además tienes " + porRevisar + (porRevisar === 1 ? " producto" : " productos") + " sin revisar; no cuentan como pendiente del alumno." : "") +
-			(cerrados ? " " + cerrados + (cerrados === 1 ? " alumno tiene" : " alumnos tienen") + " la boleta de este trimestre cerrada." : "") + "</p></div>";
+			(cerrados ? " " + cerrados + (cerrados === 1 ? " alumno tiene" : " alumnos tienen") + " la boleta de este trimestre cerrada." : "") +
+			(sinTrabajoN ? " " + sinTrabajoN + (sinTrabajoN === 1 ? " alumno todavía no tiene" : " alumnos todavía no tienen") + " trabajo registrado en este trimestre." : "") + "</p></div>";
 		var filas = lista.map(function (f) {
 			var al = f.alumno || {};
 			var res = f.res || { cerrada: false, campos: {}, total: 0 };
 			var chips = res.cerrada
 				? "<span class='inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800'>Trimestre cerrado</span>"
+				: soloSinTrabajo(res)
+				? "<span class='inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-semibold text-gray-600' data-qlf-chip-sin-trabajo>Sin trabajo registrado todavía</span>"
 				: CAMPOS.map(function (c) {
 					var x = res.campos[c] || campoVacio();
 					var n = x.pendientes;
@@ -408,13 +466,14 @@
 			return "<li class='border-b border-gray-100 last:border-0' data-qlf-fila='" + esc(al.id) + "'>" +
 				"<button type='button' class='w-full min-h-[44px] flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg' " +
 				"data-qlf-alumno='" + esc(al.id) + "' aria-expanded='false' aria-controls='" + idDetalle + "'>" +
-				"<span class='flex items-center gap-2 min-w-0 sm:w-64 shrink-0'>" +
+				// El nombre completo siempre se ve: salta de línea en vez de cortarse (y va en title)
+				"<span class='flex items-center gap-2 min-w-0 sm:w-64 lg:w-80 shrink-0' title='" + esc(al.nombre_completo || "") + "'>" +
 				"<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0 text-gray-400 transition-transform' data-qlf-flecha viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='m9 18 6-6-6-6'/></svg>" +
 				"<span class='text-xs text-gray-400 w-6 text-right shrink-0'>" + esc(al.num_lista || "") + "</span>" +
-				"<span class='font-medium text-gray-800 truncate'>" + esc(al.nombre_completo || "Sin nombre") + "</span>" +
+				"<span class='font-medium text-gray-800 min-w-0 break-words leading-snug' data-qlf-nombre>" + esc(al.nombre_completo || "Sin nombre") + "</span>" +
 				"<span class='text-xs text-gray-400 shrink-0'>" + esc(al.grado ? al.grado + "°" : "") + "</span></span>" +
 				"<span class='flex flex-wrap gap-1 sm:gap-1.5 pl-6 sm:pl-0'>" + chips + "</span>" +
-				(res.cerrada ? "" : "<span class='sm:ml-auto pl-6 sm:pl-0 text-xs text-gray-500 whitespace-nowrap' data-qlf-total-alumno='" + res.total + "'>" +
+				(res.cerrada || soloSinTrabajo(res) ? "" : "<span class='sm:ml-auto pl-6 sm:pl-0 text-xs text-gray-500 whitespace-nowrap' data-qlf-total-alumno='" + res.total + "'>" +
 					res.total + (res.total === 1 ? " pendiente" : " pendientes") + "</span>") +
 				"</button>" +
 				"<div id='" + idDetalle + "' class='hidden px-3 pb-4 pt-1' data-qlf-detalle='" + esc(al.id) + "'>" +
@@ -447,6 +506,7 @@
 		htmlGrupo: htmlGrupo,
 		alternar: alternar,
 		TEXTO_CERRADO: TEXTO_CERRADO,
+		TEXTO_SIN_TRABAJO: TEXTO_SIN_TRABAJO,
 	};
 	if (typeof window !== "undefined") window.QueLeFalta = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api; // pruebas en node

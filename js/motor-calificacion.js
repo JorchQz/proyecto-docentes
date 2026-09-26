@@ -350,15 +350,16 @@
 
 		/*
 			ctx.detalle ("Qué le falta", js/que-le-falta.js): las MISMAS lecturas, con más columnas
-			(número de sesión y sus PDA con el texto del catálogo; nombre del producto). No agrega
-			ninguna petición y la fórmula no cambia: solo se devuelve lo que ya se leyó.
+			(número de sesión y sus PDA con el texto del catálogo y los productos ligados a cada PDA,
+			producto_sesion_pda; nombre del producto). No agrega ninguna petición y la fórmula no
+			cambia: solo se devuelve lo que ya se leyó.
 		*/
 		var detalle = !!ctx.detalle;
 		var sesiones = [];
 		if (proyIds.length) {
 			sesiones = await todas(function () {
 				return sb.from("sesiones").select(detalle
-					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda))"
+					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda), producto_sesion_pda(producto_sesion_id))"
 					: "id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
 			});
 		}

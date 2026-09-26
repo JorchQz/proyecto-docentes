@@ -141,6 +141,78 @@ function entrada(extra) {
 	const tarde = Q.calcular(entrada({ detalle: { sesiones: SESIONES, productos: [], calificaciones: {}, alta: "2026-09-20" }, avancePda: [] }));
 	ok("alta el 20: el PDA de la sesión del 15 no cuenta; el de la del 24 sí", [tarde.campos.LEN.pda.length, tarde.campos.SAB.pda.length], [0, 1]);
 
+	// ── PDA sin evidencia con productos ligados (R18) ─────────────────────────
+	// Un PDA no es pendiente del alumno si todos sus productos ligados (producto_sesion_pda) para
+	// ese alumno están justificados, en "no aplica" o sin revisar; lo sin revisar queda solo
+	// como "Docente · Por revisar". Con el código de a354dec todos estos salían "Mostrar evidencia".
+	const SES_LIG = [
+		{ id: "t1", numero_sesion: 3, fecha: "2026-09-10", campo_formativo: "Ética, Naturaleza y Sociedades", sesiones_pda: [
+			{ id: "q1", pda_id: "pdaJust", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA con producto justificado" }, producto_sesion_pda: [{ producto_sesion_id: "pJust" }] },
+			{ id: "q2", pda_id: "pdaSinRev", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA con producto sin revisar" }, producto_sesion_pda: [{ producto_sesion_id: "pSinRev" }] },
+			{ id: "q3", pda_id: "pdaMixto", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA no aplica y sin revisar" }, producto_sesion_pda: [{ producto_sesion_id: "pNoAplica" }, { producto_sesion_id: "pSinRev2" }] },
+			{ id: "q4", pda_id: "pdaFalta", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA con uno sin entregar" }, producto_sesion_pda: [{ producto_sesion_id: "pJust2" }, { producto_sesion_id: "pNoEnt" }] },
+			{ id: "q5", pda_id: "pdaRevisado", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA revisado sin evidencia" }, producto_sesion_pda: [{ producto_sesion_id: "pRev" }] },
+			{ id: "q6", pda_id: "pdaOtroGradoProd", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA ligado solo a producto de otro grado" }, producto_sesion_pda: [{ producto_sesion_id: "pDeOtroGrado" }] },
+			{ id: "q7", pda_id: "pdaSinLiga", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA sin productos ligados" }, producto_sesion_pda: [] },
+		] },
+		// El mismo PDA justificado trabajado otra vez, con su producto también justificado
+		{ id: "t2", numero_sesion: 7, fecha: "2026-09-17", campo_formativo: "Ética, Naturaleza y Sociedades", sesiones_pda: [
+			{ id: "q8", pda_id: "pdaJust", grado: 2, criterio_aplicado: null, catalogo_pda: { pda: "PDA con producto justificado" }, producto_sesion_pda: [{ producto_sesion_id: "pJust3" }] },
+		] },
+	];
+	const PROD_LIG = ["pJust", "pSinRev", "pNoAplica", "pSinRev2", "pJust2", "pNoEnt", "pRev", "pJust3"].map((id, i) => ({
+		id, sesion_id: id === "pJust3" ? "t2" : "t1", tipo: "trabajo", campo: "ETI", nombre: "Producto " + id, orden: i + 1 }));
+	const CAL_LIG = {
+		pJust: { estado_entrega: "justificado" }, pJust2: { estado_entrega: "justificado" }, pJust3: { estado_entrega: "justificado" },
+		pNoAplica: { estado_entrega: "no_aplica" }, pNoEnt: { estado_entrega: "no_entregado" },
+		pRev: { estado_entrega: "entregado", nivel: "logrado" }, pSinRev2: { estado_entrega: "entregado", nivel: null, puntaje: null },
+	};
+	const lig = Q.calcular(entrada({ detalle: { sesiones: SES_LIG, productos: PROD_LIG, calificaciones: CAL_LIG, alta: null }, avancePda: [],
+		porCampo: { ETI: { porcentaje: 70 } } }));
+	const etiPda = lig.campos.ETI.pda.map((d) => d.texto);
+	ok("PDA ligado a productos justificados (en dos sesiones): no es pendiente del alumno", etiPda.includes("PDA con producto justificado"), false);
+	ok("PDA ligado a un producto sin revisar: no es pendiente del alumno", etiPda.includes("PDA con producto sin revisar"), false);
+	ok("PDA ligado a no aplica + sin revisar: no es pendiente del alumno", etiPda.includes("PDA no aplica y sin revisar"), false);
+	ok("el producto sin revisar queda solo como pendiente de la maestra", lig.campos.ETI.porRevisar.map((p) => p.id).sort(), ["pSinRev", "pSinRev2"]);
+	ok("sigue pendiente: con un producto sin entregar, ya revisado sin evidencia, ligado solo a otro grado o sin productos ligados",
+		etiPda.slice().sort(), ["PDA con uno sin entregar", "PDA ligado solo a producto de otro grado", "PDA revisado sin evidencia", "PDA sin productos ligados"]);
+	ok("ETI: pendientes = 1 sin entregar + 4 PDA", lig.campos.ETI.pendientes, 5);
+	const frLig = Q.frases(lig.campos.ETI);
+	ok("ninguna frase «Mostrar evidencia» del PDA sin revisar; sí «Docente · Por revisar»",
+		[frLig.some((f) => /PDA con producto sin revisar/.test(f.texto)), frLig.filter((f) => f.tipo === "por_revisar").length], [false, 2]);
+	// Caso R18 (QA1 S3 sin calificar): todos los alumnos con el producto sin revisar → ninguno con el PDA pendiente
+	const r18 = ["a1", "a2", "a3", "a4"].map((id) => Q.calcular(entrada({ alumno: { id, grado: 2 }, avancePda: [],
+		detalle: { sesiones: [SES_LIG[0]], productos: PROD_LIG.filter((p) => p.id === "pSinRev"), calificaciones: {}, alta: null } })));
+	ok("R18: el producto sin calificar no genera «Mostrar evidencia del PDA» en ningún alumno",
+		r18.map((x) => x.campos.ETI.pda.some((d) => d.texto === "PDA con producto sin revisar")), [false, false, false, false]);
+	ok("R18: y sí sale como por revisar de la maestra en todos", r18.map((x) => x.campos.ETI.porRevisar.length), [1, 1, 1, 1]);
+
+	// ── Trimestre sin trabajo todavía (R18, T2) ───────────────────────────────
+	const vacioT2 = Q.calcular(entrada({ detalle: { sesiones: [], productos: [], calificaciones: {}, alta: null }, avancePda: [],
+		porCampo: { LEN: { porcentaje: null }, SAB: { porcentaje: null }, ETI: { porcentaje: null }, DHL: { porcentaje: null } },
+		calificacion: {}, asistencia: { presentes: 0, total: 0 } }));
+	ok("T2 sin sesiones ni productos: sinTrabajo, sin «sin evidencias» y 0 pendientes",
+		[vacioT2.sinTrabajo, ["LEN", "SAB", "ETI", "DHL"].some((c) => vacioT2.campos[c].sinEvidencias), vacioT2.total], [true, false, 0]);
+	ok("T2 sin trabajo: el detalle dice «Todavía no hay trabajo registrado en este trimestre»",
+		/data-qlf-sin-trabajo/.test(Q.htmlAlumno(vacioT2)) && /Todavía no hay trabajo registrado en este trimestre/.test(Q.htmlAlumno(vacioT2)) && !/Para avanzar en |sin evidencias|data-qlf-campo/.test(Q.htmlAlumno(vacioT2)), true);
+	const soloFuturas = Q.calcular(entrada({ detalle: { sesiones: [SESIONES[3]], productos: [PRODUCTOS[8]], calificaciones: {}, alta: null }, avancePda: [],
+		porCampo: {}, calificacion: {}, asistencia: null }));
+	ok("solo sesiones futuras: también sin trabajo", [soloFuturas.sinTrabajo, soloFuturas.total], [true, 0]);
+	ok("con trabajo (T1): no es sinTrabajo", r.sinTrabajo, false);
+	const gVacio = Q.htmlGrupo([1, 2, 3].map((n) => ({ alumno: { id: "v" + n, nombre_completo: "Alumno " + n, num_lista: n, grado: 2 }, res: vacioT2 })), 2);
+	ok("grupo en T2 sin trabajo: un aviso y ninguna lista de pendientes",
+		/Todavía no hay trabajo registrado en el trimestre 2\./.test(gVacio) && !/con algo pendiente/.test(gVacio) && !/data-qlf-fila/.test(gVacio), true);
+	const gMixto = Q.htmlGrupo([{ alumno: { id: "a2", nombre_completo: "Ana", num_lista: 1, grado: 2 }, res: r },
+		{ alumno: { id: "nuevo", nombre_completo: "Nuevo", num_lista: 2, grado: 2 }, res: vacioT2 }], 1);
+	ok("grupo mixto: el alumno sin trabajo no cuenta como pendiente y lo dice", /1 de 2 alumnos con algo pendiente/.test(gMixto) &&
+		/1 alumno todavía no tiene trabajo registrado/.test(gMixto) && /data-qlf-chip-sin-trabajo/.test(gMixto), true);
+
+	// ── Nombre completo en la vista de grupo (R18: se cortaba a 1280) ─────────
+	const largo = "María Guadalupe de los Ángeles Hernández Villaseñor";
+	const gLargo = Q.htmlGrupo([{ alumno: { id: "l1", nombre_completo: largo, num_lista: 1, grado: 2 }, res: r }], 1);
+	ok("grupo: el nombre no se trunca (salta de línea) y va completo en title",
+		/data-qlf-nombre>María Guadalupe/.test(gLargo) && !/truncate'[^>]*data-qlf-nombre|class='[^']*truncate[^']*' data-qlf-nombre/.test(gLargo) && gLargo.indexOf("title='" + largo + "'") !== -1, true);
+
 	// ── Boleta cerrada ────────────────────────────────────────────────────────
 	const cerrada = Q.calcular(entrada({ cerrada: true }));
 	ok("boleta cerrada: trimestre cerrado, nada listado", [cerrada.cerrada, cerrada.total, Object.keys(cerrada.campos).length], [true, 0, 0]);
@@ -209,12 +281,12 @@ function entrada(extra) {
 		calificaciones: Object.keys(CALIFS).map((k) => Object.assign({ alumno_id: "a2", producto_sesion_id: k, maestro_id: "m", proyecto_id: "p1" }, CALIFS[k])),
 		registro_diario: [], asistencias: [], examenes: [],
 	};
-	const peticiones = [];
+	const peticiones = [], selects = [];
 	function consulta(tabla) {
 		const filtros = [];
 		let desde = 0, hasta = Infinity, cols = "";
 		const q = {
-			select(c) { cols = c || ""; return q; },
+			select(c) { cols = c || ""; selects.push(tabla + ": " + cols); return q; },
 			eq(c, v) { filtros.push((f) => String(f[c]) === String(v)); return q; },
 			in(c, vs) { const s = vs.map(String); filtros.push((f) => s.indexOf(String(f[c])) !== -1); return q; },
 			gte() { return q; }, lte() { return q; }, order() { return q; },
@@ -236,6 +308,8 @@ function entrada(extra) {
 	peticiones.length = 0;
 	const conDet = await M.cargarYCalcularGrupo(sb, Object.assign({ detalle: true }, base));
 	ok("motor con detalle: las mismas peticiones, en el mismo orden", peticiones.map((p) => p.replace("+", "")), sinDetalle);
+	ok("motor con detalle: los PDA de la sesión traen sus productos ligados (producto_sesion_pda), en la misma petición",
+		selects.filter((x) => x.indexOf("sesiones: ") === 0 && x.indexOf("producto_sesion_pda(producto_sesion_id)") !== -1).length > 0, true);
 	ok("motor con detalle: sesiones y productos con más columnas", peticiones.filter((p) => p.endsWith("+")), ["sesiones+", "productos_sesion+"]);
 	ok("motor con detalle: devuelve sesiones y los productos y capturas del alumno",
 		[conDet.sesiones.length, conDet.porAlumno.a2.detalle.productos.length, Object.keys(conDet.porAlumno.a2.detalle.calificaciones).length], [4, 10, 5]);

@@ -106,6 +106,22 @@ ok("las páginas con Cerrar sesión (la barra, también en Sala de Maestros) car
 		if (t.indexOf('src="js/navbar.js"') === -1) return false;
 		return t.indexOf('src="js/bandeja-salida.js"') === -1;
 	}), []);
+// R18: onboarding tiene su propio Cerrar sesión y no cargaba la bandeja (la limpieza no corría).
+// Toda página de la raíz cuyo script cierra sesión (signOut) carga la bandeja (se consulta al
+// tocar el botón, así que basta con que la página la cargue).
+ok("onboarding carga la bandeja antes que su script, y su Cerrar sesión confirma y limpia",
+	leer("onboarding.html").indexOf('src="js/bandeja-salida.js"') !== -1 &&
+	leer("onboarding.html").indexOf('src="js/bandeja-salida.js"') < leer("onboarding.html").indexOf('src="js/onboarding.js"') &&
+	/confirmarSalida\(window\.sb\)[\s\S]*limpiarAlSalir\(window\.sb\)[\s\S]*signOut\(\)/.test(leer("js/onboarding.js")), true);
+ok("toda página cuyo script propio cierra sesión carga la bandeja",
+	fs.readdirSync(RAIZ).filter((f) => f.endsWith(".html")).filter((f) => {
+		const t = leer(f);
+		const propios = (t.match(/src="js\/[^"]+\.js"/g) || []).map((m) => m.slice(5, -1))
+			.filter((s) => s !== "js/navbar.js" && s !== "js/bandeja-salida.js" && fs.existsSync(path.join(RAIZ, s)))
+			.filter((s) => /auth\.signOut\(/.test(leer(s)));
+		if (!propios.length) return false;
+		return t.indexOf('src="js/bandeja-salida.js"') === -1;
+	}), []);
 ok("Sala de Maestros usa la barra (y con ella su Cerrar sesión)", /<script src="js\/navbar\.js" data-seccion="sala"><\/script>/.test(leer("sala-maestros.html")), true);
 ok("Cerrar sesión pide confirmar si hay capturas pendientes (la barra)",
 	/BandejaSalida\.confirmarSalida\(window\.sb\)/.test(leer("js/navbar.js")), true);

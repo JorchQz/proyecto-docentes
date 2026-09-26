@@ -6,7 +6,10 @@
 
 	document.getElementById('btnCerrarSesionOnboarding')
 		?.addEventListener('click', async function () {
-			// Borra del aparato las marcas de capturas que ya no hacen falta (js/bandeja-salida.js)
+			// Como la barra (js/navbar.js): si hay capturas de Hoy sin enviar en este aparato, se
+			// avisa y se pide confirmar; luego se borran del aparato las marcas de capturas que ya
+			// no hacen falta (js/bandeja-salida.js, cargado en onboarding.html)
+			if (window.BandejaSalida && window.BandejaSalida.confirmarSalida && !(await window.BandejaSalida.confirmarSalida(window.sb))) return;
 			if (window.BandejaSalida && window.BandejaSalida.limpiarAlSalir) { try { await window.BandejaSalida.limpiarAlSalir(window.sb); } catch (_) { /* se sigue */ } }
 			await window.sb.auth.signOut();
 			window.location.href = 'index.html';
