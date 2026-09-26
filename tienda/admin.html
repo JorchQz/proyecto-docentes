@@ -67,13 +67,124 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 
 		<!-- Tabs -->
 		<div class="bg-white rounded-2xl border border-line shadow-sm overflow-hidden">
-			<div class="flex border-b border-line">
+			<div class="flex border-b border-line overflow-x-auto">
 				<button data-tab="productos" class="tab-btn active flex-1 py-4 text-sm font-semibold border-b-2 transition">Paquetes</button>
 				<button data-tab="sueltos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Proyectos individuales</button>
 				<button data-tab="pedidos" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Personalizados</button>
 				<button data-tab="precios" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Precios</button>
 				<button data-tab="ordenes" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Órdenes</button>
 				<button data-tab="acceso" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Acceso manual</button>
+				<button data-tab="misalon" class="tab-btn flex-1 py-4 text-sm font-semibold border-b-2 transition">Mi Salón</button>
+			</div>
+
+			<!-- Tab Mi Salón (b21, tienda/js/admin-mi-salon.js): interruptor de lanzamiento, métricas,
+			     docentes con su acceso, dar o extender acceso y calendario de periodos. Los precios y el
+			     cupo fundador los agrega el módulo de cobros (b22) en el lugar reservado al final. -->
+			<div id="panelMiSalon" class="hidden p-4 sm:p-5 flex flex-col gap-6">
+				<div id="msMensaje" class="hidden rounded-xl px-4 py-3 text-sm font-medium" role="status" aria-live="polite"></div>
+
+				<section class="rounded-2xl border border-line p-4 sm:p-5 flex flex-col gap-3" aria-labelledby="msInterruptorTitulo">
+					<div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+						<div class="min-w-0">
+							<h2 id="msInterruptorTitulo" class="font-bold text-ink text-lg">Lanzamiento de Mi Salón</h2>
+							<p id="msInterruptorTexto" class="text-sm text-mute mt-1">Cargando...</p>
+						</div>
+						<button id="msInterruptorBtn" type="button" disabled class="shrink-0 min-h-[44px] px-5 rounded-xl font-semibold text-white transition disabled:opacity-60" style="background:#059669">Cargando...</button>
+					</div>
+					<p class="text-xs text-mute leading-relaxed">Apagado: solo las cuentas del piloto (activo_saas o acceso piloto) ven Mi Salón y las páginas de presentación siguen ocultas. Encendido: toda cuenta ve Mi Salón (sin acceso vigente, en solo lectura), la tienda enlaza la presentación y las cuentas nuevas reciben el correo de bienvenida.</p>
+				</section>
+
+				<section aria-labelledby="msMetricasTitulo">
+					<h2 id="msMetricasTitulo" class="font-bold text-ink text-lg">Métricas</h2>
+					<div id="msMetricas" class="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-3"><p class="text-sm text-mute col-span-2">Cargando...</p></div>
+				</section>
+
+				<section aria-labelledby="msDocentesTitulo">
+					<div class="flex flex-col lg:flex-row lg:items-end gap-3 lg:justify-between">
+						<div>
+							<h2 id="msDocentesTitulo" class="font-bold text-ink text-lg">Docentes</h2>
+							<p class="text-xs text-mute mt-1">Por vencer: el acceso vence en 21 días o menos. Solo lectura: sin acceso vigente.</p>
+						</div>
+						<div class="flex flex-col sm:flex-row gap-2">
+							<label class="sr-only" for="msBuscar">Buscar docente</label>
+							<input id="msBuscar" type="search" placeholder="Buscar por nombre o correo" class="min-h-[44px] px-3 border border-line rounded-xl text-sm w-full sm:w-64" style="color:#1c2434;background:#fff">
+							<label class="sr-only" for="msFiltro">Estado del acceso</label>
+							<select id="msFiltro" class="min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+								<option value="">Todos los estados</option>
+								<option value="vigente">Vigente</option>
+								<option value="por_vencer">Por vencer</option>
+								<option value="solo_lectura">Solo lectura</option>
+							</select>
+							<button id="msExportar" type="button" class="min-h-[44px] px-4 rounded-xl border border-line text-sm font-semibold text-ink hover:bg-gray-50 inline-flex items-center justify-center gap-2">
+								<i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Exportar a Excel
+							</button>
+						</div>
+					</div>
+					<div id="msDocentes" class="relative mt-3 overflow-x-auto"><p class="text-sm text-mute">Cargando...</p></div>
+				</section>
+
+				<section id="msDarSeccion" class="rounded-2xl border border-line p-4 sm:p-5 flex flex-col gap-4 scroll-mt-24" aria-labelledby="msDarTitulo">
+					<div>
+						<h2 id="msDarTitulo" class="font-bold text-ink text-lg">Dar o extender acceso</h2>
+						<p class="text-xs text-mute mt-1">Se suma a lo que la cuenta ya tenga; nunca quita nada. Úsalo para resolver un pago tardío o sumar docentes al piloto.</p>
+					</div>
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+						<div>
+							<label for="msDarEmail" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Correo de la cuenta</label>
+							<input id="msDarEmail" type="email" placeholder="docente@correo.com" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						</div>
+						<div>
+							<label for="msDarOrigen" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Tipo</label>
+							<select id="msDarOrigen" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+								<option value="regalo_admin">Regalo (regalo_admin)</option>
+								<option value="piloto">Piloto</option>
+							</select>
+						</div>
+						<div>
+							<label for="msDarCiclo" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Ciclo</label>
+							<select id="msDarCiclo" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff"></select>
+						</div>
+						<fieldset>
+							<legend class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Periodos</legend>
+							<div id="msDarPeriodos" class="flex flex-wrap gap-2"></div>
+						</fieldset>
+						<div>
+							<label for="msDarVence" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">O hasta una fecha (opcional)</label>
+							<input id="msDarVence" type="date" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						</div>
+						<div>
+							<label for="msDarNotas" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Nota (opcional)</label>
+							<input id="msDarNotas" type="text" maxlength="200" placeholder="Por ejemplo: OXXO pagado tarde" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						</div>
+					</div>
+					<p id="msDarResumen" class="text-sm text-ink"></p>
+					<button id="msDarBtn" type="button" class="self-start min-h-[44px] px-5 rounded-xl font-semibold text-white transition disabled:opacity-60" style="background:#059669">Dar acceso</button>
+				</section>
+
+				<section class="rounded-2xl border border-line p-4 sm:p-5 flex flex-col gap-4" aria-labelledby="msPeriodosTitulo">
+					<div>
+						<h2 id="msPeriodosTitulo" class="font-bold text-ink text-lg">Calendario de periodos</h2>
+						<p class="text-xs text-mute mt-1">Cada acceso vence con el "Vence" de sus periodos: si corriges una fecha, todos los accesos se ajustan solos. Cada agosto se agrega el ciclo nuevo.</p>
+					</div>
+					<div id="msPeriodos" class="relative overflow-x-auto"><p class="text-sm text-mute">Cargando...</p></div>
+					<div class="flex flex-col sm:flex-row gap-2 sm:items-end">
+						<button id="msPeriodosGuardar" type="button" class="min-h-[44px] px-5 rounded-xl font-semibold text-white transition disabled:opacity-60" style="background:#1e3a8a">Guardar el calendario</button>
+						<div class="flex gap-2 items-end">
+							<div>
+								<label for="msNuevoCiclo" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Ciclo nuevo</label>
+								<input id="msNuevoCiclo" type="text" inputmode="numeric" placeholder="2027-2028" maxlength="9" class="w-32 min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+							</div>
+							<button id="msNuevoCicloBtn" type="button" class="min-h-[44px] px-4 rounded-xl border border-line text-sm font-semibold text-ink hover:bg-gray-50">Agregar ciclo</button>
+						</div>
+					</div>
+				</section>
+
+				<!-- Lugar reservado para el módulo de cobros (b22): precios de Mi Salón (mi_salon_precios),
+				     cupo de precio fundador y lugares que quedan -->
+				<section id="msPrecios" class="rounded-2xl border border-dashed border-line p-4 sm:p-5" aria-labelledby="msPreciosTitulo">
+					<h2 id="msPreciosTitulo" class="font-bold text-ink text-lg">Precios y precio fundador</h2>
+					<p class="text-sm text-mute mt-1">Aquí irán los precios de Mi Salón y el cupo de precio fundador cuando se activen los cobros.</p>
+				</section>
 			</div>
 
 			<!-- Tab Precios: tarifario, oferta general y cupones -->
@@ -572,5 +683,6 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 <script src="js/tienda-common.js"></script>
 <script src="js/vista-previa.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/admin-mi-salon.js"></script>
 </body>
 </html>

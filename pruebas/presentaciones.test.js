@@ -59,13 +59,33 @@ const revisar = archivos(".", [".html", ".js", ".webmanifest"])
 	.concat(archivos("tienda/js", [".js"]))
 	.concat(["_redirects"])
 	.filter((f) => NUEVOS.indexOf(f) === -1);
+/*
+	Desde b21 (interruptor de lanzamiento, spec de Jorge 2026-09-26) hay DOS lugares que sí la nombran,
+	y solo la enlazan cuando corresponde:
+	  - tienda/js/tienda-common.js: el enlace "Mi Salón" del menú y los pies, SOLO con Mi Salón abierto
+	    (jissez_config.mi_salon_abierto; con el interruptor apagado no aparece ningún enlace);
+	  - js/mi-salon-acceso.js: el botón "Renovar" del modo solo lectura (mientras no exista la compra).
+	Nadie más.
+*/
+const ENLAZAN_CON_REGLA = ["tienda/js/tienda-common.js", "js/mi-salon-acceso.js"];
 const conEnlace = revisar.filter((f) => {
+	if (ENLAZAN_CON_REGLA.indexOf(f) !== -1) return false;
 	const t = leer(f);
 	// _redirects sí las nombra: para sacarlas de /salon/ (se revisa abajo)
 	if (f === "_redirects") return /^(?!\/salon\/)\S*conoce-(mi-salon|sala)/m.test(t);
 	return /conoce-(mi-salon|sala)/.test(t);
 });
-ok("ningún archivo de la tienda, Mi Salón o la app enlaza a las presentaciones (" + revisar.length + " revisados)", conEnlace, []);
+ok("ningún otro archivo de la tienda, Mi Salón o la app enlaza a las presentaciones (" + revisar.length + " revisados)", conEnlace, []);
+{
+	const comun = leer("tienda/js/tienda-common.js");
+	const usos = comun.split("PRESENTACION_MI_SALON").length - 1;
+	ok("tienda: la presentación se nombra una sola vez (PRESENTACION_MI_SALON) y nunca conoce-sala", [(comun.match(/conoce-mi-salon/g) || []).length, /conoce-sala/.test(comun)], [1, false]);
+	// Cada uso del enlace está dentro de miSalonAbierto().then(... if (!si) return ...)
+	const bloques = comun.split("miSalonAbierto().then(function (si) {").slice(1);
+	ok("tienda: el enlace solo se pone con Mi Salón abierto (" + usos + " usos)", bloques.length >= 2 && bloques.every((b) => /^\s*(var [^\n]*\n\s*)?if \(!si/.test(b)), true);
+	const acceso = leer("js/mi-salon-acceso.js");
+	ok("Mi Salón: la presentación solo como destino del botón de compra (COMPRA)", (acceso.match(/conoce-mi-salon/g) || []).length, 1);
+}
 
 // Fuera de la app instalable: /salon/tienda/conoce-* sale de /salon/, antes de la regla general
 const redirects = leer("_redirects").split(/\r?\n/);

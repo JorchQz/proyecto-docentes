@@ -18,8 +18,13 @@ var LoginDestino = (function () {
 
 	// ¿La cuenta tiene Mi Salón? `perf` es la respuesta de perfiles; si la lectura
 	// falla se trata como sin acceso (la tienda funciona igual y el selector no se ofrece).
+	// Con activo_saas o, desde b21, con el estado del servidor (perfiles.mi_salon.visible:
+	// acceso piloto o Mi Salón abierto por el interruptor de lanzamiento).
 	function tieneSaas(perf) {
-		return !!(perf && !perf.error && perf.data && perf.data.activo_saas === true);
+		if (!perf || perf.error || !perf.data) return false;
+		if (perf.data.activo_saas === true) return true;
+		var ms = perf.data.mi_salon;
+		return !!(ms && typeof ms === "object" && ms.visible === true);
 	}
 
 	// Una ruta desde la raíz del sitio (la que da js/secciones.js), vista desde tienda/.
@@ -89,6 +94,8 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	}
 
 	var mode = "login"; // 'login' | 'register'
+	// ?registro=1 abre directo en "Crear cuenta" (la presentación de Mi Salón con Mi Salón abierto)
+	if (params.get("registro") === "1") { mode = "register"; updateModeUI(); }
 
 	// Si ya hay sesión, saltar directo.
 	Tienda.getSession().then(async function (session) {
@@ -97,13 +104,17 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 
 	// Decide a dónde llevar al usuario tras autenticar.
 	async function destino(userId) {
+		// ¿Ve Mi Salón? (activo_saas y el estado de b21, con respaldo si la base no lo tiene)
+		var perf = Tienda.leerAccesoSaas
+			? await Tienda.leerAccesoSaas(userId)
+			: await window.sb.from("perfiles").select("activo_saas").eq("id", userId).maybeSingle();
+		// Correo de bienvenida de Mi Salón: solo si el servidor dice que está pendiente (Mi Salón
+		// abierto y cuenta creada desde entonces). También con ?next= (la presentación de Mi Salón
+		// manda al registro con next). Se espera solo a que salga la petición, no su respuesta.
+		if (!perf.error && perf.data && perf.data.mi_salon && perf.data.mi_salon.bienvenida_pendiente === true) {
+			await pedirBienvenida();
+		}
 		if (nextExplicito) { return nextExplicito; }
-		// ¿Tiene el SaaS completo activado?
-		var perf = await window.sb
-			.from("perfiles")
-			.select("activo_saas")
-			.eq("id", userId)
-			.maybeSingle();
 		// Recordar si tiene Mi Salón: la primera página tras el login aparta el espacio del selector
 		if (!perf.error && Tienda.recordarSaas) { Tienda.recordarSaas(userId, LoginDestino.tieneSaas(perf)); }
 		if (!LoginDestino.tieneSaas(perf)) { return enSalon ? "/tienda/catalogo.html" : LoginDestino.porPerfil(perf); }
@@ -123,6 +134,25 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			grupos = await window.sb.from("grupos").select("id").eq("maestro_id", userId).limit(1);
 		}
 		return LoginDestino.porPerfil(perf, S ? S.destinoLogin(ultima, grupos) : "dashboard.html");
+	}
+
+	/*
+		Pide el correo de bienvenida de Mi Salón (Edge Function bienvenida-mi-salon). La función
+		decide de nuevo en el servidor (Mi Salón abierto, cuenta creada desde entonces, correo no
+		enviado todavía) y es idempotente: pedirlo dos veces no manda dos correos. keepalive: la
+		página navega enseguida y la petición no debe cortarse.
+	*/
+	async function pedirBienvenida() {
+		try {
+			var s = await Tienda.getSession();
+			if (!s || !s.access_token || !Tienda.EDGE_BASE) return;
+			fetch(Tienda.EDGE_BASE + "/bienvenida-mi-salon", {
+				method: "POST",
+				keepalive: true,
+				headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token },
+				body: "{}",
+			}).catch(function () {});
+		} catch (_) {}
 	}
 
 	toggleLink.addEventListener("click", function (e) {

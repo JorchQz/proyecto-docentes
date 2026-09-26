@@ -121,7 +121,31 @@ var ConoceMiSalon = (function () {
 		return !conAcceso && !hayPrecio(cfg);
 	}
 
-	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, encabezado: encabezado, BENEFICIO_GENERICO: BENEFICIO_GENERICO };
+	/*
+		Mi Salón abierto (b21): ¿sigue el periodo gratis? `vence` es la fecha (AAAA-MM-DD) del
+		periodo gratis en mi_salon_periodos; `ahora`, la fecha de hoy. Una cuenta creada hasta ese
+		día recibe el acceso gratis; después ya no (decisión de Jorge, 2026-09-26: sin prueba).
+	*/
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function hoyMexico(ahora) {
+		try {
+			return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(ahora);
+		} catch (_) {
+			return ahora.toISOString().slice(0, 10);
+		}
+	}
+	function gratisVigente(vence, ahora) {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(String(vence || ""))) return false;
+		return hoyMexico(ahora || new Date()) <= vence;
+	}
+	function textoGratis(vence) {
+		var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(vence || ""));
+		return m
+			? "Crea tu cuenta y tendrás acceso completo a Mi Salón hasta el " + Number(m[3]) + " de " + MESES[Number(m[2]) - 1] + ", sin tarjeta."
+			: "Crea tu cuenta y tendrás acceso completo a Mi Salón.";
+	}
+
+	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, encabezado: encabezado, BENEFICIO_GENERICO: BENEFICIO_GENERICO, gratisVigente: gratisVigente, textoGratis: textoGratis };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = { PRECIOS_MI_SALON: PRECIOS_MI_SALON, ConoceMiSalon: ConoceMiSalon }; // pruebas en node
 
@@ -205,8 +229,29 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 		seccion: "salon",
 	}).then(function (session) {
 		Tienda.iconos();
-		if (!session) { aplicarAcceso(false); return null; }
-		return Tienda.tieneSaas(session).then(aplicarAcceso);
+		if (!session) { aplicarAcceso(false); return false; }
+		return Tienda.tieneSaas(session).then(function (si) { aplicarAcceso(si); return si; });
+	}).then(function (conAcceso) {
+		// Mi Salón abierto (b21): a quien aún no lo tiene se le ofrece crear su cuenta con el
+		// primer trimestre gratis, en lugar del "Avísame", mientras dure el periodo gratis
+		if (conAcceso || !Tienda.miSalonAbierto) return null;
+		return Tienda.miSalonAbierto().then(function (abierto) {
+			if (!abierto) return null;
+			return window.sb.from("jissez_config").select("gratis_ciclo, gratis_periodo").eq("id", true).maybeSingle().then(function (c) {
+				if (c.error || !c.data) return null;
+				return window.sb.from("mi_salon_periodos").select("vence").eq("ciclo", c.data.gratis_ciclo).eq("periodo", c.data.gratis_periodo).maybeSingle();
+			}).then(function (p) {
+				var vence = p && !p.error && p.data ? p.data.vence : null;
+				if (!ConoceMiSalon.gratisVigente(vence, new Date())) return;
+				var bloque = document.getElementById("msAbiertoBloque");
+				var texto = document.getElementById("msAbiertoTexto");
+				var aviso = document.getElementById("msAvisoBloque");
+				if (texto) texto.textContent = ConoceMiSalon.textoGratis(vence);
+				if (bloque) bloque.classList.remove("hidden");
+				if (aviso) aviso.classList.add("hidden");
+				Tienda.iconos();
+			});
+		});
 	}).then(function () {
 		// "Avísame cuando esté disponible" solo mientras no haya precio (y sin acceso)
 		var bloque = document.getElementById("msAvisoBloque");
