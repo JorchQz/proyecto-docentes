@@ -9,14 +9,17 @@
 	  - Columnas que crea la maestra (hasta MAX_COLUMNAS), de tres tipos:
 	      palomita → entregó / no entregó;
 	      texto    → libre ("Talla 8");
-	      monto    → pesos; la cantidad esperada por alumno es opcional y, si se define, se
+	      monto    → pesos; la cantidad esperada por alumno (cuota) es opcional y, si se define, se
 	                 calcula lo reunido y lo que falta. Todo se suma en CENTAVOS enteros (sin
 	                 errores de punto flotante) y una cantidad capturada se redondea a centavos.
+	  - Donativo libre (monto SIN cuota; decisión de Jorge, 2026-09-26): es voluntario. No deja
+	    pendientes (sin amarillo, sin "Recordar", fuera de la columna "Pendiente" del Excel), no
+	    cuenta en el avance general ni en el historial por alumno, y solo suma lo reunido.
 	  - Filas: alumnos activos en orden de lista. Un alumno dado de baja DESPUÉS conserva su
 	    registro: sigue en la lista si tiene algo registrado (marcado "baja"). Se marca con toques.
 	  - Resumen arriba por columna ("Entregaron 17 de 20; faltan 3", "Completaron la cuota 17 de
-	    20; faltan aportaciones de 3 alumnos ($150)") y avance general; los pendientes van
-	    resaltados.
+	    20; faltan aportaciones de 3 alumnos ($150)", "Reunido $420 (12 aportaciones)") y avance
+	    general de las columnas con algo que completar; los pendientes van resaltados.
 
 	Quién cuenta en una lista (filasDeLista)
 	  - Lista abierta: los alumnos activos de hoy cuentan en todas las columnas. Un alumno que
@@ -32,8 +35,9 @@
 	    aseo) y "Copiar texto para las familias" solo llevan el nombre de la lista, grupo,
 	    escuela, fecha, descripción y el resumen por columna ("Entregaron 17 de 20; faltan 3",
 	    "Completaron la cuota 17 de 20; faltan aportaciones de 3 alumnos ($150)"), con el pie
-	    "Hecho con Jissez Mi Salón". Nunca a quién le falta. En una columna con cuota, a las
-	    familias solo va la cuota: "Reunido en total" junto a "faltan" se leía contradictorio si
+	    "Hecho con Jissez Mi Salón". Nunca a quién le falta. El donativo libre lleva solo lo
+	    reunido ("Reunido $420 (12 aportaciones)"). En una columna con cuota, a las familias solo
+	    va la cuota: "Reunido en total" junto a "faltan" se leía contradictorio si
 	    alguien pagó de más, así que eso lo ve solo la maestra en pantalla (pulido tras R22). Un
 	    monto sin cuota no lleva barra: no hay "completo". Lo que uno aporta de más no cubre lo
 	    de otro, así que lo reunido no se compara contra una meta (salía "Reunido $1,045.70 de
@@ -170,16 +174,16 @@
 		var e = aCentavos(col && col.monto_esperado);
 		return e && e > 0 ? e : null;
 	}
+	// Donativo libre: monto sin cuota. Es voluntario (decisión de Jorge, 2026-09-26)
+	function esLibre(col) { return !!col && col.tipo === "monto" && !esperadoCent(col); }
 	/*
-		¿Cumple en esa columna? palomita: entregó. monto con cuota: aportó la cuota completa; sin
-		cuota: aportó algo. texto: tiene algo escrito ("registrado").
+		¿Cumple en esa columna? palomita: entregó. monto con cuota: aportó la cuota completa.
+		texto: tiene algo escrito ("registrado"). Donativo libre: siempre, porque es voluntario y
+		no deja nada pendiente (sin amarillo, sin "Recordar"); solo suma lo reunido.
 	*/
 	function cumple(col, v) {
-		if (col.tipo === "monto") {
-			var c = v ? (aCentavos(v.monto) || 0) : 0;
-			var e = esperadoCent(col);
-			return e ? c >= e : c > 0;
-		}
+		if (esLibre(col)) return true;
+		if (col.tipo === "monto") return (v ? (aCentavos(v.monto) || 0) : 0) >= esperadoCent(col);
 		return participa(col, v);
 	}
 
@@ -226,9 +230,11 @@
 		"falta" en montos = la suma de lo que le falta a cada alumno para su cuota (lo que aportó
 		de más uno no cubre lo de otro). De una baja que aportó algo se espera lo que aportó: no
 		suma a "falta". "demas" = lo aportado por encima de la cuota, alumno por alumno.
+		Donativo libre (libre: true): nadie queda pendiente (hechos = total, faltan = 0); lo que
+		dice es reunido y aportaron.
 	*/
 	function resumenColumna(col, filas, mapa) {
-		var r = { columna: col, tipo: col.tipo, total: 0, hechos: 0, faltan: 0, pendientes: [] };
+		var r = { columna: col, tipo: col.tipo, total: 0, hechos: 0, faltan: 0, pendientes: [], libre: esLibre(col) };
 		var cuota = col.tipo === "monto" ? esperadoCent(col) : null;
 		if (col.tipo === "monto") { r.reunido = 0; r.aportaron = 0; r.cuota = cuota; r.esperadoTotal = null; r.falta = null; r.demas = null; }
 		(filas || []).forEach(function (f) {
@@ -257,17 +263,21 @@
 	/*
 		resumenLista(lista, columnas, alumnos, mapa) → { filas, columnas: [resumenColumna],
 		  avance: { hechos, total, porcentaje } }
-		Avance general: casillas completas entre casillas que cuentan, en todas las columnas. El
-		porcentaje se trunca (99.6 % es 99 %, no 100 %).
+		Avance general: casillas completas entre casillas que cuentan, en las columnas con algo que
+		completar (palomita, texto y monto con cuota). El donativo libre no entra: es voluntario.
+		El porcentaje se trunca (99.6 % es 99 %, no 100 %).
 	*/
 	function resumenLista(lista, columnas, alumnos, mapa) {
 		var cols = ordenarColumnas(columnas);
 		var filas = filasDeLista(lista, cols, alumnos, mapa);
 		var res = cols.map(function (c) { return resumenColumna(c, filas, mapa); });
 		var hechos = 0, total = 0;
-		res.forEach(function (x) { hechos += x.hechos; total += x.total; });
+		res.forEach(function (x) { if (tieneMeta(x)) { hechos += x.hechos; total += x.total; } });
 		return { filas: filas, columnas: res, avance: { hechos: hechos, total: total, porcentaje: total ? Math.floor(hechos * 100 / total) : 0 } };
 	}
+	// ¿Alguna columna tiene algo que completar? Si todas son donativo libre, no hay avance general,
+	// ni pendientes, ni "Recordar", ni columna "Pendiente" en el Excel
+	function hayMeta(resumen) { return ((resumen && resumen.columnas) || []).some(tieneMeta); }
 
 	// ── Textos del resumen ────────────────────────────────────────────────────
 	function plural(n, uno, varios) { return n + " " + (n === 1 ? uno : varios); }
@@ -299,14 +309,35 @@
 		    cuando alguien pagó de más (pulido tras R22), así que no va a las familias.
 	*/
 	function detalleColumna(r, paraFamilias) {
-		if (r.tipo !== "monto" || !r.cuota) return "";
+		// Donativo libre: la maestra ve por qué no hay pendientes; a las familias no va nada más
+		if (r.tipo === "monto" && !r.cuota) return paraFamilias ? "" : "Donativo libre (sin cuota): es voluntario, no deja pendientes ni cuenta en el avance general.";
+		if (r.tipo !== "monto") return "";
 		var cuota = "Cuota: " + pesos(r.cuota) + " por alumno.";
 		if (paraFamilias) return cuota;
 		return cuota + " Reunido en total: " + pesos(r.reunido) +
 			(r.demas ? " (incluye " + pesos(r.demas) + " aportados de más, que no cubren la cuota de otros)" : "") + ".";
 	}
-	// ¿La columna tiene algo que "completar"? Un monto sin cuota no: solo suma lo reunido
+	// ¿La columna tiene algo que "completar"? Un monto sin cuota (donativo libre) no: solo suma lo reunido
 	function tieneMeta(r) { return !(r.tipo === "monto" && !r.cuota); }
+	/*
+		ayudaFamilias(resumen, cerrada) → texto de ayuda de "Para las familias", según lo que de
+		verdad va en la imagen y el texto: palomita, cuántos entregaron; texto, cuántos tienen el
+		dato; con cuota, cuántos la completaron, cuánto falta y la cuota (sin lo reunido en total,
+		pulido tras R22); donativo libre, cuánto se ha reunido. "Recordar por WhatsApp" solo si hay
+		algo que pueda quedar pendiente y la lista está abierta.
+	*/
+	function ayudaFamilias(resumen, cerrada) {
+		var cols = (resumen && resumen.columnas) || [];
+		var hay = function (f) { return cols.some(f); };
+		var partes = [];
+		if (hay(function (r) { return r.tipo === "palomita"; })) partes.push("cuántos entregaron");
+		if (hay(function (r) { return r.tipo === "texto"; })) partes.push("cuántos tienen el dato registrado");
+		if (hay(function (r) { return r.tipo === "monto" && r.cuota; })) partes.push("cuántos completaron la cuota, cuánto falta y la cuota por alumno");
+		if (hay(function (r) { return r.tipo === "monto" && !r.cuota; })) partes.push((partes.length ? "del donativo libre, " : "") + "cuánto se ha reunido");
+		var t = "Sin nombres de alumnos: solo el resumen" + (partes.length ? " (" + partes.join("; ") + ")" : "") + ".";
+		if (!cerrada && hayMeta(resumen)) t += " A cada familia pendiente puedes escribirle en privado con «Recordar por WhatsApp».";
+		return t;
+	}
 	// Barra de una columna (0 a 1): alumnos al corriente entre los que cuentan, también en montos.
 	// null en un monto sin cuota: no hay "completo", así que no lleva barra
 	function fraccionColumna(r) {
@@ -337,7 +368,7 @@
 	// ── Pendientes de un alumno y recordatorio ────────────────────────────────
 	/*
 		pendientesDe(resumen, alumnoId, mapa) → ["el material de arte", "$20 de la cooperación"]
-		Solo lo que le falta (en las columnas donde cuenta).
+		Solo lo que le falta (en las columnas donde cuenta). El donativo libre nunca (es voluntario).
 	*/
 	function pendientesDe(resumen, alumnoId, mapa) {
 		var fila = (resumen.filas || []).filter(function (f) { return f.alumno.id === alumnoId; })[0];
@@ -352,7 +383,7 @@
 				var c = v ? (aCentavos(v.monto) || 0) : 0;
 				out.push(pesos(r.cuota - c) + " de «" + col.nombre + "»" + (c > 0 ? " (ya aportó " + pesos(c) + ")" : ""));
 			} else if (col.tipo === "monto") {
-				out.push("la aportación de «" + col.nombre + "»");
+				return; // donativo libre: cumple() ya lo da por hecho; por si acaso, nunca se pide
 			} else if (col.tipo === "texto") {
 				out.push("el dato de «" + col.nombre + "»");
 			} else {
@@ -376,13 +407,14 @@
 	// ── Historial por alumno ──────────────────────────────────────────────────
 	/*
 		estadoEnLista(resumen, alumnoId, mapa) → "completo" | "parcial" | "sin_registro" | null
-		Solo con las columnas de palomita y monto (el texto no es algo que se "cumpla"). null si
-		el alumno no cuenta en la lista o la lista no tiene esas columnas.
+		Solo con las columnas de palomita y monto con cuota (el texto no es algo que se "cumpla" y
+		el donativo libre es voluntario). null si el alumno no cuenta en la lista o la lista no
+		tiene esas columnas.
 	*/
 	function estadoEnLista(resumen, alumnoId, mapa) {
 		var fila = (resumen.filas || []).filter(function (f) { return f.alumno.id === alumnoId; })[0];
 		if (!fila) return null;
-		var medibles = (resumen.columnas || []).filter(function (r) { return r.tipo !== "texto" && cuentaEn(fila, r.columna, mapa); });
+		var medibles = (resumen.columnas || []).filter(function (r) { return r.tipo !== "texto" && tieneMeta(r) && cuentaEn(fila, r.columna, mapa); });
 		if (!medibles.length) return null;
 		var hechos = 0, algo = false;
 		medibles.forEach(function (r) {
@@ -499,7 +531,8 @@
 			bloques.push({ alto: dl.length * 46 + 12, ops: dl.map(function (l, i) { return opTexto(l, M, 36 + i * 46, 34, 400, IMG.tinta); }) });
 		}
 		var res = datos.resumen || { columnas: [], avance: { hechos: 0, total: 0, porcentaje: 0 } };
-		if (res.columnas.length) {
+		// Sin avance general si todo es donativo libre (no hay nada que completar)
+		if (hayMeta(res)) {
 			var av = res.avance;
 			bloques.push({
 				alto: 132,
@@ -591,7 +624,7 @@
 		var cols = resumen.columnas;
 		var cab = "<tr><th scope='col'>Alumno</th>" + cols.map(function (r) {
 			var c = r.columna;
-			return "<th scope='col'>" + esc(c.nombre) + (c.tipo === "monto" && r.cuota ? "<span class='imp-cuota'>Cuota " + esc(pesos(r.cuota)) + "</span>" : "") + "</th>";
+			return "<th scope='col'>" + esc(c.nombre) + (c.tipo === "monto" ? "<span class='imp-cuota'>" + (r.cuota ? "Cuota " + esc(pesos(r.cuota)) : "Voluntario") + "</span>" : "") + "</th>";
 		}).join("") + "</tr>";
 		var cuerpo = resumen.filas.map(function (f) {
 			return "<tr><th scope='row'>" + esc(nombreFila(f.alumno)) + (f.baja ? " <span class='imp-baja'>(baja)</span>" : "") + "</th>" + cols.map(function (r) {
@@ -612,7 +645,7 @@
 			(limpiar(meta.descripcion) ? "<p class='imp-desc'>" + esc(limpiar(meta.descripcion)) + "</p>" : "") +
 			"<ul class='imp-resumen'>" + cols.map(function (r) {
 				return "<li><strong>" + esc(r.columna.nombre) + ":</strong> " + esc(lineaColumna(r)) + "</li>";
-			}).join("") + (cols.length ? "<li><strong>Avance general:</strong> " + resumen.avance.porcentaje + " %</li>" : "") + "</ul>" +
+			}).join("") + (hayMeta(resumen) ? "<li><strong>Avance general:</strong> " + resumen.avance.porcentaje + " %</li>" : "") + "</ul>" +
 			(cols.length ? "<table class='imp-tabla'><thead>" + cab + "</thead><tbody>" + cuerpo + "</tbody></table>" : "<p>Esta lista todavía no tiene columnas.</p>") +
 			"<p class='imp-pie'>Hecho con Jissez Mi Salón.</p></div>";
 	}
@@ -622,9 +655,9 @@
 		esc: esc, formatoFecha: formatoFecha,
 		aCentavos: aCentavos, parsearMonto: parsearMonto, pesos: pesos, montoEditable: montoEditable,
 		ordenarAlumnos: ordenarAlumnos, ordenarColumnas: ordenarColumnas, mapaValores: mapaValores, valorDe: valorDe,
-		participa: participa, cumple: cumple, cumpleFila: cumpleFila, esperadoCent: esperadoCent, activosDeLista: activosDeLista,
-		filasDeLista: filasDeLista, cuentaEn: cuentaEn, resumenColumna: resumenColumna, resumenLista: resumenLista,
-		lineaColumna: lineaColumna, detalleColumna: detalleColumna, tieneMeta: tieneMeta, fraccionColumna: fraccionColumna, textoFamilias: textoFamilias,
+		participa: participa, cumple: cumple, cumpleFila: cumpleFila, esperadoCent: esperadoCent, esLibre: esLibre, activosDeLista: activosDeLista,
+		filasDeLista: filasDeLista, cuentaEn: cuentaEn, resumenColumna: resumenColumna, resumenLista: resumenLista, hayMeta: hayMeta,
+		lineaColumna: lineaColumna, detalleColumna: detalleColumna, tieneMeta: tieneMeta, fraccionColumna: fraccionColumna, textoFamilias: textoFamilias, ayudaFamilias: ayudaFamilias,
 		pendientesDe: pendientesDe, mensajeRecordatorio: mensajeRecordatorio,
 		estadoEnLista: estadoEnLista, historialAlumno: historialAlumno,
 		validarLista: validarLista, validarColumna: validarColumna,
@@ -651,7 +684,7 @@
 			abiertas: $("lsAbiertas"), historial: $("lsHistorial"), alumnos: $("lsAlumnos"), nueva: $("lsNueva"),
 			detalle: $("lsDetalle"), volver: $("lsVolver"), cabeza: $("lsCabeza"), acciones: $("lsAcciones"),
 			resumen: $("lsResumen"), tabla: $("lsTabla"), estadoTabla: $("lsEstadoTabla"), salida: $("lsSalida"),
-			imagen: $("lsImagen"), compartir: $("lsCompartir"), copiar: $("lsCopiar"), imprimir: $("lsImprimir"), estadoSalida: $("lsEstadoSalida"),
+			imagen: $("lsImagen"), compartir: $("lsCompartir"), copiar: $("lsCopiar"), imprimir: $("lsImprimir"), estadoSalida: $("lsEstadoSalida"), ayudaFamilias: $("lsAyudaFamilias"),
 			dlgLista: $("dlgLista"), dlgColumna: $("dlgColumna"), dlgConfirmar: $("dlgConfirmar"), dlgRecordar: $("dlgRecordar"), dlgAlumno: $("dlgAlumno"),
 			impresion: $("zonaImpresion"),
 		};
@@ -786,7 +819,8 @@
 				"<p class='text-xs font-medium text-gray-500'>" + esc(formatoFecha(l.fecha)) + "</p>" +
 				"<h3 class='mt-0.5 font-semibold text-gray-900 break-words'>" + esc(l.nombre) + "</h3></div>" +
 				(cerrada ? "<span class='shrink-0 inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700'>" + icono("candado", "h-3.5 w-3.5") + "Cerrada</span>"
-					: "<span class='shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800'>" + res.avance.porcentaje + " %</span>") +
+					// Solo donativo libre: no hay avance que medir, solo lo reunido (en las líneas)
+					: "<span class='shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800'>" + (hayMeta(res) ? res.avance.porcentaje + " %" : "Abierta") + "</span>") +
 				"</div>" +
 				(cols.length ? "<ul class='mt-2 text-sm text-gray-600 flex flex-col gap-0.5 min-w-0'>" + lineas + "</ul>" : "<p class='mt-2 text-sm text-gray-500'>Sin columnas todavía.</p>") +
 				"</button></li>";
@@ -842,7 +876,7 @@
 						" <span class='text-gray-500'>(" + esc(formatoFecha(d.lista.fecha)) + ")</span></span>" +
 						"<span class='shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold " + color + "'>" + esc(ESTADOS[d.estado]) + "</span></li>";
 				}).join("") + "</ul>" : "") +
-				"<p class='mt-3 text-xs text-gray-500'>Solo para ti, como referencia para organizar futuras actividades. Cuentan las listas cerradas con palomitas o montos. No se imprime ni se comparte.</p>";
+				"<p class='mt-3 text-xs text-gray-500'>Solo para ti, como referencia para organizar futuras actividades. Cuentan las listas cerradas con palomitas o montos con cuota (el donativo libre es voluntario). No se imprime ni se comparte.</p>";
 			el.dlgAlumno.showModal();
 		}
 		el.alumnos.addEventListener("click", function (e) {
@@ -878,6 +912,12 @@
 			pintarResumen();
 			pintarTabla();
 			el.salida.hidden = !cols.length;
+			pintarAyudaFamilias();
+		}
+		// El texto de ayuda de "Para las familias" dice lo que de verdad va para cada tipo de columna
+		function pintarAyudaFamilias() {
+			var l = listaPorId(listaId);
+			if (l && el.ayudaFamilias) el.ayudaFamilias.textContent = ayudaFamilias(resumenDe(l), l.estado === "cerrada");
 		}
 
 		function pintarResumen() {
@@ -889,10 +929,11 @@
 				return;
 			}
 			var av = res.avance;
-			el.resumen.innerHTML = "<div class='rounded-2xl bg-blue-50 border border-blue-100 p-4'>" +
+			// Sin avance general si todo es donativo libre: no hay nada que completar
+			el.resumen.innerHTML = (hayMeta(res) ? "<div class='rounded-2xl bg-blue-50 border border-blue-100 p-4'>" +
 				"<div class='flex items-baseline justify-between gap-2'><p class='font-semibold text-blue-900'>Avance general</p><p class='text-2xl font-extrabold text-blue-800'>" + av.porcentaje + " %</p></div>" +
 				"<div class='mt-2 h-2.5 rounded-full bg-white overflow-hidden' aria-hidden='true'><div class='h-full rounded-full bg-blue-700' style='width:" + (av.total ? Math.floor(av.hechos * 100 / av.total) : 0) + "%'></div></div>" +
-				"<p class='mt-1 text-xs text-blue-900'>" + av.hechos + " de " + av.total + " casillas completas</p></div>" +
+				"<p class='mt-1 text-xs text-blue-900'>" + av.hechos + " de " + av.total + " casillas completas</p></div>" : "") +
 				res.columnas.map(function (r) {
 					// Un monto sin cuota no tiene "completo": tarjeta neutra, como en la imagen
 					var meta = tieneMeta(r);
@@ -935,8 +976,10 @@
 		}
 		// El botón dice "Recordar por WhatsApp", como el diálogo y el aviso de privacidad. En el
 		// celular cabe en dos renglones junto a la columna fija de nombres; desde sm, en uno
+		// Sin columna "Avisar" si todo es donativo libre: nadie queda pendiente
+		function conAvisar(l, res) { return l.estado !== "cerrada" && hayMeta(res); }
 		function celdaRecordar(l, res, fila, mapa) {
-			if (l.estado === "cerrada") return "";
+			if (!conAvisar(l, res)) return "";
 			var pend = pendientesDe(res, fila.alumno.id, mapa);
 			var dentro = pend.length && tieneTelefono(fila.alumno)
 				? "<button type='button' data-recordar='" + esc(fila.alumno.id) + "' class='inline-flex items-center gap-1 sm:gap-1.5 min-h-[44px] w-[9rem] sm:w-auto px-2.5 sm:px-3 py-1 rounded-lg border border-emerald-600 text-emerald-700 text-sm font-semibold leading-tight text-left sm:whitespace-nowrap hover:bg-emerald-50' aria-label='Recordar por WhatsApp a la familia de " + esc(fila.alumno.nombre_completo || "este alumno") + "'>" + icono("mensaje") + "Recordar por WhatsApp</button>"
@@ -961,10 +1004,11 @@
 					return "<th scope='col' class='bg-gray-50 px-2 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-200 align-bottom min-w-[7rem]'>" +
 						"<span class='flex items-center gap-1.5'>" + icono(c.tipo, "h-3.5 w-3.5 shrink-0 text-gray-500") + "<span class='break-words'>" + esc(c.nombre) + "</span></span>" +
 						(r.cuota ? "<span class='block font-normal text-gray-500'>Cuota " + esc(pesos(r.cuota)) + "</span>" : "") +
+						(r.libre ? "<span class='block font-normal text-gray-500'>Voluntario</span>" : "") +
 						(cerrada ? "" : "<button type='button' data-editar-col='" + esc(c.id) + "' class='mt-1 inline-flex items-center gap-1 min-h-[44px] px-2 rounded-lg text-xs font-medium text-blue-800 hover:bg-blue-50' aria-label='Editar la columna " + esc(c.nombre) + "'>" + icono("editar", "h-3.5 w-3.5") + "Editar</button>") +
 						"</th>";
 				}).join("") +
-				(cerrada ? "" : "<th scope='col' class='bg-gray-50 px-2 py-2 text-left text-xs font-semibold text-gray-600 border-b border-gray-200'>Avisar</th>") + "</tr>";
+				(conAvisar(l, res) ? "<th scope='col' class='bg-gray-50 px-2 py-2 text-left text-xs font-semibold text-gray-600 border-b border-gray-200'>Avisar</th>" : "") + "</tr>";
 			var cuerpo = res.filas.map(function (f) {
 				return "<tr data-fila='" + esc(f.alumno.id) + "'><th scope='row' class='sticky left-0 z-10 bg-white px-3 py-1.5 text-left border-b border-gray-100 font-normal'>" +
 					"<button type='button' data-alumno='" + esc(f.alumno.id) + "' class='min-h-[44px] min-w-[8rem] max-w-[11rem] sm:max-w-[16rem] text-left text-sm font-medium text-gray-900 hover:text-blue-800 break-words'>" + esc(nombreFila(f.alumno)) +
@@ -973,7 +1017,11 @@
 					celdaRecordar(l, res, f, mapa) + "</tr>";
 			}).join("");
 			el.tabla.innerHTML = "<div class='overflow-x-auto rounded-xl border border-gray-200'><table class='min-w-full border-separate border-spacing-0'><thead>" + cab + "</thead><tbody>" + cuerpo + "</tbody></table></div>";
-			el.estadoTabla.textContent = cerrada ? "Lista cerrada: es de solo lectura. Para cambiar algo, reábrela." : "Toca la casilla para marcar. Los textos y montos se guardan al salir del campo. Lo pendiente se ve en amarillo.";
+			var hayLibre = res.columnas.some(function (r) { return r.libre; });
+			var ayuda = cerrada ? "Lista cerrada: es de solo lectura. Para cambiar algo, reábrela."
+				: (hayMeta(res) ? "Toca la casilla para marcar. Los textos y montos se guardan al salir del campo. Lo pendiente se ve en amarillo."
+					: "Los montos se guardan al salir del campo.");
+			el.estadoTabla.textContent = ayuda + (hayLibre ? " El donativo libre es voluntario: no deja pendientes, solo suma lo reunido." : "");
 		}
 
 		// Tras guardar un valor: la celda, la columna "Avisar" de esa fila y el resumen (sin repintar la tabla: el foco sigue donde está)

@@ -378,7 +378,7 @@
 			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación." +
 				(conIncidencias ? " «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero." : "") +
 				(conCalendario ? " «" + HOJA_CALENDARIO + "»: los días que el docente cambió del calendario escolar oficial para este grupo." : "") +
-				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias). La última columna de cada lista, «Pendiente», dice en palabras lo que le falta a cada alumno." : "") +
+				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias). La última columna de cada lista, «Pendiente», dice en palabras lo que le falta a cada alumno; un donativo libre (monto sin cuota) es voluntario y no deja pendiente, así que una lista que solo tiene donativos no lleva esa columna." : "") +
 				" El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
 		].concat(conCalendario ? [
 			["Calendario", "La hoja «" + HOJA_CALENDARIO + "» lista los días que el docente cambió del calendario escolar oficial de la SEP para este grupo (suspensiones propias o días con clase por un ajuste de la autoridad educativa local). Es solo dato: no cambia ningún cálculo de asistencia ni de calificaciones."],
@@ -568,10 +568,13 @@
 			filas.push(["Lista", l.nombre || "", "Fecha", String(l.fecha || "").slice(0, 10), "Estado", l.estado === "cerrada" ? "Cerrada" : "Abierta"]);
 			if (l.descripcion) filas.push(["Descripción", unaLinea(l.descripcion)]);
 			if (!cols.length) { filas.push(["Sin columnas."]); filas.push([]); return; }
+			// Donativo libre (monto sin cuota): voluntario, nunca entra a «Pendiente»; si la lista
+			// solo tiene donativos libres, no lleva esa columna
+			var conPendiente = L.hayMeta ? L.hayMeta(res) : true;
 			filas.push(["Alumno"].concat(res.columnas.map(function (r) {
 				var c = r.columna;
-				return c.nombre + (c.tipo === "monto" ? (r.cuota ? " (pesos; cuota " + L.pesos(r.cuota) + ")" : " (pesos)") : "");
-			}), ["Pendiente"]));
+				return c.nombre + (c.tipo === "monto" ? (r.cuota ? " (pesos; cuota " + L.pesos(r.cuota) + ")" : " (pesos; voluntario)") : "");
+			}), conPendiente ? ["Pendiente"] : []));
 			res.filas.forEach(function (f) {
 				filas.push([(f.alumno.nombre_completo || "Alumno sin nombre") + (f.baja ? " (baja)" : "")].concat(res.columnas.map(function (r) {
 					var c = r.columna, v = L.valorDe(mapa, c.id, f.alumno.id);
@@ -580,7 +583,7 @@
 					if (c.tipo === "texto") return v && v.texto ? unaLinea(v.texto) : "";
 					var cent = v ? L.aCentavos(v.monto) : null;
 					return cent ? cent / 100 : 0;
-				}), [L.pendientesDe(res, f.alumno.id, mapa).join("; ")]));
+				}), conPendiente ? [L.pendientesDe(res, f.alumno.id, mapa).join("; ")] : []));
 			});
 			filas.push(["Resumen"].concat(res.columnas.map(function (r) { return L.lineaColumna(r); })));
 			filas.push([]);
