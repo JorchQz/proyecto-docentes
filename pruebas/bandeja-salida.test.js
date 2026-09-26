@@ -128,7 +128,7 @@ function cliente(bd, modo, sesion) {
 		const filas = q.filas || (q.fila && q.op === "insert" ? [q.fila] : []);
 		const r = modo.rechazo;
 		if (escribe && r && r.tabla === tabla && (!r.si || filas.some(r.si) || q.op === "update" || q.op === "delete")) {
-			return { data: null, error: { message: r.message || "rechazado", code: r.code || "" }, status: r.status || 400 };
+			return { data: null, error: { message: r.message || "rechazado", code: r.code || "", hint: r.hint || null }, status: r.status || 400 };
 		}
 		const yo = uid();
 		if (!yo) return { data: null, error: { message: "JWT expired", code: "PGRST301" }, status: 401 };
@@ -1480,6 +1480,29 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		ok("§11 describir: en español", [B.describir("examen_respuesta", { respuesta: "*" }), B.describir("examen_resultado", { aciertos: 7, preguntas: 10 }), B.describir("examen_alumno", { no_presento: true })],
 			["doble marca", "7 de 10 aciertos", "no presentó"]);
 	}
+
+	// ── §12 Actividad quitada en otra pantalla (mi_salon_b19a, R26a c1-carreras b) ──────────────
+	// La base rechaza la calificación de un producto quitado (P0001, hint 'producto_inactivo'): es
+	// definitivo (sale de la cola, no se reintenta), se avisa con el texto fijo y la pantalla recibe
+	// el motivo para quitar esa actividad; las otras ventanas también lo reciben.
+	await caso("§12 producto quitado", async () => {
+		ok("§12 explicar: el texto fijo", B.explicar({ code: "P0001", hint: "producto_inactivo", message: "Esta actividad se quitó en otra pantalla; tu captura no se aplicó." }),
+			"Esta actividad se quitó en otra pantalla; tu captura no se aplicó");
+		const bdQ = crearBD();
+		const cq = cliente(bdQ, { rechazo: { tabla: "calificaciones", status: 400, code: "P0001", hint: "producto_inactivo", message: "Esta actividad se quitó en otra pantalla; tu captura no se aplicó." } });
+		const mensajes = [];
+		const canal = { postMessage: (m) => mensajes.push(m), close() {} };
+		const bq = bandeja(cq, B.almacenMemoria(), { canal });
+		bq.iniciar();
+		await bq.agregar("calificacion", calif("a1", "pq", { nivel: "logrado", estado_entrega: "entregado" }), "Calificación de A1 en Cartel");
+		await vacia(bq);
+		await dormir(100);
+		ok("§12 se intentó una sola vez y salió de la cola", [cq.peticiones.filter((p) => /^calificaciones:(upsert|insert|update)/.test(p)).length, bq.pendientes()], [1, 0]);
+		ok("§12 aviso con el texto fijo", bq.eventos.rechazos.map((r) => r[0] + ": " + r[1]), ["Calificación de A1 en Cartel: Esta actividad se quitó en otra pantalla; tu captura no se aplicó"]);
+		ok("§12 la pantalla recibe el motivo", bq.eventos.rechazos.map((r) => r[2] && r[2].motivo), ["producto_inactivo"]);
+		ok("§12 las otras ventanas reciben el aviso con el motivo", mensajes.filter((m) => m.tipo === "aviso").map((m) => m.motivo), ["producto_inactivo"]);
+		ok("§12 nada se guardó", bdQ.calificaciones.length, 0);
+	});
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

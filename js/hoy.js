@@ -105,6 +105,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.classList.remove("hidden");
 	}
 
+	/*
+		Por qué falló algo, en español y sin tecnicismos. El texto técnico de la base (en inglés, p. ej.
+		"column … does not exist" si falta una migración) va solo a la consola. Los mensajes propios
+		de las funciones y triggers de la base ya vienen en español y se muestran tal cual.
+	*/
+	function textoError(e) {
+		if (e && typeof console !== "undefined") console.warn("hoy: detalle del error", e);
+		var code = e && e.code ? String(e.code) : "";
+		var msg = String((e && e.message) || "");
+		if (/^(42703|42P01|42883|PGRST20[0-5])$/.test(code) || /does not exist|schema cache|could not find/i.test(msg)) {
+			return "la base de datos todavía no tiene la actualización que usa esta pantalla; avisa a soporte@jissez.com";
+		}
+		if (/failed to fetch|fetch failed|networkerror|network request failed|load failed|timeout|timed out/i.test(msg)) {
+			return "no hubo conexión con el servidor";
+		}
+		if (/jwt|token/i.test(msg) || code === "PGRST301" || code === "PGRST303") return "tu sesión venció; vuelve a entrar";
+		// Sin texto, o un texto técnico en inglés de la base: uno genérico
+		if (!msg || /\b(violates|permission denied|duplicate key|invalid input|null value|syntax error|unexpected|column|relation|function|failed|error)\b/i.test(msg)) {
+			return code === "42501" ? "la base no lo permitió" : "hubo un error en el servidor";
+		}
+		return msg.replace(/\.$/, "");
+	}
+
 	function vacio(texto) {
 		return "<p class='text-sm text-gray-400 py-2'>" + esc(texto) + "</p>";
 	}
@@ -333,6 +356,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
+	/*
+		La base rechazó una calificación porque su actividad se quitó en otra pantalla o aparato
+		(hint 'producto_inactivo', mi_salon_b19a): esa actividad sale de esta pantalla, como si se
+		hubiera quitado aquí, para que no se siga capturando en ella.
+	*/
+	function quitarDePantalla(it) {
+		var d = (it && it.datos) || {};
+		var productoId = it && it.tipo === "calificacion" && d.fila ? d.fila.producto_sesion_id : null;
+		if (!productoId) return;
+		try {
+			Object.keys(productosPorSesion).forEach(function (s) {
+				productosPorSesion[s] = (productosPorSesion[s] || []).filter(function (p) { return p.id !== productoId; });
+			});
+			tareas = tareas.filter(function (t) { return t.id !== productoId; });
+			if (!pintado) return;
+			renderTareas();
+			renderPendientes();
+			repintarSesiones();
+		} catch (e) {
+			console.error("hoy: no se pudo quitar de la pantalla la actividad quitada", e);
+		}
+	}
+
 	// ¿Lo que muestra la pantalla es distinto de `v` (lo que hay en la base)?
 	function difiere(it, v) {
 		var d = it.datos || {};
@@ -402,6 +448,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					if (!r.sigue) aplicarValor(it, r.actual);
 				}
 				avisarBandeja(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + ".");
+				if (r && r.motivo === "producto_inactivo") quitarDePantalla(it);
 			},
 			// Otra ventana de Hoy en este aparato (la app y una pestaña) confirmó algo o no pudo:
 			// esta pantalla se entera de la versión nueva y la muestra (si no hay algo más nuevo
@@ -416,6 +463,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var v = m.base ? m.base.valor : null;
 				if (m.base !== undefined && !pendiente && difiere(it, v)) aplicarValor(it, v, m.id);
 				if (m.tipo === "aviso" && m.texto) avisarBandeja(m.clave, m.texto);
+				if (m.tipo === "aviso" && m.motivo === "producto_inactivo") quitarDePantalla(it);
 			},
 		});
 		pilaFija();
@@ -442,7 +490,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	if (alumnosRes.error) {
 		// No es "grupo sin alumnos": no se pudo leer la lista
 		console.error("hoy: alumnos", alumnosRes.error);
-		mensaje("error", "No se pudo cargar la lista de alumnos: " + (alumnosRes.error.message || "error desconocido") + ". Recarga la página para intentarlo de nuevo.");
+		mensaje("error", "No se pudo cargar la lista de alumnos: " + textoError(alumnosRes.error) + ". Recarga la página para intentarlo de nuevo.");
 		if (bandeja) bandeja.iniciar(); // lo pendiente de otra vez sí se intenta enviar
 		return;
 	}
@@ -1405,7 +1453,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 			btn.disabled = false;
 			btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
-			mensaje("error", "No se pudo actualizar la sesión: " + (err.message || "error desconocido"));
+			mensaje("error", "No se pudo actualizar la sesión: " + textoError(err));
 		}
 	}
 
@@ -1519,7 +1567,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				seguir = (await opciones.alAceptar(form, avisar)) === false;
 			} catch (err) {
 				console.error("hoy: diálogo", err);
-				avisar("No se pudo guardar: " + ((err && err.message) || "error desconocido") + ".");
+				avisar("No se pudo guardar: " + textoError(err) + ".");
 				seguir = true;
 			}
 			aceptar.disabled = false;
@@ -2010,7 +2058,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					: await window.sb.rpc("agregar_producto_sesion", { p_sesion: sesion.id, p_producto: producto,
 						p_asignacion: plan.filas, p_ligar: ligas.ligar, p_crear: ligas.crear });
 				if (res.error) {
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo agregar: " + (res.error.message || "error desconocido") + ".");
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo agregar: " + textoError(res.error) + ".");
 					return false;
 				}
 				var nuevo = suelta ? (res.data || {}).producto : res.data;
@@ -2114,7 +2162,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var filas = window.ProductosHoy.filasDeEdicion(producto.grados, alumnos, quieren);
 				var res = await window.sb.rpc("guardar_asignacion_producto", { p_producto: producto.id, p_filas: filas });
 				if (res.error) {
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo guardar: " + (res.error.message || "error desconocido"));
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo guardar: " + textoError(res.error) + ".");
 					return false;
 				}
 				var idx = {};
@@ -2194,7 +2242,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var res = await window.sb.from("productos_sesion").update({ nombre: v.nombre })
 					.eq("id", producto.id).eq("maestro_id", user.id);
 				if (res.error) {
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo renombrar: " + (res.error.message || "error desconocido") + ".");
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo renombrar: " + textoError(res.error) + ".");
 					return false;
 				}
 				producto.nombre = v.nombre;
@@ -2239,7 +2287,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		} catch (err) {
 			origen.disabled = false;
 			mensaje("error", sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
-				: "No se pudo revisar si tiene calificaciones, así que no se quitó: " + ((err && err.message) || "error desconocido") + ".");
+				: "No se pudo revisar si tiene calificaciones, así que no se quitó: " + textoError(err) + ".");
 			return;
 		}
 		origen.disabled = false;
@@ -2259,7 +2307,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					try {
 						yaCalificado = (await calificadasEnBase()) > 0;
 					} catch (err) {
-						avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo revisar si tiene calificaciones, así que no se quitó: " + ((err && err.message) || "error desconocido") + ".");
+						avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo revisar si tiene calificaciones, así que no se quitó: " + textoError(err) + ".");
 						return false;
 					}
 				}
@@ -2271,7 +2319,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 						mensaje("error", avisoCarrera);
 						return;
 					}
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo quitar: " + (upd.error.message || "error desconocido") + ".");
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo quitar: " + textoError(upd.error) + ".");
 					return false;
 				}
 				var lista = productosPorSesion[producto.sesion_id] || [];
@@ -2415,7 +2463,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		console.error("hoy: carga de datos", e);
 		// Sin los datos completos no se dibuja nada: una sección a medias parecería "sin
 		// calificar" y el maestro capturaría encima de lo que ya había guardado
-		mensaje("error", "No se pudieron cargar los datos del día: " + (e.message || "error desconocido") +
+		mensaje("error", "No se pudieron cargar los datos del día: " + textoError(e) +
 			". Recarga la página para intentarlo de nuevo.");
 		if (bandeja) bandeja.iniciar(); // lo pendiente de otra vez sí se intenta enviar
 		return;

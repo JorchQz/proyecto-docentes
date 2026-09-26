@@ -212,12 +212,21 @@ var BandejaSalida = (function () {
 	function explicar(e) {
 		var code = e && e.code ? String(e.code) : "";
 		var status = e && e.status;
+		// La actividad se quitó (activo = false) en otra pantalla o aparato: la base no guarda la
+		// calificación en un producto quitado (trigger calificaciones_desde_producto, mi_salon_b19a)
+		if (motivoDe(e) === "producto_inactivo") return "Esta actividad se quitó en otra pantalla; tu captura no se aplicó";
 		if (code === "42501" || status === 403) return "la base no lo permitió (el alumno, el grupo o el producto ya no es de esta cuenta)";
 		if (code === "23503") return "el alumno, la sesión o el producto ya no existe";
 		if (code === "23505" || status === 409) return "ya había un registro de ese dato guardado desde otro dispositivo o pantalla; se conservó ese";
 		if (code === "23514" || code === "22P02" || code === "22003" || code === "23502") return "un valor capturado no es válido";
 		if (code === "P0001" && e.message) return e.message; // los triggers propios hablan en español
 		return "la base no lo aceptó";
+	}
+
+	// La clave del rechazo que dan los triggers propios en el hint (p. ej. 'producto_inactivo'); "" si no hay
+	function motivoDe(e) {
+		var h = e && e.hint ? String(e.hint) : "";
+		return /^[a-z_]+$/.test(h) ? h : "";
 	}
 
 	// La respuesta de supabase-js trae status y error: se vuelve un Error con ambos (para lanzarlo)
@@ -1671,11 +1680,12 @@ var BandejaSalida = (function () {
 						var sigue = await hayMasNueva(it);
 						var base = leida ? (leida.fila ? { marcas: leida.marcas, valor: leida.valor } : null) : undefined;
 						var explicacion = explicar(e);
+						var motivo = motivoDe(e);
 						if (o.alRechazar) {
-							try { o.alRechazar(it, explicacion, { actual: leida ? leida.valor : undefined, sigue: sigue, base: base }); } catch (_) {}
+							try { o.alRechazar(it, explicacion, { actual: leida ? leida.valor : undefined, sigue: sigue, base: base, motivo: motivo }); } catch (_) {}
 						}
 						difundir({ tipo: "aviso", clave: it.clave, tipoCaptura: it.tipo, datos: it.datos, base: base, valor: leida ? leida.valor : undefined,
-							sigue: sigue, texto: (it.descripcion || "Una captura") + ": " + explicacion + "." });
+							sigue: sigue, motivo: motivo, texto: (it.descripcion || "Una captura") + ": " + explicacion + "." });
 						continue;
 					}
 					if (tipo === "sesion" && !sesionIntentada) {
