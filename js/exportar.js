@@ -378,7 +378,7 @@
 			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación." +
 				(conIncidencias ? " «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero." : "") +
 				(conCalendario ? " «" + HOJA_CALENDARIO + "»: los días que el docente cambió del calendario escolar oficial para este grupo." : "") +
-				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias)." : "") +
+				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias). La última columna de cada lista, «Pendiente», dice en palabras lo que le falta a cada alumno." : "") +
 				" El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
 		].concat(conCalendario ? [
 			["Calendario", "La hoja «" + HOJA_CALENDARIO + "» lista los días que el docente cambió del calendario escolar oficial de la SEP para este grupo (suspensiones propias o días con clase por un ajuste de la autoridad educativa local). Es solo dato: no cambia ningún cálculo de asistencia ni de calificaciones."],
@@ -543,8 +543,10 @@
 		listas: [{ lista (fila de listas_grupo con listas_columnas), valores: [filas de listas_valores] }]
 		alumnos: todos los del grupo (activos y de baja), para los nombres y quién cuenta.
 		Por lista, un bloque: nombre, fecha y estado; descripción; encabezado (Alumno y columnas);
-		una fila por alumno (Sí / Pendiente, el texto, el monto en pesos como número, o «No aplica»);
-		el resumen por columna (js/listas.js, el mismo de la pantalla) y un renglón vacío.
+		una fila por alumno (Sí / Pendiente, el texto, el monto en pesos como número, o «No aplica»)
+		que termina en la columna «Pendiente»: lo que le falta en palabras («$30 de «Cooperación»
+		(ya aportó $20)»), para leer lo pendiente sin color, también en los montos, que van como
+		número; el resumen por columna (js/listas.js, el mismo de la pantalla) y un renglón vacío.
 	*/
 	var HOJA_LISTAS = "Listas";
 	function listasJS() {
@@ -569,7 +571,7 @@
 			filas.push(["Alumno"].concat(res.columnas.map(function (r) {
 				var c = r.columna;
 				return c.nombre + (c.tipo === "monto" ? (r.cuota ? " (pesos; cuota " + L.pesos(r.cuota) + ")" : " (pesos)") : "");
-			})));
+			}), ["Pendiente"]));
 			res.filas.forEach(function (f) {
 				filas.push([(f.alumno.nombre_completo || "Alumno sin nombre") + (f.baja ? " (baja)" : "")].concat(res.columnas.map(function (r) {
 					var c = r.columna, v = L.valorDe(mapa, c.id, f.alumno.id);
@@ -578,7 +580,7 @@
 					if (c.tipo === "texto") return v && v.texto ? unaLinea(v.texto) : "";
 					var cent = v ? L.aCentavos(v.monto) : null;
 					return cent ? cent / 100 : 0;
-				})));
+				}), [L.pendientesDe(res, f.alumno.id, mapa).join("; ")]));
 			});
 			filas.push(["Resumen"].concat(res.columnas.map(function (r) { return L.lineaColumna(r); })));
 			filas.push([]);
@@ -628,7 +630,7 @@
 		// Listas de cooperación y materiales (b15): solo si el grupo tiene alguna
 		if (hayListas(meta)) {
 			var hoja6 = XLSX.utils.aoa_to_sheet(hojaListas(meta.listas, meta.alumnosListas));
-			hoja6["!cols"] = [{ wch: 36 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }];
+			hoja6["!cols"] = [{ wch: 36 }].concat(Array.apply(null, Array(13)).map(function () { return { wch: 22 }; }));
 			XLSX.utils.book_append_sheet(wb, hoja6, HOJA_LISTAS);
 		}
 

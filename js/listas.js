@@ -32,7 +32,10 @@
 	    aseo) y "Copiar texto para las familias" solo llevan el nombre de la lista, grupo,
 	    escuela, fecha, descripción y el resumen por columna ("Entregaron 17 de 20; faltan 3",
 	    "Completaron la cuota 17 de 20; faltan aportaciones de 3 alumnos ($150)"), con el pie
-	    "Hecho con Jissez Mi Salón". Nunca a quién le falta. Lo que uno aporta de más no cubre lo
+	    "Hecho con Jissez Mi Salón". Nunca a quién le falta. En una columna con cuota, a las
+	    familias solo va la cuota: "Reunido en total" junto a "faltan" se leía contradictorio si
+	    alguien pagó de más, así que eso lo ve solo la maestra en pantalla (pulido tras R22). Un
+	    monto sin cuota no lleva barra: no hay "completo". Lo que uno aporta de más no cubre lo
 	    de otro, así que lo reunido no se compara contra una meta (salía "Reunido $1,045.70 de
 	    $213; faltan $131.80", R21): la barra de cada columna es de alumnos al corriente.
 	  - La maestra avisa en privado: "Recordar por WhatsApp" por alumno pendiente abre el chat
@@ -218,16 +221,16 @@
 	/*
 		resumenColumna(col, filas, mapa) → {
 		  columna, tipo, total, hechos, faltan, pendientes: [alumno_id],
-		  (monto) reunido, esperadoTotal, falta, cuota, aportaron: en centavos
+		  (monto) reunido, esperadoTotal, falta, demas, cuota, aportaron: en centavos
 		}
 		"falta" en montos = la suma de lo que le falta a cada alumno para su cuota (lo que aportó
 		de más uno no cubre lo de otro). De una baja que aportó algo se espera lo que aportó: no
-		suma a "falta".
+		suma a "falta". "demas" = lo aportado por encima de la cuota, alumno por alumno.
 	*/
 	function resumenColumna(col, filas, mapa) {
 		var r = { columna: col, tipo: col.tipo, total: 0, hechos: 0, faltan: 0, pendientes: [] };
 		var cuota = col.tipo === "monto" ? esperadoCent(col) : null;
-		if (col.tipo === "monto") { r.reunido = 0; r.aportaron = 0; r.cuota = cuota; r.esperadoTotal = null; r.falta = null; }
+		if (col.tipo === "monto") { r.reunido = 0; r.aportaron = 0; r.cuota = cuota; r.esperadoTotal = null; r.falta = null; r.demas = null; }
 		(filas || []).forEach(function (f) {
 			if (!cuentaEn(f, col, mapa)) return;
 			var v = valorDe(mapa, col.id, f.alumno.id);
@@ -240,13 +243,14 @@
 					var espera = f.cuenta ? cuota : Math.min(cuota, c);
 					r.esperadoTotal = (r.esperadoTotal || 0) + espera;
 					r.falta = (r.falta || 0) + Math.max(0, espera - c);
+					r.demas = (r.demas || 0) + Math.max(0, c - espera);
 				}
 			}
 			if (cumpleFila(f, col, v)) r.hechos++;
 			else r.pendientes.push(f.alumno.id);
 		});
 		r.faltan = r.total - r.hechos;
-		if (cuota) { if (r.esperadoTotal === null) r.esperadoTotal = 0; if (r.falta === null) r.falta = 0; }
+		if (cuota) { if (r.esperadoTotal === null) r.esperadoTotal = 0; if (r.falta === null) r.falta = 0; if (r.demas === null) r.demas = 0; }
 		return r;
 	}
 
@@ -286,13 +290,27 @@
 		}
 		return "Reunido " + pesos(r.reunido) + " (" + plural(r.aportaron, "aportación", "aportaciones") + ")";
 	}
-	// Detalle secundario de un monto con cuota: la cuota y lo reunido en total
-	function detalleColumna(r) {
-		if (r.tipo === "monto" && r.cuota) return "Cuota: " + pesos(r.cuota) + " por alumno. Reunido en total: " + pesos(r.reunido) + ".";
-		return "";
+	/*
+		detalleColumna(r, paraFamilias) → detalle secundario de un monto con cuota.
+		  Maestra (pantalla): la cuota, lo reunido en total y, si alguien aportó de más, cuánto de
+		    eso es de más ("Reunido en total: $200 (incluye $150 aportados de más, que no cubren
+		    la cuota de otros)"), para que un total alto junto a "faltan" no se lea contradictorio.
+		  Familias (imagen y texto): solo la cuota. "Reunido en total" junto a "faltan" confundía
+		    cuando alguien pagó de más (pulido tras R22), así que no va a las familias.
+	*/
+	function detalleColumna(r, paraFamilias) {
+		if (r.tipo !== "monto" || !r.cuota) return "";
+		var cuota = "Cuota: " + pesos(r.cuota) + " por alumno.";
+		if (paraFamilias) return cuota;
+		return cuota + " Reunido en total: " + pesos(r.reunido) +
+			(r.demas ? " (incluye " + pesos(r.demas) + " aportados de más, que no cubren la cuota de otros)" : "") + ".";
 	}
-	// Barra de una columna (0 a 1): alumnos al corriente entre los que cuentan, también en montos
+	// ¿La columna tiene algo que "completar"? Un monto sin cuota no: solo suma lo reunido
+	function tieneMeta(r) { return !(r.tipo === "monto" && !r.cuota); }
+	// Barra de una columna (0 a 1): alumnos al corriente entre los que cuentan, también en montos.
+	// null en un monto sin cuota: no hay "completo", así que no lleva barra
 	function fraccionColumna(r) {
+		if (!tieneMeta(r)) return null;
 		return r.total ? r.hechos / r.total : 0;
 	}
 
@@ -308,7 +326,7 @@
 		var partes = [cab.join("\n")];
 		if (limpiar(meta.descripcion)) partes.push(limpiar(meta.descripcion));
 		var cols = (resumen.columnas || []).map(function (r) {
-			var d = detalleColumna(r);
+			var d = detalleColumna(r, true);
 			return r.columna.nombre + ": " + lineaColumna(r) + "." + (d ? " " + d : "");
 		});
 		partes.push(cols.length ? cols.join("\n") : "Esta lista todavía no tiene columnas.");
@@ -493,18 +511,22 @@
 			var pad = 32, AT = AI - 2 * pad;
 			var nom = lineas(ctx, r.columna.nombre, AT, 40, 700);
 			var lin = lineas(ctx, lineaColumna(r), AT, 36, 600);
-			var det = detalleColumna(r) ? lineas(ctx, detalleColumna(r), AT, 30, 500) : [];
+			var det = detalleColumna(r, true) ? lineas(ctx, detalleColumna(r, true), AT, 30, 500) : [];
 			var ops = [];
 			var y = pad;
 			nom.forEach(function (l) { ops.push(opTexto(l, M + pad, y + 40, 40, 700, IMG.azul)); y += 52; });
 			y += 6;
-			var completo = r.total > 0 && r.faltan === 0;
+			// Un monto sin cuota no tiene "completo": texto neutro y sin barra (pulido tras R22)
+			var frac = fraccionColumna(r);
+			var completo = frac !== null && r.total > 0 && r.faltan === 0;
 			lin.forEach(function (l) { ops.push(opTexto(l, M + pad, y + 36, 36, 600, completo ? IMG.verde : IMG.tinta)); y += 48; });
 			det.forEach(function (l) { ops.push(opTexto(l, M + pad, y + 30, 30, 500, IMG.gris)); y += 42; });
-			y += 14;
-			var frac = fraccionColumna(r);
-			ops = ops.concat(barra(M + pad, y, AT, 20, frac, completo ? IMG.verde : IMG.ambar));
-			y += 20 + pad;
+			if (frac !== null) {
+				y += 14;
+				ops = ops.concat(barra(M + pad, y, AT, 20, frac, completo ? IMG.verde : IMG.ambar));
+				y += 20;
+			}
+			y += pad;
 			bloques.push({ alto: y, ops: [{ t: "rect", x: M, y: 0, w: AI, h: y, color: IMG.tarjeta, radio: 24 }].concat(ops) });
 		});
 		if (!res.columnas.length) bloques.push({ alto: 80, ops: [opTexto("Esta lista todavía no tiene columnas.", M, 44, 36, 500, IMG.gris)] });
@@ -602,7 +624,7 @@
 		ordenarAlumnos: ordenarAlumnos, ordenarColumnas: ordenarColumnas, mapaValores: mapaValores, valorDe: valorDe,
 		participa: participa, cumple: cumple, cumpleFila: cumpleFila, esperadoCent: esperadoCent, activosDeLista: activosDeLista,
 		filasDeLista: filasDeLista, cuentaEn: cuentaEn, resumenColumna: resumenColumna, resumenLista: resumenLista,
-		lineaColumna: lineaColumna, detalleColumna: detalleColumna, fraccionColumna: fraccionColumna, textoFamilias: textoFamilias,
+		lineaColumna: lineaColumna, detalleColumna: detalleColumna, tieneMeta: tieneMeta, fraccionColumna: fraccionColumna, textoFamilias: textoFamilias,
 		pendientesDe: pendientesDe, mensajeRecordatorio: mensajeRecordatorio,
 		estadoEnLista: estadoEnLista, historialAlumno: historialAlumno,
 		validarLista: validarLista, validarColumna: validarColumna,
@@ -872,11 +894,13 @@
 				"<div class='mt-2 h-2.5 rounded-full bg-white overflow-hidden' aria-hidden='true'><div class='h-full rounded-full bg-blue-700' style='width:" + (av.total ? Math.floor(av.hechos * 100 / av.total) : 0) + "%'></div></div>" +
 				"<p class='mt-1 text-xs text-blue-900'>" + av.hechos + " de " + av.total + " casillas completas</p></div>" +
 				res.columnas.map(function (r) {
-					var completo = r.total > 0 && r.faltan === 0;
+					// Un monto sin cuota no tiene "completo": tarjeta neutra, como en la imagen
+					var meta = tieneMeta(r);
+					var completo = meta && r.total > 0 && r.faltan === 0;
 					var d = detalleColumna(r);
-					return "<div class='rounded-2xl border p-4 " + (completo ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50") + "'>" +
+					return "<div class='rounded-2xl border p-4 " + (!meta ? "border-gray-200 bg-white" : (completo ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")) + "'>" +
 						"<p class='flex items-center gap-2 font-semibold text-gray-900 break-words'>" + icono(r.tipo) + "<span class='min-w-0'>" + esc(r.columna.nombre) + "</span></p>" +
-						"<p class='mt-1 text-sm font-medium " + (completo ? "text-emerald-800" : "text-amber-900") + "'>" + esc(lineaColumna(r)) + "</p>" +
+						"<p class='mt-1 text-sm font-medium " + (!meta ? "text-gray-800" : (completo ? "text-emerald-800" : "text-amber-900")) + "'>" + esc(lineaColumna(r)) + "</p>" +
 						(d ? "<p class='mt-0.5 text-xs text-gray-600'>" + esc(d) + "</p>" : "") + "</div>";
 				}).join("");
 		}
@@ -909,11 +933,13 @@
 			}
 			return "<td class='px-2 py-1.5 border-b border-gray-100 align-middle" + fondo + "' data-celda='" + esc(c.id) + ":" + esc(a.id) + "'>" + dentro + "</td>";
 		}
+		// El botón dice "Recordar por WhatsApp", como el diálogo y el aviso de privacidad. En el
+		// celular cabe en dos renglones junto a la columna fija de nombres; desde sm, en uno
 		function celdaRecordar(l, res, fila, mapa) {
 			if (l.estado === "cerrada") return "";
 			var pend = pendientesDe(res, fila.alumno.id, mapa);
 			var dentro = pend.length && tieneTelefono(fila.alumno)
-				? "<button type='button' data-recordar='" + esc(fila.alumno.id) + "' class='inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border border-emerald-600 text-emerald-700 text-sm font-semibold hover:bg-emerald-50 whitespace-nowrap' aria-label='Recordar por WhatsApp a la familia de " + esc(fila.alumno.nombre_completo || "este alumno") + "'>" + icono("mensaje") + "Recordar</button>"
+				? "<button type='button' data-recordar='" + esc(fila.alumno.id) + "' class='inline-flex items-center gap-1 sm:gap-1.5 min-h-[44px] w-[9rem] sm:w-auto px-2.5 sm:px-3 py-1 rounded-lg border border-emerald-600 text-emerald-700 text-sm font-semibold leading-tight text-left sm:whitespace-nowrap hover:bg-emerald-50' aria-label='Recordar por WhatsApp a la familia de " + esc(fila.alumno.nombre_completo || "este alumno") + "'>" + icono("mensaje") + "Recordar por WhatsApp</button>"
 				: (pend.length ? "<span class='text-xs text-gray-400'>Sin teléfono</span>" : "");
 			return "<td class='px-2 py-1.5 border-b border-gray-100' data-recordar-celda='" + esc(fila.alumno.id) + "'>" + dentro + "</td>";
 		}
@@ -1124,7 +1150,8 @@
 		// ── Otra ventana cambió la lista (R21) ────────────────────────────────
 		// Una ventana vieja con la lista abierta mientras otra ya la cerró: la base rechaza marcar
 		// (RLS) y no borra nada al desmarcar o eliminar. Se relee la lista y se dice qué pasó.
-		var CERRADA_EN_OTRA = "Esta lista ya se cerró en otra ventana; recarga para verla.";
+		// El aviso no pide volver a cargar la página: releerLista ya la trae y la pinta cerrada
+		var CERRADA_EN_OTRA = "Esta lista ya se cerró en otra ventana.";
 		function errorSinFilas(texto) { var e = new Error(texto); e.sinFilas = true; return e; }
 		/*
 			releerLista(id) → "abierta" | "cerrada" | "borrada" | null (no se pudo leer).
