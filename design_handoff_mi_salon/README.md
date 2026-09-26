@@ -341,7 +341,7 @@ adquirirlo, Preguntas). Secciones, en orden:
   "Cómo adquirirlo" (con acceso: **"Ir a Mi Salón"**) y "Cómo se usa"; debajo, Multigrado ·
   Tablet, computadora y celular · Alineada a la NEM.
 - **Qué es.** "La libreta del salón, hecha app." Cuatro tarjetas: hecha para la NEM, pensada
-  para multigrado, aguanta la mala señal (solo lo que se captura en Hoy) y se instala como app.
+  para multigrado, aguanta la mala señal (solo lo que se captura en Hoy o en Exámenes) y se instala como app.
 - **Para qué sirve.** Nueve tarjetas: Hoy; Planeación (crear tus propios proyectos o
   actividades sueltas; las planeaciones de Jissez, **próximamente**); Evaluación (formativa y
   diagnóstico); **Exámenes** (crearlo en Mi Salón con hoja de respuestas que se revisa con la
@@ -375,7 +375,7 @@ adquirirlo, Preguntas). Secciones, en orden:
 - **Preguntas frecuentes** (7): ¿funciona sin internet?, ¿sirve para multigrado?, ¿en qué
   aparatos?, ¿quién ve mis datos?, ¿necesito comprar planeaciones?, ¿cómo funcionan los
   exámenes? y ¿la calificación la pone la app? **No prometas "funciona sin internet"**: solo
-  Hoy guarda sin señal. ¿Sustituye la boleta oficial? No, es un complemento (SIGED).
+  Hoy y las capturas de Exámenes guardan sin señal. ¿Sustituye la boleta oficial? No, es un complemento (SIGED).
 - **Cierre** en pizarrón: "Llega al cierre del trimestre con la boleta casi lista."
 - Testimonios: solo con permiso; deja el espacio. Pixel de Meta: solo al lanzarla.
 
@@ -472,7 +472,7 @@ compradores; cuenta que ya tiene Mi Salón.
   destructiva en rojo). En celular, de pantalla casi completa o como hoja desde abajo. El de
   **"¿Para quién?"** (fila 28) se usa en Hoy y en Crear proyecto: diséñalo una vez.
 - **Avisos fijos:** indicador de guardado (guardando, guardado, error, **sin señal: se
-  guardará al volver**), capturas pendientes de Hoy en otras páginas, conflicto con otro
+  guardará al volver**), capturas pendientes de Hoy o de Exámenes en otras páginas, conflicto con otro
   aparato.
 - **Aviso de página:** "No se pudo cargar esta página. Revisa tu conexión." con Reintentar.
 - **Estados vacíos** con una sola acción clara ("Da de alta a tus alumnos", "Crea tu primera

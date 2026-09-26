@@ -905,6 +905,48 @@ evidencia oficial:
     - pisos 6 (1°) y 5 (2°);
     - datos reales sin cambios.
 
+## b16 a b19a y páginas de presentación (2026-09-26, solo en pruebas)
+
+Producción sigue en `b4c6958` (con b13a, b14 y b15 ya aplicadas). Todo lo de abajo está en la rama
+y en el proyecto de pruebas; nada está en producción.
+
+**Orden de las migraciones en producción** (cada una con la confirmación de Jorge):
+`jissez_interes_secciones` → `b16` → `b17` → `b18` → `b18a` → `b19` → `b19a`. b19a va al final: su
+`delete_own_account` y su `mover_producto_a_sesion` son las vigentes (si se volviera a correr una
+anterior, hay que correr b19a otra vez; `pruebas/migraciones-orden.test.js` lo vigila). b18a:
+junto con el frontend nuevo o después (el `js/examen.js` publicado todavía "aplica" una plantilla
+con UPDATE; hoy no importa porque las 63 plantillas de producción están en borrador y esa pantalla
+solo lista las publicadas).
+
+| Migración | Qué hace |
+|---|---|
+| `jissez_interes_secciones` | Tabla `interes_secciones` ("Avísame" de Sala de Maestros y de Mi Salón mientras no tenga precio), RLS por cuenta, sin escritura anónima |
+| `b16_pda_campo_catalogo` | `v_avance_pda` toma el campo formativo del PDA del catálogo (un PDA de Saberes agregado en una sesión de Lenguajes cuenta en Saberes en "Avance por PDA" y "Qué le falta"); mismas columnas |
+| `b17_flujo_libre` | Actividades sueltas (`proyectos.tipo = 'sueltas'`, "Actividades del trimestre"), "¿Para quién?" (`producto_sesion_alumnos`, regla única `alumno_recibe_producto`), Incompleta revisada el siguiente día de clase (`calificaciones.revisar_en`, `estado_en_clase`, `completado_en`), RPC `agregar_actividad_suelta`, `agregar_producto_sesion`, `guardar_asignacion_producto`, `mover_producto_a_sesion`; un producto con calificaciones no se quita |
+| `b18_examenes` | Exámenes de Mi Salón: `examenes_grupo` (modo `resultados` o `propio`), `examen_preguntas`, `examen_respuestas`, `examen_resultados`; el catálogo sale de Mi Salón |
+| `b18a_examenes_plantillas` | Las plantillas del catálogo ya no se pueden "reclamar" (UPDATE solo de lo propio) |
+| `b19_examenes_cola` | "No presentó" (`examen_alumnos`) y marca `captura_id` para la cola sin señal de Exámenes (la misma de Hoy) |
+| `b19a_integridad` | Correcciones de R26a y R26b (abajo) |
+
+**Páginas de presentación** (ocultas: `noindex`, sin enlaces): `tienda/conoce-mi-salon.html`
+(qué es, para qué sirve, cómo se usa, privacidad, preguntas frecuentes; capturas reales con
+nombres ficticios en `presentacion/img/`; precio en un solo lugar, `PRECIOS_MI_SALON` en null
+mientras no lo decida Jorge) y `tienda/conoce-sala.html` (Sala de Maestros "Próximamente"). Las
+dos con "Avísame" (`tienda/js/interes-seccion.js`, requiere sesión).
+
+**Revisión R26a y R26b y constructor AJ (b19a).**
+- **R26a (bloqueantes):**
+  - Pérdida silenciosa: si una pestaña quitaba un producto y otra, sin recargar, lo calificaba, la calificación se guardaba en el producto inactivo sin aviso y no contaba (`.qa/revisor-r26a/conc/c1-carreras.js`, caso b). Ahora el trigger `calificaciones_desde_producto` lo rechaza (hint `producto_inactivo`, producto leído FOR SHARE); la cola lo trata como definitivo con el aviso "Esta actividad se quitó en otra pantalla; tu captura no se aplicó" y Hoy quita esa actividad de la pantalla.
+  - Referencias del mismo grupo, explotables con llamadas a la API armadas a mano (`.qa/revisor-r26a/seg/s02-rls-refs.js`): una respuesta de examen con el `examen_id` de otro examen o de uno de solo resultados, cambiar el examen de una respuesta o de una pregunta, una calificación con producto de un grupo y alumno de otro (esto ya se podía antes de esta rama: b9 solo exige que cada referencia sea propia) y mover un producto de sesión sin `mover_producto_a_sesion`. Ahora lo impiden políticas RESTRICTIVE (`calificaciones_mismo_grupo_*`, `examen_respuestas_mismo_examen_*`) y triggers (`examen_hijo_examen_fijo`, `productos_sesion_sesion_fija`, que solo deja cambiar la sesión dentro de `mover_producto_a_sesion`).
+  - Menor: una calificación de una suelta ya pasada a un proyecto quedaba con la sesión y el proyecto del contenedor; el mismo trigger los toma siempre del producto.
+- **R26b:**
+  - `delete_own_account` no borraba `marketplace_busquedas_vacias` y fallaba con un `productos_finales` ligado a un grupo de la cuenta (dos huecos que ya había); b19a los agrega con guarda.
+  - Textos aprobados por Jorge el 26-sep en el aviso de privacidad (exámenes y "¿Para quién?" en los datos del alumno, cámara, cola sin señal, "cada cuenta ve solo lo suyo") y en términos §10 (la calificación oficial es la que se confirma y registra en el SIGED). Fecha de "Última actualización": 26-sep-2026; al publicar hay que ponerla del día.
+  - Presentación: "la escala de su grado", "en Hoy o en Exámenes", comillas unificadas, regla "docente", captura `ms-calificar` nueva.
+  - Documentación: órdenes de migración obsoletos, b18a, mapeo de campos (también `campo_largo()` en SQL) y esta sección.
+  - Menores: `campo_largo` ya no se puede llamar sin sesión; Hoy ya no muestra en inglés un error técnico de la base (p. ej. "column … does not exist" si falta una migración): da un texto en español y el detalle va a la consola.
+- Pruebas nuevas: `pruebas/integridad-b19a.test.js`, `pruebas/migraciones-orden.test.js`, §12 de `pruebas/bandeja-salida.test.js` y los textos de privacidad, términos y presentación en `pruebas/conoce-mi-salon-textos.test.js`. En la base de pruebas, como QA2 y en transacciones que se revierten: `.qa/constructor-aj/sql-integridad.js` (cada ataque y cada uso normal) y `sql-cuenta.js` (borrar la cuenta con filas en todas las tablas).
+
 ## Bloques detenidos
 
 ### 3.7 Coherencia y deuda — DETENIDO (2026-09-23)
