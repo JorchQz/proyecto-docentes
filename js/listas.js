@@ -14,13 +14,16 @@
 	                 errores de punto flotante) y una cantidad capturada se redondea a centavos.
 	  - Filas: alumnos activos en orden de lista. Un alumno dado de baja DESPUÉS conserva su
 	    registro: sigue en la lista si tiene algo registrado (marcado "baja"). Se marca con toques.
-	  - Resumen arriba por columna ("17 de 20 entregaron", "$850 de $1,000 reunidos, faltan
-	    $150") y avance general; los pendientes van resaltados.
+	  - Resumen arriba por columna ("Entregaron 17 de 20; faltan 3", "Completaron la cuota 17 de
+	    20; faltan aportaciones de 3 alumnos ($150)") y avance general; los pendientes van
+	    resaltados.
 
 	Quién cuenta en una lista (filasDeLista)
 	  - Lista abierta: los alumnos activos de hoy cuentan en todas las columnas. Un alumno que
 	    ya no está activo solo aparece si tiene algo registrado, y solo cuenta en la columna
-	    donde participó (entregó, escribió o aportó): así una baja no se queda "debiendo".
+	    donde participó (entregó, escribió o aportó): así una baja no se queda "debiendo". En una
+	    columna de monto con cuota, una baja que aportó algo (aunque sea menos que la cuota) se da
+	    por completa: lo que le faltaba no suma a "faltan" y no sale "Recordar" (R21).
 	  - Lista cerrada: igual, pero con los alumnos activos AL CERRARLA (activos_al_cerrar):
 	    el expediente no cambia con altas y bajas posteriores.
 
@@ -28,7 +31,10 @@
 	  - La imagen PNG (Canvas, 1080 px de ancho, partes de 2400 px como máximo, como el rol de
 	    aseo) y "Copiar texto para las familias" solo llevan el nombre de la lista, grupo,
 	    escuela, fecha, descripción y el resumen por columna ("Entregaron 17 de 20; faltan 3",
-	    "Reunido $850 de $1,000"), con el pie "Hecho con Jissez Mi Salón". Nunca a quién le falta.
+	    "Completaron la cuota 17 de 20; faltan aportaciones de 3 alumnos ($150)"), con el pie
+	    "Hecho con Jissez Mi Salón". Nunca a quién le falta. Lo que uno aporta de más no cubre lo
+	    de otro, así que lo reunido no se compara contra una meta (salía "Reunido $1,045.70 de
+	    $213; faltan $131.80", R21): la barra de cada columna es de alumnos al corriente.
 	  - La maestra avisa en privado: "Recordar por WhatsApp" por alumno pendiente abre el chat
 	    con su tutor (wa.me/52…, js/ficha-alumno.js) con un mensaje amable que ella edita; solo
 	    si la ficha tiene teléfono.
@@ -86,9 +92,11 @@
 		  "50", "$50", "50.5", "1,000", "$1,000.50", "50,50" (coma decimal) → ok
 		  "12.345" → se redondea a centavos (12.35), con la regla de medio hacia arriba, por texto
 		  (sin punto flotante). Negativos, letras o más de $999,999.99 → error.
+		  Espacios: solo alrededor ("$ 50", "50 pesos"); dentro del número no: "5 0 0" no es $500
+		  (R21). Los miles, solo con coma bien puesta: "1,000.50" o "1000.50".
 	*/
 	function parsearMonto(texto) {
-		var s = String(texto === null || texto === undefined ? "" : texto).replace(/\s+/g, "").replace(/^\$/, "").replace(/(mxn|pesos?)$/i, "");
+		var s = String(texto === null || texto === undefined ? "" : texto).trim().replace(/^\$\s*/, "").replace(/\s*(mxn|pesos?)$/i, "");
 		if (!s) return { ok: true, vacio: true, centavos: null, valor: null, error: "" };
 		if (/^-/.test(s)) return { ok: false, vacio: false, centavos: null, valor: null, error: "La cantidad no puede ser negativa." };
 		if (/^\d{1,3}(,\d{3})+(\.\d*)?$/.test(s)) s = s.replace(/,/g, "");
@@ -173,6 +181,17 @@
 	}
 
 	/*
+		cumpleFila(fila, col, v): como cumple(), pero una fila que no cuenta (una baja que ya no
+		estaba activa) solo aparece donde participó y ahí se da por completa. En un monto con
+		cuota, lo que aportó basta: no se le pide el resto, no suma a "faltan" y no sale
+		"Recordar" (R21: Eustaquio, de baja, aportó $33.33 de $50).
+	*/
+	function cumpleFila(fila, col, v) {
+		if (fila && !fila.cuenta) return participa(col, v);
+		return cumple(col, v);
+	}
+
+	/*
 		filasDeLista(lista, columnas, alumnos, mapa) → [{ alumno, cuenta, baja }]
 		cuenta: el alumno cuenta en TODAS las columnas (activo hoy, o activo al cerrar la lista).
 		Los demás solo salen si participaron en alguna columna, y solo cuentan donde participaron.
@@ -202,7 +221,8 @@
 		  (monto) reunido, esperadoTotal, falta, cuota, aportaron: en centavos
 		}
 		"falta" en montos = la suma de lo que le falta a cada alumno para su cuota (lo que aportó
-		de más uno no cubre lo de otro).
+		de más uno no cubre lo de otro). De una baja que aportó algo se espera lo que aportó: no
+		suma a "falta".
 	*/
 	function resumenColumna(col, filas, mapa) {
 		var r = { columna: col, tipo: col.tipo, total: 0, hechos: 0, faltan: 0, pendientes: [] };
@@ -216,13 +236,17 @@
 				var c = v ? (aCentavos(v.monto) || 0) : 0;
 				r.reunido += c;
 				if (c > 0) r.aportaron++;
-				if (cuota) r.falta = (r.falta || 0) + Math.max(0, cuota - c);
+				if (cuota) {
+					var espera = f.cuenta ? cuota : Math.min(cuota, c);
+					r.esperadoTotal = (r.esperadoTotal || 0) + espera;
+					r.falta = (r.falta || 0) + Math.max(0, espera - c);
+				}
 			}
-			if (cumple(col, v)) r.hechos++;
+			if (cumpleFila(f, col, v)) r.hechos++;
 			else r.pendientes.push(f.alumno.id);
 		});
 		r.faltan = r.total - r.hechos;
-		if (cuota) { r.esperadoTotal = cuota * r.total; if (r.falta === null) r.falta = 0; }
+		if (cuota) { if (r.esperadoTotal === null) r.esperadoTotal = 0; if (r.falta === null) r.falta = 0; }
 		return r;
 	}
 
@@ -255,14 +279,21 @@
 			return "Registrados " + r.hechos + " de " + r.total + (r.faltan ? "; faltan " + r.faltan : "");
 		}
 		if (r.cuota) {
-			return "Reunido " + pesos(r.reunido) + " de " + pesos(r.esperadoTotal) + (r.falta ? "; faltan " + pesos(r.falta) : "");
+			// Por alumnos, no pesos contra una meta: lo que uno aporta de más no cubre lo de otro (R21)
+			if (!r.total) return "Sin alumnos en la lista";
+			return "Completaron la cuota " + r.hechos + " de " + r.total +
+				(r.faltan ? "; faltan aportaciones de " + plural(r.faltan, "alumno", "alumnos") + (r.falta ? " (" + pesos(r.falta) + ")" : "") : "");
 		}
 		return "Reunido " + pesos(r.reunido) + " (" + plural(r.aportaron, "aportación", "aportaciones") + ")";
 	}
-	// Detalle secundario: la cuota o cuántos completaron
+	// Detalle secundario de un monto con cuota: la cuota y lo reunido en total
 	function detalleColumna(r) {
-		if (r.tipo === "monto" && r.cuota) return "Cuota: " + pesos(r.cuota) + " por alumno. Completaron " + r.hechos + " de " + r.total + ".";
+		if (r.tipo === "monto" && r.cuota) return "Cuota: " + pesos(r.cuota) + " por alumno. Reunido en total: " + pesos(r.reunido) + ".";
 		return "";
+	}
+	// Barra de una columna (0 a 1): alumnos al corriente entre los que cuentan, también en montos
+	function fraccionColumna(r) {
+		return r.total ? r.hechos / r.total : 0;
 	}
 
 	/*
@@ -298,7 +329,7 @@
 			var col = r.columna;
 			if (!cuentaEn(fila, col, mapa)) return;
 			var v = valorDe(mapa, col.id, alumnoId);
-			if (cumple(col, v)) return;
+			if (cumpleFila(fila, col, v)) return;
 			if (col.tipo === "monto" && r.cuota) {
 				var c = v ? (aCentavos(v.monto) || 0) : 0;
 				out.push(pesos(r.cuota - c) + " de «" + col.nombre + "»" + (c > 0 ? " (ya aportó " + pesos(c) + ")" : ""));
@@ -338,7 +369,7 @@
 		var hechos = 0, algo = false;
 		medibles.forEach(function (r) {
 			var v = valorDe(mapa, r.columna.id, alumnoId);
-			if (cumple(r.columna, v)) hechos++;
+			if (cumpleFila(fila, r.columna, v)) hechos++;
 			if (participa(r.columna, v)) algo = true;
 		});
 		if (hechos === medibles.length) return "completo";
@@ -471,7 +502,7 @@
 			lin.forEach(function (l) { ops.push(opTexto(l, M + pad, y + 36, 36, 600, completo ? IMG.verde : IMG.tinta)); y += 48; });
 			det.forEach(function (l) { ops.push(opTexto(l, M + pad, y + 30, 30, 500, IMG.gris)); y += 42; });
 			y += 14;
-			var frac = r.tipo === "monto" && r.cuota ? (r.esperadoTotal ? Math.min(1, r.reunido / r.esperadoTotal) : 0) : (r.total ? r.hechos / r.total : 0);
+			var frac = fraccionColumna(r);
 			ops = ops.concat(barra(M + pad, y, AT, 20, frac, completo ? IMG.verde : IMG.ambar));
 			y += 20 + pad;
 			bloques.push({ alto: y, ops: [{ t: "rect", x: M, y: 0, w: AI, h: y, color: IMG.tarjeta, radio: 24 }].concat(ops) });
@@ -544,7 +575,7 @@
 			return "<tr><th scope='row'>" + esc(nombreFila(f.alumno)) + (f.baja ? " <span class='imp-baja'>(baja)</span>" : "") + "</th>" + cols.map(function (r) {
 				var c = r.columna, v = valorDe(mapa, c.id, f.alumno.id);
 				if (!cuentaEn(f, c, mapa)) return "<td class='imp-na'>No aplica</td>";
-				var pend = !cumple(c, v);
+				var pend = !cumpleFila(f, c, v);
 				var txt;
 				if (c.tipo === "palomita") txt = v && v.entregado ? "Sí" : "Pendiente";
 				else if (c.tipo === "texto") txt = v && limpiar(v.texto) ? limpiar(v.texto) : "Pendiente";
@@ -569,9 +600,9 @@
 		esc: esc, formatoFecha: formatoFecha,
 		aCentavos: aCentavos, parsearMonto: parsearMonto, pesos: pesos, montoEditable: montoEditable,
 		ordenarAlumnos: ordenarAlumnos, ordenarColumnas: ordenarColumnas, mapaValores: mapaValores, valorDe: valorDe,
-		participa: participa, cumple: cumple, esperadoCent: esperadoCent, activosDeLista: activosDeLista,
+		participa: participa, cumple: cumple, cumpleFila: cumpleFila, esperadoCent: esperadoCent, activosDeLista: activosDeLista,
 		filasDeLista: filasDeLista, cuentaEn: cuentaEn, resumenColumna: resumenColumna, resumenLista: resumenLista,
-		lineaColumna: lineaColumna, detalleColumna: detalleColumna, textoFamilias: textoFamilias,
+		lineaColumna: lineaColumna, detalleColumna: detalleColumna, fraccionColumna: fraccionColumna, textoFamilias: textoFamilias,
 		pendientesDe: pendientesDe, mensajeRecordatorio: mensajeRecordatorio,
 		estadoEnLista: estadoEnLista, historialAlumno: historialAlumno,
 		validarLista: validarLista, validarColumna: validarColumna,
@@ -856,7 +887,7 @@
 			var c = r.columna, a = fila.alumno, v = valorDe(mapa, c.id, a.id);
 			var cerrada = l.estado === "cerrada";
 			if (!cuentaEn(fila, c, mapa)) return "<td class='px-2 py-1.5 border-b border-gray-100 text-xs text-gray-400'>No aplica</td>";
-			var pend = !cumple(c, v);
+			var pend = !cumpleFila(fila, c, v);
 			var fondo = pend ? " bg-amber-50" : "";
 			var etq = esc(c.nombre + ", " + (a.nombre_completo || "alumno"));
 			var datos = " data-col='" + esc(c.id) + "' data-al='" + esc(a.id) + "'";
@@ -929,7 +960,7 @@
 			var r = res.columnas.filter(function (x) { return x.columna.id === colId; })[0];
 			var td = el.tabla.querySelector("td[data-celda='" + colId + ":" + alId + "']");
 			if (td && fila && r) {
-				var pend = !cumple(r.columna, valorDe(mapa, colId, alId));
+				var pend = !cumpleFila(fila, r.columna, valorDe(mapa, colId, alId));
 				td.classList.toggle("bg-amber-50", pend);
 				var boton = td.querySelector("button[data-tipo='palomita']");
 				if (boton) {
@@ -954,22 +985,29 @@
 			try {
 				var res = await escribir(function () {
 					if (vacio) {
-						return window.sb.from("listas_valores").delete().eq("maestro_id", userId).eq("columna_id", col.id).eq("alumno_id", alId);
+						// Con .select() se sabe cuántas filas borró: en una lista que otra ventana ya
+						// cerró, la base no borra nada y tampoco da error (R21)
+						return window.sb.from("listas_valores").delete().eq("maestro_id", userId).eq("columna_id", col.id).eq("alumno_id", alId).select("id");
 					}
 					return window.sb.from("listas_valores").upsert(Object.assign({
 						maestro_id: userId, lista_id: l.id, columna_id: col.id, alumno_id: alId, entregado: null, texto: null, monto: null,
 					}, campos), { onConflict: "columna_id,alumno_id" }).select("id, lista_id, columna_id, alumno_id, entregado, texto, monto");
 				});
 				if (res.error) throw res.error;
-				if (!vacio && res.data && res.data[0]) {
-					valores[l.id] = (valores[l.id] || []).filter(function (v) { return !(v.columna_id === col.id && v.alumno_id === alId); }).concat([res.data[0]]);
-				}
+				if (vacio && (!res.data || !res.data.length)) throw errorSinFilas("la base no borró nada");
+				if (!vacio && (!res.data || !res.data.length)) throw errorSinFilas("la base no confirmó el guardado");
+				valores[l.id] = (valores[l.id] || []).filter(function (v) { return !(v.columna_id === col.id && v.alumno_id === alId); }).concat(vacio ? [] : [res.data[0]]);
 				return true;
 			} catch (e) {
-				console.error("listas: guardar valor", e);
 				valores[l.id] = anteriores;
 				pintarTabla();
 				pintarResumen();
+				// ¿La cerró (o la borró) otra ventana? Se relee y se dice; si no, el error de siempre
+				var estado = await revisarOtraVentana(l);
+				// Lista abierta y el registro ya no estaba (otra ventana lo quitó): no es error, la tabla quedó como en la base
+				if (e && e.sinFilas && vacio && estado === "abierta") return false;
+				console.error("listas: guardar valor", e);
+				if (estado === "cerrada" || estado === "borrada") return false;
 				mensaje("error", "No se pudo guardar lo de " + ((porId[alId] || {}).nombre_completo || "ese alumno") + " en «" + col.nombre + "». " + motivo(e) + " La tabla muestra lo que sí está guardado.");
 				return false;
 			}
@@ -1058,6 +1096,8 @@
 				mensaje("ok", textoOk);
 			} catch (e) {
 				console.error("listas: cambiar estado", e);
+				var est = await revisarOtraVentana(l);
+				if (est === "borrada" || (est === "cerrada" && cambios.estado === "cerrada")) return;
 				mensaje("error", "No se pudo guardar el cambio. " + motivo(e));
 			}
 		}
@@ -1076,9 +1116,50 @@
 				mensaje("ok", "Lista eliminada.");
 			} catch (e) {
 				console.error("listas: eliminar", e);
+				var est = await revisarOtraVentana(l);
+				if (est === "cerrada" || est === "borrada") return;
 				mensaje("error", "No se pudo eliminar la lista. " + motivo(e));
 			}
 		}
+		// ── Otra ventana cambió la lista (R21) ────────────────────────────────
+		// Una ventana vieja con la lista abierta mientras otra ya la cerró: la base rechaza marcar
+		// (RLS) y no borra nada al desmarcar o eliminar. Se relee la lista y se dice qué pasó.
+		var CERRADA_EN_OTRA = "Esta lista ya se cerró en otra ventana; recarga para verla.";
+		function errorSinFilas(texto) { var e = new Error(texto); e.sinFilas = true; return e; }
+		/*
+			releerLista(id) → "abierta" | "cerrada" | "borrada" | null (no se pudo leer).
+			Trae de nuevo la lista, sus columnas y lo registrado, y la pinta como quedó.
+		*/
+		async function releerLista(id) {
+			try {
+				var filas = await window.Lectura.uno(window.sb.from("listas_grupo").select("*, listas_columnas(*)").eq("id", id).eq("maestro_id", userId));
+				if (!filas || !filas.length) {
+					listas = listas.filter(function (x) { return x.id !== id; });
+					delete valores[id];
+					if (listaId === id) mostrarIndice(); else pintarIndice();
+					return "borrada";
+				}
+				var vals = await window.Lectura.todas(function () {
+					return window.sb.from("listas_valores").select("id, lista_id, columna_id, alumno_id, entregado, texto, monto")
+						.eq("maestro_id", userId).eq("lista_id", id).order("id", { ascending: true });
+				});
+				reemplazarLista(filas[0]);
+				valores[id] = vals || [];
+				if (listaId === id) pintarDetalle(); else pintarIndice();
+				return filas[0].estado === "cerrada" ? "cerrada" : "abierta";
+			} catch (e) {
+				console.error("listas: releer lista", e);
+				return null;
+			}
+		}
+		// Tras un fallo: relee; si otra ventana la cerró o la borró, lo dice (y devuelve el estado)
+		async function revisarOtraVentana(l) {
+			var estado = await releerLista(l.id);
+			if (estado === "cerrada") mensaje("error", CERRADA_EN_OTRA);
+			else if (estado === "borrada") mensaje("error", "Esta lista ya se eliminó en otra ventana.");
+			return estado;
+		}
+
 		function reemplazarLista(nueva) {
 			var hay = false;
 			listas = listas.map(function (x) { if (x.id === nueva.id) { hay = true; return nueva; } return x; });
@@ -1130,6 +1211,8 @@
 				if (eraNueva) abrirColumna(null);
 			} catch (err) {
 				console.error("listas: guardar lista", err);
+				var est = editandoLista ? await revisarOtraVentana(editandoLista) : null;
+				if (est === "cerrada" || est === "borrada") { el.dlgLista.close(); return; }
 				fL.error.textContent = "No se pudo guardar. " + motivo(err) + " Lo que escribiste sigue aquí.";
 				fL.error.hidden = false;
 			} finally {
@@ -1202,6 +1285,8 @@
 				mensaje("ok", editandoCol ? "Columna guardada." : "Columna «" + c.nombre + "» agregada.");
 			} catch (err) {
 				console.error("listas: guardar columna", err);
+				var est = await revisarOtraVentana(l);
+				if (est === "cerrada" || est === "borrada") { el.dlgColumna.close(); return; }
 				fC.error.textContent = "No se pudo guardar la columna. " + motivo(err);
 				fC.error.hidden = false;
 			} finally {
@@ -1226,6 +1311,8 @@
 				mensaje("ok", "Columna eliminada.");
 			} catch (e) {
 				console.error("listas: eliminar columna", e);
+				var est = await revisarOtraVentana(l);
+				if (est === "cerrada" || est === "borrada") return;
 				mensaje("error", "No se pudo eliminar la columna. " + motivo(e));
 			}
 		});
