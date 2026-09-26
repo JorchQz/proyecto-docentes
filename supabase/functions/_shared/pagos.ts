@@ -19,6 +19,7 @@ import {
   estiloTitulo,
   plantillaCorreo,
 } from "./correo.ts";
+import { esOrdenMiSalon, procesarPagoMiSalon } from "./mi-salon-pagos.ts";
 
 // Estados que MP puede devolver para un pago.
 //   approved   → cobrado, entregar
@@ -102,6 +103,12 @@ export async function procesarPago(
 
   if (!ordenId) {
     return { ok: false, estado: "pendiente", error: "Pago sin external_reference" };
+  }
+
+  // Mi Salón (b22): su orden no tiene renglones de la tienda; se aplica por su propio camino
+  // (acceso por periodos, idempotente en la base). Las órdenes de la tienda no pasan de aquí.
+  if (await esOrdenMiSalon(admin, String(ordenId))) {
+    return await procesarPagoMiSalon(admin, pago, opts);
   }
 
   const { data: orden } = await admin
