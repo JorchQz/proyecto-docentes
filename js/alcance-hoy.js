@@ -204,8 +204,9 @@
 		  fiable de la base (no hay columna de ingreso; editar al alumno no la cambia).
 		- Solo es "tarde" quien se dio de alta DESPUÉS de crearse su grupo. Los alumnos que
 		  nacen con el grupo (la semilla QA crea grupo y alumnos en el mismo instante) no
-		  tienen fecha de alta para esta regla: les cuenta todo. En el uso real no cambia
-		  nada, porque ninguna sesión puede tener fecha anterior a su grupo.
+		  tienen fecha de alta para esta regla: les cuenta todo. Tampoco los que se dieron de
+		  alta el mismo día que su grupo (el onboarding los agrega minutos después): una
+		  actividad suelta puede ser de un día anterior al grupo (decisión del 2026-09-26).
 		- Fecha del producto: la de su sesión, que es el día en que se trabajó o se dejó la
 		  tarea (una tarea que se dejó antes de que llegara no se le pidió, aunque venza
 		  después). Sin fecha de sesión, la de entrega; sin ninguna, cuenta.
@@ -224,6 +225,13 @@
 		try {
 			// en-CA da "AAAA-MM-DD"
 			if (!FORMATO_CDMX) FORMATO_CDMX = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
+			/*
+				Dado de alta el MISMO día en que se creó su grupo (el alta del onboarding, minutos
+				después del grupo): también nació con el grupo. Desde el 2026-09-26 una actividad
+				suelta puede ser de un día anterior del trimestre (anterior al grupo): sin esto, a los
+				alumnos del primer día no les tocaría la actividad de la semana pasada.
+			*/
+			if (g && !isNaN(g.getTime()) && FORMATO_CDMX.format(d) === FORMATO_CDMX.format(g)) return null;
 			return FORMATO_CDMX.format(d);
 		} catch (e) {
 			return null; // sin zona horaria disponible no se filtra (lo conservador: no esconder nada)

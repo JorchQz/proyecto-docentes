@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var registroGuardado = {}; // alumno_id -> true si ya hay fila de hoy en registro_diario
 	var calificaciones = {};  // alumno_id|producto_id -> fila de calificaciones
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
+	var sesionPedida = null; // la sesión de la actividad suelta que se abrió desde Proyectos (?calificar=)
 	// "Trabajar hoy": por cada proyecto activo, su siguiente sesión sin fecha y las demás
 	// pendientes (js/productos-hoy.js): [{ proyecto, siguiente, otras }]
 	var siguientes = [];
@@ -568,13 +569,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
 		// Con varios proyectos activos, las de hoy van por proyecto y luego por número
 		// Las actividades sueltas van al final de las del día
-		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; })
-			.sort(function (a, b) {
-				var pa = proyectoPorId[a.proyecto_id] || {}, pb = proyectoPorId[b.proyecto_id] || {};
-				var sa = window.AlcanceHoy.esSueltas(pa) ? 1 : 0, sb = window.AlcanceHoy.esSueltas(pb) ? 1 : 0;
-				var ta = pa.titulo || "", tb = pb.titulo || "";
-				return sa - sb || ta.localeCompare(tb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
-			});
+		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; });
 
 		/*
 			Las sesiones de una planeación no traen fecha: el maestro decide qué trabaja
@@ -589,7 +584,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!sesiones.length) return;
 		var productos = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
 			return window.sb.from("productos_sesion")
-				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden")
+				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden, created_at")
 				.in("sesion_id", lote).eq("activo", true)
 				.order("orden").order("id");
 		});
@@ -603,6 +598,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 			p.sesion = sesionPorId[p.sesion_id];
 			if (!productosPorSesion[p.sesion_id]) productosPorSesion[p.sesion_id] = [];
 			productosPorSesion[p.sesion_id].push(p);
+		});
+
+		/*
+			Actividades sueltas de un día que ya pasó (decisión de Jorge del 2026-09-26: se califican al
+			momento): entran a Hoy el día en que se agregaron (su producto se creó hoy) y cuando se
+			abren desde "Actividades del trimestre" en Proyectos (hoy.html?calificar=<producto>).
+		*/
+		var pedida = new URLSearchParams(window.location.search || "").get("calificar");
+		productos.forEach(function (p) {
+			var s = p.sesion;
+			if (!s || !s.fecha || s.fecha >= hoy || p.tipo === "tarea") return;
+			if (!window.AlcanceHoy.esSueltas(proyectoPorId[s.proyecto_id])) return;
+			if (p.id !== pedida && fechaLocal(p.created_at) !== hoy) return;
+			if (sesionesHoy.indexOf(s) === -1) sesionesHoy.push(s);
+			if (p.id === pedida) sesionPedida = s.id;
+		});
+		if (pedida && !sesionPedida) {
+			mensaje("info", "Esa actividad no está en el trimestre que mira Hoy (o ya no existe). Revísala en Proyectos, en Actividades del trimestre.");
+		}
+		// Por proyecto y número; las sueltas al final, las de días que ya pasaron después de las de hoy
+		sesionesHoy.sort(function (a, b) {
+			var pa = proyectoPorId[a.proyecto_id] || {}, pb = proyectoPorId[b.proyecto_id] || {};
+			var sa = window.AlcanceHoy.esSueltas(pa) ? 1 : 0, sb = window.AlcanceHoy.esSueltas(pb) ? 1 : 0;
+			var da = a.fecha === hoy ? 0 : 1, db = b.fecha === hoy ? 0 : 1;
+			var ta = pa.titulo || "", tb = pb.titulo || "";
+			return sa - sb || da - db || String(a.fecha || "").localeCompare(String(b.fecha || "")) ||
+				ta.localeCompare(tb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
 		});
 
 		// Tareas por revisar: vencen hoy o antes (las de días pasados siguen ahí
@@ -766,6 +788,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<span class='text-xs text-gray-400 ml-2'>" + (alumno.num_lista || "") + " · " + alumno.grado + "°</span>" +
 			(nota ? "<span class='block text-xs font-semibold text-violet-700'>" + esc(nota) + "</span>" : "") +
 			"</div><div class='flex flex-wrap gap-2'>" + controles + "</div></div>";
+	}
+
+	// Los días del trimestre en curso en que puede caer una actividad suelta (js/productos-hoy.js)
+	function rangoSuelta() {
+		return window.ProductosHoy.rangoTrimestre(grupo && grupo.trimestre_actual, hoy, {
+			calendarios: window.CalendarioEscolar ? window.CalendarioEscolar.CALENDARIOS : [],
+			ciclo: window.CalendarioSEP ? window.CalendarioSEP.cicloDe(hoy) : null,
+		});
+	}
+	// El día (hora de Ciudad de México) de un instante de la base, "AAAA-MM-DD"
+	function fechaLocal(instante) {
+		if (!instante) return null;
+		try {
+			return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(instante));
+		} catch (e) {
+			return String(instante).slice(0, 10);
+		}
 	}
 
 	// Cuándo vence una tarea (calendario SEP y ajustes del grupo: js/alcance-hoy.js)
@@ -1054,12 +1093,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: vacio("Esta sesión no tiene actividades para calificar. Agrega una con \"Agregar actividad o tarea\".");
 			var proyecto = proyectoPorId[ses.proyecto_id];
 			var suelta = esSuelta(ses);
-			return "<div class='rounded-xl border " + (suelta ? "border-violet-200 bg-violet-50/30" : "border-gray-200") + " p-3'>" +
+			return "<div id='ses-" + esc(ses.id) + "' class='rounded-xl border " + (suelta ? "border-violet-200 bg-violet-50/30" : "border-gray-200") + " p-3 scroll-mt-20'>" +
 				"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2'>" +
 				(suelta
 					// Las actividades sueltas del día (sin proyecto): no son una sesión de la planeación
 					? "<p class='font-semibold text-gray-800 text-sm'>" + esc(window.AlcanceHoy.TITULO_SUELTAS) + " · " + esc(ses.campo_formativo || "") +
-						"<span class='block text-xs font-normal text-gray-500'>Actividades sin proyecto de hoy. Puedes pasarlas a un proyecto cuando quieras.</span></p>"
+						(ses.fecha && ses.fecha !== hoy ? " · " + esc(fechaCorta(ses.fecha)) : "") +
+						"<span class='block text-xs font-normal text-gray-500'>" + (ses.fecha && ses.fecha < hoy
+							? "Actividades sin proyecto del " + esc(fechaCorta(ses.fecha)) + " (un día que ya pasó): califícalas aquí; cuentan con su fecha."
+							: "Actividades sin proyecto de hoy. Puedes pasarlas a un proyecto cuando quieras.") + "</span></p>"
 					: "<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
 						" · " + esc(ses.campo_formativo || "") +
 						(proyecto && proyecto.titulo ? "<span class='block text-xs font-normal text-gray-500'>" + esc(proyecto.titulo) + "</span>" : "") + "</p>") +
@@ -1888,12 +1930,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 				construirPda(cuerpo);
 
-				// Suelta: el día de la actividad (por omisión hoy; ese día aparece en Hoy para calificarla)
+				// Suelta: el día de la actividad (por omisión hoy). Cualquier día del trimestre en curso
+				// (decisión de Jorge del 2026-09-26): uno que ya pasó se califica aquí mismo, al agregarla
 				if (suelta) {
-					var dia = campoTexto("Día de la actividad", { type: "date", min: hoy, value: hoy });
+					var rango = rangoSuelta();
+					var dia = campoTexto("Día de la actividad", { type: "date", min: rango.desde, max: rango.hasta, value: hoy });
 					var ayudaDia = document.createElement("span");
 					ayudaDia.className = "text-xs font-normal text-gray-500";
-					ayudaDia.textContent = "Ese día aparece en Hoy para calificarla.";
+					ayudaDia.textContent = "Puede ser un día que ya pasó del trimestre: la calificas aquí mismo al agregarla. Un día que viene aparece en Hoy ese día.";
 					dia.cont.appendChild(ayudaDia);
 					refs.dia = dia.input;
 					refs.diaCont = dia.cont;
@@ -1940,7 +1984,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 					fechaRevision: refs.fecha.value,
 					fecha: refs.dia ? refs.dia.value : null,
 				};
-				var ctxV = { hoy: hoy, gradosSesion: porOmision };
+				var rangoV = suelta ? rangoSuelta() : {};
+				var ctxV = { hoy: hoy, gradosSesion: porOmision, desde: rangoV.desde, hasta: rangoV.hasta };
 				var v = suelta ? window.ProductosHoy.validarSuelta(datos, ctxV) : window.ProductosHoy.validarNuevo(datos, ctxV);
 				if (!v.ok) {
 					var foco = { nombre: refs.nombre, campo: refs.campo, fecha: refs.fecha, fechaSuelta: refs.dia,
@@ -1985,8 +2030,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				}
 				renderTareas();
 				renderSesiones();
-				var cuando = suelta && nuevo.tipo !== "tarea" && v.fecha !== hoy
-					? " Aparece en Hoy el " + fechaCorta(v.fecha) + " para calificarla." : "";
+				var cuando = suelta && nuevo.tipo !== "tarea" && v.fecha > hoy ? " Aparece en Hoy el " + fechaCorta(v.fecha) + " para calificarla."
+					: suelta && nuevo.tipo !== "tarea" && v.fecha < hoy ? " Es del " + fechaCorta(v.fecha) + ": califícala aquí abajo." : "";
 				mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
 					paraQuien(nuevo) + "." + cuando +
 					(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + "." : "") +
@@ -2006,7 +2051,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		var s = sesionesHoy.find(function (x) { return x.id === r.sesion.id; });
 		if (s) return s;
-		if (r.sesion.fecha !== hoy) return null;
+		// De hoy o de un día que ya pasó (se califica ahora); la de un día que viene, ese día
+		if (!r.sesion.fecha || r.sesion.fecha > hoy) return null;
 		s = { id: r.sesion.id, numero_sesion: r.sesion.numero_sesion, fecha: r.sesion.fecha, campo_formativo: r.sesion.campo_formativo,
 			momento: null, proyecto_id: r.proyecto_id, estado_sesion: r.sesion.estado_sesion };
 		sesionesHoy.push(s);
@@ -2330,6 +2376,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// salto se hace después de pintar, porque las listas se llenan tarde
 	function irASeccion() {
 		var id = (window.location.hash || "").slice(1);
+		// La actividad suelta que se abrió desde Proyectos ("Calificar")
+		if (sesionPedida) {
+			var ses = document.getElementById("ses-" + sesionPedida);
+			if (ses && ses.scrollIntoView) { ses.scrollIntoView({ block: "start" }); return; }
+		}
 		if (["asistencia", "tareas", "sesiones", "cierre"].indexOf(id) === -1) return;
 		var el = document.getElementById(id);
 		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });

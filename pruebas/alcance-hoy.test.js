@@ -90,7 +90,9 @@ function tablaFalsa(filas, registro) {
 	ok("alta a mediodía", A.fechaAlta("2026-09-24T18:00:00+00:00"), "2026-09-24");
 	ok("sin created_at: sin fecha (no se filtra)", A.fechaAlta(null), null);
 	ok("nació con su grupo (mismo instante, semilla QA): sin fecha de alta", A.fechaAlta("2026-09-24T07:43:51.056498+00:00", "2026-09-24T07:43:51.056498+00:00"), null);
-	ok("alta después de crear el grupo: su fecha", A.fechaAlta("2026-09-24T09:18:11+00:00", "2026-09-24T07:43:51+00:00"), "2026-09-24");
+	// Desde el 2026-09-26 (sueltas de días anteriores): el alta del MISMO día que el grupo (onboarding) también nació con él
+	ok("alta el mismo día en que se creó el grupo: sin fecha de alta", A.fechaAlta("2026-09-24T09:18:11+00:00", "2026-09-24T07:43:51+00:00"), null);
+	ok("alta un día después de crear el grupo: su fecha", A.fechaAlta("2026-09-25T15:18:11+00:00", "2026-09-24T07:43:51+00:00"), "2026-09-25");
 	ok("created_at ilegible: sin fecha", A.fechaAlta("no es fecha"), null);
 	ok("fecha del producto: la de su sesión", A.fechaProducto("2026-09-20", "2026-09-22"), "2026-09-20");
 	ok("sin sesión fechada: la de entrega", A.fechaProducto(null, "2026-09-22"), "2026-09-22");

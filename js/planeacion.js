@@ -133,13 +133,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 			sueltasListaEl.innerHTML = "<p class='text-sm text-gray-400'>Todavía no hay actividades sueltas. Agrégalas desde Hoy en cualquier momento.</p>";
 			return;
 		}
+		const hoyLocal = window.CalendarioSEP ? window.CalendarioSEP.hoyLocal() : new Date().toISOString().slice(0, 10);
 		sueltasListaEl.innerHTML = sueltasProductos.map(function (x, i) {
 			const p = x.producto, s = x.sesion;
+			// Una actividad de hoy o de un día que ya pasó se califica en Hoy (hoy.html?calificar=);
+			// las tareas, en "Tareas por revisar" el día en que vencen
+			const calificar = p.tipo !== "tarea" && s.fecha && s.fecha <= hoyLocal
+				? "<a href='hoy.html?calificar=" + encodeURIComponent(p.id) + "' class='shrink-0 inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-violet-700 text-sm font-semibold text-white hover:bg-violet-800'>Calificar</a>"
+				: "";
 			return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-gray-200 px-3 py-2'>" +
 				"<div class='min-w-0'><p class='text-sm font-semibold text-gray-800 break-words'>" + escHtml(p.nombre) + "</p>" +
 				"<p class='text-xs text-gray-500'>" + (p.tipo === "tarea" ? "Tarea" : "Actividad en clase") + " · " + escHtml(NOMBRE_CAMPO[p.campo] || p.campo || "") +
 				(s.fecha ? " · " + fechaCortaTexto(s.fecha) : "") + (x.proyecto.trimestre ? " · Trimestre " + x.proyecto.trimestre : "") + "</p></div>" +
-				"<button type='button' data-pasar-suelta='" + i + "' class='shrink-0 min-h-[44px] px-4 rounded-xl border border-violet-300 text-sm font-semibold text-violet-700 hover:bg-violet-50'>Pasar a un proyecto</button>" +
+				"<span class='flex flex-col sm:flex-row gap-2 shrink-0'>" + calificar +
+				"<button type='button' data-pasar-suelta='" + i + "' class='shrink-0 min-h-[44px] px-4 rounded-xl border border-violet-300 text-sm font-semibold text-violet-700 hover:bg-violet-50'>Pasar a un proyecto</button></span>" +
 				"</div>";
 		}).join("");
 	}

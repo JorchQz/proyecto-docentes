@@ -334,9 +334,54 @@
 	}
 
 	/*
+		Los días del trimestre en curso (decisión de Jorge del 2026-09-26: una actividad suelta puede ser
+		de cualquier día del trimestre y se califica en ese momento). El trimestre lo elige la maestra
+		(grupos.trimestre_actual); sus días salen del calendario SEP del ciclo (js/calendario-escolar.js:
+		fin del 1.º y del 2.º; js/calendario-sep.js: primer y último día de clases). Fuera de un ciclo
+		conocido, los periodos del Acuerdo 10/09/23 (art. 8). Hoy siempre cabe (si la maestra aún no
+		cambia el trimestre en Mi grupo, no se le cierra el día de hoy).
+		rangoTrimestre(trimestre, hoy, { calendarios, ciclo }) → { desde, hasta } ("AAAA-MM-DD")
+	*/
+	function sumarDia(iso, n) {
+		var d = new Date(iso + "T12:00:00Z");
+		d.setUTCDate(d.getUTCDate() + n);
+		return d.toISOString().slice(0, 10);
+	}
+	function rangoTrimestre(trimestre, hoy, fuentes) {
+		fuentes = fuentes || {};
+		var t = Number(trimestre) >= 1 && Number(trimestre) <= 3 ? Number(trimestre) : 1;
+		var h = String(hoy || "").slice(0, 10);
+		var cal = (fuentes.calendarios || []).filter(function (c) { return h >= c.desde && h <= c.hasta; })[0];
+		var ciclo = fuentes.ciclo || null;
+		var desde, hasta;
+		if (cal) {
+			var inicio = ciclo && ciclo.inicio ? ciclo.inicio : cal.desde, fin = ciclo && ciclo.fin ? ciclo.fin : cal.hasta;
+			if (t === 1) { desde = inicio; hasta = cal.finT1; }
+			else if (t === 2) { desde = sumarDia(cal.finT1, 1); hasta = cal.finT2; }
+			else { desde = sumarDia(cal.finT2, 1); hasta = fin; }
+		} else {
+			var anio = Number(h.slice(0, 4)), mes = Number(h.slice(5, 7));
+			var a0 = mes >= 8 ? anio : anio - 1; // el ciclo empieza en agosto
+			if (t === 1) { desde = a0 + "-08-01"; hasta = a0 + "-11-30"; }
+			else if (t === 2) { desde = a0 + "-12-01"; hasta = (a0 + 1) + "-03-31"; }
+			else { desde = (a0 + 1) + "-04-01"; hasta = (a0 + 1) + "-07-31"; }
+		}
+		if (h && h < desde) desde = h;
+		if (h && h > hasta) hasta = h;
+		return { desde: desde, hasta: hasta };
+	}
+
+	// "2026-08-31" → "31 ago"
+	function fechaCorta(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		return m ? Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1] : "";
+	}
+
+	/*
 		Actividad o tarea suelta (sin proyecto): lo mismo que validarNuevo y además la fecha
-		(el día en que se trabaja; en una tarea, el día en que se deja: hoy). No puede ser anterior
-		a hoy: una actividad de un día que ya pasó no se podría calificar en Hoy.
+		(el día en que se trabaja; en una tarea, el día en que se deja: hoy). La actividad puede ser
+		de cualquier día del trimestre en curso, también uno que ya pasó (ctx.desde y ctx.hasta:
+		rangoTrimestre): se califica en ese momento, en Hoy.
 	*/
 	function validarSuelta(d, ctx) {
 		d = d || {};
@@ -344,7 +389,9 @@
 		var fecha = String(d.fecha || "");
 		if (d.tipo !== "tarea") {
 			if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, foco: "fechaSuelta", error: "Elige el día de la actividad." };
-			if (ctx.hoy && fecha < ctx.hoy) return { ok: false, foco: "fechaSuelta", error: "El día de la actividad no puede ser anterior a hoy." };
+			var desde = ctx.desde || ctx.hoy, hasta = ctx.hasta || null;
+			if (desde && fecha < desde) return { ok: false, foco: "fechaSuelta", error: "El día de la actividad debe ser del trimestre en curso (desde el " + fechaCorta(desde) + ")." };
+			if (hasta && fecha > hasta) return { ok: false, foco: "fechaSuelta", error: "El día de la actividad debe ser del trimestre en curso (hasta el " + fechaCorta(hasta) + ")." };
 		}
 		var v = validarNuevo(d, ctx);
 		if (!v.ok) return v;
@@ -355,6 +402,7 @@
 	var api = {
 		CAMPOS: CAMPOS, TIPOS: TIPOS, NOMBRE_MAX: NOMBRE_MAX,
 		planAsignacion: planAsignacion, filasDeEdicion: filasDeEdicion, resumenPara: resumenPara, validarSuelta: validarSuelta,
+		rangoTrimestre: rangoTrimestre,
 		gradosOrdenados: gradosOrdenados,
 		fasesDeGrados: fasesDeGrados, buscarContenidos: buscarContenidos,
 		pdaDeSesionParaActividad: pdaDeSesionParaActividad, pdaMarcadosPorOmision: pdaMarcadosPorOmision,
