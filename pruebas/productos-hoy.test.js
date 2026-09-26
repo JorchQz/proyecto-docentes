@@ -110,5 +110,40 @@ ok("Inicio: una tarjeta por proyecto (renderProyectos → crearCardProyecto)", /
 ok("Inicio: terminar sesión es por proyecto (completa solo ese)",
 	/async function terminarSesion\(sesionId, notasCierre, proyecto\)/.test(dj) && /\.eq\("proyecto_id", proyecto\.id\)/.test(dj) && /\.eq\("id", proyecto\.id\)/.test(dj), true);
 
+// ── 8. Actividad de otro campo o fuera de la sesión: contenido y PDA del catálogo (opcional) ──
+// Por omisión los PDA de la sesión si el campo coincide; un PDA que no está en la sesión se crea
+// en sesiones_pda de esa sesión y grado para que cuente en evaluación formativa.
+const tiene8 = ["fasesDeGrados", "buscarContenidos", "pdaDeSesionParaActividad", "pdaMarcadosPorOmision", "planLigas"].map((f) => typeof P[f] === "function");
+ok("productos-hoy expone lo de contenido y PDA", tiene8, [true, true, true, true, true]);
+if (tiene8.every(Boolean)) {
+	ok("fases de los grados (4° y 5° → Fase 4 y Fase 5)", P.fasesDeGrados(["5", 4]), ["Fase 4", "Fase 5"]);
+	const cat = [
+		{ id: "c1", fase: "Fase 4", campo_formativo: "Saberes y Pensamiento Científico", contenido: "Estados físicos del agua", orden: 2 },
+		{ id: "c2", fase: "Fase 4", campo_formativo: "Lenguajes", contenido: "Narración de sucesos del agua", orden: 1 },
+		{ id: "c3", fase: "Fase 5", campo_formativo: "Saberes y Pensamiento Científico", contenido: "Ciclo del agua y la energía", orden: 1 },
+		{ id: "c4", fase: "Fase 3", campo_formativo: "Saberes y Pensamiento Científico", contenido: "El agua en casa", orden: 1 },
+	];
+	ok("buscador: del campo elegido y de las fases de los grados, sin acentos", P.buscarContenidos(cat, "fisicos agua", "Saberes y Pensamiento Científico", ["Fase 4", "Fase 5"]).map((c) => c.id), ["c1"]);
+	ok("buscador: varias fases, por fase y orden", P.buscarContenidos(cat, "agua", "Saberes y Pensamiento Científico", ["Fase 4", "Fase 5"]).map((c) => c.id), ["c1", "c3"]);
+	const spda = [{ id: "sp3", pda_id: "pA", grado: 3 }, { id: "sp4", pda_id: "pB", grado: 4 }];
+	ok("por omisión: los PDA de la sesión de esos grados si el campo coincide", P.pdaDeSesionParaActividad(spda, "LEN", "LEN", [4]).map((r) => r.id), ["sp4"]);
+	ok("otro campo: no se ofrecen los PDA de la sesión", P.pdaDeSesionParaActividad(spda, "LEN", "SAB", [3, 4]), []);
+	ok("PDA del contenido marcados solos: el único de cada grado", P.pdaMarcadosPorOmision([{ id: "x4", grado: 4 }, { id: "y5", grado: 5 }, { id: "z5", grado: 5 }], [4, 5]), ["x4"]);
+	const plan = P.planLigas({ grados: ["4"], deSesion: ["sp4", "sp3"], deCatalogo: [{ pda_id: "pB", grado: 4 }, { pda_id: "pN", grado: 4 }, { pda_id: "pN", grado: 4 }, { pda_id: "pZ", grado: 5 }], spdaSesion: spda });
+	ok("planLigas: liga los de la sesión de su grado, reutiliza el que ya está y crea el que falta (sin duplicar)", plan, { ligar: ["sp4"], crear: [{ pda_id: "pN", grado: 4 }] });
+}
+{
+	const h = leer("js/hoy.js");
+	ok("Hoy: el diálogo tiene buscador de contenidos y PDA opcionales", h.includes("PDA que evalúa") && h.includes("data-busca-contenido") && h.includes("(opcional)"), true);
+	ok("Hoy: liga con lo elegido y crea el PDA que falta en sesiones_pda de la sesión",
+		h.includes("ligarPdaElegidos(nuevo, sesion, eleccionPda())") && h.includes('from("sesiones_pda").insert(plan.crear.map'), true);
+	ok("Hoy: Enter en el buscador no envía el diálogo", h.includes('refs.busca.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });'), true);
+	const q = leer("js/que-le-falta.js"), m = leer("js/motor-calificacion.js");
+	ok("Qué le falta: el PDA cuenta en el campo de su contenido del catálogo",
+		q.includes("codigoCampo(campoCatalogo(sp)) || cSesion") && m.includes("catalogo_pda(pda, catalogo_contenidos(campo_formativo))"), true);
+	ok("migración b16: v_avance_pda toma el campo del catálogo",
+		leer("supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql").includes("COALESCE(cc.campo_formativo, s.campo_formativo) AS campo_formativo"), true);
+}
+
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

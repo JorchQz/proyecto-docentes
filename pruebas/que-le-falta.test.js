@@ -321,6 +321,18 @@ function entrada(extra) {
 		detalle: Object.assign({ sesiones: conDet.sesiones }, conDet.porAlumno.a2.detalle), avancePda: [], calificacion: {}, hoy: HOY, regla: NACIONAL });
 	ok("de punta a punta: las mismas entregas pendientes en LEN", e2e.campos.LEN.productos.map((p) => p.nombre), ["Cartel de mi comunidad", "Cuento ilustrado"]);
 
+	// ── Actividad de otro campo agregada en Hoy (decisión de Jorge del 2026-09-26) ──
+	// Un PDA de Saberes ligado a una actividad en una sesión de Lenguajes cuenta en Saberes
+	{
+		const conOtro = SESIONES.map((s) => s.id !== "s4" ? s : Object.assign({}, s, { sesiones_pda: s.sesiones_pda.concat([
+			{ id: "spHoy", pda_id: "pdaSabHoy", grado: 2, criterio_aplicado: null,
+				catalogo_pda: { pda: "Mide longitudes con unidades no convencionales.", catalogo_contenidos: { campo_formativo: "Saberes y Pensamiento Científico" } } },
+		]) }));
+		const rOtro = Q.calcular(entrada({ detalle: { sesiones: conOtro, productos: PRODUCTOS, calificaciones: CALIFS, alta: null } }));
+		ok("PDA de otro campo (del catálogo) agregado en Hoy: cuenta en SAB, no en LEN",
+			[rOtro.campos.SAB.pda.some((p) => p.clave === "pdaSabHoy"), rOtro.campos.LEN.pda.some((p) => p.clave === "pdaSabHoy")], [true, false]);
+	}
+
 	console.log(fallos ? "\n" + fallos + " FALLAS" : "\nTODAS PASAN");
 	process.exit(fallos ? 1 : 0);
 })().catch((e) => { console.log("FALLA excepción: " + (e && e.stack)); process.exit(1); });

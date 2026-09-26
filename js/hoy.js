@@ -1326,9 +1326,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		"Agregar actividad o tarea" en plena clase (decisión de Jorge del 2026-09-26): nombre,
 		tipo, campo formativo (el de la sesión), grados (los de la sesión y el proyecto, con las
 		casillas de los grados del grupo) y, en tareas, el día en que se revisa (por omisión el
-		siguiente día hábil: AlcanceHoy.venceTarea). Se crea con origen 'maestro', se liga a los
-		PDA de la sesión de sus grados (si es del campo de la sesión) y aparece de inmediato.
-		La regla del alta tarde se respeta sola: la fecha del producto es la de la sesión.
+		siguiente día hábil: AlcanceHoy.venceTarea). Se crea con origen 'maestro' y aparece de
+		inmediato. La regla del alta tarde se respeta sola: la fecha del producto es la de la sesión.
+		PDA (opcional, decisión de Jorge del 2026-09-26: "que cada actividad sume"): por omisión
+		los de la sesión si el campo es el de la sesión; además se puede buscar un contenido del
+		catálogo del campo elegido y marcar sus PDA. Un PDA elegido que la sesión no tiene se crea
+		en sesiones_pda de esa sesión y grado (ProductosHoy.planLigas), para que el trigger de
+		evaluación formativa y "Qué le falta" lo cuenten.
 	*/
 	function agregarProducto(sesionId, origen) {
 		var sesion = sesionesHoy.find(function (s) { return s.id === sesionId; });
@@ -1339,6 +1343,215 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var porOmision = gradosDeLaSesion(sesion);
 		var fechaOmision = window.AlcanceHoy.venceTarea(null, hoy);
 		var refs = {};
+		var pda = { spda: null, contenidos: null, errorCatalogo: false, contenido: null, pdaContenido: [], cargandoContenido: false,
+			quitadosSesion: {}, marcadosCatalogo: {} };
+
+		function gradosElegidos() {
+			return gradosGrupo.length > 1 && refs.grados
+				? Array.from(refs.grados.querySelectorAll("input[name='gradoNuevo']:checked")).map(function (c) { return Number(c.value); })
+				: gradosGrupo;
+		}
+		function campoLargo(corto) { return window.CamposFormativos ? window.CamposFormativos.largo(corto) : corto; }
+		var claseOpcion = "flex items-start gap-3 min-h-[44px] rounded-xl border border-gray-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
+
+		// Sección "PDA que evalúa (opcional)"
+		function construirPda(cuerpo) {
+			var fs = document.createElement("fieldset");
+			fs.className = "flex flex-col gap-2";
+			fs.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>PDA que evalúa <span class='font-normal text-gray-500'>(opcional)</span></legend>";
+			refs.pdaSesion = document.createElement("div");
+			refs.pdaSesion.className = "flex flex-col gap-2";
+			fs.appendChild(refs.pdaSesion);
+			var busca = document.createElement("label");
+			busca.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
+			refs.buscaEtiqueta = document.createElement("span");
+			refs.buscaEtiqueta.textContent = "Buscar un contenido del catálogo";
+			busca.appendChild(refs.buscaEtiqueta);
+			refs.busca = document.createElement("input");
+			refs.busca.type = "search";
+			refs.busca.autocomplete = "off";
+			refs.busca.setAttribute("data-busca-contenido", "1");
+			refs.busca.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600";
+			refs.busca.placeholder = "Escribe una palabra del contenido";
+			busca.appendChild(refs.busca);
+			fs.appendChild(busca);
+			refs.resultados = document.createElement("div");
+			refs.resultados.className = "flex flex-col gap-1";
+			refs.resultados.setAttribute("aria-live", "polite");
+			fs.appendChild(refs.resultados);
+			refs.contenido = document.createElement("div");
+			refs.contenido.className = "flex flex-col gap-2";
+			fs.appendChild(refs.contenido);
+			cuerpo.appendChild(fs);
+			refs.busca.addEventListener("input", pintarResultados);
+			// Enter en el buscador no envía el diálogo
+			refs.busca.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
+			refs.resultados.addEventListener("click", function (e) {
+				var b = e.target.closest("[data-contenido]");
+				if (b) elegirContenido(b.getAttribute("data-contenido"));
+			});
+			refs.contenido.addEventListener("click", function (e) {
+				if (e.target.closest("[data-quitar-contenido]")) { quitarContenido(); pintarPda(); refs.busca.focus(); }
+			});
+			refs.contenido.addEventListener("change", function (e) {
+				var c = e.target.closest("input[name='pdaCatalogo']");
+				if (c) pda.marcadosCatalogo[c.value] = c.checked;
+			});
+			refs.pdaSesion.addEventListener("change", function (e) {
+				var c = e.target.closest("input[name='pdaSesion']");
+				if (c) pda.quitadosSesion[c.value] = !c.checked;
+			});
+		}
+
+		async function cargarPda() {
+			try {
+				var res = await window.sb.from("sesiones_pda").select("id, pda_id, grado, criterio_aplicado, catalogo_pda(pda)").eq("sesion_id", sesion.id).order("grado");
+				if (res.error) throw res.error;
+				pda.spda = res.data || [];
+			} catch (err) {
+				console.error("hoy: PDA de la sesión", err);
+				pda.spda = null;
+			}
+			try {
+				pda.contenidos = await contenidosDelCatalogo(window.ProductosHoy.fasesDeGrados(gradosGrupo));
+			} catch (err) {
+				console.error("hoy: catálogo de contenidos", err);
+				pda.errorCatalogo = true;
+			}
+			pintarPda();
+		}
+
+		function textoPda(r) {
+			var cp = Array.isArray(r.catalogo_pda) ? r.catalogo_pda[0] : r.catalogo_pda;
+			return (cp && cp.pda) || r.criterio_aplicado || "Criterio de la sesión";
+		}
+
+		function pintarPda() {
+			if (!refs.pdaSesion) return;
+			var campo = refs.campo ? refs.campo.value : "";
+			var deSesion = window.ProductosHoy.pdaDeSesionParaActividad(pda.spda || [], campoSesion, campo, gradosElegidos());
+			refs.pdaSesion.innerHTML = "";
+			if (deSesion.length) {
+				var t = document.createElement("p");
+				t.className = "text-xs text-gray-500";
+				t.textContent = "De esta sesión (quita la marca si esta actividad no los evalúa):";
+				refs.pdaSesion.appendChild(t);
+				deSesion.forEach(function (r) {
+					var l = document.createElement("label");
+					l.className = claseOpcion;
+					l.innerHTML = "<input type='checkbox' name='pdaSesion' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (pda.quitadosSesion[r.id] ? "" : " checked") + ">" +
+						"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(r.grado) + "°</span> · " + esc(textoPda(r)) + "</span>";
+					l.querySelector("input").value = r.id;
+					refs.pdaSesion.appendChild(l);
+				});
+			}
+			refs.buscaEtiqueta.textContent = campo ? "Buscar un contenido de " + campoLargo(campo) : "Elige el campo formativo para buscar su contenido";
+			refs.busca.disabled = !campo || pda.errorCatalogo;
+			pintarResultados();
+			pintarContenido();
+		}
+
+		function pintarResultados() {
+			if (!refs.resultados) return;
+			refs.resultados.innerHTML = "";
+			var campo = refs.campo ? refs.campo.value : "";
+			if (pda.errorCatalogo) {
+				refs.resultados.innerHTML = "<p class='text-xs text-gray-500'>No se pudo cargar el catálogo de contenidos. Puedes agregar la actividad sin PDA.</p>";
+				return;
+			}
+			if (!campo || pda.contenido) return;
+			if (!pda.contenidos) { refs.resultados.innerHTML = "<p class='text-xs text-gray-500'>Cargando el catálogo...</p>"; return; }
+			var texto = refs.busca.value;
+			if (!String(texto || "").trim()) return;
+			var fases = window.ProductosHoy.fasesDeGrados(gradosElegidos());
+			var todos = window.ProductosHoy.buscarContenidos(pda.contenidos, texto, campoLargo(campo), fases);
+			if (!todos.length) {
+				refs.resultados.innerHTML = "<p class='text-xs text-gray-500'>Ningún contenido de " + esc(campoLargo(campo)) + " tiene esas palabras.</p>";
+				return;
+			}
+			todos.slice(0, 8).forEach(function (c) {
+				var b = document.createElement("button");
+				b.type = "button";
+				b.setAttribute("data-contenido", c.id);
+				b.className = "w-full min-h-[44px] text-left rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 hover:border-blue-400 hover:bg-blue-50";
+				b.textContent = c.contenido;
+				refs.resultados.appendChild(b);
+			});
+			if (todos.length > 8) {
+				var mas = document.createElement("p");
+				mas.className = "text-xs text-gray-500";
+				mas.textContent = "Y " + (todos.length - 8) + " más: escribe otra palabra para acotar.";
+				refs.resultados.appendChild(mas);
+			}
+		}
+
+		async function elegirContenido(id) {
+			var c = (pda.contenidos || []).find(function (x) { return x.id === id; });
+			if (!c) return;
+			pda.contenido = c;
+			pda.pdaContenido = [];
+			pda.marcadosCatalogo = {};
+			pda.cargandoContenido = true;
+			pintarResultados();
+			pintarContenido();
+			try {
+				var res = await window.sb.from("catalogo_pda").select("id, grado, pda, orden").eq("contenido_id", c.id).in("grado", gradosGrupo).order("orden");
+				if (res.error) throw res.error;
+				if (pda.contenido !== c) return;
+				pda.pdaContenido = res.data || [];
+				window.ProductosHoy.pdaMarcadosPorOmision(pda.pdaContenido, gradosElegidos()).forEach(function (pid) { pda.marcadosCatalogo[pid] = true; });
+			} catch (err) {
+				console.error("hoy: PDA del contenido", err);
+				pda.pdaContenido = null;
+			}
+			pda.cargandoContenido = false;
+			pintarContenido();
+			var primera = refs.contenido.querySelector("input[name='pdaCatalogo'], [data-quitar-contenido]");
+			if (primera) primera.focus();
+		}
+
+		function quitarContenido() {
+			pda.contenido = null;
+			pda.pdaContenido = [];
+			pda.marcadosCatalogo = {};
+			if (refs.busca) refs.busca.value = "";
+		}
+
+		function pintarContenido() {
+			if (!refs.contenido) return;
+			refs.contenido.innerHTML = "";
+			if (!pda.contenido) return;
+			var caja = document.createElement("div");
+			caja.className = "flex items-start justify-between gap-2 rounded-xl bg-gray-50 border border-gray-200 pl-3";
+			caja.innerHTML = "<p class='text-sm text-gray-800 py-2.5'><span class='block text-xs text-gray-500'>Contenido</span>" + esc(pda.contenido.contenido) + "</p>" +
+				"<button type='button' data-quitar-contenido class='shrink-0 min-h-[44px] min-w-[44px] px-3 rounded-xl text-sm font-medium text-blue-700 hover:bg-blue-50'>Cambiar</button>";
+			refs.contenido.appendChild(caja);
+			if (pda.cargandoContenido) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Cargando sus PDA...</p>"); return; }
+			if (pda.pdaContenido === null) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>No se pudieron cargar sus PDA. Puedes agregar la actividad sin PDA.</p>"); return; }
+			var g = gradosElegidos();
+			var deGrados = pda.pdaContenido.filter(function (p) { return g.indexOf(Number(p.grado)) !== -1; });
+			if (!deGrados.length) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Este contenido no tiene PDA para los grados elegidos.</p>"); return; }
+			deGrados.forEach(function (p) {
+				var l = document.createElement("label");
+				l.className = claseOpcion;
+				l.innerHTML = "<input type='checkbox' name='pdaCatalogo' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (pda.marcadosCatalogo[p.id] ? " checked" : "") + ">" +
+					"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(p.grado) + "°</span> · " + esc(p.pda || "") + "</span>";
+				l.querySelector("input").value = p.id;
+				refs.contenido.appendChild(l);
+			});
+		}
+
+		// Lo elegido al aceptar (solo lo visible: de los grados y el campo elegidos)
+		function eleccionPda() {
+			if (pda.spda === null) return null; // no se leyeron los de la sesión: como antes
+			var campo = refs.campo ? refs.campo.value : "";
+			var g = gradosElegidos();
+			var deSesion = window.ProductosHoy.pdaDeSesionParaActividad(pda.spda, campoSesion, campo, g)
+				.filter(function (r) { return !pda.quitadosSesion[r.id]; }).map(function (r) { return r.id; });
+			var deCatalogo = (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
+				.map(function (p) { return { pda_id: p.id, grado: Number(p.grado) }; });
+			return { deSesion: deSesion, deCatalogo: deCatalogo, spdaSesion: pda.spda };
+		}
 
 		abrirDialogo({
 			origen: origen,
@@ -1395,6 +1608,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 							"<span class='text-sm text-gray-800'>" + g + "°</span></label>";
 					}).join("") + "</div>";
 				cuerpo.appendChild(grados);
+				refs.campo = sel;
+				refs.grados = grados;
+
+				construirPda(cuerpo);
 
 				var fecha = campoTexto("Día en que se revisa la tarea", { type: "date", min: hoy, value: fechaOmision || "" });
 				fecha.cont.classList.add("hidden");
@@ -1412,6 +1629,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 				});
 				refs.tipo = tipo;
 				refs.grados = grados;
+				sel.addEventListener("change", function () {
+					if (pda.contenido && window.CamposFormativos && window.CamposFormativos.corto(pda.contenido.campo_formativo) !== sel.value) quitarContenido();
+					pintarPda();
+				});
+				grados.addEventListener("change", pintarPda);
+				cargarPda();
 			},
 			alAceptar: async function (form, avisar) {
 				var datos = {
@@ -1447,7 +1670,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					var vence = window.AlcanceHoy.venceTarea(nuevo.fecha_entrega, sesion.fecha);
 					if (vence && vence <= hoy) tareas.unshift(nuevo);
 				}
-				var ligado = await ligarAPdaDeSesion(nuevo, sesion);
+				var ligado = await ligarPdaElegidos(nuevo, sesion, eleccionPda());
 				renderTareas();
 				renderSesiones();
 				mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
@@ -1456,6 +1679,52 @@ document.addEventListener("DOMContentLoaded", async function () {
 					(ligado ? "" : " No se pudo ligar a los PDA de la sesión; sus calificaciones cuentan igual para la boleta."));
 			},
 		});
+	}
+
+	/*
+		Liga la actividad nueva con los PDA elegidos en el diálogo: los de la sesión que quedaron
+		marcados y los del catálogo; un PDA del catálogo que la sesión no tiene para ese grado se
+		crea en sesiones_pda de esa sesión (como js/sesiones-materializar.js), así el trigger de
+		evaluación formativa lo cuenta al calificar. Sin elección (no se pudieron leer los PDA de
+		la sesión), como antes: los de la sesión si es del mismo campo.
+	*/
+	async function ligarPdaElegidos(producto, sesion, eleccion) {
+		if (!eleccion) return ligarAPdaDeSesion(producto, sesion);
+		var plan = window.ProductosHoy.planLigas({ grados: producto.grados, deSesion: eleccion.deSesion, deCatalogo: eleccion.deCatalogo, spdaSesion: eleccion.spdaSesion });
+		if (!plan.ligar.length && !plan.crear.length) return true;
+		try {
+			var ids = plan.ligar.slice();
+			if (plan.crear.length) {
+				var ins = await window.sb.from("sesiones_pda").insert(plan.crear.map(function (p) {
+					return { sesion_id: sesion.id, pda_id: p.pda_id, grado: p.grado, criterio_aplicado: null };
+				})).select("id");
+				if (ins.error) throw ins.error;
+				(ins.data || []).forEach(function (r) { ids.push(r.id); });
+			}
+			var ligas = ids.map(function (id) { return { producto_sesion_id: producto.id, sesion_pda_id: id }; });
+			var res = await window.sb.from("producto_sesion_pda").insert(ligas);
+			if (res.error) throw res.error;
+			return true;
+		} catch (err) {
+			console.error("hoy: ligar a los PDA elegidos", err);
+			return false;
+		}
+	}
+
+	// Contenidos del catálogo de las fases del grupo (se leen una vez por página)
+	var contenidosCache = {};
+	function contenidosDelCatalogo(fases) {
+		var clave = (fases || []).join(",");
+		if (!contenidosCache[clave]) {
+			contenidosCache[clave] = (async function () {
+				var res = await window.sb.from("catalogo_contenidos").select("id, fase, campo_formativo, contenido, orden")
+					.in("fase", fases && fases.length ? fases : ["Fase 3", "Fase 4", "Fase 5"]).order("orden").range(0, 999);
+				if (res.error) throw res.error;
+				return res.data || [];
+			})();
+			contenidosCache[clave].catch(function () { delete contenidosCache[clave]; });
+		}
+		return contenidosCache[clave];
 	}
 
 	// Liga el producto nuevo con los PDA de su sesión y de sus grados, como los del plan

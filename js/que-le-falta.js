@@ -90,6 +90,15 @@
 		return cp && texto(cp.pda) ? texto(cp.pda) : "";
 	}
 
+	// Campo formativo (nombre largo) del contenido del PDA en el catálogo, si se leyó
+	function campoCatalogo(sp) {
+		var cp = sp.catalogo_pda;
+		if (Array.isArray(cp)) cp = cp[0];
+		var cc = cp && cp.catalogo_contenidos;
+		if (Array.isArray(cc)) cc = cc[0];
+		return cc && texto(cc.campo_formativo) ? texto(cc.campo_formativo) : "";
+	}
+
 	function campoVacio() {
 		return { productos: [], porRevisar: [], pda: [], sinEvidencias: false, revisar: null, pendientes: 0 };
 	}
@@ -180,10 +189,14 @@
 		var trabajados = {}; // clave → {campo, texto, criterio, sesiones: [], fecha}
 		(det.sesiones || []).forEach(function (s) {
 			if (!trabajada(s)) return;
-			var c = codigoCampo(s.campo_formativo);
-			if (!campos[c]) return;
+			var cSesion = codigoCampo(s.campo_formativo);
 			(s.sesiones_pda || []).forEach(function (sp) {
 				if (Number(sp.grado) !== grado) return;
+				// El campo del PDA es el de su contenido en el catálogo (una actividad de otro campo
+				// agregada en Hoy trae sus propios PDA, decisión de Jorge del 2026-09-26); sin PDA de
+				// catálogo, el de la sesión. Igual que v_avance_pda (mi_salon_b16).
+				var c = codigoCampo(campoCatalogo(sp)) || cSesion;
+				if (!campos[c]) return;
 				var k = clavePda(sp);
 				var t = trabajados[k] || (trabajados[k] = { clave: k, campo: c, texto: "", criterio: "", sesiones: [], fecha: "", productos: [] });
 				(sp.producto_sesion_pda || []).forEach(function (l) {

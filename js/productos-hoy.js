@@ -122,8 +122,100 @@
 		return !!(cal && (cal.nivel || cal.estado_entrega || (cal.puntaje !== null && cal.puntaje !== undefined && cal.puntaje !== "") || cal.retroalimentacion));
 	}
 
+	/*
+		── Contenido y PDA de la actividad (decisión de Jorge del 2026-09-26) ──
+		"Si no es el mismo campo formativo o es una actividad fuera de la sesión, que tengan la
+		libertad de elegir campo formativo, contenido y PDA, para que cada actividad sume."
+		El PDA es OPCIONAL (en tablet tiene que seguir siendo rápido):
+		  - Por omisión, si el campo es el de la sesión, los PDA de la sesión de esos grados.
+		  - Se puede buscar un contenido del catálogo (del campo elegido y de las fases de los
+		    grados elegidos) y marcar sus PDA de esos grados.
+		  - Un PDA elegido que no está en la sesión se crea en sesiones_pda de esa sesión para ese
+		    grado (como el materializador), así el trigger de evaluación formativa lo cuenta.
+	*/
+	var FASE_DE_GRADO = { 1: "Fase 3", 2: "Fase 3", 3: "Fase 4", 4: "Fase 4", 5: "Fase 5", 6: "Fase 5" };
+	function fasesDeGrados(grados) {
+		var f = [];
+		gradosOrdenados(grados).forEach(function (g) { if (FASE_DE_GRADO[g] && f.indexOf(FASE_DE_GRADO[g]) === -1) f.push(FASE_DE_GRADO[g]); });
+		return f;
+	}
+	function sinAcentos(s) {
+		return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+	}
+	/*
+		buscarContenidos(contenidos, texto, campoLargo, fases, tope) → los del campo y las fases, que
+		contienen todas las palabras buscadas (sin acentos), por fase y orden del catálogo.
+		contenidos: filas de catalogo_contenidos { id, fase, campo_formativo, contenido, orden }
+	*/
+	function buscarContenidos(contenidos, texto, campoLargo, fases, tope) {
+		var palabras = sinAcentos(texto).split(" ").filter(Boolean);
+		var campo = sinAcentos(campoLargo);
+		var r = (contenidos || []).filter(function (c) {
+			if (!c) return false;
+			if (campo && sinAcentos(c.campo_formativo) !== campo) return false;
+			if (fases && fases.length && fases.indexOf(c.fase) === -1) return false;
+			var t = sinAcentos(c.contenido);
+			return palabras.every(function (p) { return t.indexOf(p) !== -1; });
+		}).sort(function (a, b) {
+			return String(a.fase).localeCompare(String(b.fase)) || (Number(a.orden) || 0) - (Number(b.orden) || 0);
+		});
+		return tope ? r.slice(0, tope) : r;
+	}
+	// PDA de la sesión que se ofrecen (y se marcan por omisión) para la actividad: los de sus
+	// grados, solo si la actividad es del campo de la sesión
+	function pdaDeSesionParaActividad(spdaSesion, campoSesion, campo, grados) {
+		if (!campo || campo !== campoSesion) return [];
+		var g = gradosOrdenados(grados);
+		return (spdaSesion || []).filter(function (r) { return r && g.indexOf(Number(r.grado)) !== -1; });
+	}
+	// PDA de un contenido que se marcan solos: uno por grado si ese grado tiene uno solo
+	function pdaMarcadosPorOmision(pdaContenido, grados) {
+		var porGrado = {};
+		gradosOrdenados(grados).forEach(function (g) { porGrado[g] = []; });
+		(pdaContenido || []).forEach(function (p) { if (porGrado[Number(p.grado)]) porGrado[Number(p.grado)].push(p.id); });
+		var r = [];
+		Object.keys(porGrado).forEach(function (g) { if (porGrado[g].length === 1) r.push(porGrado[g][0]); });
+		return r;
+	}
+	/*
+		planLigas({ grados, deSesion: [spdaId], deCatalogo: [{ pda_id, grado }], spdaSesion: [{ id, pda_id, grado }] })
+		→ { ligar: [spdaId existentes], crear: [{ pda_id, grado }] }
+		Solo los de los grados de la actividad; un PDA del catálogo que la sesión ya tiene para ese
+		grado se reutiliza (no se duplica en sesiones_pda).
+	*/
+	function planLigas(d) {
+		d = d || {};
+		var g = gradosOrdenados(d.grados);
+		var porId = {}, porPda = {};
+		(d.spdaSesion || []).forEach(function (r) {
+			porId[r.id] = r;
+			if (r.pda_id) porPda[r.pda_id + "|" + Number(r.grado)] = r.id;
+		});
+		var ligar = [], crear = [], vistos = {};
+		(d.deSesion || []).forEach(function (id) {
+			var r = porId[id];
+			if (!r || g.indexOf(Number(r.grado)) === -1 || vistos[id]) return;
+			vistos[id] = true;
+			ligar.push(id);
+		});
+		(d.deCatalogo || []).forEach(function (p) {
+			var grado = Number(p && p.grado);
+			if (!p || !p.pda_id || g.indexOf(grado) === -1) return;
+			var ya = porPda[p.pda_id + "|" + grado];
+			if (ya) { if (!vistos[ya]) { vistos[ya] = true; ligar.push(ya); } return; }
+			var k = "n|" + p.pda_id + "|" + grado;
+			if (vistos[k]) return;
+			vistos[k] = true;
+			crear.push({ pda_id: p.pda_id, grado: grado });
+		});
+		return { ligar: ligar, crear: crear };
+	}
+
 	var api = {
 		CAMPOS: CAMPOS, TIPOS: TIPOS, NOMBRE_MAX: NOMBRE_MAX,
+		fasesDeGrados: fasesDeGrados, buscarContenidos: buscarContenidos,
+		pdaDeSesionParaActividad: pdaDeSesionParaActividad, pdaMarcadosPorOmision: pdaMarcadosPorOmision,
+		planLigas: planLigas,
 		etiquetaGrados: etiquetaGrados, siguientesPorProyecto: siguientesPorProyecto,
 		gradosPorOmision: gradosPorOmision, validarNuevo: validarNuevo, validarNombre: validarNombre,
 		tieneCaptura: tieneCaptura,

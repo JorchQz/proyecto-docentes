@@ -359,7 +359,7 @@
 		if (proyIds.length) {
 			sesiones = await todas(function () {
 				return sb.from("sesiones").select(detalle
-					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda), producto_sesion_pda(producto_sesion_id))"
+					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo)), producto_sesion_pda(producto_sesion_id))"
 					: "id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
 			});
 		}
