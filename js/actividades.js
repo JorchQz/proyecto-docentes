@@ -34,7 +34,7 @@ async function iniciarActividades() {
 	function consultaSesiones() {
 		let q = window.sb
 			.from("sesiones")
-			.select("id, proyecto_id, numero_sesion, campo_formativo, momento, duracion, inicio_actividades, desarrollo_actividades, cierre_actividades, proyectos!inner(id, titulo, estado, grupo_id)")
+			.select("id, proyecto_id, numero_sesion, campo_formativo, momento, duracion, inicio_actividades, desarrollo_actividades, cierre_actividades, proyectos!inner(id, titulo, estado, grupo_id, tipo)")
 			.eq("maestro_id", user.id);
 		if (grupoActivoId) q = q.eq("proyectos.grupo_id", grupoActivoId);
 		return q.order("numero_sesion", { ascending: true }).order("id");
@@ -42,7 +42,9 @@ async function iniciarActividades() {
 	// Si falla, lanza: no se dice "Aún no tienes proyectos con sesiones"
 	const sesiones = await window.Lectura.todas(consultaSesiones);
 
-	todasSesiones = sesiones || [];
+	// Sin las de "Actividades del trimestre" (actividades sueltas, tipo 'sueltas'): no son sesiones
+	// de una planeación y no tienen actividades del plan (se ven en Proyectos)
+	todasSesiones = (sesiones || []).filter(function (s) { return !(s.proyectos && s.proyectos.tipo === "sueltas"); });
 
 	const proyectosVistos = {};
 	todasSesiones.forEach(function (s) {

@@ -31,8 +31,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// "Trabajar hoy": por cada proyecto activo, su siguiente sesión sin fecha y las demás
 	// pendientes (js/productos-hoy.js): [{ proyecto, siguiente, otras }]
 	var siguientes = [];
-	var proyectoPorId = {};    // proyectos que mira Hoy (título y grados)
+	var proyectoPorId = {};    // proyectos que mira Hoy (título, grados y tipo)
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
+	// Días sin clase (o con clase) del grupo sobre el calendario SEP (calendario_ajustes): con ellos
+	// vencen las tareas y se revisa lo incompleto el siguiente día de clase (js/alcance-hoy.js)
+	var ajustesCal = [];
+	// Para quién es cada producto además de sus grados (producto_sesion_alumnos, mi_salon_b17):
+	// { productoId: { alumnoId: "incluir" | "excluir" } } — regla única en AlcanceHoy.recibeProducto
+	var asignaciones = {};
+	// "Pendientes de la clase anterior" que se revisaron en esta visita (siguen a la vista para
+	// poder corregir un toque): alumno|producto → true
+	var revisadosAqui = {};
+	// Los campos de una calificación que captura Hoy (los mismos de la bandeja)
+	var CAMPOS_CAL = ["estado_entrega", "nivel", "puntaje", "retroalimentacion", "revisar_en", "estado_en_clase", "completado_en"];
 	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { marcas, valor }
 	// (la marca de cada grupo de campos y el contenido) o null = no hay fila. Cada captura lo
 	// lleva como "la versión que vio" (js/bandeja-salida.js); se actualiza al confirmar (aquí o en
@@ -292,6 +303,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				if (v && v.estado) asistencia[d.alumno_id] = v.estado; else delete asistencia[d.alumno_id];
 				if (!pintado) return;
 				renderAsistencia();
+				renderPendientes();
 				renderCierre();
 			} else if (it.tipo === "registro" || it.tipo === "registro_borrar") {
 				if (d.fecha !== hoy) return;
@@ -307,11 +319,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} else if (it.tipo === "calificacion" && d.fila) {
 				var k = d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
 				var c = calificaciones[k] || { alumno_id: d.fila.alumno_id, producto_sesion_id: d.fila.producto_sesion_id };
-				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { c[f] = v ? v[f] : null; });
+				CAMPOS_CAL.forEach(function (f) { c[f] = v && v[f] !== undefined ? v[f] : null; });
 				if (id && !c.id) c.id = id;
 				calificaciones[k] = c;
 				if (!pintado) return;
 				renderTareas();
+				renderPendientes();
 				repintarSesiones();
 			}
 		} catch (e) {
@@ -330,7 +343,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		if (it.tipo === "calificacion" && d.fila) {
 			var c = calificaciones[d.fila.alumno_id + "|" + d.fila.producto_sesion_id] || {};
-			return ["estado_entrega", "nivel", "puntaje", "retroalimentacion"].some(function (f) {
+			return CAMPOS_CAL.some(function (f) {
 				var a = c[f] === undefined || c[f] === "" ? null : c[f], b = v ? v[f] : null;
 				return (a === null ? null : String(a)) !== (b === null || b === undefined ? null : String(b));
 			});
@@ -530,9 +543,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		});
 
+		// Los ajustes del grupo al calendario SEP: las tareas vencen y lo incompleto se revisa el
+		// siguiente día de clase (acotada: una fila por día ajustado del grupo, a lo más los días
+		// hábiles de un ciclo)
+		ajustesCal = await window.AlcanceHoy.leerAjustesCalendario(window.sb, user.id, grupo.id);
+
 		// Proyectos del grupo que mira "Hoy" (js/alcance-hoy.js) → sesiones → productos.
-		// Incluye los recién terminados: la tarea de su última sesión se revisa aquí.
-		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final, grados")
+		// Incluye los recién terminados: la tarea de su última sesión se revisa aquí. También el
+		// contenedor de las actividades sueltas del trimestre (tipo 'sueltas').
+		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final, grados, tipo")
 			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).or(window.AlcanceHoy.filtro(grupo, hoy));
 		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
@@ -548,10 +567,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		sesiones.forEach(function (s) { sesionPorId[s.id] = s; });
 		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
 		// Con varios proyectos activos, las de hoy van por proyecto y luego por número
+		// Las actividades sueltas van al final de las del día
 		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; })
 			.sort(function (a, b) {
-				var ta = (proyectoPorId[a.proyecto_id] || {}).titulo || "", tb = (proyectoPorId[b.proyecto_id] || {}).titulo || "";
-				return ta.localeCompare(tb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
+				var pa = proyectoPorId[a.proyecto_id] || {}, pb = proyectoPorId[b.proyecto_id] || {};
+				var sa = window.AlcanceHoy.esSueltas(pa) ? 1 : 0, sb = window.AlcanceHoy.esSueltas(pb) ? 1 : 0;
+				var ta = pa.titulo || "", tb = pb.titulo || "";
+				return sa - sb || ta.localeCompare(tb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
 			});
 
 		/*
@@ -587,20 +609,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// hasta que el maestro las revise)
 		tareas = productos.filter(function (p) {
 			if (p.tipo !== "tarea") return false;
-			var vence = window.AlcanceHoy.venceTarea(p.fecha_entrega, p.sesion && p.sesion.fecha);
+			var vence = venceDe(p);
 			return vence && vence <= hoy;
 		}).sort(function (a, b) {
-			var fa = window.AlcanceHoy.venceTarea(a.fecha_entrega, a.sesion && a.sesion.fecha) || "";
-			var fb = window.AlcanceHoy.venceTarea(b.fecha_entrega, b.sesion && b.sesion.fecha) || "";
+			var fa = venceDe(a) || "";
+			var fb = venceDe(b) || "";
 			return fa < fb ? 1 : fa > fb ? -1 : 0; // lo más reciente primero
 		});
 
-		// Calificaciones ya capturadas de esos productos
 		var idsRelevantes = productos.map(function (p) { return p.id; });
+		// Para quién es cada producto además de sus grados (sin tope, por lotes de productos)
+		var filasAsig = await window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
+			return window.sb.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+				.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
+		});
+		asignaciones = window.AlcanceHoy.indiceAsignaciones(filasAsig);
+
+		// Calificaciones ya capturadas de esos productos
 		function leerCalificaciones() {
 			return window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
 				return window.sb.from("calificaciones")
-					.select(conCaptura("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, fecha", "calificacion"))
+					.select(conCaptura("id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion, revisar_en, estado_en_clase, completado_en, fecha", "calificacion"))
 					.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id");
 			});
 		}
@@ -623,7 +652,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
 		// revisar: una tarea de hace dos semanas ya revisada no es trabajo pendiente.
 		tareas = tareas.filter(function (t) {
-			var vence = window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha);
+			var vence = venceDe(t);
 			if (vence === hoy) return true;
 			return alumnosDeProducto(t).some(function (al) {
 				return !(calificaciones[al.id + "|" + t.id] || {}).estado_entrega;
@@ -709,6 +738,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 				nivel: actual.nivel || null,
 				puntaje: actual.puntaje === undefined ? null : actual.puntaje,
 				retroalimentacion: actual.retroalimentacion || null,
+				// La revisión de una actividad que quedó incompleta en clase (van con el semáforo)
+				revisar_en: actual.revisar_en || null,
+				estado_en_clase: actual.estado_en_clase || null,
+				completado_en: actual.completado_en || null,
 			};
 			// La fecha es la del día en que se capturó por primera vez (solo va en el insert):
 			// revisar hoy una tarea de la semana pasada no la mueve (evaluado_en guarda el
@@ -725,26 +758,48 @@ document.addEventListener("DOMContentLoaded", async function () {
 			(activo ? clasesActivo : "bg-gray-100 text-gray-600 hover:bg-gray-200") + "'>" + esc(texto) + "</button>";
 	}
 
-	function filaAlumno(alumno, controles) {
+	// nota: texto chico bajo el nombre (por ejemplo "Trabaja con 2°" o "Se revisa el 29 sep")
+	function filaAlumno(alumno, controles, nota) {
 		return "<div class='flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-gray-100 last:border-0'>" +
 			"<div class='sm:w-56 shrink-0'>" +
 			"<span class='text-sm font-medium text-gray-800'>" + esc(alumno.nombre_completo) + "</span>" +
 			"<span class='text-xs text-gray-400 ml-2'>" + (alumno.num_lista || "") + " · " + alumno.grado + "°</span>" +
+			(nota ? "<span class='block text-xs font-semibold text-violet-700'>" + esc(nota) + "</span>" : "") +
 			"</div><div class='flex flex-wrap gap-2'>" + controles + "</div></div>";
 	}
 
+	// Cuándo vence una tarea (calendario SEP y ajustes del grupo: js/alcance-hoy.js)
+	function venceDe(t) {
+		return window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha, ajustesCal);
+	}
+
 	/*
-		A quién le toca un producto: a los alumnos de sus grados, y solo si el producto es
-		desde su alta (un alumno que llegó después no ve como pendientes las tareas de
-		antes). La regla es la de js/alcance-hoy.js, la misma de Inicio, Tareas y el motor.
+		A quién le toca un producto: REGLA ÚNICA de js/alcance-hoy.js (recibeProducto), la misma de
+		Inicio, Tareas, el motor y Qué le falta: los de sus grados que no se excluyeron, más los
+		incluidos ("¿Para quién?"), y solo si el producto es desde su alta (un alumno que llegó
+		después no ve como pendientes las tareas de antes).
 	*/
 	function alumnosDeProducto(producto) {
-		var grados = (producto.grados || []).map(Number);
-		var fecha = window.AlcanceHoy.fechaProducto(producto.sesion && producto.sesion.fecha, producto.fecha_entrega);
+		var fechaSesion = producto.sesion && producto.sesion.fecha;
 		return alumnos.filter(function (a) {
-			if (grados.indexOf(a.grado) === -1) return false;
-			return window.AlcanceHoy.cuentaDesdeAlta(a.alta, fecha, calificaciones[a.id + "|" + producto.id]);
+			return window.AlcanceHoy.recibeProducto(a, producto, asignaciones, fechaSesion, calificaciones[a.id + "|" + producto.id]);
 		});
+	}
+
+	// "Trabaja con 2°": un alumno incluido de otro grado (sigue en su grado para la boleta)
+	function notaTrabajaCon(alumno, producto) {
+		var g = window.AlcanceHoy.trabajaCon(alumno, producto, asignaciones);
+		return g ? "Trabaja con " + g : "";
+	}
+
+	// El rótulo de para quién es un producto ("3° y 4°", "2 alumnos de 3°", "2° + 2 alumnos de 3°")
+	function paraQuien(producto) {
+		return window.ProductosHoy.resumenPara(producto, asignaciones[producto.id], alumnos) ||
+			window.ProductosHoy.etiquetaGrados(producto.grados);
+	}
+
+	function esSuelta(sesion) {
+		return !!sesion && window.AlcanceHoy.esSueltas(proyectoPorId[sesion.proyecto_id]);
 	}
 
 	function agruparPorGrado(lista) {
@@ -779,6 +834,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		guardarAsistencia(alumnoId, btn.dataset.valor);
 		retirarCierreSiFalto(alumnoId);
 		renderAsistencia();
+		renderPendientes(); // quien faltó hoy sigue pendiente
 		renderCierre();
 	});
 
@@ -798,10 +854,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 		cont.innerHTML = tareas.map(function (t) {
-			var vence = window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha);
+			var vence = venceDe(t);
 			var atrasada = vence && vence < hoy;
-			var filas = agruparPorGrado(alumnosDeProducto(t)).map(function (g) {
-				var encabezado = (t.grados || []).length > 1
+			var porGrado = agruparPorGrado(alumnosDeProducto(t));
+			var filas = porGrado.map(function (g) {
+				var encabezado = porGrado.length > 1
 					? "<p class='text-xs font-semibold text-gray-500 mt-2 mb-1'>" + g.grado + "° grado</p>" : "";
 				return encabezado + g.alumnos.map(function (al) {
 					var cal = calificaciones[al.id + "|" + t.id] || {};
@@ -809,13 +866,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 						return chip(op.etiqueta, cal.estado_entrega === op.valor, op.activo,
 							"data-tarea='" + t.id + "' data-alumno='" + al.id + "' data-valor='" + op.valor + "'");
 					}).join("");
-					return filaAlumno(al, controles);
+					return filaAlumno(al, controles, notaTrabajaCon(al, t));
 				}).join("");
 			}).join("");
 			return "<div>" +
 				"<div class='flex items-center justify-between gap-2 mb-1'>" +
 				"<p class='font-semibold text-gray-800 text-sm'>" + esc(t.nombre) +
-				"<span class='text-blue-700'> · " + esc(window.ProductosHoy.etiquetaGrados(t.grados)) + "</span></p>" +
+				"<span class='text-blue-700'> · " + esc(paraQuien(t)) + "</span></p>" +
 				(atrasada ? "<span class='text-xs text-amber-600 shrink-0'>vencía el " + esc(fechaCorta(vence)) + "</span>" : "") +
 				"</div>" + filas + "</div>";
 		}).join("");
@@ -846,6 +903,97 @@ document.addEventListener("DOMContentLoaded", async function () {
 		renderTareas();
 	});
 
+	// ── Pendientes de la clase anterior ───────────────────────────────────────
+	/*
+		Actividades en clase que quedaron "Incompleta" y ya toca revisar (revisar_en llegó: el
+		siguiente día de clase del calendario SEP y los ajustes del grupo). Una fila por alumno y
+		actividad (decisión de Jorge del 2026-09-26):
+		  - "Lo completó" con el nivel que logró: vale ese nivel, completo;
+		  - "Sigue incompleta": queda incompleta definitiva (0.5) y sale en "Qué le falta".
+		Pasa una sola vez: revisada, ya no vuelve. Si el alumno faltó hoy, sigue pendiente (se
+		revisa cuando vuelva). Lo revisado en esta visita (o hoy) sigue a la vista para corregir.
+	*/
+	function pendientesDeRevisar() {
+		var lista = [];
+		Object.keys(calificaciones).forEach(function (k) {
+			var c = calificaciones[k];
+			if (!c || !c.estado_en_clase) return;
+			var revisadaHoy = (c.estado_en_clase === "completada" || c.estado_en_clase === "sigue_incompleta") &&
+				(revisadosAqui[k] || String(c.completado_en || "").slice(0, 10) === hoy);
+			if (!window.AlcanceHoy.tocaRevisar(c, hoy) && !revisadaHoy && !(revisadosAqui[k] && c.estado_en_clase === "incompleta")) return;
+			var producto = productoPorId(c.producto_sesion_id);
+			var alumno = alumnos.find(function (a) { return a.id === c.alumno_id; });
+			if (!producto || !alumno) return;
+			lista.push({ clave: k, cal: c, producto: producto, alumno: alumno });
+		});
+		return lista.sort(function (a, b) {
+			return (Number(a.alumno.grado) - Number(b.alumno.grado)) || ((a.alumno.num_lista || 0) - (b.alumno.num_lista || 0)) ||
+				String(a.producto.nombre || "").localeCompare(String(b.producto.nombre || ""), "es");
+		});
+	}
+
+	function renderPendientes() {
+		var seccion = document.getElementById("pendientes");
+		var cont = document.getElementById("pendientesLista");
+		if (!cont) return;
+		var lista = pendientesDeRevisar();
+		if (seccion && seccion.classList) seccion.classList.toggle("hidden", !lista.length);
+		if (!lista.length) {
+			cont.innerHTML = "";
+			var r0 = document.getElementById("pendientesResumen");
+			if (r0) r0.textContent = "";
+			return;
+		}
+		var sinRevisar = 0;
+		cont.innerHTML = lista.map(function (x) {
+			var c = x.cal, al = x.alumno, p = x.producto;
+			var falto = faltoHoy(al.id);
+			var pendiente = c.estado_en_clase === "incompleta";
+			if (pendiente) sinRevisar++;
+			var datos = "data-revisar-producto='" + p.id + "' data-alumno='" + al.id + "'";
+			var controles = "";
+			if (falto && pendiente) {
+				controles = "<span class='text-xs text-gray-500 self-center'>Faltó hoy: queda pendiente para su siguiente clase.</span>";
+			} else {
+				controles = "<span class='text-xs text-gray-500 self-center mr-1'>Lo completó:</span>" +
+					NIVELES.map(function (op) {
+						return chip(op.etiqueta, c.estado_en_clase === "completada" && c.nivel === op.valor, op.activo,
+							datos + " data-accion='completo' data-nivel-revision='" + op.valor + "'");
+					}).join("") +
+					chip("Sigue incompleta", c.estado_en_clase === "sigue_incompleta", "bg-amber-500 text-white", datos + " data-accion='sigue'");
+			}
+			var sesion = p.sesion || {};
+			var nota = (p.nombre || "Actividad") + " · " + (window.CamposFormativos ? window.CamposFormativos.largo(p.campo) : p.campo) +
+				(sesion.fecha ? " · incompleta el " + fechaCorta(sesion.fecha) : "");
+			return filaAlumno(al, controles, nota);
+		}).join("");
+		var r = document.getElementById("pendientesResumen");
+		if (r) r.textContent = sinRevisar ? sinRevisar + (sinRevisar === 1 ? " por revisar" : " por revisar") : "todas revisadas";
+	}
+
+	var pendientesCont = document.getElementById("pendientesLista");
+	if (pendientesCont && pendientesCont.addEventListener) {
+		pendientesCont.addEventListener("click", function (e) {
+			var btn = e.target.closest("button[data-revisar-producto]");
+			if (!btn) return;
+			var producto = productoPorId(btn.dataset.revisarProducto);
+			var alumno = alumnos.find(function (a) { return a.id === btn.dataset.alumno; });
+			if (!producto || !alumno) return;
+			var k = alumno.id + "|" + producto.id;
+			var c = calificaciones[k] || {};
+			var accion = btn.dataset.accion;
+			var yaEsa = accion === "sigue" ? c.estado_en_clase === "sigue_incompleta"
+				: c.estado_en_clase === "completada" && c.nivel === btn.dataset.nivelRevision;
+			// Tocar otra vez lo elegido lo regresa a pendiente (para corregir un toque)
+			guardarCalificacion(alumno, producto, yaEsa
+				? window.AlcanceHoy.cambiosIncompleta("pendiente", { hoy: hoy })
+				: window.AlcanceHoy.cambiosIncompleta(accion, { hoy: hoy, nivel: btn.dataset.nivelRevision }));
+			revisadosAqui[k] = true;
+			renderPendientes();
+			repintarSesiones();
+		});
+	}
+
 	// ── 3. Sesiones de hoy ────────────────────────────────────────────────────
 	// Bloque "Trabajar hoy": las siguientes sesiones pendientes del proyecto activo
 	// Una sesión pendiente con su botón "Trabajar hoy"
@@ -861,7 +1009,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// "Trabajar hoy": la siguiente de CADA proyecto activo, agrupadas, y las demás a un toque
 	function bloqueSiguientes() {
 		if (!siguientes.length) {
-			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en tus proyectos activos. Inicia un proyecto desde Proyectos.");
+			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en tus proyectos activos. Inicia un proyecto desde Proyectos o agrega una actividad suelta.");
 		}
 		return "<div class='rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
 			"<p class='text-sm font-semibold text-gray-800 mb-1'>" +
@@ -905,14 +1053,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? productos.map(function (p) { return bloqueProducto(p); }).join("")
 				: vacio("Esta sesión no tiene actividades para calificar. Agrega una con \"Agregar actividad o tarea\".");
 			var proyecto = proyectoPorId[ses.proyecto_id];
-			return "<div class='rounded-xl border border-gray-200 p-3'>" +
+			var suelta = esSuelta(ses);
+			return "<div class='rounded-xl border " + (suelta ? "border-violet-200 bg-violet-50/30" : "border-gray-200") + " p-3'>" +
 				"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2'>" +
-				"<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
-				" · " + esc(ses.campo_formativo || "") +
-				(proyecto && proyecto.titulo ? "<span class='block text-xs font-normal text-gray-500'>" + esc(proyecto.titulo) + "</span>" : "") + "</p>" +
+				(suelta
+					// Las actividades sueltas del día (sin proyecto): no son una sesión de la planeación
+					? "<p class='font-semibold text-gray-800 text-sm'>" + esc(window.AlcanceHoy.TITULO_SUELTAS) + " · " + esc(ses.campo_formativo || "") +
+						"<span class='block text-xs font-normal text-gray-500'>Actividades sin proyecto de hoy. Puedes pasarlas a un proyecto cuando quieras.</span></p>"
+					: "<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
+						" · " + esc(ses.campo_formativo || "") +
+						(proyecto && proyecto.titulo ? "<span class='block text-xs font-normal text-gray-500'>" + esc(proyecto.titulo) + "</span>" : "") + "</p>") +
 				"<span class='flex flex-wrap gap-2 shrink-0'>" +
-				// Una sesión con calificaciones o ya terminada no se quita de hoy (volvería a "pendiente")
-				(sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" ? "" :
+				// Una sesión con calificaciones o ya terminada no se quita de hoy (volvería a "pendiente");
+				// las sueltas no se quitan de hoy (son de hoy)
+				(suelta || sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" ? "" :
 					"<button type='button' data-quitar-hoy='" + ses.id + "' " +
 					"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-500 hover:bg-gray-50'>Quitar de hoy</button>") +
 				"<button type='button' data-agregar-producto='" + ses.id + "' " +
@@ -946,10 +1100,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		renderSesiones();
 	}
 
+	// "Incompleta: se revisa el 29 sep" (o "La completó el 29 sep" / "Sigue incompleta")
+	function notaIncompleta(cal) {
+		if (!cal) return "";
+		if (cal.estado_en_clase === "incompleta") return cal.revisar_en ? "Incompleta: se revisa el " + fechaCorta(cal.revisar_en) : "Incompleta";
+		if (cal.estado_en_clase === "completada") return "Quedó incompleta; la completó" + (cal.completado_en ? " el " + fechaCorta(cal.completado_en) : "");
+		if (cal.estado_en_clase === "sigue_incompleta") return "Sigue incompleta";
+		return "";
+	}
+
 	function bloqueProducto(producto) {
-		var deGrados = (producto.grados || []).length > 1;
-		var filas = agruparPorGrado(alumnosDeProducto(producto)).map(function (g) {
-			var encabezado = deGrados
+		var porGrado = agruparPorGrado(alumnosDeProducto(producto));
+		var filas = porGrado.map(function (g) {
+			var encabezado = porGrado.length > 1
 				? "<p class='text-xs font-semibold text-gray-500 mt-2 mb-1'>" + g.grado + "° grado</p>" : "";
 			return encabezado + g.alumnos.map(function (al) {
 				var clave = al.id + "|" + producto.id;
@@ -958,6 +1121,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 					return chip(op.etiqueta, cal.nivel === op.valor, op.activo,
 						"data-producto='" + producto.id + "' data-alumno='" + al.id + "' data-nivel='" + op.valor + "'");
 				}).join("");
+				// Incompleta: se revisa el siguiente día de clase (Pendientes de la clase anterior)
+				controles += chip("Incompleta", cal.estado_entrega === "incompleto", "bg-amber-400 text-white",
+					"data-producto='" + producto.id + "' data-alumno='" + al.id + "' data-incompleta='1'");
 				controles += chip("No entregó", cal.estado_entrega === "no_entregado", "bg-red-500 text-white",
 					"data-producto='" + producto.id + "' data-alumno='" + al.id + "' data-estado='no_entregado'");
 				controles += chip("No aplica", cal.estado_entrega === "no_aplica", "bg-gray-500 text-white",
@@ -965,22 +1131,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 				controles += "<button type='button' data-detalle='" + producto.id + "' data-alumno='" + al.id + "' " +
 					"class='min-h-[44px] px-3 rounded-xl text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50'>" +
 					(cal.puntaje != null || cal.retroalimentacion ? "Detalle ·" : "Detalle") + "</button>";
-				return filaAlumno(al, controles) + detalleProducto(producto, al, cal);
+				var nota = [notaTrabajaCon(al, producto), notaIncompleta(cal)].filter(Boolean).join(" · ");
+				return filaAlumno(al, controles, nota) + detalleProducto(producto, al, cal);
 			}).join("");
 		}).join("");
 		return "<div class='mb-3'>" +
 			"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2'>" +
 			"<p class='text-sm font-medium text-gray-700'>" + esc(producto.nombre) +
-			// Sus grados: en multigrado salían bloques iguales sin decir de qué grado eran
-			"<span class='text-sm font-semibold text-blue-700'> · " + esc(window.ProductosHoy.etiquetaGrados(producto.grados)) + "</span>" +
+			// Para quién: sus grados (en multigrado salían bloques iguales sin decir de qué grado
+			// eran) y los alumnos incluidos o excluidos
+			"<span class='text-sm font-semibold text-blue-700'> · " + esc(paraQuien(producto)) + "</span>" +
 			"<span class='text-xs text-gray-400 ml-2'>" + esc(producto.campo || "") + "</span></p>" +
 			botonesProducto(producto) + "</div>" +
-			filas + "</div>";
+			(filas || vacio("Nadie recibe esta actividad todavía. Usa «Para quién» para elegir a los alumnos.")) + "</div>";
 	}
 
-	// Renombrar y quitar un producto (quitar solo si no tiene calificaciones: lo revisa al tocar)
+	// Para quién, renombrar y quitar un producto (quitar solo si no tiene calificaciones: lo revisa
+	// al tocar); en una actividad suelta, también "Pasar a un proyecto"
 	function botonesProducto(producto) {
-		return "<span class='flex gap-2 shrink-0'>" +
+		return "<span class='flex flex-wrap gap-2 shrink-0'>" +
+			"<button type='button' data-para-quien='" + producto.id + "' aria-label='Para quién es " + esc(producto.nombre) + "' " +
+			"class='min-h-[44px] px-3 rounded-lg text-sm text-gray-600 hover:bg-gray-100'>Para quién</button>" +
+			(esSuelta(producto.sesion)
+				? "<button type='button' data-pasar-proyecto='" + producto.id + "' aria-label='Pasar " + esc(producto.nombre) + " a un proyecto' " +
+					"class='min-h-[44px] px-3 rounded-lg text-sm text-violet-700 hover:bg-violet-50'>Pasar a un proyecto</button>"
+				: "") +
 			"<button type='button' data-renombrar='" + producto.id + "' aria-label='Renombrar " + esc(producto.nombre) + "' " +
 			"class='min-h-[44px] px-3 rounded-lg text-sm text-gray-600 hover:bg-gray-100'>Renombrar</button>" +
 			"<button type='button' data-quitar-producto='" + producto.id + "' aria-label='Quitar " + esc(producto.nombre) + "' " +
@@ -994,10 +1169,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return "<div class='mt-2 rounded-lg bg-gray-50 border border-gray-200 p-3'>" +
 			"<p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>Tareas de esta sesión</p>" +
 			lista.map(function (t) {
-				var vence = window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha);
+				var vence = venceDe(t);
 				return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1 border-b border-gray-100 last:border-0'>" +
 					"<p class='text-sm text-gray-700'>" + esc(t.nombre) +
-					"<span class='text-sm font-semibold text-blue-700'> · " + esc(window.ProductosHoy.etiquetaGrados(t.grados)) + "</span>" +
+					"<span class='text-sm font-semibold text-blue-700'> · " + esc(paraQuien(t)) + "</span>" +
 					(vence ? "<span class='block text-xs text-gray-500'>" + (vence === hoy ? "Se revisa hoy, arriba en Tareas por revisar" : "Se revisa el " + esc(fechaCorta(vence))) + "</span>" : "") +
 					"</p>" + botonesProducto(t) + "</div>";
 			}).join("") + "</div>";
@@ -1049,6 +1224,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var btnQuitarProd = e.target.closest("button[data-quitar-producto]");
 		if (btnQuitarProd) { await quitarProducto(btnQuitarProd.dataset.quitarProducto, btnQuitarProd); return; }
 
+		var btnPara = e.target.closest("button[data-para-quien]");
+		if (btnPara) { editarParaQuien(btnPara.dataset.paraQuien, btnPara); return; }
+
+		var btnPasar = e.target.closest("button[data-pasar-proyecto]");
+		if (btnPasar) { await pasarAProyecto(btnPasar.dataset.pasarProyecto, btnPasar); return; }
+
 		var btnDetalle = e.target.closest("button[data-detalle]");
 		if (btnDetalle) {
 			var idDetalle = "detalle-" + btnDetalle.dataset.detalle + "-" + btnDetalle.dataset.alumno;
@@ -1075,16 +1256,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!producto || !alumno) return;
 		var cal = calificaciones[alumno.id + "|" + producto.id] || {};
 
+		// Cualquier toque del semáforo en la clase deja sin efecto la marca de "Incompleta" (la
+		// revisión del siguiente día de clase); la vuelve a poner solo el botón Incompleta
+		var sinIncompleta = window.AlcanceHoy.cambiosIncompleta("quitar");
 		if (btn.dataset.nivel) {
 			var nuevoNivel = cal.nivel === btn.dataset.nivel ? null : btn.dataset.nivel;
 			// Tocar un nivel implica que sí entregó
-			guardarCalificacion(alumno, producto, {
+			guardarCalificacion(alumno, producto, Object.assign({
 				nivel: nuevoNivel,
 				estado_entrega: nuevoNivel ? "entregado" : null,
-			});
+			}, sinIncompleta));
+		} else if (btn.dataset.incompleta) {
+			// Incompleta en clase: cuenta como incompleta (0.5) y se revisa el siguiente día de clase
+			// del calendario SEP y los ajustes del grupo; tocarla otra vez la quita
+			guardarCalificacion(alumno, producto, cal.estado_entrega === "incompleto"
+				? Object.assign({ estado_entrega: null, nivel: null }, sinIncompleta)
+				: window.AlcanceHoy.cambiosIncompleta("marcar", { hoy: hoy, ajustes: ajustesCal }));
 		} else if (btn.dataset.estado) {
 			var nuevoEstado = cal.estado_entrega === btn.dataset.estado ? null : btn.dataset.estado;
-			guardarCalificacion(alumno, producto, { estado_entrega: nuevoEstado, nivel: null });
+			guardarCalificacion(alumno, producto, Object.assign({ estado_entrega: nuevoEstado, nivel: null }, sinIncompleta));
 		}
 		renderSesiones();
 	});
@@ -1334,25 +1524,91 @@ document.addEventListener("DOMContentLoaded", async function () {
 		en sesiones_pda de esa sesión y grado (ProductosHoy.planLigas), para que el trigger de
 		evaluación formativa y "Qué le falta" lo cuenten.
 	*/
+	/*
+		sesionId null: ACTIVIDAD O TAREA SUELTA (sin proyecto, decisión de Jorge del 2026-09-26): se
+		guarda en "Actividades del trimestre" del grupo (proyecto tipo 'sueltas', una sesión por fecha
+		y campo: agregar_actividad_suelta, mi_salon_b17). Pide además el día de la actividad (una
+		tarea suelta se deja hoy). "¿Para quién?" (los dos casos): todo el grupo, uno o varios grados
+		o los alumnos que la maestra marca (ProductosHoy.planAsignacion); producto, asignación y PDA
+		se guardan juntos en una transacción (agregar_producto_sesion).
+	*/
 	function agregarProducto(sesionId, origen) {
-		var sesion = sesionesHoy.find(function (s) { return s.id === sesionId; });
-		if (!sesion) return;
+		var suelta = !sesionId;
+		var sesion = suelta ? null : sesionesHoy.find(function (s) { return s.id === sesionId; });
+		if (!suelta && !sesion) return;
 		if (sinSenal()) { mensaje("error", "Agregar una actividad o una tarea necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal."); return; }
-		var campoSesion = window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
+		var campoSesion = sesion && window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
 		var gradosGrupo = (grupo.grados || []).map(Number).filter(function (g) { return g >= 1 && g <= 6; }).sort(function (a, b) { return a - b; });
-		var porOmision = gradosDeLaSesion(sesion);
-		var fechaOmision = window.AlcanceHoy.venceTarea(null, hoy);
+		// Los grados de los alumnos (por si el grupo no los tiene todos anotados)
+		alumnos.forEach(function (a) { if (gradosGrupo.indexOf(Number(a.grado)) === -1) gradosGrupo.push(Number(a.grado)); });
+		gradosGrupo.sort(function (a, b) { return a - b; });
+		var porOmision = sesion ? gradosDeLaSesion(sesion) : gradosGrupo;
+		var fechaOmision = window.AlcanceHoy.venceTarea(null, hoy, ajustesCal);
 		var refs = {};
-		var pda = { spda: null, contenidos: null, errorCatalogo: false, contenido: null, pdaContenido: [], cargandoContenido: false,
+		var pda = { spda: suelta ? [] : null, contenidos: null, errorCatalogo: false, contenido: null, pdaContenido: [], cargandoContenido: false,
 			tocadosSesion: {}, marcadosCatalogo: {} };
+		var cargaPda = null; // la lectura de los PDA de la sesión (alAceptar la espera)
 
+		// "¿Para quién?": lo elegido en el diálogo (ProductosHoy.planAsignacion)
+		function planPara() {
+			var modo = refs.para ? (refs.para.querySelector("input[name='paraNuevo']:checked") || {}).value : "grupo";
+			return window.ProductosHoy.planAsignacion({
+				modo: modo || "grupo",
+				gradosGrupo: gradosGrupo,
+				gradosElegidos: refs.para ? Array.from(refs.para.querySelectorAll("input[name='gradoNuevo']:checked")).map(function (c) { return Number(c.value); }) : porOmision,
+				alumnos: alumnos,
+				elegidos: refs.para ? Array.from(refs.para.querySelectorAll("input[name='alumnoNuevo']:checked")).map(function (c) { return c.value; }) : [],
+				nivel: refs.nivel ? refs.nivel.value : "",
+			});
+		}
+		// Los grados cuyos PDA se ofrecen: los de la actividad y los de sus alumnos incluidos
 		function gradosElegidos() {
-			return gradosGrupo.length > 1 && refs.grados
-				? Array.from(refs.grados.querySelectorAll("input[name='gradoNuevo']:checked")).map(function (c) { return Number(c.value); })
-				: gradosGrupo;
+			var p = planPara();
+			return p.ok ? p.gradosPda : [];
 		}
 		function campoLargo(corto) { return window.CamposFormativos ? window.CamposFormativos.largo(corto) : corto; }
 		var estiloOpcion = "flex items-start gap-3 min-h-[44px] rounded-xl border border-gray-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
+
+		/*
+			Sección "¿Para quién?": todo el grupo, uno o varios grados (en multigrado) o los alumnos
+			que la maestra marca, agrupados por grado, con el grado con el que trabajan (por
+			ejemplo dos de 3° que trabajan con 2°). omision: los grados por omisión.
+		*/
+		function construirParaQuien(omision) {
+			var fs = document.createElement("fieldset");
+			fs.className = "flex flex-col gap-2";
+			var modo0 = omision.length && omision.length < gradosGrupo.length ? "grados" : "grupo";
+			var opciones = [["grupo", "Todo el grupo"]];
+			if (gradosGrupo.length > 1) opciones.push(["grados", "Uno o varios grados"]);
+			opciones.push(["alumnos", "Alumnos que elijo"]);
+			var etiqueta = "flex items-center gap-2 min-h-[44px] rounded-xl border border-gray-300 px-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
+			fs.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>¿Para quién?</legend>" +
+				"<div class='grid grid-cols-1 sm:grid-cols-" + opciones.length + " gap-2'>" + opciones.map(function (o) {
+					return "<label class='" + etiqueta + "'><input type='radio' name='paraNuevo' value='" + o[0] + "'" + (o[0] === modo0 ? " checked" : "") +
+						" class='h-5 w-5 text-blue-600'><span class='text-sm text-gray-800'>" + o[1] + "</span></label>";
+				}).join("") + "</div>" +
+				"<div data-para='grados' class='flex flex-wrap gap-2'>" + gradosGrupo.map(function (g) {
+					return "<label class='" + etiqueta + "'><input type='checkbox' name='gradoNuevo' value='" + g + "'" +
+						(omision.indexOf(g) !== -1 ? " checked" : "") + " class='h-5 w-5 text-blue-600 rounded'><span class='text-sm text-gray-800'>" + g + "°</span></label>";
+				}).join("") + "</div>" +
+				"<div data-para='alumnos' class='flex flex-col gap-2'>" + listaAlumnosHtml("alumnoNuevo", {}, {}) +
+				"<label class='flex flex-col gap-1 text-sm font-medium text-gray-700'>¿Con qué grado trabajan?" +
+				"<select data-nivel class='min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 bg-white'>" +
+				"<option value=''>Cada uno con el suyo</option>" + [1, 2, 3, 4, 5, 6].map(function (g) {
+					return "<option value='" + g + "'>Con " + g + "° (siguen en su grado para la boleta)</option>";
+				}).join("") + "</select></label></div>";
+			refs.para = fs;
+			refs.nivel = fs.querySelector("select[data-nivel]");
+			function mostrar() {
+				var m = (fs.querySelector("input[name='paraNuevo']:checked") || {}).value;
+				var g = fs.querySelector("[data-para='grados']"), a = fs.querySelector("[data-para='alumnos']");
+				if (g) g.classList.toggle("hidden", m !== "grados");
+				if (a) a.classList.toggle("hidden", m !== "alumnos");
+			}
+			fs.addEventListener("change", mostrar);
+			mostrar();
+			return fs;
+		}
 
 		// Sección "PDA que evalúa (opcional)"
 		function construirPda(cuerpo) {
@@ -1404,7 +1660,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		async function cargarPda() {
-			try {
+			if (!suelta) try {
 				var res = await window.sb.from("sesiones_pda").select("id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo))").eq("sesion_id", sesion.id).order("grado");
 				if (res.error) throw res.error;
 				// El campo de cada PDA es el de su contenido en el catálogo (ProductosHoy.pdaDeSesionParaActividad)
@@ -1419,7 +1675,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				pda.spda = null;
 			}
 			try {
-				pda.contenidos = await contenidosDelCatalogo(window.ProductosHoy.fasesDeGrados(gradosGrupo));
+				// Todas las fases: un alumno puede trabajar con otro grado ("¿Para quién?")
+				pda.contenidos = await contenidosDelCatalogo(window.ProductosHoy.fasesDeGrados([1, 2, 3, 4, 5, 6]));
 			} catch (err) {
 				console.error("hoy: catálogo de contenidos", err);
 				pda.errorCatalogo = true;
@@ -1506,7 +1763,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			pintarResultados();
 			pintarContenido();
 			try {
-				var res = await window.sb.from("catalogo_pda").select("id, grado, pda, orden").eq("contenido_id", c.id).in("grado", gradosGrupo).order("orden");
+				var res = await window.sb.from("catalogo_pda").select("id, grado, pda, orden").eq("contenido_id", c.id).in("grado", [1, 2, 3, 4, 5, 6]).order("orden");
 				if (res.error) throw res.error;
 				if (pda.contenido !== c) return;
 				pda.pdaContenido = res.data || [];
@@ -1576,9 +1833,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		abrirDialogo({
 			origen: origen,
-			titulo: "Agregar actividad o tarea",
-			subtitulo: "Sesión " + (sesion.numero_sesion || "") + " · " + (sesion.campo_formativo || "") +
-				((proyectoPorId[sesion.proyecto_id] || {}).titulo ? " · " + proyectoPorId[sesion.proyecto_id].titulo : ""),
+			titulo: suelta ? "Actividad o tarea suelta" : "Agregar actividad o tarea",
+			subtitulo: suelta
+				? "Sin proyecto: se guarda en " + window.AlcanceHoy.TITULO_SUELTAS + " y cuenta para la boleta. Después puedes pasarla a un proyecto."
+				: esSuelta(sesion)
+				? window.AlcanceHoy.TITULO_SUELTAS + " · " + (sesion.campo_formativo || "")
+				: "Sesión " + (sesion.numero_sesion || "") + " · " + (sesion.campo_formativo || "") +
+					((proyectoPorId[sesion.proyecto_id] || {}).titulo ? " · " + proyectoPorId[sesion.proyecto_id].titulo : ""),
 			aceptar: "Agregar",
 			construir: function (cuerpo) {
 				var nombre = campoTexto("Nombre", { type: "text", maxlength: String(window.ProductosHoy.NOMBRE_MAX), autocomplete: "off",
@@ -1620,19 +1881,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 				campo.appendChild(sel);
 				cuerpo.appendChild(campo);
 
-				var grados = document.createElement("fieldset");
-				grados.className = "flex flex-col gap-2" + (gradosGrupo.length > 1 ? "" : " hidden");
-				grados.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>¿Para qué grados?</legend>" +
-					"<div class='flex flex-wrap gap-2'>" + gradosGrupo.map(function (g) {
-						return "<label class='flex items-center gap-2 min-h-[44px] rounded-xl border border-gray-300 px-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50'>" +
-							"<input type='checkbox' name='gradoNuevo' value='" + g + "'" + (porOmision.indexOf(g) !== -1 ? " checked" : "") + " class='h-5 w-5 text-blue-600 rounded'>" +
-							"<span class='text-sm text-gray-800'>" + g + "°</span></label>";
-					}).join("") + "</div>";
+				var grados = construirParaQuien(porOmision);
 				cuerpo.appendChild(grados);
 				refs.campo = sel;
 				refs.grados = grados;
 
 				construirPda(cuerpo);
+
+				// Suelta: el día de la actividad (por omisión hoy; ese día aparece en Hoy para calificarla)
+				if (suelta) {
+					var dia = campoTexto("Día de la actividad", { type: "date", min: hoy, value: hoy });
+					var ayudaDia = document.createElement("span");
+					ayudaDia.className = "text-xs font-normal text-gray-500";
+					ayudaDia.textContent = "Ese día aparece en Hoy para calificarla.";
+					dia.cont.appendChild(ayudaDia);
+					refs.dia = dia.input;
+					refs.diaCont = dia.cont;
+					cuerpo.appendChild(dia.cont);
+				}
 
 				var fecha = campoTexto("Día en que se revisa la tarea", { type: "date", min: hoy, value: fechaOmision || "" });
 				fecha.cont.classList.add("hidden");
@@ -1647,6 +1913,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				tipo.addEventListener("change", function () {
 					var esTarea = (tipo.querySelector("input:checked") || {}).value === "tarea";
 					refs.fechaCont.classList.toggle("hidden", !esTarea);
+					if (refs.diaCont) refs.diaCont.classList.toggle("hidden", esTarea); // la tarea suelta se deja hoy
 				});
 				refs.tipo = tipo;
 				refs.grados = grados;
@@ -1655,81 +1922,190 @@ document.addEventListener("DOMContentLoaded", async function () {
 					pintarPda();
 				});
 				grados.addEventListener("change", pintarPda);
-				cargarPda();
+				cargaPda = cargarPda();
 			},
 			alAceptar: async function (form, avisar) {
+				var plan = planPara();
+				var focoPara = function (f) {
+					return f === "alumnos" ? refs.para.querySelector("input[name='alumnoNuevo']") || refs.para.querySelector("input")
+						: refs.para.querySelector(f === "grados" ? "input[name='gradoNuevo']" : "input");
+				};
+				if (!plan.ok) { avisar(plan.error, focoPara(plan.foco)); return false; }
 				var datos = {
 					nombre: refs.nombre.value,
 					tipo: (refs.tipo.querySelector("input:checked") || {}).value,
 					campo: refs.campo.value,
-					grados: gradosGrupo.length > 1
-						? Array.from(refs.grados.querySelectorAll("input:checked")).map(function (c) { return c.value; })
-						: gradosGrupo,
+					grados: plan.grados,
+					incluidos: plan.incluidos,
 					fechaRevision: refs.fecha.value,
+					fecha: refs.dia ? refs.dia.value : null,
 				};
-				var v = window.ProductosHoy.validarNuevo(datos, { hoy: hoy, gradosSesion: porOmision });
+				var ctxV = { hoy: hoy, gradosSesion: porOmision };
+				var v = suelta ? window.ProductosHoy.validarSuelta(datos, ctxV) : window.ProductosHoy.validarNuevo(datos, ctxV);
 				if (!v.ok) {
-					var foco = { nombre: refs.nombre, campo: refs.campo, fecha: refs.fecha,
-						grados: refs.grados.querySelector("input"), tipo: refs.tipo.querySelector("input") }[v.foco];
+					var foco = { nombre: refs.nombre, campo: refs.campo, fecha: refs.fecha, fechaSuelta: refs.dia,
+						grados: focoPara("grados"), tipo: refs.tipo.querySelector("input") }[v.foco];
 					avisar(v.error, foco);
 					return false;
 				}
 				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
-				var fila = Object.assign({ sesion_id: sesion.id, maestro_id: user.id }, v.fila);
-				var ultimo = (productosPorSesion[sesion.id] || []).reduce(function (m, p) { return Math.max(m, Number(p.orden) || 0); }, 0);
-				fila.orden = Math.min(ultimo + 1, 32000);
-				var res = await window.sb.from("productos_sesion").insert(fila)
-					.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden").single();
+				// PDA elegidos: los de la sesión se ligan y los del catálogo se reutilizan o se crean
+				// Los PDA de la sesión se leen al abrir: si la maestra aceptó antes de que llegaran, se esperan
+				if (cargaPda) await cargaPda;
+				var eleccion = eleccionPda();
+				var ligas = eleccion
+					? window.ProductosHoy.planLigas({ grados: plan.gradosPda, deSesion: eleccion.deSesion, deCatalogo: eleccion.deCatalogo, spdaSesion: eleccion.spdaSesion })
+					: { ligar: [], crear: [] };
+				var producto = { tipo: v.fila.tipo, nombre: v.fila.nombre, grados: v.fila.grados, modalidad: v.fila.modalidad,
+					campo: v.fila.campo, fecha_entrega: v.fila.fecha_entrega };
+				// Producto, "para quién" y PDA en una sola transacción (mi_salon_b17)
+				var res = suelta
+					? await window.sb.rpc("agregar_actividad_suelta", { p_grupo: grupo.id, p_fecha: v.fecha, p_producto: producto,
+						p_asignacion: plan.filas, p_crear: ligas.crear })
+					: await window.sb.rpc("agregar_producto_sesion", { p_sesion: sesion.id, p_producto: producto,
+						p_asignacion: plan.filas, p_ligar: ligas.ligar, p_crear: ligas.crear });
 				if (res.error) {
 					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo agregar: " + (res.error.message || "error desconocido") + ".");
 					return false;
 				}
-				var nuevo = res.data;
-				nuevo.sesion = sesion;
-				(productosPorSesion[sesion.id] = productosPorSesion[sesion.id] || []).push(nuevo);
-				if (nuevo.tipo === "tarea") {
-					var vence = window.AlcanceHoy.venceTarea(nuevo.fecha_entrega, sesion.fecha);
-					if (vence && vence <= hoy) tareas.unshift(nuevo);
+				var nuevo = suelta ? (res.data || {}).producto : res.data;
+				var ses = sesion;
+				if (suelta) ses = incorporarSesionSuelta(res.data);
+				if (!nuevo || !nuevo.id) { avisar("No se pudo agregar: la base no devolvió la actividad."); return false; }
+				nuevo.sesion = ses;
+				asignaciones[nuevo.id] = window.AlcanceHoy.indiceAsignaciones(plan.filas.map(function (f) {
+					return { producto_sesion_id: nuevo.id, alumno_id: f.alumno_id, modo: f.modo };
+				}))[nuevo.id] || {};
+				if (ses) {
+					(productosPorSesion[ses.id] = productosPorSesion[ses.id] || []).push(nuevo);
+					if (nuevo.tipo === "tarea") {
+						var vence = venceDe(nuevo);
+						if (vence && vence <= hoy) tareas.unshift(nuevo);
+					}
 				}
-				var ligado = await ligarPdaElegidos(nuevo, sesion, eleccionPda());
 				renderTareas();
 				renderSesiones();
+				var cuando = suelta && nuevo.tipo !== "tarea" && v.fecha !== hoy
+					? " Aparece en Hoy el " + fechaCorta(v.fecha) + " para calificarla." : "";
 				mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
-					window.ProductosHoy.etiquetaGrados(nuevo.grados) + "." +
-					(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(window.AlcanceHoy.venceTarea(nuevo.fecha_entrega, sesion.fecha)) + "." : "") +
-					(ligado ? "" : " No se pudo ligar a los PDA de la sesión; sus calificaciones cuentan igual para la boleta."));
+					paraQuien(nuevo) + "." + cuando +
+					(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + "." : "") +
+					(eleccion ? "" : " No se pudieron leer los PDA de la sesión: se agregó sin PDA; sus calificaciones cuentan igual para la boleta."));
 			},
 		});
 	}
 
 	/*
-		Liga la actividad nueva con los PDA elegidos en el diálogo: los de la sesión que quedaron
-		marcados y los del catálogo; un PDA del catálogo que la sesión no tiene para ese grado se
-		crea en sesiones_pda de esa sesión (como js/sesiones-materializar.js), así el trigger de
-		evaluación formativa lo cuenta al calificar. Sin elección (no se pudieron leer los PDA de
-		la sesión), como antes: los de la sesión si es del mismo campo.
+		Una actividad suelta recién creada: su sesión (la de esa fecha y campo en "Actividades del
+		trimestre") entra a la pantalla si es de hoy. → la sesión, o null si es de otro día.
 	*/
-	async function ligarPdaElegidos(producto, sesion, eleccion) {
-		if (!eleccion) return ligarAPdaDeSesion(producto, sesion);
-		var plan = window.ProductosHoy.planLigas({ grados: producto.grados, deSesion: eleccion.deSesion, deCatalogo: eleccion.deCatalogo, spdaSesion: eleccion.spdaSesion });
-		if (!plan.ligar.length && !plan.crear.length) return true;
-		try {
-			var ids = plan.ligar.slice();
-			if (plan.crear.length) {
-				var ins = await window.sb.from("sesiones_pda").insert(plan.crear.map(function (p) {
-					return { sesion_id: sesion.id, pda_id: p.pda_id, grado: p.grado, criterio_aplicado: null };
-				})).select("id");
-				if (ins.error) throw ins.error;
-				(ins.data || []).forEach(function (r) { ids.push(r.id); });
-			}
-			var ligas = ids.map(function (id) { return { producto_sesion_id: producto.id, sesion_pda_id: id }; });
-			var res = await window.sb.from("producto_sesion_pda").insert(ligas);
-			if (res.error) throw res.error;
-			return true;
-		} catch (err) {
-			console.error("hoy: ligar a los PDA elegidos", err);
-			return false;
+	function incorporarSesionSuelta(r) {
+		if (!r || !r.sesion || !r.sesion.id) return null;
+		if (r.proyecto_id && !proyectoPorId[r.proyecto_id]) {
+			proyectoPorId[r.proyecto_id] = { id: r.proyecto_id, titulo: window.AlcanceHoy.TITULO_SUELTAS, tipo: "sueltas", estado: "completado" };
 		}
+		var s = sesionesHoy.find(function (x) { return x.id === r.sesion.id; });
+		if (s) return s;
+		if (r.sesion.fecha !== hoy) return null;
+		s = { id: r.sesion.id, numero_sesion: r.sesion.numero_sesion, fecha: r.sesion.fecha, campo_formativo: r.sesion.campo_formativo,
+			momento: null, proyecto_id: r.proyecto_id, estado_sesion: r.sesion.estado_sesion };
+		sesionesHoy.push(s);
+		return s;
+	}
+
+	// Casillas de los alumnos del grupo, por grado. marcados / bloqueados: { alumnoId: true }
+	function listaAlumnosHtml(nombre, marcados, bloqueados) {
+		return "<div class='max-h-72 overflow-y-auto rounded-xl border border-gray-200 p-2 flex flex-col gap-1'>" +
+			agruparPorGrado(alumnos).map(function (g) {
+				return "<p class='text-xs font-semibold text-gray-500 mt-1'>" + g.grado + "° grado</p>" +
+					"<div class='grid grid-cols-1 sm:grid-cols-2 gap-1'>" + g.alumnos.map(function (a) {
+						var bloq = bloqueados && bloqueados[a.id];
+						return "<label class='flex items-center gap-3 min-h-[44px] rounded-lg px-2 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50'>" +
+							"<input type='checkbox' name='" + nombre + "' value='" + esc(a.id) + "'" + (marcados && marcados[a.id] ? " checked" : "") +
+							(bloq ? " disabled" : "") + " class='h-5 w-5 text-blue-600 rounded shrink-0'>" +
+							"<span class='text-sm text-gray-800'>" + esc(a.nombre_completo) +
+							(bloq ? "<span class='block text-xs text-gray-500'>Ya tiene calificación: no se puede quitar</span>" : "") + "</span></label>";
+					}).join("") + "</div>";
+			}).join("") + "</div>";
+	}
+
+	/*
+		"Para quién" de un producto ya creado (decisión de Jorge del 2026-09-26): agregar alumnos
+		siempre se puede; quitar, solo a quien no tiene calificación (su casilla sale bloqueada y la
+		base lo revisa otra vez: guardar_asignacion_producto). Sus grados no cambian.
+	*/
+	function editarParaQuien(productoId, origen) {
+		var producto = productoPorId(productoId);
+		if (!producto) return;
+		if (sinSenal()) { mensaje("error", "Cambiar para quién es necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		var marcados = {}, bloqueados = {};
+		alumnos.forEach(function (a) {
+			if (!window.AlcanceHoy.asignadoA(a, producto, asignaciones)) return;
+			marcados[a.id] = true;
+			if (window.ProductosHoy.tieneCaptura(calificaciones[a.id + "|" + producto.id])) bloqueados[a.id] = true;
+		});
+		var refs = {};
+		abrirDialogo({
+			origen: origen,
+			titulo: "¿Para quién es «" + producto.nombre + "»?",
+			subtitulo: "Marca a los alumnos que la hacen. Cada uno sigue en su grado para la boleta." +
+				(window.ProductosHoy.etiquetaGrados(producto.grados) ? " La actividad es de " + window.ProductosHoy.etiquetaGrados(producto.grados) + "." : ""),
+			aceptar: "Guardar",
+			construir: function (cuerpo) {
+				var cont = document.createElement("div");
+				cont.innerHTML = listaAlumnosHtml("alumnoPara", marcados, bloqueados);
+				refs.lista = cont;
+				cuerpo.appendChild(cont);
+			},
+			alAceptar: async function (form, avisar) {
+				var quieren = {};
+				Array.from(refs.lista.querySelectorAll("input[name='alumnoPara']")).forEach(function (c) {
+					// Una casilla bloqueada (ya tiene calificación) se queda como estaba
+					if (c.checked || c.disabled) quieren[c.value] = true;
+				});
+				if (!Object.keys(quieren).length) { avisar("Marca al menos un alumno.", refs.lista.querySelector("input")); return false; }
+				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
+				var filas = window.ProductosHoy.filasDeEdicion(producto.grados, alumnos, quieren);
+				var res = await window.sb.rpc("guardar_asignacion_producto", { p_producto: producto.id, p_filas: filas });
+				if (res.error) {
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo guardar: " + (res.error.message || "error desconocido"));
+					return false;
+				}
+				var idx = {};
+				filas.forEach(function (f) { idx[f.alumno_id] = f.modo; });
+				asignaciones[producto.id] = idx;
+				renderTareas();
+				renderPendientes();
+				renderSesiones();
+				mensaje("info", "«" + producto.nombre + "» ahora es para " + paraQuien(producto) + ".");
+			},
+		});
+	}
+
+	/*
+		"Pasar a un proyecto" una actividad suelta (decisión de Jorge del 2026-09-26): a una sesión de
+		un proyecto del mismo grupo y trimestre, con sus calificaciones, su "para quién" y sus PDA
+		(mover_producto_a_sesion, mi_salon_b17; el diálogo vive en js/pasar-a-proyecto.js, el mismo de
+		Proyectos). Antes se envía lo capturado (una captura pendiente de esa actividad iría a la
+		sesión vieja) y después se recarga la pantalla.
+	*/
+	async function pasarAProyecto(productoId, origen) {
+		var producto = productoPorId(productoId);
+		if (!producto || !window.PasarAProyecto) return;
+		guardarRetrosPendientes();
+		if (sinSenal()) { mensaje("error", "Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (bandeja && bandeja.pendientes()) {
+			origen.disabled = true;
+			var envio = await bandeja.esperarEnvio();
+			origen.disabled = false;
+			if (envio !== "ok") { mensaje("error", "Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
+		}
+		var proyecto = proyectoPorId[(producto.sesion || {}).proyecto_id] || {};
+		window.PasarAProyecto.abrir({
+			sb: window.sb, maestroId: user.id, grupoId: grupo.id, trimestre: proyecto.trimestre || grupo.trimestre_actual,
+			producto: producto, fechaEntrega: producto.tipo === "tarea" ? venceDe(producto) : null, origen: origen,
+			alTerminar: function () { window.location.reload(); },
+		});
 	}
 
 	// Contenidos del catálogo de las fases del grupo (se leen una vez por página)
@@ -1746,27 +2122,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 			contenidosCache[clave].catch(function () { delete contenidosCache[clave]; });
 		}
 		return contenidosCache[clave];
-	}
-
-	// Liga el producto nuevo con los PDA de su sesión y de sus grados, como los del plan
-	// (js/sesiones-materializar.js). Si es de otro campo, no evalúa esos PDA
-	async function ligarAPdaDeSesion(producto, sesion) {
-		var campoSesion = window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
-		if (!campoSesion || producto.campo !== campoSesion) return true;
-		try {
-			var res = await window.sb.from("sesiones_pda").select("id, grado").eq("sesion_id", sesion.id);
-			if (res.error) throw res.error;
-			var grados = (producto.grados || []).map(Number);
-			var ligas = (res.data || []).filter(function (r) { return grados.indexOf(Number(r.grado)) !== -1; })
-				.map(function (r) { return { producto_sesion_id: producto.id, sesion_pda_id: r.id }; });
-			if (!ligas.length) return true;
-			var ins = await window.sb.from("producto_sesion_pda").insert(ligas);
-			if (ins.error) throw ins.error;
-			return true;
-		} catch (err) {
-			console.error("hoy: ligar a los PDA", err);
-			return false;
-		}
 	}
 
 	function renombrarProducto(productoId, origen) {
@@ -1812,20 +2167,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function quitarProducto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		var conCaptura = alumnos.some(function (al) {
-			return window.ProductosHoy.tieneCaptura(calificaciones[al.id + "|" + producto.id]);
-		});
-		var avisoConCal = "«" + producto.nombre + "» ya tiene calificaciones, así que no se puede quitar. Si el nombre no es el correcto, usa Renombrar.";
-		if (conCaptura) { mensaje("error", avisoConCal); return; }
-		if (sinSenal()) { mensaje("error", "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
-		origen.disabled = true;
-		var enBaseCon = 0;
-		try {
+		// Con captura en esta pantalla (también lo pendiente de enviar)
+		function conCapturaAqui() {
+			return alumnos.some(function (al) {
+				return window.ProductosHoy.tieneCaptura(calificaciones[al.id + "|" + producto.id]);
+			});
+		}
+		// Con calificaciones en la base (lanza si no se pudo leer)
+		async function calificadasEnBase() {
 			var res = await window.sb.from("calificaciones").select("id", { count: "exact", head: true })
 				.eq("maestro_id", user.id).eq("producto_sesion_id", producto.id)
 				.or("estado_entrega.not.is.null,nivel.not.is.null,puntaje.not.is.null,retroalimentacion.not.is.null");
 			if (res.error) throw res.error;
-			enBaseCon = res.count || 0;
+			return res.count || 0;
+		}
+		var avisoConCal = "«" + producto.nombre + "» ya tiene calificaciones, así que no se puede quitar. Si el nombre no es el correcto, usa Renombrar.";
+		// Se calificó mientras el diálogo estaba abierto (otra pestaña u otro aparato: R25a-r09)
+		var avisoCarrera = "Mientras decidías, se calificó «" + producto.nombre + "»; no se quitó. Recarga la página para ver esa calificación.";
+		if (conCapturaAqui()) { mensaje("error", avisoConCal); return; }
+		if (sinSenal()) { mensaje("error", "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		origen.disabled = true;
+		var enBaseCon = 0;
+		try {
+			enBaseCon = await calificadasEnBase();
 		} catch (err) {
 			origen.disabled = false;
 			mensaje("error", sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
@@ -1842,9 +2206,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 			peligro: true,
 			alAceptar: async function (form, avisar) {
 				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
+				// Se vuelve a revisar justo antes: mientras el diálogo estuvo abierto, otra pestaña pudo
+				// calificarlo (la base también lo rechaza: productos_sesion_no_quitar_calificado, b17)
+				var yaCalificado = conCapturaAqui();
+				if (!yaCalificado) {
+					try {
+						yaCalificado = (await calificadasEnBase()) > 0;
+					} catch (err) {
+						avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo revisar si tiene calificaciones, así que no se quitó: " + ((err && err.message) || "error desconocido") + ".");
+						return false;
+					}
+				}
+				if (yaCalificado) { mensaje("error", avisoCarrera); return; }
 				var upd = await window.sb.from("productos_sesion").update({ activo: false })
 					.eq("id", producto.id).eq("maestro_id", user.id);
 				if (upd.error) {
+					if (String(upd.error.hint || "") === "producto_con_calificaciones" || /se calific/i.test(String(upd.error.message || ""))) {
+						mensaje("error", avisoCarrera);
+						return;
+					}
 					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo quitar: " + (upd.error.message || "error desconocido") + ".");
 					return false;
 				}
@@ -1939,7 +2319,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} else if (it.tipo === "calificacion" && d.fila) {
 				var k = d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
 				var c = calificaciones[k] || { alumno_id: d.fila.alumno_id, producto_sesion_id: d.fila.producto_sesion_id };
-				["estado_entrega", "nivel", "puntaje", "retroalimentacion"].forEach(function (f) { if (f in v) c[f] = v[f]; });
+				CAMPOS_CAL.forEach(function (f) { if (f in v) c[f] = v[f]; });
 				if (!c.id && d.id) c.id = d.id;
 				calificaciones[k] = c;
 			}
@@ -1953,6 +2333,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (["asistencia", "tareas", "sesiones", "cierre"].indexOf(id) === -1) return;
 		var el = document.getElementById(id);
 		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });
+	}
+
+	// "Actividad suelta": una actividad o tarea sin proyecto, en cualquier momento (guiar sin obligar)
+	var btnSuelta = document.getElementById("btnSuelta");
+	if (btnSuelta && btnSuelta.addEventListener) {
+		btnSuelta.addEventListener("click", function () {
+			if (!pintado) return;
+			agregarProducto(null, btnSuelta);
+		});
+	}
+	// Desde Inicio o Proyectos: hoy.html?nueva=suelta abre el diálogo al terminar de cargar
+	function abrirSueltaDeUrl() {
+		try {
+			if (new URLSearchParams(window.location.search || "").get("nueva") !== "suelta") return;
+			if (window.history && window.history.replaceState) window.history.replaceState(null, "", window.location.pathname + (window.location.hash || ""));
+			agregarProducto(null, btnSuelta);
+		} catch (e) {
+			console.error("hoy: abrir actividad suelta", e);
+		}
 	}
 
 	// ── Arranque ──────────────────────────────────────────────────────────────
@@ -1979,6 +2378,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	[
 		["asistencia", renderAsistencia],
 		["tareas", renderTareas],
+		["pendientes de la clase anterior", renderPendientes],
 		["sesiones", renderSesiones],
 		["cierre", renderCierre],
 	].forEach(function (par) {
@@ -1994,4 +2394,5 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// pintura podía dejar en pantalla el valor viejo)
 	if (bandeja) bandeja.iniciar();
 	irASeccion();
+	abrirSueltaDeUrl();
 });

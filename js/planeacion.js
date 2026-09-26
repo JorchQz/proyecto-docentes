@@ -30,6 +30,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 	let proyectoActivoId  = null;
 	let grupoActivo       = null; // para el trimestre de una copia
 	let toastEl           = null;
+	// Actividades del trimestre (sueltas, sin proyecto): antes del arranque (cargarProyectos las usa)
+	const sueltasListaEl = document.getElementById("sueltasLista");
+	const NOMBRE_CAMPO = { LEN: "Lenguajes", SAB: "Saberes y Pensamiento Científico", ETI: "Ética, Naturaleza y Sociedades", DHL: "De lo Humano y lo Comunitario" };
+	let sueltasProductos = []; // [{ producto, sesion, proyecto }]
+	let ajustesCal = [];
 
 	// ── Init ──────────────────────────────────────────────────────────────────
 	// Arranque común (js/lectura.js): si el grupo o la lista no se pudieron leer, la página
@@ -38,6 +43,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// detiene (el error sale marcado como de lectura).
 	bindFiltros();
 	bindModal();
+	bindSueltas();
 	await window.Lectura.arrancar(cargarProyectos);
 
 	// =========================================================================
@@ -55,14 +61,103 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		let consulta = window.sb
 			.from("proyectos")
-			.select("id, titulo, campos_formativos, metodologia, estado, created_at, grados, trimestre, fecha_inicial, sesiones(count)")
+			.select("id, titulo, campos_formativos, metodologia, estado, created_at, grados, trimestre, fecha_inicial, tipo, sesiones(count)")
 			.eq("maestro_id", user.id);
 		if (grupoActivoId) consulta = consulta.eq("grupo_id", grupoActivoId);
 		// proyectos no tiene updated_at: ordenar por él daba 400 y la lista nunca cargaba.
 		// Si falla, lanza: no se dice "Aún no tienes proyectos"
-		todosLosProyectos = (await window.Lectura.uno(consulta.order("created_at", { ascending: false }))) || [];
+		const todos = (await window.Lectura.uno(consulta.order("created_at", { ascending: false }))) || [];
+		// "Actividades del trimestre" (actividades sueltas, tipo 'sueltas') no es un proyecto: no se
+		// lista, no se inicia, no se duplica ni se edita; tiene su propia sección arriba
+		todosLosProyectos = todos.filter(function (p) { return !window.AlcanceHoy.esSueltas(p); });
 		actualizarBannerActivo();
 		aplicarFiltros();
+		await cargarSueltas(todos.filter(function (p) { return window.AlcanceHoy.esSueltas(p); }), grupoActivoId);
+	}
+
+	// =========================================================================
+	// ACTIVIDADES DEL TRIMESTRE (sueltas, sin proyecto)
+	// =========================================================================
+
+	function escHtml(s) {
+		return String(s === null || s === undefined ? "" : s)
+			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+	}
+	function fechaCortaTexto(iso) {
+		const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		return m ? Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1] : "";
+	}
+
+	/*
+		Las actividades y tareas sueltas del grupo (las de los contenedores de sus trimestres), con
+		"Pasar a un proyecto" (js/pasar-a-proyecto.js): van con sus calificaciones a una sesión de un
+		proyecto del mismo trimestre. Si la lectura falla, lanza (la página dice "No se pudo cargar").
+	*/
+	async function cargarSueltas(contenedores, grupoId) {
+		if (!sueltasListaEl) return;
+		sueltasProductos = [];
+		if (contenedores.length) {
+			const porId = {};
+			contenedores.forEach(function (p) { porId[p.id] = p; });
+			const sesiones = await window.AlcanceHoy.leerPorLotes(contenedores.map(function (p) { return p.id; }), function (lote) {
+				return window.sb.from("sesiones").select("id, proyecto_id, fecha, campo_formativo").in("proyecto_id", lote).order("id");
+			});
+			const sesPorId = {};
+			sesiones.forEach(function (s) { sesPorId[s.id] = s; });
+			const productos = sesiones.length ? await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
+				return window.sb.from("productos_sesion").select("id, sesion_id, tipo, nombre, campo, grados, fecha_entrega")
+					.in("sesion_id", lote).eq("activo", true).order("id");
+			}) : [];
+			sueltasProductos = productos.map(function (p) {
+				const s = sesPorId[p.sesion_id] || {};
+				return { producto: p, sesion: s, proyecto: porId[s.proyecto_id] || {} };
+			}).sort(function (a, b) {
+				return String(b.sesion.fecha || "").localeCompare(String(a.sesion.fecha || "")) ||
+					String(a.producto.nombre || "").localeCompare(String(b.producto.nombre || ""), "es");
+			});
+			// Días sin clase del grupo: una tarea movida conserva el día en que se revisaba
+			try {
+				ajustesCal = grupoId ? await window.AlcanceHoy.leerAjustesCalendario(window.sb, user.id, grupoId) : [];
+			} catch (e) {
+				// lectura-opcional: solo afina el día en que se revisa una tarea al pasarla a un proyecto (con el calendario oficial si falla); no se escribe nada aquí
+				console.error("proyectos: ajustes del calendario", e);
+				ajustesCal = [];
+			}
+		}
+		pintarSueltas();
+	}
+
+	function pintarSueltas() {
+		if (!sueltasListaEl) return;
+		if (!sueltasProductos.length) {
+			sueltasListaEl.innerHTML = "<p class='text-sm text-gray-400'>Todavía no hay actividades sueltas. Agrégalas desde Hoy en cualquier momento.</p>";
+			return;
+		}
+		sueltasListaEl.innerHTML = sueltasProductos.map(function (x, i) {
+			const p = x.producto, s = x.sesion;
+			return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-gray-200 px-3 py-2'>" +
+				"<div class='min-w-0'><p class='text-sm font-semibold text-gray-800 break-words'>" + escHtml(p.nombre) + "</p>" +
+				"<p class='text-xs text-gray-500'>" + (p.tipo === "tarea" ? "Tarea" : "Actividad en clase") + " · " + escHtml(NOMBRE_CAMPO[p.campo] || p.campo || "") +
+				(s.fecha ? " · " + fechaCortaTexto(s.fecha) : "") + (x.proyecto.trimestre ? " · Trimestre " + x.proyecto.trimestre : "") + "</p></div>" +
+				"<button type='button' data-pasar-suelta='" + i + "' class='shrink-0 min-h-[44px] px-4 rounded-xl border border-violet-300 text-sm font-semibold text-violet-700 hover:bg-violet-50'>Pasar a un proyecto</button>" +
+				"</div>";
+		}).join("");
+	}
+
+	function bindSueltas() {
+		if (!sueltasListaEl) return;
+		sueltasListaEl.addEventListener("click", function (e) {
+			const btn = e.target.closest("button[data-pasar-suelta]");
+			if (!btn || !window.PasarAProyecto) return;
+			const x = sueltasProductos[Number(btn.dataset.pasarSuelta)];
+			if (!x) return;
+			window.PasarAProyecto.abrir({
+				sb: window.sb, maestroId: user.id, grupoId: grupoActivo ? grupoActivo.id : x.proyecto.grupo_id,
+				trimestre: x.proyecto.trimestre, producto: x.producto, origen: btn,
+				fechaEntrega: x.producto.tipo === "tarea" ? window.AlcanceHoy.venceTarea(x.producto.fecha_entrega, x.sesion.fecha, ajustesCal) : null,
+				alTerminar: function () { window.location.reload(); },
+			});
+		});
 	}
 
 	// =========================================================================
@@ -353,7 +448,31 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cualquier estado). La copia es un borrador con el plan completo y sus sesiones, SIN
 		fechas, estado de sesión ni calificaciones (ProyectoEdicion.copiaDeSesion).
 	*/
+	/*
+		Candado (R25a-r12): un doble toque en "Duplicar" (tablet) creaba dos copias. Mientras una
+		copia está en curso, otro toque no hace nada (y los botones Duplicar se deshabilitan).
+	*/
+	let duplicandoEnCurso = false;
+	function botonesDuplicar(deshabilitar) {
+		if (!gridEl || !gridEl.querySelectorAll) return;
+		Array.prototype.forEach.call(gridEl.querySelectorAll('[data-action="duplicar"]'), function (b) {
+			b.disabled = deshabilitar;
+			b.setAttribute("aria-busy", deshabilitar ? "true" : "false");
+		});
+	}
 	async function duplicarProyecto(id) {
+		if (duplicandoEnCurso) return;
+		duplicandoEnCurso = true;
+		botonesDuplicar(true);
+		try {
+			await duplicarProyectoUnaVez(id);
+		} finally {
+			duplicandoEnCurso = false;
+			botonesDuplicar(false);
+		}
+	}
+
+	async function duplicarProyectoUnaVez(id) {
 		// La lista trae solo lo que se muestra: el proyecto completo (grupo, escenario,
 		// contenidos) se lee aquí. Antes se copiaba sin grupo_id y la base lo rechazaba siempre
 		let original;

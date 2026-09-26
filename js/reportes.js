@@ -262,6 +262,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			faltaBtn.disabled = true;
 			try {
 				if (!ctxReportes) ctxReportes = await window.ReporteDatos.contexto(window.sb);
+				// Días sin clase del grupo: en "Qué le falta" una tarea vence el siguiente día de clase
+				if (!ctxReportes.calendario && window.AlcanceHoy && window.AlcanceHoy.leerAjustesCalendario) {
+					try {
+						ctxReportes.calendario = await window.AlcanceHoy.leerAjustesCalendario(window.sb, ctxReportes.maestroId, ctxReportes.grupo.id);
+					} catch (e) {
+						// lectura-opcional: sin los ajustes del grupo se usa el calendario oficial SEP (solo cambia qué tarea ya venció); no se escribe nada
+						console.error("reportes: ajustes del calendario", e);
+					}
+				}
 				const datos = await window.ReporteDatos.grupoTrimestre(window.sb, ctxReportes, trimestre,
 					{ queLeFalta: true, hoy: getLocalDateISO() });
 				if (miTurno !== turnoFalta) return;

@@ -314,10 +314,15 @@ ok("registro de calificaciones: la maestra lo mueve con sus ajustes (con clase e
 	[C.esDiaDeClase("2026-11-13", [{ fecha: "2026-11-13", tipo: "con_clase" }, { fecha: "2026-11-12", tipo: "otro", motivo: "Registro de calificaciones" }]),
 		C.esDiaDeClase("2026-11-12", [{ fecha: "2026-11-13", tipo: "con_clase" }, { fecha: "2026-11-12", tipo: "otro" }])], [true, false]);
 const sep = leer("js/calendario-sep.js");
-ok("la asistencia, las tareas y el trimestre NO se conectan (decisión tomada, ya no «pendiente»)",
-	[/decisión PENDIENTE/i.test(sep), /NO se conecta con la asistencia, las tareas ni el trimestre/.test(sep), /veces que la maestra pasó lista/.test(sep)], [false, true, true]);
-ok("ningún cálculo lee el calendario (motor, alcance, reportes, Hoy, Inicio)",
-	["js/motor-calificacion.js", "js/alcance-hoy.js", "js/reportes.js", "js/hoy.js", "js/dashboard.js", "js/reporte-datos.js"].filter((f) => /CalendarioSEP|calendario_ajustes/.test(leer(f))), []);
+// 2026-09-26: Jorge revoca lo de las tareas (vencen el siguiente día de clase); la asistencia y el
+// trimestre siguen sin conectarse
+ok("la asistencia y el trimestre NO se conectan; las tareas y la revisión de lo incompleto sí (2026-09-26)",
+	[/decisión PENDIENTE/i.test(sep), /NO se conecta con la asistencia, las tareas ni el trimestre/.test(sep), /veces que la maestra pasó lista/.test(sep),
+		/Tareas \(2026-09-26, revoca la del 25-sep\)/.test(sep), /Trimestre: sigue siendo manual/.test(sep)], [false, false, true, true, true]);
+ok("ningún cálculo de calificación o asistencia lee el calendario (motor, reportes, reporte-datos)",
+	["js/motor-calificacion.js", "js/reportes.js", "js/reporte-datos.js"].filter((f) => /CalendarioSEP|calendario_ajustes/.test(leer(f))), []);
+ok("el vencimiento de tareas usa el calendario (alcance-hoy → CalendarioSEP.siguienteDiaDeClase)",
+	/C\.siguienteDiaDeClase\(fecha, ajustes \|\| \[\]\)/.test(leer("js/alcance-hoy.js")), true);
 ok("rol de aseo opcional: la pestaña lo dice y el panel lo aclara",
 	[/id="tabAseo"[^>]*>Rol de aseo \(opcional\)<\/button>/.test(html), /id="aseoOpcional"[^>]*>Opcional: úsalo solo si en tu escuela el aseo del salón se organiza por turnos/.test(html)], [true, true]);
 ok("rol de aseo: nada fuera del calendario lo empuja (Inicio, Hoy, barra, avisos)",

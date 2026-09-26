@@ -166,15 +166,27 @@
 			var s = sesionPorId[p.sesion_id] || {};
 			var item = {
 				id: p.id, nombre: texto(p.nombre) || "Producto", tarea: rubro === "tareas",
-				sesion: vacio(s.numero_sesion) ? null : Number(s.numero_sesion), fecha: s.fecha || null,
+				// Una actividad suelta (sin proyecto) no es "sesión N": se nombra por su fecha
+				sesion: s.suelta || vacio(s.numero_sesion) ? null : Number(s.numero_sesion), fecha: s.fecha || null,
+				suelta: !!s.suelta,
 			};
 			if (estado === "justificado" || estado === "no_aplica") return; // fuera del máximo, como en el motor
 			if (estado === "no_entregado") { campos[c].productos.push(Object.assign(item, { estado: "no_entregado" })); return; }
-			if (estado === "incompleto") { campos[c].productos.push(Object.assign(item, { estado: "incompleto" })); return; }
+			if (estado === "incompleto") {
+				// Actividad en clase que quedó incompleta y se revisa el siguiente día de clase: aún
+				// puede completarla ("Por completar: se revisa el {fecha}"); revisada y sigue
+				// incompleta, o una tarea incompleta: "Completar"
+				var pendiente = cal && cal.estado_en_clase === "incompleta";
+				campos[c].productos.push(Object.assign(item, pendiente
+					? { estado: "por_completar", revisarEn: cal.revisar_en ? String(cal.revisar_en).slice(0, 10) : null }
+					: { estado: "incompleto" }));
+				return;
+			}
 			if (valorP !== null) return; // ya revisado
-			// Sin revisar: solo si ya le tocaba (sesión dada; la tarea, ya vencida)
+			// Sin revisar: solo si ya le tocaba (sesión dada; la tarea, ya vencida: el siguiente día
+			// de clase del calendario SEP y los ajustes del grupo, e.calendario)
 			var cuando = item.tarea
-				? (A ? A.venceTarea(p.fecha_entrega, s.fecha || null) : (p.fecha_entrega || s.fecha || null))
+				? (A ? A.venceTarea(p.fecha_entrega, s.fecha || null, e.calendario || []) : (p.fecha_entrega || s.fecha || null))
 				: (s.fecha || null);
 			if (!cuando || cuando > hoy) return;
 			campos[c].porRevisar.push(Object.assign(item, { estado: "sin_revisar" }));
@@ -291,7 +303,14 @@
 
 	function sesionTexto(item) {
 		if (item.sesion !== null && item.sesion !== undefined) return " (sesión " + item.sesion + ")";
+		if (item.suelta && item.fecha) return " (actividad del " + fechaTexto(item.fecha) + ")";
 		return "";
+	}
+	// "2026-09-29" → "29 de septiembre"
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function fechaTexto(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		return m ? Number(m[3]) + " de " + MESES[Number(m[2]) - 1] : "";
 	}
 	function sesionesTexto(lista) {
 		if (!lista || !lista.length) return "";
@@ -328,7 +347,10 @@
 		}
 		x.productos.forEach(function (p) {
 			var que = (p.tarea ? "la tarea " : "") + "«" + p.nombre + "»";
-			salida.push(p.estado === "incompleto"
+			salida.push(p.estado === "por_completar"
+				? { tipo: "por_completar", docente: false, texto: "Completar " + que + sesionTexto(p) + ": quedó incompleta en clase" +
+					(p.revisarEn ? "; se revisa el " + fechaTexto(p.revisarEn) : "") + "." }
+				: p.estado === "incompleto"
 				? { tipo: "completar", docente: false, texto: "Completar " + que + sesionTexto(p) + ": la entrega quedó incompleta." }
 				: { tipo: "entregar", docente: false, texto: "Entregar " + que + sesionTexto(p) + "." });
 		});

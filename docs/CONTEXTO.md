@@ -177,7 +177,8 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (59 suites).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (64 suites).
+> - `flujo-libre` (2026-09-26) — regla única de "¿Para quién?" (y el motor con ella), `planAsignacion`, `siguienteDiaDeClase` (CTE, festivos, vacaciones, ajustes, fin de ciclo), `venceTarea`, incompleta/pendiente/completada/sigue incompleta y su valor, sueltas y "Pasar a un proyecto", y los arreglos de R25a. `bandeja-salida` §10: la cola sin señal con las columnas nuevas.
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad;
 >   la conducta no pondera (peso 0 aunque los ajustes traigan otro) y cuadre a mano 28/28/6/33.
 > - `evaluacion-final` — final por campo, promedio final de grado y acreditación
@@ -338,7 +339,43 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   pantalla, también lo pendiente de enviar, y en la base). Agregar, renombrar y quitar
   necesitan señal (no van por la cola) y lo dicen. Los inactivos no cuentan: motor, "Qué le
   falta", Tareas, Inicio y reportes leen solo `activo = true`. Una tarea sin
-  `fecha_entrega` vence el siguiente día hábil después de su sesión (`venceTarea`).
+  `fecha_entrega` vence el **siguiente día de clase** después de su sesión (`venceTarea` →
+  `CalendarioSEP.siguienteDiaDeClase` con los `calendario_ajustes` del grupo: salta CTE,
+  suspensiones, vacaciones y registro de calificaciones; fuera de los ciclos cargados, el
+  siguiente lunes a viernes; 2026-09-26, revoca la decisión del 25-sep). Quitar se vuelve a
+  revisar justo antes de escribir y la base lo rechaza si hay calificaciones (trigger
+  `productos_sesion_no_quitar_calificado`, b17; R25a).
+  **Fase 2 (2026-09-26, `supabase/mi_salon_b17_flujo_libre_2026-09.sql`):**
+  - **¿Para quién?** Al crear una actividad o tarea (en una sesión o suelta): todo el grupo,
+    uno o varios grados, o alumnos que la maestra marca por grado, con "¿con qué grado
+    trabajan?" (dos de 3° que trabajan con 2°). Se guarda como `productos_sesion.grados` más
+    filas de `producto_sesion_alumnos` (`incluir`/`excluir`; `ProductosHoy.planAsignacion`).
+    **Regla única** (`AlcanceHoy.asignadoA`/`recibeProducto`; en SQL `alumno_recibe_producto`):
+    recibe si (su grado está en `grados` y no está excluido) o está incluido, más el alta tarde.
+    La usan Hoy, Inicio, Tareas, el motor (`misProductos`) y Qué le falta. El alumno sigue en su
+    grado oficial para boleta y examen. En Hoy un incluido de otro grado dice "Trabaja con 2°".
+    Evidencia de PDA: la propagación ya deja evidencia solo en los PDA **del grado del alumno**
+    ligados al producto: si la actividad tiene PDA de su grado, cuenta; si no, no deja evidencia de
+    PDA pero su calificación cuenta. "Para quién" de un producto ya creado: agregar siempre; quitar
+    solo a quien no tiene calificación (`guardar_asignacion_producto` lo revisa). Producto,
+    asignación y PDA se guardan en una transacción (`agregar_producto_sesion`).
+  - **Actividades sueltas** (guiar sin obligar): botón "Actividad suelta" en Hoy, Inicio y
+    Proyectos (`hoy.html?nueva=suelta`). Van a un proyecto contenedor por grupo y trimestre,
+    `proyectos.tipo = 'sueltas'` ("Actividades del trimestre", estado `completado`, `fecha_final`
+    = su última fecha), con una sesión por fecha y campo (`agregar_actividad_suelta`); así el
+    motor, la boleta, Qué le falta, Tareas e Inicio las cuentan sin cambiar su modelo. No salen en
+    Proyectos (tiene su sección), Actividades, "Trabajar hoy", iniciar, duplicar ni Crear proyecto.
+    **Pasar a un proyecto** (`mover_producto_a_sesion`, `js/pasar-a-proyecto.js`): a una sesión
+    de un proyecto del mismo grupo y trimestre, con calificaciones, asignación, PDA y evidencia;
+    la sesión suelta que queda vacía se borra.
+  - **Incompleta → siguiente día de clase:** en actividades en clase, "Incompleta" guarda
+    `estado_entrega='incompleto'`, `estado_en_clase='incompleta'` y `revisar_en` (siguiente día de
+    clase). "Pendientes de la clase anterior" (Hoy) lista los de `revisar_en <= hoy`, uno por
+    alumno: "Lo completó" (con nivel: `completada`, vale ese nivel) o "Sigue incompleta"
+    (`sigue_incompleta`, 0.5, sale en Qué le falta); `completado_en` = día en que se revisó. Pasa
+    una vez; si el alumno falta, sigue pendiente. Pendiente vale 0.5 (incompleto sin nivel). Las
+    tres columnas van en la marca `captura_semaforo` de la cola sin señal. Tareas: estado "Por
+    completar"; Inicio: conteo; Qué le falta: "se revisa el {fecha}".
   **Cierre del día:** la primera excepción guarda el día de todo el grupo (1 y 1, sin los
   que faltaron); botón "Guardar el cierre de hoy" para días sin excepciones. Hoy e Inicio
   lo cuentan con `AlcanceHoy.resumenCierre`; si faltó todo el grupo, "Nadie asistió hoy".
@@ -450,6 +487,7 @@ común).
 | `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, **nullable** desde B.5 — antes era NOT NULL y un criterio libre reventaba la materialización), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)` y, para el criterio libre, UNIQUE `(sesion_id, grado, criterio_aplicado)` cuando `pda_id IS NULL`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
 | `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas) |
 | `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
+| `producto_sesion_alumnos` | Para quién es un producto además de sus grados (b17, 2026-09-26): `producto_sesion_id` (cascada), `alumno_id` (cascada), `maestro_id`, `modo` (`incluir`/`excluir`), UNIQUE `(producto_sesion_id, alumno_id)`. RLS: propios y del mismo grupo (`ref_asignacion_mismo_grupo`). Regla única en §3 (fase 2). **También nuevas en b17:** `proyectos.tipo` (`proyecto`/`sueltas`, NOT NULL DEFAULT `proyecto`; índice único del contenedor por grupo y trimestre) y `calificaciones.revisar_en`, `estado_en_clase` (`incompleta`/`completada`/`sigue_incompleta`), `completado_en` |
 | `registro_diario` | Participación y conducta **una vez al día por alumno**, global (no por sesión ni campo): `maestro_id`, `alumno_id`, `fecha`, `participacion` (0–2), `conducta` (0–2), `nota`, UNIQUE `(maestro_id, alumno_id, fecha)`. Se captura en el cierre del día de "Hoy" (valor normal 1); el motor lo reparte entre los campos con sesión ese día (`docs/PRODUCTO-MI-SALON.md` §B.4) |
 | `boleta_trimestral` | Boleta por campo formativo: `maestro_id`, `alumno_id`, `ciclo`, `trimestre` (1–3), `campo` (`LEN`/`SAB`/`ETI`/`DHL`/**`GEN`** = fila general), `porcentaje` (0–100), `calificacion` (5–10), `nivel`, `fortalezas`, `areas_oportunidad`, `sugerencias`, `texto_autogenerado` (jsonb: la propuesta de la Capa 1 + `editados` [cuadros que escribió el maestro] + `ia` [redacción de la Capa 2] + `visible` [`reglas`/`ia`]), `editado_manual` (true = el maestro escribió algo en esa fila), `calificacion_confirmada` + `confirmada_en` (la calificación oficial es solo la confirmada), `cerrada` (true = no se recalcula; exige confirmación), UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. La boleta de `reportes.js` lee/escribe aquí (autosave on-blur). `calificacion` sale de `calcular_calificacion_boleta` y el trigger `boleta_trimestral_piso_fase` rechaza valores bajo el piso del grado (1° 6; 2° a 6° 5; ver §3) |
 | `perfiles` | `id` (= `auth.users.id`), `nombre_completo`, `escuela`, `cct`, `zona`, **`estado`** (text: la entidad federativa de la maestra, con el nombre de `js/entidades.js`; decisión 21), `municipio`, `sexo_docente`, `grados_asignados`, `activo_saas` (acceso a Mi salón). RLS: cada quien la suya |
@@ -622,7 +660,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Asistencia (con autosave) | Completo | `asistencia.html` |
 | Mi Grupo (CRUD grupo y alumnos; ficha del alumno con WhatsApp al tutor, escuela y director por grupo, niñas y niños en el resumen) | Completo (ficha y director: 2026-09-25, B13) | `mi-grupo.html`, `js/ficha-alumno.js` |
 | Incidencias (registro por grupo con alumnos involucrados, editar, eliminar con confirmación, documento imprimible con firmas de docente, director(a) y tutor) | Completo (2026-09-25, B13) | `incidencias.html`, `js/incidencias.js` |
-| Calendario escolar SEP 2026-2027 del grupo (vista de mes, hoy y próximo día sin clase, ajustes propios con confirmación, fuente DOF) y rol de aseo (reparto por días de clase, continuidad entre meses, cambios a mano, imagen PNG para WhatsApp, compartir, copiar texto e imprimir). **No** cambia asistencia ni calificaciones: dónde se conectaría está en la cabecera de `js/calendario-sep.js` (decisión pendiente de Jorge) | Completo (2026-09-25, en pruebas) | `calendario.html`, `js/calendario.js`, `js/calendario-sep.js`, `js/rol-aseo.js` |
+| Calendario escolar SEP 2026-2027 del grupo (vista de mes, hoy y próximo día sin clase, ajustes propios con confirmación, fuente DOF) y rol de aseo (reparto por días de clase, continuidad entre meses, cambios a mano, imagen PNG para WhatsApp, compartir, copiar texto e imprimir). No cambia la asistencia ni el trimestre; desde 2026-09-26 las tareas vencen y lo incompleto se revisa el siguiente día de clase (`siguienteDiaDeClase`, cabecera de `js/calendario-sep.js`) | Completo (2026-09-25, en pruebas) | `calendario.html`, `js/calendario.js`, `js/calendario-sep.js`, `js/rol-aseo.js` |
 | Listas de cooperación y materiales (columnas palomita, texto y monto en pesos; resumen y avance; imagen y texto para familias sin nombres; Recordar por WhatsApp; impresión solo para la maestra; cerrar como expediente, reabrir con confirmación; historial por alumno) | Completo (2026-09-26, b15) | `listas.html`, `js/listas.js` |
 | Crear Proyecto / Planeación (3 pasos con catálogo SEP) | Completo | `crear_proyecto.html` |
 | Planeación (lista de proyectos con filtros + acciones completas) | Completo | `planeacion.html` |
@@ -653,7 +691,7 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 - **Job de enriquecimiento de productos:** los `productos_sesion` con `origen='backfill'` tienen nombre genérico ("Producto — Sesión N · CAMPO"); antes de lanzar Mi salón al público hay que extraer el nombre real del producto de cada sesión (revisar si el texto de `dosificacion_sesiones` permite regex antes de gastar en IA) y actualizar las instrucciones del bot para que llene `dosificacion_sesiones.productos` con el shape de `cierre_tareas`.
 - La **Parte B** está construida en la rama `mi-salon-parte-b` (sin merge: lo decide Jorge). Lo construido y sus diferencias con la especificación: `docs/PRODUCTO-MI-SALON.md`; bitácora, veredictos de los revisores y decisiones pendientes: `docs/PROGRESO-PARTE-B.md` y `docs/REPORTE-FINAL-PARTE-B.md`.
 - **Decisiones de Jorge del 2026-09-24** (tabla completa en `docs/PROGRESO-PARTE-B.md`): 1 y 2 diarios valen el rubro completo; juicio docente para un alumno sin evidencias; grado y rubros en la foto del cierre; junta y exportación congeladas para boletas cerradas; Asistencia igual que "Hoy"; alta tarde; portal de tres partes para cuentas con acceso (el 2026-09-25 Jorge lo cambió por el selector de secciones: Tienda, Mi Salón y Sala de Maestros; `portal.html` solo redirige); Pixel de Meta fuera del SaaS; políticas que exigen referencias propias. **Siguen pendientes:** "retardo" en asistencia; pantalla para editar `plantillas_sugerencia`; criterios propios de cuaderno y habilidades por maestro; activar la IA (secreto y costo).
-- **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe; una tarea sin fecha de entrega vence el siguiente día hábil saltando fines de semana, pero no los días festivos (`dias_no_habiles_extra` no se usa todavía); una boleta cerrada no se puede reabrir desde la interfaz; en un proyecto con sesiones trabajadas no se pueden agregar grados (fase 1: conservador); agregar, renombrar o quitar productos en Hoy necesita señal.
+- **Limitaciones conocidas:** el examen por campo es aproximado (ver `examenes`); la calificación de un rubro de participación/conducta depende de que el maestro haga el cierre del día; las sesiones importadas no traen fecha y hay que usar "Trabajar hoy"; los productos `origen='backfill'` tienen nombre genérico hasta el job de enriquecimiento; la presentación de junta compara contra el trimestre anterior solo cuando existe; una boleta cerrada no se puede reabrir desde la interfaz; en un proyecto con sesiones trabajadas no se pueden agregar grados (fase 1: conservador); agregar, renombrar o quitar productos en Hoy necesita señal.
 - Una fila de `dosificacion_proyectos` (1°-2°, proyecto 1, estado `generado`) no tiene `trimestre`; si se publicara así, el importador crearía un proyecto sin trimestre. El bot debe llenarlo antes de publicarla.
 - El rubro de examen se calcula con el examen del grado del alumno (corregido en B.3), pero el máximo por campo sigue siendo aproximado: `banco_preguntas` no guarda el valor de cada pregunta. La boleta lo advierte.
 - Resuelto 2026-09-23 (3.7): Vista Recrea y Concentrado leen la calificación confirmada; la tarjeta vieja de tareas del Dashboard se retiró (Inicio lleva a "Hoy"); el `.single()` de grupos se reemplazó por el grupo activo en toda la app; Hoy, Tareas e Inicio leen calificaciones, productos y sesiones sin el tope de 1000 filas de Supabase (`AlcanceHoy.leerPorLotes`), igual que el motor.

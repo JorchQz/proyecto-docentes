@@ -32,7 +32,8 @@ const alumnos = [
 	{ id: "a4", nombre_completo: "ALUMNO DE CUARTO", grado: 4, num_lista: 4 },
 ];
 const ALCANCE = require("../js/alcance-hoy.js");
-const hacerAlumnosDe = new Function("alumnos", "window", "calificaciones", "return " + extraer("alumnosDeProducto") + ";");
+// asignaciones: "¿Para quién?" (producto_sesion_alumnos, 2026-09-26); vacío = solo sus grados
+const hacerAlumnosDe = new Function("alumnos", "window", "calificaciones", "asignaciones", "return " + extraer("alumnosDeProducto") + ";");
 const alumnosDeProducto = hacerAlumnosDe(alumnos, { AlcanceHoy: ALCANCE }, {});
 const agruparPorGrado = new Function("return " + extraer("agruparPorGrado") + ";")();
 
