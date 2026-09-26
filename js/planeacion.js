@@ -67,10 +67,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// BANNER PROYECTO ACTIVO
 	// =========================================================================
 
+	// Puede haber varios proyectos activos a la vez (uno por campo formativo, por ejemplo)
 	function actualizarBannerActivo() {
-		const activo = todosLosProyectos.find(function (p) { return p.estado === "activo"; });
-		if (activo && bannerEl && bannerTituloEl) {
-			bannerTituloEl.textContent = activo.titulo || "Proyecto sin título";
+		const activos = todosLosProyectos.filter(function (p) { return p.estado === "activo"; });
+		const etiqueta = bannerEl ? bannerEl.querySelector("[data-banner-etiqueta]") : null;
+		if (etiqueta) etiqueta.textContent = activos.length > 1 ? activos.length + " proyectos activos" : "Proyecto activo";
+		if (activos.length && bannerEl && bannerTituloEl) {
+			bannerTituloEl.textContent = activos.map(function (p) { return p.titulo || "Proyecto sin título"; }).join(" · ");
 			bannerEl.classList.remove("hidden");
 			bannerEl.classList.add("flex");
 		} else if (bannerEl) {
@@ -242,7 +245,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		if (estado === "activo") {
 			return (
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver sesiones</a>' +
+				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver y editar sesiones</a>' +
 				'<button data-action="pausar" data-id="' + id + '" class="' + btnBase + ' border border-amber-300 text-amber-700 hover:bg-amber-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pausar</button>'
 			);
 		}
@@ -250,7 +253,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (estado === "pausado") {
 			return (
 				'<button data-action="reanudar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Reanudar</button>' +
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver sesiones</a>'
+				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver y editar sesiones</a>'
 			);
 		}
 
@@ -375,15 +378,59 @@ document.addEventListener("DOMContentLoaded", async function () {
 			es_multigrado:       original.es_multigrado || false,
 		};
 
-		const { error } = await window.sb
+		/*
+			Las sesiones se copian también (antes el clon quedaba vacío): el plan de cada una, sin
+			fecha, sin estado y sin calificaciones, y se materializan sus PDA y productos como al
+			crear un proyecto. Se leen ANTES de crear el clon; si algo falla después, el clon se
+			borra (en cascada) para no dejar un proyecto a medias.
+		*/
+		let sesiones;
+		try {
+			sesiones = await window.LeerTodo.paginas(function () {
+				return window.sb.from("sesiones").select("*").eq("proyecto_id", id)
+					.order("numero_sesion").order("id");
+			});
+		} catch (e) {
+			console.error("clonar: lectura de sesiones", e);
+			mostrarToast("No se pudieron leer las sesiones del proyecto, así que no se clonó. Revisa tu conexión.", "error");
+			return;
+		}
+
+		const { data: creado, error } = await window.sb
 			.from("proyectos")
-			.insert(nuevoProyecto);
+			.insert(nuevoProyecto)
+			.select("id")
+			.single();
 
 		if (error) {
 			mostrarToast("No se pudo clonar el proyecto.", "error");
 			return;
 		}
-		mostrarToast("Proyecto clonado correctamente.");
+		try {
+			if (sesiones.length) {
+				const copias = sesiones.map(function (s) {
+					return window.ProyectoEdicion.copiaDeSesion(s, creado.id, user.id);
+				});
+				const ins = await window.sb.from("sesiones").insert(copias)
+					.select("id, numero_sesion, campo_formativo, pda_sesion, cierre_tareas");
+				if (ins.error) throw ins.error;
+				await window.materializarSesiones(ins.data || [], user.id, {
+					gradosProyecto: original.grados || [],
+					camposProyecto: original.campos_formativos || [],
+					origenTrabajo: "maestro",
+					origenTarea: "maestro",
+				});
+			}
+		} catch (e) {
+			console.error("clonar: sesiones", e);
+			await window.sb.from("proyectos").delete().eq("id", creado.id);
+			mostrarToast("No se pudo clonar el proyecto: " + (e && e.humano ? e.message : "revisa tu conexión e inténtalo de nuevo."), "error");
+			await cargarProyectos();
+			return;
+		}
+		mostrarToast(sesiones.length
+			? "Proyecto clonado con sus " + sesiones.length + (sesiones.length === 1 ? " sesión." : " sesiones.")
+			: "Proyecto clonado (no tenía sesiones).");
 		await cargarProyectos();
 	}
 
@@ -474,7 +521,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 
 			cerrarModal();
-			mostrarToast("¡Proyecto iniciado! Ya aparece en tu dashboard.");
+			mostrarToast("Proyecto iniciado. Sus sesiones ya aparecen en Hoy para trabajarlas.");
 			await cargarProyectos();
 
 		} catch (err) {

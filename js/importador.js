@@ -127,6 +127,9 @@
 				try {
 					await window.materializarSesiones(sesInsertRes.data || [], maestroId, {
 						gradosProyecto: dosProy.grados || [],
+						// Una sesión sin campo toma el del proyecto si es uno solo; si no, se revierte
+						// la importación con el aviso (antes quedaba como LEN en silencio)
+						camposProyecto: dosProy.campos_formativos || [],
 						origenTrabajo: "backfill",
 						origenTarea: "importado",
 					});
