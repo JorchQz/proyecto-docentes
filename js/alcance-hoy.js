@@ -178,6 +178,11 @@
 	// Lo que se escribe en la calificación en cada paso (los campos del grupo del semáforo)
 	function cambiosIncompleta(accion, ctx) {
 		ctx = ctx || {};
+		// Registro histórico (spec §4.3): en una actividad histórica "Incompleta" NO pasa a la
+		// siguiente clase; queda incompleta (0.5) sin revisión pendiente
+		if (accion === "marcar" && ctx.historico) {
+			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: null, revisar_en: null, completado_en: null };
+		}
 		if (accion === "marcar") {
 			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "incompleta",
 				revisar_en: siguienteDiaDeClase(ctx.hoy, ctx.ajustes), completado_en: null };
@@ -306,8 +311,53 @@
 		};
 	}
 
+	/*
+		── Registro histórico (spec de Jorge del 2026-09-26, §4.3; mi_salon_b20) ──
+		Una captura con fecha anterior al día en que se registró es histórica (es_historico). La
+		base la marca (triggers de b20); aquí vive la misma regla para las pantallas:
+		  - esFechaHistorica(fecha, instante): fecha < el día (hora de Ciudad de México) del instante.
+		  - esHistorico(producto, fechaSesion): la columna es_historico si se leyó; si no, su sesión
+		    es de un día anterior al de su creación (created_at).
+		  - tareaPorRevisar(producto, vence, hoy, fechaSesion): una tarea vencida que Hoy, Inicio y
+		    Tareas piden revisar. Las históricas NO (al ponerse al día aparecerían cientos de
+		    pendientes): lo que no se capturó en el registro histórico no se le pide a nadie.
+		  - abrirParaCalificar(producto): una actividad suelta de un día pasado entra a Hoy el día en
+		    que se agregó (para calificarla al momento), salvo la del asistente Ponte al día, que ya se
+		    calificó en su cuadrícula (desde_ponte_al_dia).
+	*/
+	function diaMexico(instante) {
+		if (!instante) return null;
+		var d = new Date(instante);
+		if (isNaN(d.getTime())) return null;
+		try {
+			if (!FORMATO_CDMX) FORMATO_CDMX = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
+			return FORMATO_CDMX.format(d);
+		} catch (e) {
+			return d.toISOString().slice(0, 10);
+		}
+	}
+	function esFechaHistorica(fecha, instante) {
+		var dia = diaMexico(instante);
+		return !!(fecha && dia && String(fecha).slice(0, 10) < dia);
+	}
+	function esHistorico(producto, fechaSesion) {
+		if (!producto) return false;
+		if (typeof producto.es_historico === "boolean") return producto.es_historico;
+		var f = fechaSesion || (producto.sesion && producto.sesion.fecha) || null;
+		return esFechaHistorica(f, producto.created_at);
+	}
+	function tareaPorRevisar(producto, vence, hoyISO, fechaSesion) {
+		if (!vence || vence > hoyISO) return false;
+		return !esHistorico(producto, fechaSesion);
+	}
+	function abrirParaCalificar(producto) {
+		return !(producto && producto.desde_ponte_al_dia === true);
+	}
+
 	var api = {
 		DIAS_RECIENTES: DIAS_RECIENTES, PAGINA: PAGINA, LOTE: LOTE,
+		diaMexico: diaMexico, esFechaHistorica: esFechaHistorica, esHistorico: esHistorico,
+		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,
 		leerAjustesCalendario: leerAjustesCalendario,
 		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre,

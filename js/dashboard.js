@@ -59,6 +59,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		container.innerHTML = "";
 		const altaPendiente = crearCardAltaPendiente();
 		if (altaPendiente) container.appendChild(altaPendiente);
+		const ponte = await crearCardPonteAlDia();
+		if (ponte) container.appendChild(ponte);
 		container.appendChild(await crearCardHoy());
 		if (!proyectosActivos.length) {
 			container.appendChild(crearCardSinProyecto());
@@ -87,6 +89,46 @@ function crearCardAltaPendiente() {
 		: "<div><h2 class='text-lg font-bold text-gray-800'>Tu grupo aún no tiene alumnos</h2>" +
 			"<p class='text-sm text-gray-600'>Agrégalos para pasar lista y calificar.</p></div>" +
 			"<a href='mi-grupo.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 shrink-0'>Agregar alumnos</a>";
+	return card;
+}
+
+/*
+	"Ponte al día" (registro histórico, spec de Jorge del 2026-09-26, §4.1): el asistente se puede
+	saltar y retomar desde aquí. Se ofrece al crear el grupo (el alta deja su avance en
+	ponte_al_dia, mi_salon_b20, si el trimestre ya había empezado); la tarjeta sale mientras ese
+	avance esté "en curso". A los grupos de antes (sin avance) no se les ofrece: ya capturan en
+	Hoy. "Ya no mostrar" lo marca como saltado.
+*/
+async function crearCardPonteAlDia() {
+	if (!alumnos.length) return null;
+	// lectura-opcional: solo decide si se muestra la tarjeta; si falla no se muestra y no se guarda nada
+	const { data: fila, error } = await window.sb.from("ponte_al_dia").select("estado, paso, pasos_hechos")
+		.eq("maestro_id", user.id).eq("grupo_id", grupoId).maybeSingle();
+	if (error) { console.error("inicio: ponte al día", error); return null; }
+	if (!fila || fila.estado !== "en_curso") return null;
+	const enCurso = true;
+	const hechos = Array.isArray(fila.pasos_hechos) ? fila.pasos_hechos.length : 0;
+	const card = document.createElement("section");
+	card.id = "cardPonteAlDia";
+	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6 border-l-4 border-l-emerald-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3";
+	card.innerHTML =
+		"<div><h2 class='text-lg font-bold text-gray-800'>" + (enCurso ? "Sigue con Ponte al día" : "Ponte al día") + "</h2>" +
+		"<p class='text-sm text-gray-600'>" + (enCurso
+			? "Llevas " + hechos + " de 4 pasos. Captura lo que ya llevas del trimestre: asistencia, trabajos, exámenes y calificaciones."
+			: "El trimestre ya empezó: captura en una tarde lo que ya llevas (asistencia, trabajos, exámenes y calificaciones) para que tu boleta salga completa.") + "</p></div>" +
+		"<div class='flex flex-col sm:flex-row gap-2 shrink-0'>" +
+		"<a href='ponte-al-dia.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700'>" + (enCurso ? "Continuar" : "Empezar") + "</a>" +
+		"<button type='button' data-ponte-ocultar class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50'>Ya no mostrar</button></div>";
+	card.querySelector("[data-ponte-ocultar]").addEventListener("click", async function () {
+		this.disabled = true;
+		const { error: e } = await window.sb.from("ponte_al_dia").upsert({ maestro_id: user.id, grupo_id: grupoId, estado: "saltado" }, { onConflict: "grupo_id" });
+		if (e) {
+			this.disabled = false;
+			window.alert("No se pudo guardar: " + (e.message || "error desconocido") + ". Revisa tu conexión e inténtalo de nuevo.");
+			return;
+		}
+		card.remove();
+	});
 	return card;
 }
 
@@ -217,11 +259,12 @@ async function crearCardHoy() {
 			const idsSesiones = ses.map((s) => s.id);
 			if (idsSesiones.length) {
 				const prods = await leer(idsSesiones, (lote) => window.sb.from("productos_sesion")
-					.select("id, tipo, grados, sesion_id, fecha_entrega").in("sesion_id", lote).eq("activo", true).order("id"));
+					.select("id, tipo, grados, sesion_id, fecha_entrega, created_at, es_historico").in("sesion_id", lote).eq("activo", true).order("id"));
 				const trabajos = prods.filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
+				// Las tareas del registro histórico no se piden (misma regla que "Hoy": AlcanceHoy.tareaPorRevisar)
 				const tareas = prods.filter((p) => {
 					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id], ajustes) : null;
-					return vence && vence <= hoy;
+					return window.AlcanceHoy.tareaPorRevisar(p, vence, hoy, fechaSesion[p.sesion_id]);
 				});
 				const revisar = trabajos.concat(tareas);
 				// Lo incompleta en clase que ya toca revisar (Pendientes de la clase anterior de "Hoy"),
