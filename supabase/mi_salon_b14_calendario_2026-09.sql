@@ -3,8 +3,9 @@
 -- Solo aditiva: dos tablas nuevas con RLS y delete_own_account reemplazada (la misma de
 -- mi_salon_b10_eliminar_cuenta_2026-09.sql con las líneas nuevas). No toca filas existentes.
 -- Se puede correr dos veces ("if not exists" / "create or replace" / políticas con guarda).
--- Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción, con la confirmación de Jorge y
--- ANTES de publicar calendario.html (sin las tablas, la página avisa "No se pudo cargar").
+-- Aplicada en PRUEBAS (raoxdxwgsxbqlzdnndly) y en PRODUCCIÓN el 26 de septiembre de 2026 (con la
+-- confirmación de Jorge, antes de publicar calendario.html: sin las tablas, la página avisa
+-- "No se pudo cargar").
 --
 -- 1. calendario_ajustes: los días que la maestra cambia del calendario oficial SEP para UN grupo
 --    (el calendario oficial vive en js/calendario-sep.js, no en la base). Una fila por grupo y

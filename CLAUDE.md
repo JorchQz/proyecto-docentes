@@ -19,14 +19,14 @@ Manual testing checklist is in `docs/TESTING.md`.
 **Supabase** handles all backend concerns:
 - Auth (JWT, stored in localStorage by SDK)
 - PostgreSQL database
-- Row-Level Security (RLS) — every table enforces `auth.uid() = maestro_id`, so teachers only see their own data. SQL schemas are in `supabase/`.
+- Row-Level Security (RLS) — almost every table enforces `auth.uid() = maestro_id`, so teachers only see their own data; child tables without `maestro_id` (e.g. `sesiones_pda`, `producto_sesion_pda`, `respuestas_examen`) check ownership through their parent, `perfiles` is keyed by the user id, `interes_secciones` uses `usuario_id`, the store tables (`marketplace_*`) have their own rules, and catalogs (`catalogo_*`, exam templates with `maestro_id` null) are readable by all. SQL schemas are in `supabase/`.
 
-**Tailwind CSS** via CDN — `style.css` is empty, all styling is utility classes.
+**Tailwind CSS** via CDN — `css/style.css` is empty, all styling is utility classes.
 
 ### UI conventions (hard rules)
 
 - **NEVER use emojis** anywhere in the UI (or as content icons). Emojis make the product look cheap and AI-generated. This applies to all HTML, JS-rendered markup, button labels, empty states, etc.
-- Use **Lucide icons** instead (`https://unpkg.com/lucide@latest`, rendered via `<i data-lucide="name">` + `lucide.createIcons()`). After any dynamic render that inserts icons, call `Tienda.iconos()` (helper in `tienda/js/tienda-common.js`) so the new `<i>` elements are upgraded to SVGs.
+- Icons: the **store** (`tienda/`) uses **Lucide** (`https://unpkg.com/lucide@latest`, `<i data-lucide="name">` + `lucide.createIcons()`); after any dynamic render there that inserts icons, call `Tienda.iconos()` (helper in `tienda/js/tienda-common.js`). The **SaaS** (Mi Salón pages in the root and `js/`) uses **inline SVG** (Lucide-style strokes) and does not load Lucide.
 - Plain typographic arrows in text (→, ←) are acceptable; pictographic/color emojis are not.
 
 ### Key files
@@ -53,10 +53,16 @@ index.html (root; no content)
   → tienda/index.html                                  [visitors, buyers without Mi Salón]
   → last section on this device (localStorage "jissez.seccion", js/secciones.js)
                                                        [accounts with Mi Salón]
-tienda/login.html (login/register; ?next= returns to the origin page)
-  → onboarding.html (create group → add students)     [first-time Mi Salón users]
-  → dashboard.html (Inicio)                            [returning users]
-    → hoy.html, asistencia.html, mi-grupo.html, reportes.html, crear_proyecto.html, ...
+tienda/login.html (login/register)
+  → ?next= (checked by nextSeguro)                     [came from a page]
+  → without next: the last section on this device       [accounts with Mi Salón]
+      Tienda → tienda/index.html · Sala → sala-maestros.html
+      Mi Salón (or first time) → onboarding.html (no group yet) or dashboard.html (Inicio)
+      inside the app (/salon/tienda/login) → hoy.html (or onboarding.html)
+  → catalogo.html                                      [accounts without Mi Salón]
+dashboard.html (Inicio)
+  → hoy.html, asistencia.html, mi-grupo.html, reportes.html, crear_proyecto.html, ...
+mi-grupo.html → "Crear otro grupo" → onboarding.html?nuevo=1 (adds a group, keeps the others)
 ```
 
 Protected pages check the session and the Mi Salón access on load; without a session they go to the login, without access to the store.
@@ -81,7 +87,8 @@ Full, verified schema is in `docs/CONTEXTO.md §6`. Quick reference:
 | `calificaciones`, `evaluacion_formativa`, `tareas` | `calificaciones` is written in "Hoy" as each product is graded; `evaluacion_formativa` is filled by a trigger on grading (plus the teacher's adjustment) and links to `sesiones_pda` via `sesion_pda_id`; `tareas` is deprecated (0 rows, nothing writes it) |
 | `boleta_trimestral`, `registro_diario`, `banco_criterios_pda` | report-card text/grades per campo formativo, daily participation/conduct log, and per-PDA criteria suggestions |
 | `calendario_ajustes`, `roles_aseo` | per-group adjustments to the official SEP calendar (`js/calendario-sep.js`, data only: attendance % still counts the days the teacher took roll) and the optional cleaning roster; page `calendario.html` |
-| `listas_grupo`, `listas_columnas`, `listas_valores` | per-group cooperation/materials lists (checkbox, text, peso amounts); anything shared with families carries NO student names; closed lists are a read-only record; page `listas.html` |
+| `listas_grupo`, `listas_columnas`, `listas_valores` | per-group cooperation/materials lists (checkbox, text, peso amounts; an amount without quota is a voluntary donation: no pending, not in the overall progress); anything shared with families carries NO student names; closed lists are a read-only record; page `listas.html` |
+| `interes_secciones` | "Avísame" requests for sections not open yet (`usuario_id`, `seccion` 'sala'/'mi_salon', `created_at`); one row per account and section, removable from the same page (`tienda/js/interes-seccion.js`) |
 
 Campo formativo convention: legacy tables store the long name ("Lenguajes", …); new tables (`productos_sesion`, `boleta_trimestral`) store short codes (`LEN`/`SAB`/`ETI`/`DHL`). The mapping lives ONLY in `js/campos-formativos.js` and is applied on write.
 
