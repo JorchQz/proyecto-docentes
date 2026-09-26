@@ -139,9 +139,20 @@ la fórmula: se reporta aparte como referencia.
 - Valor de un producto: puntaje/10 si hay puntaje; si no, por nivel (logrado 1,
   en proceso 0.7, requiere apoyo 0.4); incompleto sin nivel 0.5; no entregado 0;
   justificado / no aplica fuera del máximo.
-- El examen por campo es **aproximado** (el banco no guarda el valor de cada pregunta) y
-  así se rotula en los reportes que lo muestran (boleta en pantalla, reporte detallado,
-  junta y exportación).
+- Examen (decisión de Jorge, 2026-09-26; `supabase/mi_salon_b18_examenes_2026-09.sql`): por
+  examen, la maestra elige **solo subir resultados** (aciertos por campo de cualquier examen)
+  o **crear su examen** (opción múltiple sugerida, verdadero o falso, completar y abierta).
+  Cada pregunta vale 1; las automáticas contra la clave (vacía o doble marca = 0); las de a
+  mano correcta 1, parcial 0.5, incorrecta 0. El rubro Examen de cada campo = aciertos /
+  preguntas de los exámenes del trimestre del grado del alumno, solo lo capturado. Es exacto;
+  solo el examen del catálogo anterior (ya no se ofrece) es **aproximado** y solo entonces se
+  rotula así en boleta, reporte, junta y exportación.
+- Hoja de respuestas (`js/examen-hoja.js`): carta, 4 cuadros negros en las esquinas, barra de
+  orientación, QR "MS1:examen:alumno" (o solo examen en la genérica), círculos de 6.4 mm solo
+  para las automáticas (63 como máximo). Se revisa con la cámara (`js/examen-camara.js` y el
+  lector propio `js/examen-lector.js`: umbral adaptativo, homografía y oscuridad de cada
+  círculo; nada sale del aparato), con confirmación y corrección antes de guardar; sin
+  cámara, tocando la letra.
 - Conversión a calificación: **una sola función SQL** `calcular_calificacion_boleta`
   (≥90→10, ≥80→9, ≥70→8, ≥60→7, ≥50→6, si no 5; y nunca por debajo del piso del grado:
   6 en 1°, 5 de 2° a 6°).

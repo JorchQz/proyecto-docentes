@@ -18,18 +18,64 @@
 	<script src="https://cdn.tailwindcss.com"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<style>
+		[hidden] { display: none !important; }
+		dialog.ex-dlg { width: min(40rem, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; border: 0; border-radius: 1rem; box-shadow: 0 24px 48px -16px rgba(15, 23, 42, .45); }
+		dialog.ex-dlg::backdrop { background: rgba(15, 23, 42, .5); }
+		.ex-tabla { border-collapse: separate; border-spacing: 0; }
+		.ex-tabla th, .ex-tabla td { border-bottom: 1px solid #e5e7eb; }
+		.ex-fija { position: sticky; left: 0; z-index: 1; background: #fff; }
+		.ex-celda:focus { outline: 3px solid #1d4ed8; outline-offset: -1px; }
+		#exCamara video, #exCamara canvas { touch-action: manipulation; }
+		#zonaImpresion { display: none; }
+		/* Impresión: el examen (carta, márgenes) o las hojas de respuestas (carta, sin margen) */
+		@page { size: letter portrait; margin: 14mm 14mm 16mm; }
+		@page hoja { size: letter portrait; margin: 0; }
 		@media print {
-			#app-navbar, #examenHeader, #examenTabs, #examenFooter,
-			.no-print { display: none !important; }
-			body { padding: 0 !important; background: #fff !important; }
-			.print-area { box-shadow: none !important; border: 0 !important; }
+			body { padding: 0 !important; margin: 0 !important; background: #fff !important; }
+			body > *:not(#zonaImpresion) { display: none !important; }
+			html.jz-nav body::after { display: none !important; }
+			#zonaImpresion { display: block !important; color: #111827; font-family: 'Segoe UI', Roboto, Arial, sans-serif; }
+			* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+			.imp-hoja { page: hoja; width: 215.9mm; height: 279.2mm; overflow: hidden; break-after: page; page-break-after: always; }
+			.imp-hoja:last-child { break-after: auto; page-break-after: auto; }
+			.imp-hoja svg { display: block; width: 215.9mm; height: 279.4mm; }
+			.imp-examen { font-size: 12pt; line-height: 1.4; }
+			.imp-cabeza { border-bottom: 1.5px solid #1e3a8a; padding-bottom: 6pt; margin-bottom: 10pt; }
+			.imp-escuela { font-size: 10pt; color: #4b5563; margin: 0; }
+			.imp-titulo { font-size: 17pt; font-weight: 800; margin: 2pt 0 6pt; }
+			.imp-datos { display: flex; flex-wrap: wrap; gap: 6pt 18pt; font-size: 11pt; }
+			.imp-linea { display: inline-block; width: 30mm; border-bottom: 1px solid #6b7280; }
+			.imp-linea-larga { width: 80mm; }
+			.imp-instr { font-size: 10.5pt; color: #374151; margin: 6pt 0 0; }
+			.imp-lista { list-style: none; padding: 0; margin: 0; }
+			.imp-pregunta { break-inside: avoid; page-break-inside: avoid; margin: 0 0 12pt; }
+			.imp-enunciado { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+			.imp-num { font-weight: 800; margin-right: 3pt; }
+			.imp-opciones { list-style: none; padding: 0 0 0 16pt; margin: 4pt 0 0; }
+			.imp-opciones li { margin: 2pt 0; overflow-wrap: anywhere; }
+			.imp-letra { font-weight: 700; margin-right: 4pt; }
+			.imp-vf { margin: 4pt 0 0 16pt; }
+			.imp-renglon { border-bottom: 1px solid #9ca3af; height: 9mm; margin-left: 16pt; }
 		}
 	</style>
 </head>
-<body class="bg-gray-50 min-h-screen pt-16 pb-24 text-gray-800">
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-8 text-gray-800">
 
-	<!-- Header de examen (se rellena con JS) -->
-	<div id="examenHeader" class="fixed top-14 left-0 right-0 z-20 bg-blue-900 text-white shadow-md px-4 py-3">
+	<!-- ═══ Exámenes de Mi Salón (js/examen.js, js/examen-propio.js, js/examen-camara.js) ═══ -->
+	<main id="exPantalla" class="max-w-6xl mx-auto flex flex-col gap-4">
+		<header class="bg-blue-800 rounded-2xl shadow-md p-6">
+			<h1 class="text-2xl md:text-3xl font-bold text-white">Exámenes</h1>
+			<p id="exSubtitulo" class="text-blue-100 text-sm md:text-base mt-1">Cargando...</p>
+			<p class="text-blue-100/90 text-sm mt-2">Sube los resultados de cualquier examen o crea el tuyo con hoja de respuestas. Los dos cuentan en el rubro Examen de la boleta.</p>
+		</header>
+		<div id="exMensaje" class="hidden" role="status" aria-live="polite"></div>
+		<div id="exVista" class="flex flex-col gap-4">
+			<p class="text-center py-16 text-gray-400">Cargando...</p>
+		</div>
+	</main>
+
+	<!-- Examen del modelo anterior (catálogo ya aplicado; js/examen-anterior.js). Oculto salvo con ?examen_id= -->
+	<div id="examenHeader" class="hidden fixed top-14 left-0 right-0 z-20 bg-blue-900 text-white shadow-md px-4 py-3">
 		<div class="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
 			<div class="min-w-0">
 				<h1 id="headerTitulo" class="text-base font-bold leading-tight truncate">Exámenes</h1>
@@ -40,8 +86,6 @@
 			<div id="headerEstado" class="shrink-0 text-sm font-semibold mt-1 sm:mt-0"></div>
 		</div>
 	</div>
-
-	<!-- Pestañas (solo en vista de un examen) -->
 	<div id="examenTabs" class="hidden fixed left-0 right-0 z-10 bg-white border-b border-gray-200 shadow-sm px-4">
 		<div class="max-w-4xl mx-auto flex gap-1 py-2">
 			<button id="tabVer" type="button"
@@ -54,16 +98,10 @@
 			</button>
 		</div>
 	</div>
-
-	<!-- Contenido principal -->
-	<div id="examenContenido" class="max-w-4xl mx-auto px-4 pt-20 flex flex-col gap-4">
+	<div id="examenContenido" class="hidden max-w-4xl mx-auto px-4 pt-20 flex flex-col gap-4">
 		<div id="examenMensaje" class="hidden rounded-lg px-4 py-3 text-sm font-medium"></div>
-		<div id="examenMain" class="flex flex-col gap-4">
-			<div class="text-center py-20 text-gray-400 text-base">Cargando...</div>
-		</div>
+		<div id="examenMain" class="flex flex-col gap-4"></div>
 	</div>
-
-	<!-- Footer sticky (solo en pestaña Calificar) -->
 	<div id="examenFooter" class="hidden fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-lg px-4 py-3">
 		<div class="max-w-4xl mx-auto flex flex-col gap-2">
 			<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -82,6 +120,17 @@
 		</div>
 	</div>
 
+	<!-- Diálogos -->
+	<dialog id="exDlgExamen" class="ex-dlg" aria-labelledby="exDlgExamenTitulo"></dialog>
+	<dialog id="exDlgPregunta" class="ex-dlg" aria-labelledby="exDlgPreguntaTitulo"></dialog>
+	<dialog id="exDlgConfirmar" class="ex-dlg" aria-labelledby="exDlgConfirmarTitulo"></dialog>
+
+	<!-- Revisar con la cámara (pantalla completa) -->
+	<div id="exCamara" class="hidden fixed inset-0 z-[60] bg-gray-950 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="Revisar hojas con la cámara"></div>
+
+	<!-- Lo que se imprime -->
+	<div id="zonaImpresion" aria-hidden="true"></div>
+
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
@@ -89,7 +138,16 @@
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>
 	<script src="js/leer-todo.js"></script>
-	<script src="js/examen-plantilla.js"></script>
+	<script src="js/campos-formativos.js"></script>
+	<script src="js/calendario-escolar.js"></script>
+	<script src="js/alcance-hoy.js"></script>
+	<script src="js/motor-calificacion.js"></script>
+	<script src="js/examen-modelo.js"></script>
+	<script src="js/examen-hoja.js"></script>
+	<script src="js/examen-lector.js"></script>
+	<script src="js/examen-anterior.js"></script>
+	<script src="js/examen-camara.js"></script>
+	<script src="js/examen-propio.js"></script>
 	<script src="js/examen.js"></script>
 </body>
 </html>

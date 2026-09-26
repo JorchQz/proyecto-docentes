@@ -270,7 +270,7 @@ function raiz(opciones) {
 	ok("Mi Salón: cerrar sesión lleva a la tienda", /signOut\(\)[\s\S]{0,400}window\.location\.href = "tienda\/index\.html"/.test(navbar), true);
 	const formativa = leer("js/evaluacion_formativa.js");
 	ok("formativa: el ajuste toma el contenido por id, no la barra", /getElementById\("evalContenido"\)/.test(formativa) && !/querySelector\("\.max-w-4xl/.test(formativa) && /id="evalContenido"/.test(leer("evaluacion_formativa.html")), true);
-	const examen = leer("js/examen.js");
+	const examen = leer("js/examen-anterior.js"); // la vista del examen del modelo anterior (catálogo ya aplicado)
 	ok("examen: el final deja lo que mide el pie de Calificar", /function ajustarPie\(\)[\s\S]{0,600}footerEl\.offsetHeight/.test(examen) && /new ResizeObserver\(ajustarPie\)/.test(examen), true);
 	ok("junta: el alto disponible se mide (--j-sobre)", /--j-sobre/.test(leer("junta.html")) && /setProperty\("--j-sobre"/.test(leer("js/junta.js")), true);
 	const onboarding = leer("onboarding.html");

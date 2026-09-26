@@ -449,6 +449,7 @@
 			RUBROS_ATENCION.forEach(function (r) { rubros[r.rubro] = mA ? fraccionRubro(mA.porCampo, r.rubro) : null; });
 			return {
 				id: a.id, nombre: a.nombre, num: a.num, grado: a.grado,
+				examenAproximado: !!(mA && mA.examenAproximado),
 				actual: prom,
 				anterior: comparacion ? promAnt : null,
 				delta: comparacion ? delta(prom, promAnt) : null,
@@ -498,6 +499,8 @@
 
 		var ids = {};
 		modelo.alumnos.forEach(function (a) { ids[a.id] = true; });
+		// El examen solo es aproximado si entró el del catálogo anterior (los de Mi Salón son exactos)
+		modelo.examenAproximado = modelo.alumnos.some(function (a) { return a.examenAproximado; });
 		modelo.atencion = {
 			lectura: conteo(modelo.alumnos, grados, function (a) {
 				if (!a.fluidez) return null;
@@ -508,7 +511,7 @@
 					var v = a.rubros[def.rubro];
 					return v === null ? null : v < def.umbral;
 				});
-				c.def = def;
+				c.def = def.aproximado && !modelo.examenAproximado ? Object.assign({}, def, { frase: def.frase.replace(" (dato aproximado)", "") }) : def;
 				return c;
 			}),
 			pda: pdaConMayoriaApoyo(actual.avancePda, ids),
@@ -649,7 +652,7 @@
 			html: encabezado(modelo, "Panorama del grupo") +
 				"<div class='j-cuerpo'><div class='j-panorama'>" + hero + comparativo + grados + boleta + "</div>" +
 				"<p class='j-nota'>Porcentaje de logro: combina tareas, trabajos, participación y examen de cada campo formativo " +
-				"con los pesos que definió el docente (el examen por campo es aproximado). El promedio de cada alumno es el de sus campos con datos; " +
+				"con los pesos que definió el docente" + (modelo.examenAproximado ? " (el examen por campo es aproximado)" : "") + ". El promedio de cada alumno es el de sus campos con datos; " +
 				"el del grupo, el de sus alumnos. La asistencia y la conducta no cuentan para la calificación: la conducta se informa aparte.</p></div>",
 		};
 	}

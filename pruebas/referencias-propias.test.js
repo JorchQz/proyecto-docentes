@@ -92,6 +92,11 @@ const EXCEPCIONES = {
 	listas_valores: "sus políticas de insert y update ya exigen que la lista (abierta) y la columna sean del maestro y que el alumno sea suyo y del mismo grupo que la lista",
 	// B17 (supabase/mi_salon_b17_flujo_libre_2026-09.sql): nace con la revisión en su política
 	producto_sesion_alumnos: "sus políticas restrictivas de insert y update exigen producto y alumno propios (ref_propia_producto_sesion, ref_propia_alumno) y del mismo grupo (ref_asignacion_mismo_grupo)",
+	// B18 (supabase/mi_salon_b18_examenes_2026-09.sql): nacen con la revisión en su política
+	examenes_grupo: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	examen_preguntas: "sus políticas de insert y update ya exigen que el examen sea del maestro y de modo 'propio'",
+	examen_resultados: "sus políticas de insert y update ya exigen que el examen (modo 'resultados') sea del maestro y que el alumno sea suyo y del mismo grupo que el examen",
+	examen_respuestas: "sus políticas de insert y update ya exigen que el examen (modo 'propio') y la pregunta de ESE examen sean del maestro y que el alumno sea suyo y del mismo grupo",
 };
 // Y lo comprobamos, no solo lo decimos
 {

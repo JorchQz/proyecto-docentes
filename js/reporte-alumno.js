@@ -17,7 +17,8 @@
 	    rotulada "propuesta, sin confirmar" (vista interna). Nunca se convierte un
 	    porcentaje a calificación aquí: eso lo hace la función SQL (Acuerdo 10/09/23).
 	  - La asistencia es dato de referencia: no pondera (art. 7).
-	  - El examen por campo es aproximado (valor_total / total_preguntas) y así se dice.
+	  - El examen por campo es exacto (aciertos / preguntas) en los exámenes de Mi Salón; solo el del
+	    catálogo anterior es aproximado (valor_total / total_preguntas) y así se dice.
 	  - Es un reporte interno para el docente y la familia, complemento de la boleta
 	    oficial (SIGED); no es un documento oficial de la SEP.
 
@@ -359,15 +360,7 @@
 
 	// ── Render: 3. Desempeño por campo ────────────────────────────────────────
 
-	function hayExamen(datos) {
-		var porCampo = (datos.motor && datos.motor.porCampo) || {};
-		return CAMPOS.some(function (c) {
-			var x = porCampo[c] && porCampo[c].rubros ? porCampo[c].rubros.examen : null;
-			return x && Number(x.maximo) > 0;
-		});
-	}
-
-	function tablaRubros(pc) {
+	function tablaRubros(pc, aproximado) {
 		/*
 			Columna "Peso": lo que valió cada rubro en ESTE cálculo (peso efectivo, suma 100 %
 			entre los rubros con datos; MotorCalificacion.pesosEfectivos). Los pesos de Ajustes
@@ -385,7 +378,7 @@
 			// antes del cambio, que conserva el peso con que se entregó)
 			var referencia = r === "conducta" && !(peso > 0);
 			var nombre = "<span class='font-medium text-gray-800'>" + ETIQUETA_RUBRO[r] + "</span>" +
-				(r === "examen" ? " <span class='ml-1 rounded border border-amber-300 bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-800'>aproximado</span>" : "") +
+				(r === "examen" && aproximado ? " <span class='ml-1 rounded border border-amber-300 bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-800'>aproximado</span>" : "") +
 				(r === "participacion" || r === "conducta" ? "<span class='hidden sm:block text-[11px] text-gray-400 print:hidden'>registro diario repartido</span>" : "");
 			var celdaPeso = peso > 0
 				? (efectivo && efectivo[r] !== undefined
@@ -461,7 +454,8 @@
 				"(logrado " + escala.logrado + ", en proceso " + escala.en_proceso + ", requiere apoyo " + escala.requiere_apoyo +
 				") o del puntaje capturado. Lo justificado no cuenta.";
 		}
-		if (hayExamen(datos) || m.examenAproximado) {
+		// Solo el examen del modelo anterior (catálogo) es aproximado; los de Mi Salón cuentan aciertos exactos
+		if (m.examenAproximado) {
 			notas.push("<span class='font-semibold text-amber-800'>Examen aproximado:</span> el banco de preguntas no guarda el valor " +
 				"de cada pregunta, así que el puntaje por campo se estima como valor total del examen entre número de preguntas. " +
 				"Tómalo como referencia, no como un resultado exacto.");
@@ -491,7 +485,7 @@
 				"<p class='flex items-center gap-2 min-w-0'>" + chipCampo(c) +
 				"<span class='font-semibold text-gray-800 leading-tight'>" + esc(nombreCampo(c)) + "</span></p>" +
 				"<div class='text-right shrink-0'>" + cajaCalificacion(cal, false) + "</div></div>" +
-				"<div class='p-2 sm:p-3'>" + tablaRubros(pc) + "</div></div>";
+				"<div class='p-2 sm:p-3'>" + tablaRubros(pc, !!m.examenAproximado) + "</div></div>";
 		}).join("");
 
 		var pesos = m.pesos || {};
