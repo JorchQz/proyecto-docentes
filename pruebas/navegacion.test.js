@@ -110,10 +110,10 @@ ok("página actual", ["/salon/hoy", "/hoy.html", "/x/reportes", "/", "/salon/"].
 ok("marcado en el menú (las páginas hijas marcan a su sección)",
 	["hoy", "crear_proyecto", "boleta", "mi-cuenta", "evaluacion_formativa", "sala-maestros"].map((p) => N.activoDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["hoy", "planeacion", "reportes", "mi-cuenta", null, "sala-maestros"]);
-ok("los mismos destinos de antes (barra y menú) más Incidencias y Calendario (2026-09-25), sin quitar ninguno",
+ok("los mismos destinos de antes (barra y menú) más Incidencias y Calendario (2026-09-25) y Listas (2026-09-26), sin quitar ninguno",
 	(htmlSalon.match(/href="[a-z_\-]+\.html"/g) || []).map((h) => h.slice(6, -1)).filter((v, i, t) => t.indexOf(v) === i).sort(),
 	["actividades.html", "ajustes.html", "asistencia.html", "calendario.html", "dashboard.html", "evaluacion_diagnostica.html", "examen.html",
-		"hoy.html", "incidencias.html", "marketplace.html", "mi-cuenta.html", "mi-grupo.html", "planeacion.html", "reportes.html", "tareas.html"]);
+		"hoy.html", "incidencias.html", "listas.html", "marketplace.html", "mi-cuenta.html", "mi-grupo.html", "planeacion.html", "reportes.html", "tareas.html"]);
 ok("Incidencias va en el grupo «Grupo», después de Mi grupo, con su título y marcada en su página",
 	[/<p class="jz-titulo" id="jzMenuG3">Grupo<\/p><ul[^>]*><li><a class="jz-item" href="mi-grupo\.html"[\s\S]*?<\/li><li><a class="jz-item" href="incidencias\.html"[\s\S]*?<\/li><li><a class="jz-item" href="calendario\.html"/.test(htmlSalon),
 		N.tituloDe("salon", "incidencias"), N.activoDe("salon", "incidencias")],
@@ -121,6 +121,10 @@ ok("Incidencias va en el grupo «Grupo», después de Mi grupo, con su título y
 ok("Calendario va en el grupo «Grupo», después de Incidencias, con su título y marcado en su página",
 	[N.tituloDe("salon", "calendario"), N.activoDe("salon", "calendario")],
 	["Calendario", "calendario"]);
+ok("Listas va en el grupo «Grupo», después de Calendario (último del grupo), con su título, su ícono y marcada en su página",
+	[/<li><a class="jz-item" href="calendario\.html"[\s\S]*?<\/li><li><a class="jz-item" href="listas\.html"[\s\S]*?<\/li><\/ul>/.test(htmlSalon),
+		N.tituloDe("salon", "listas"), N.activoDe("salon", "listas"), /<a class="jz-item" href="listas\.html"[^>]*>[\s\S]*?M13 18h8/.test(htmlSalon)],
+	[true, "Listas", "listas", true]);
 ok("títulos del encabezado", ["hoy", "boleta", "reporte-alumno", "sala-maestros", "otra"].map((p) => N.tituloDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["Hoy", "Boleta", "Reporte del alumno", "Sala de Maestros", "Mi Salón"]);
 ok("cuenta: Mi cuenta, Ajustes, Instalar (oculto hasta que se pueda) y Cerrar sesión, en ese orden",

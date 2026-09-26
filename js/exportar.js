@@ -350,6 +350,7 @@
 		// Las hojas opcionales solo se mencionan si el libro las trae (mismas reglas que libroXLSX)
 		var conIncidencias = hayIncidencias(meta);
 		var conCalendario = ajustesDelLibro(meta).length > 0;
+		var conListas = hayListas(meta);
 		var escala = meta.escala || {};
 		var valores = [];
 		if (escala.logrado !== undefined) valores.push("Logrado = " + escala.logrado);
@@ -377,6 +378,7 @@
 			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación." +
 				(conIncidencias ? " «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero." : "") +
 				(conCalendario ? " «" + HOJA_CALENDARIO + "»: los días que el docente cambió del calendario escolar oficial para este grupo." : "") +
+				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias)." : "") +
 				" El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
 		].concat(conCalendario ? [
 			["Calendario", "La hoja «" + HOJA_CALENDARIO + "» lista los días que el docente cambió del calendario escolar oficial de la SEP para este grupo (suspensiones propias o días con clase por un ajuste de la autoridad educativa local). Es solo dato: no cambia ningún cálculo de asistencia ni de calificaciones."],
@@ -535,6 +537,55 @@
 		}));
 	}
 
+	// ── Hoja Listas (B15: listas de cooperación y materiales, listas.html) ──────
+	/*
+		hojaListas(listas, alumnos) → filas (aoa). Es el archivo de la maestra: lleva nombres.
+		listas: [{ lista (fila de listas_grupo con listas_columnas), valores: [filas de listas_valores] }]
+		alumnos: todos los del grupo (activos y de baja), para los nombres y quién cuenta.
+		Por lista, un bloque: nombre, fecha y estado; descripción; encabezado (Alumno y columnas);
+		una fila por alumno (Sí / Pendiente, el texto, el monto en pesos como número, o «No aplica»);
+		el resumen por columna (js/listas.js, el mismo de la pantalla) y un renglón vacío.
+	*/
+	var HOJA_LISTAS = "Listas";
+	function listasJS() {
+		if (typeof window !== "undefined" && window.Listas) return window.Listas;
+		if (typeof require === "function") { try { return require("./listas.js"); } catch (e) { /* sin el módulo */ } }
+		return null;
+	}
+	function hayListas(meta) {
+		return !!(meta && Array.isArray(meta.listas) && meta.listas.length && listasJS());
+	}
+	function hojaListas(listas, alumnos) {
+		var L = listasJS();
+		var filas = [];
+		(listas || []).forEach(function (x) {
+			var l = x.lista || {};
+			var cols = L.ordenarColumnas(l.listas_columnas);
+			var mapa = L.mapaValores(x.valores || []);
+			var res = L.resumenLista(l, cols, alumnos || [], mapa);
+			filas.push(["Lista", l.nombre || "", "Fecha", String(l.fecha || "").slice(0, 10), "Estado", l.estado === "cerrada" ? "Cerrada" : "Abierta"]);
+			if (l.descripcion) filas.push(["Descripción", unaLinea(l.descripcion)]);
+			if (!cols.length) { filas.push(["Sin columnas."]); filas.push([]); return; }
+			filas.push(["Alumno"].concat(res.columnas.map(function (r) {
+				var c = r.columna;
+				return c.nombre + (c.tipo === "monto" ? (r.cuota ? " (pesos; cuota " + L.pesos(r.cuota) + ")" : " (pesos)") : "");
+			})));
+			res.filas.forEach(function (f) {
+				filas.push([(f.alumno.nombre_completo || "Alumno sin nombre") + (f.baja ? " (baja)" : "")].concat(res.columnas.map(function (r) {
+					var c = r.columna, v = L.valorDe(mapa, c.id, f.alumno.id);
+					if (!L.cuentaEn(f, c, mapa)) return "No aplica";
+					if (c.tipo === "palomita") return v && v.entregado ? "Sí" : "Pendiente";
+					if (c.tipo === "texto") return v && v.texto ? unaLinea(v.texto) : "";
+					var cent = v ? L.aCentavos(v.monto) : null;
+					return cent ? cent / 100 : 0;
+				})));
+			});
+			filas.push(["Resumen"].concat(res.columnas.map(function (r) { return L.lineaColumna(r); })));
+			filas.push([]);
+		});
+		return filas;
+	}
+
 	function libroXLSX(XLSX, tabla, meta) {
 		var wb = XLSX.utils.book_new();
 		var hoja1 = XLSX.utils.aoa_to_sheet([tabla.encabezados].concat(tabla.filas));
@@ -574,6 +625,13 @@
 			XLSX.utils.book_append_sheet(wb, hoja5, HOJA_CALENDARIO);
 		}
 
+		// Listas de cooperación y materiales (b15): solo si el grupo tiene alguna
+		if (hayListas(meta)) {
+			var hoja6 = XLSX.utils.aoa_to_sheet(hojaListas(meta.listas, meta.alumnosListas));
+			hoja6["!cols"] = [{ wch: 36 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }];
+			XLSX.utils.book_append_sheet(wb, hoja6, HOJA_LISTAS);
+		}
+
 		wb.Props = { Title: "Concentrado por alumno", Author: "Mi salón" };
 		return wb;
 	}
@@ -600,6 +658,8 @@
 		ajustesDelLibro: ajustesDelLibro,
 		HOJA_CALENDARIO: HOJA_CALENDARIO,
 		hojaCalendario: hojaCalendario,
+		HOJA_LISTAS: HOJA_LISTAS,
+		hojaListas: hojaListas,
 		encabezados: encabezados,
 		redondear1: redondear1,
 		construir: construir,
@@ -852,6 +912,41 @@
 			return res.data || [];
 		}
 
+		/*
+			Listas de cooperación y materiales del grupo (b15), para la hoja "Listas": las listas con
+			sus columnas, sus valores y todos los alumnos del grupo (también los de baja, que
+			conservan su registro). Si las tablas todavía no existen en la base (el sitio se publicó
+			antes que la migración b15), el Excel sale sin la hoja; cualquier otro error detiene la
+			descarga (el Excel no sale incompleto sin avisar).
+		*/
+		async function leerListas() {
+			var listas;
+			try {
+				listas = await window.LeerTodo.paginas(function () {
+					return window.sb.from("listas_grupo").select("*, listas_columnas(*)")
+						.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupo.id)
+						.order("fecha", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: true });
+				});
+			} catch (e) {
+				if (e && (e.code === "42P01" || e.code === "PGRST205")) return { listas: [], alumnos: [] };
+				throw e;
+			}
+			if (!listas.length || !window.Listas) return { listas: [], alumnos: [] };
+			var ids = listas.map(function (l) { return l.id; });
+			var valores = await window.LeerTodo.porLotes(ids, function (lote) {
+				return window.sb.from("listas_valores").select("id, lista_id, columna_id, alumno_id, entregado, texto, monto")
+					.eq("maestro_id", ctx.maestroId).in("lista_id", lote).order("id", { ascending: true });
+			});
+			var alumnos = await window.LeerTodo.paginas(function () {
+				return window.sb.from("alumnos").select("id, nombre_completo, num_lista, grado, estatus")
+					.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupo.id).order("num_lista", { ascending: true }).order("id", { ascending: true });
+			});
+			return {
+				listas: listas.map(function (l) { return { lista: l, valores: valores.filter(function (v) { return v.lista_id === l.id; }) }; }),
+				alumnos: alumnos,
+			};
+		}
+
 		async function descargarXLSX() {
 			if (!tabla) return;
 			var original = el.xlsx.innerHTML;
@@ -861,8 +956,10 @@
 				var XLSX = await cargarSheetJS();
 				var inc = await leerIncidencias();
 				var ajustesCalendario = await leerAjustesCalendario();
+				var ls = await leerListas();
 				var wb = libroXLSX(XLSX, tabla, {
 					ajustesCalendario: ajustesCalendario,
+					listas: ls.listas, alumnosListas: ls.alumnos,
 					grupo: ctx.grupo.nombre, ciclo: ctx.ciclo, trimestre: trimestre,
 					escuela: ctx.escuela, maestro: ctx.maestroNombre, fecha: hoyISO(),
 					alumnos: tabla.filas.length,
