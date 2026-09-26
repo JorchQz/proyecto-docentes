@@ -59,7 +59,7 @@ ok("error de solo lectura: por la pista o el mensaje", [
 	MS.esErrorSoloLectura({ code: "42501", message: "new row violates row-level security policy" }),
 	MS.esErrorSoloLectura(null)], [true, true, false, false]);
 ok("Renovar lleva a la presentación (mientras no hay compra); dentro de /salon/ sale de la app",
-	[MS.urlCompra("/dashboard.html"), MS.urlCompra("/salon/dashboard")], ["tienda/conoce-mi-salon.html", "/tienda/conoce-mi-salon.html"]);
+	[MS.urlCompra("/dashboard.html"), MS.urlCompra("/salon/dashboard")], ["tienda/mi-salon-compra.html", "/tienda/mi-salon-compra.html"]);
 
 // Textos (spec §7 y memoria de lenguaje): docente, tú, sin género, sin urgencia, sin prueba de 14 días
 const textos = [MS.textoBanner(vencido), MS.textoBanner(sinAcceso), MS.textoCorto(vencido), MS.textoCorto(sinAcceso),

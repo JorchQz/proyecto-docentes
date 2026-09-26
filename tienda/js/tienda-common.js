@@ -961,6 +961,23 @@
 				h.appendChild(a);
 				h.hidden = false;
 			});
+			// Llegada tras el login de quien todavía no usa Mi Salón (tienda/js/login.js, decisión de
+			// Jorge 2026-09-26): la tienda de siempre, con un aviso discreto, una sola vez
+			var aviso = null;
+			try { aviso = sessionStorage.getItem("jissez.llegadaMiSalon"); sessionStorage.removeItem("jissez.llegadaMiSalon"); } catch (_) {}
+			if (aviso && !document.getElementById("avisoLlegadaMiSalon")) {
+				var barra = document.createElement("div");
+				barra.id = "avisoLlegadaMiSalon";
+				barra.setAttribute("role", "status");
+				barra.className = "border-b border-line bg-white";
+				barra.innerHTML = '<div class="max-w-content mx-auto px-4 sm:px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink">' +
+					'<i data-lucide="school" class="w-4 h-4 shrink-0 text-board"></i><span class="flex-1 min-w-0">' + esc(aviso) + "</span>" +
+					'<a href="' + PRESENTACION_MI_SALON + '" data-enlace-mi-salon class="inline-flex items-center min-h-[44px] font-semibold text-board underline">Conocer Mi Salón</a>' +
+					'<button type="button" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-mute hover:text-ink" aria-label="Cerrar el aviso"><i data-lucide="x" class="w-4 h-4"></i></button></div>';
+				barra.querySelector("button").addEventListener("click", function () { barra.remove(); });
+				header.parentNode.insertBefore(barra, header.nextSibling);
+				iconos();
+			}
 		});
 	}
 

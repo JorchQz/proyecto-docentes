@@ -78,8 +78,9 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 			</div>
 
 			<!-- Tab Mi Salón (b21, tienda/js/admin-mi-salon.js): interruptor de lanzamiento, métricas,
-			     docentes con su acceso, dar o extender acceso y calendario de periodos. Los precios y el
-			     cupo fundador los agrega el módulo de cobros (b22) en el lugar reservado al final. -->
+			     docentes con su acceso, dar o extender acceso y calendario de periodos. Al final, los cobros
+			     (b22, tienda/js/admin-mi-salon-cobros.js): aviso de lanzamiento, precios y cupo fundador,
+			     pagos y listas para WhatsApp. -->
 			<div id="panelMiSalon" class="hidden p-4 sm:p-5 flex flex-col gap-6">
 				<div id="msMensaje" class="hidden rounded-xl px-4 py-3 text-sm font-medium" role="status" aria-live="polite"></div>
 
@@ -179,11 +180,65 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 					</div>
 				</section>
 
-				<!-- Lugar reservado para el módulo de cobros (b22): precios de Mi Salón (mi_salon_precios),
-				     cupo de precio fundador y lugares que quedan -->
-				<section id="msPrecios" class="rounded-2xl border border-dashed border-line p-4 sm:p-5" aria-labelledby="msPreciosTitulo">
-					<h2 id="msPreciosTitulo" class="font-bold text-ink text-lg">Precios y precio fundador</h2>
-					<p class="text-sm text-mute mt-1">Aquí irán los precios de Mi Salón y el cupo de precio fundador cuando se activen los cobros.</p>
+				<!-- Cobros (b22, tienda/js/admin-mi-salon-cobros.js): precios, cupo fundador, pagos,
+				     aviso de lanzamiento y listas de WhatsApp por segmento -->
+				<section id="msLanzamiento" class="rounded-2xl border border-line p-4 sm:p-5 flex flex-col gap-3" aria-labelledby="msLanzamientoTitulo">
+					<div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+						<div class="min-w-0">
+							<h2 id="msLanzamientoTitulo" class="font-bold text-ink text-lg">Aviso de lanzamiento</h2>
+							<p id="msLanzamientoTexto" class="text-sm text-mute mt-1">Cargando...</p>
+						</div>
+						<button id="msLanzamientoBtn" type="button" disabled class="shrink-0 min-h-[44px] px-5 rounded-xl font-semibold text-white transition disabled:opacity-60" style="background:#1e3a8a">Enviar aviso de lanzamiento</button>
+					</div>
+					<p class="text-xs text-mute leading-relaxed">Un solo correo por cuenta que ya existía al abrir Mi Salón y tiene el primer trimestre gratis: “Mi Salón ya está disponible… tu primer trimestre es gratis hasta el [fecha]”. No les llega al piloto ni a las cuentas nuevas (esas reciben la bienvenida). Si no lo mandas desde aquí, sale solo con el aviso automático de cada hora.</p>
+				</section>
+
+				<section id="msPrecios" class="rounded-2xl border border-line p-4 sm:p-5 flex flex-col gap-4" aria-labelledby="msPreciosTitulo">
+					<div>
+						<h2 id="msPreciosTitulo" class="font-bold text-ink text-lg">Precios y precio fundador</h2>
+						<p id="msLugaresTexto" class="text-sm text-mute mt-1">Cargando...</p>
+					</div>
+					<div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+						<div>
+							<label for="msCupo" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Cupo de precio fundador (docentes)</label>
+							<input id="msCupo" type="number" min="0" step="1" inputmode="numeric" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						</div>
+						<div>
+							<label for="msCorteTienda" class="block text-[11px] font-bold uppercase tracking-[0.1em] text-mute mb-1.5">Compradores de la tienda: compras hasta el</label>
+							<input id="msCorteTienda" type="date" class="w-full min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+						</div>
+						<button id="msCupoGuardar" type="button" class="min-h-[44px] px-5 rounded-xl font-semibold text-white transition disabled:opacity-60" style="background:#1e3a8a">Guardar cupo y corte</button>
+					</div>
+					<p class="text-xs text-mute">Sin fecha de corte cuenta el día que se abrió Mi Salón. Un comprador de la tienda tiene precio fundador aunque ya no queden lugares. Los lugares cuentan docentes con un pago aprobado a precio fundador en el ciclo.</p>
+					<div id="msPreciosTabla" class="relative overflow-x-auto"><p class="text-sm text-mute">Cargando...</p></div>
+					<div class="flex flex-col sm:flex-row gap-2">
+						<button id="msPreciosGuardar" type="button" class="min-h-[44px] px-5 rounded-xl font-semibold text-white transition disabled:opacity-60" style="background:#059669">Guardar precios</button>
+						<button id="msPreciosCiclo" type="button" class="min-h-[44px] px-4 rounded-xl border border-line text-sm font-semibold text-ink hover:bg-gray-50">Agregar los precios de un ciclo nuevo</button>
+					</div>
+				</section>
+
+				<section aria-labelledby="msPagosTitulo">
+					<div class="flex flex-col sm:flex-row sm:items-end gap-3 sm:justify-between">
+						<div>
+							<h2 id="msPagosTitulo" class="font-bold text-ink text-lg">Pagos de Mi Salón</h2>
+							<p class="text-xs text-mute mt-1">Una compra se vuelve acceso solo cuando Mercado Pago aprueba el pago (webhook). Un pago pendiente en OXXO se muestra con su referencia.</p>
+						</div>
+						<label class="sr-only" for="msPagosFiltro">Estado del pago</label>
+						<select id="msPagosFiltro" class="min-h-[44px] px-3 border border-line rounded-xl text-sm" style="color:#1c2434;background:#fff">
+							<option value="">Todos</option>
+							<option value="pagado">Pagados</option>
+							<option value="pendiente">Pendientes (OXXO, SPEI)</option>
+							<option value="reembolsado">Reembolsados</option>
+						</select>
+					</div>
+					<div id="msPagosMetricas" class="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-3"></div>
+					<div id="msPagos" class="relative mt-3 overflow-x-auto"><p class="text-sm text-mute">Cargando...</p></div>
+				</section>
+
+				<section aria-labelledby="msWhatsTitulo">
+					<h2 id="msWhatsTitulo" class="font-bold text-ink text-lg">Listas para WhatsApp</h2>
+					<p class="text-xs text-mute mt-1">Por segmento: el texto listo para copiar y la lista de docentes. El envío es a mano desde WhatsApp Business.</p>
+					<div id="msWhats" class="mt-3 flex flex-col gap-3"><p class="text-sm text-mute">Cargando...</p></div>
 				</section>
 			</div>
 
@@ -684,5 +739,6 @@ src="https://www.facebook.com/tr?id=1707663363640372&ev=PageView&noscript=1"
 <script src="js/vista-previa.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/admin-mi-salon.js"></script>
+<script src="js/admin-mi-salon-cobros.js"></script>
 </body>
 </html>

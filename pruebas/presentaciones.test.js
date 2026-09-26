@@ -84,7 +84,8 @@ ok("ningún otro archivo de la tienda, Mi Salón o la app enlaza a las presentac
 	const bloques = comun.split("miSalonAbierto().then(function (si) {").slice(1);
 	ok("tienda: el enlace solo se pone con Mi Salón abierto (" + usos + " usos)", bloques.length >= 2 && bloques.every((b) => /^\s*(var [^\n]*\n\s*)?if \(!si/.test(b)), true);
 	const acceso = leer("js/mi-salon-acceso.js");
-	ok("Mi Salón: la presentación solo como destino del botón de compra (COMPRA)", (acceso.match(/conoce-mi-salon/g) || []).length, 1);
+	// b22 (cobros): el botón de compra ya lleva a la compra de Mi Salón, no a la presentación
+	ok("Mi Salón: la presentación no se enlaza desde la app; el botón de compra (COMPRA) lleva a la compra", [(acceso.match(/conoce-mi-salon/g) || []).length, /var COMPRA = "tienda\/mi-salon-compra\.html"/.test(acceso)], [0, true]);
 }
 
 // Fuera de la app instalable: /salon/tienda/conoce-* sale de /salon/, antes de la regla general

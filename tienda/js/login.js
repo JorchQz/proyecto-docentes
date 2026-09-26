@@ -53,7 +53,33 @@ var LoginDestino = (function () {
 		return destinoSaas === "onboarding.html" ? destinoSaas : "hoy.html";
 	}
 
-	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil, enSalon: enSalon, destinoSalon: destinoSalon };
+	/*
+		Con Mi Salón abierto (b21) TODA cuenta "ve" Mi Salón. Decisión de Jorge (2026-09-26): quien
+		todavía no lo usa (un comprador de la tienda) llega a la tienda como siempre, con un aviso
+		discreto para conocerlo; no se le manda al alta del grupo. Usa Mi Salón quien tiene
+		activo_saas o acceso piloto, ya tiene un grupo o su última sección en este aparato fue Mi
+		Salón o la Sala. `grupos`: la respuesta de la consulta de grupos (null si no se consultó).
+		Si esa consulta falló, se asume que sí lo usa (se conserva lo de antes).
+	*/
+	function usaMiSalon(perf, ultima, grupos) {
+		if (!perf || perf.error || !perf.data) return true;
+		if (perf.data.activo_saas === true) return true;
+		var ms = perf.data.mi_salon;
+		if (ms && ms.piloto === true) return true;
+		if (ultima === "salon" || ultima === "sala") return true;
+		if (!grupos || grupos.error) return true;
+		return !!(grupos.data && grupos.data.length);
+	}
+
+	// El aviso discreto de la tienda (tienda-common.js lo pinta una vez, con Mi Salón abierto)
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function textoLlegada(perf) {
+		var ms = perf && perf.data && perf.data.mi_salon;
+		var m = ms && ms.vigente && ms.origen === "gratis_t1" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ms.vence || "")) : null;
+		return "Mi Salón ya está disponible para docentes" + (m ? ": tu primer trimestre es gratis hasta el " + Number(m[3]) + " de " + MESES[Number(m[2]) - 1] + "." : ".");
+	}
+
+	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil, enSalon: enSalon, destinoSalon: destinoSalon, usaMiSalon: usaMiSalon, textoLlegada: textoLlegada };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = LoginDestino; // pruebas en node
 
@@ -132,6 +158,11 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			// Solo decide entre el panel y el alta; si falla, el panel (destinoMiSalon), que
 			// revisa el grupo por su cuenta
 			grupos = await window.sb.from("grupos").select("id").eq("maestro_id", userId).limit(1);
+		}
+		// Quien todavía no usa Mi Salón (solo lo "ve" porque está abierto): a la tienda, con aviso
+		if (S && S.necesitaGrupos(ultima) && !LoginDestino.usaMiSalon(perf, ultima, grupos)) {
+			try { sessionStorage.setItem("jissez.llegadaMiSalon", LoginDestino.textoLlegada(perf)); } catch (_) {}
+			return "catalogo.html";
 		}
 		return LoginDestino.porPerfil(perf, S ? S.destinoLogin(ultima, grupos) : "dashboard.html");
 	}

@@ -159,7 +159,7 @@ var AdminMiSalon = (function () {
 			tarjeta(m.con_grupo, "Con grupo en Mi Salón") +
 			tarjeta(m.ponte_al_dia, "Usaron “Ponte al día”") +
 			tarjeta(m.boleta, "Generaron boleta del T1", m.boleta_cerrada + " cerrada(s)") +
-			tarjeta(m.pagaron_t2, "Pagaron el T2", "Cuando se activen los cobros") +
+			tarjeta(m.pagaron_t2, "Pagaron el T2", "Con un acceso pagado que incluye el T2") +
 			tarjeta(m.vigente + m.por_vencer, "Con acceso vigente", m.por_vencer + " por vencer") +
 			tarjeta(m.solo_lectura, "En solo lectura");
 	}
@@ -280,6 +280,8 @@ var AdminMiSalon = (function () {
 			pintarPeriodos();
 			pintarDar();
 			iconos();
+			// Cobros (b22): precios, cupo fundador, pagos, lanzamiento y WhatsApp
+			if (window.AdminMiSalonCobros) window.AdminMiSalonCobros.cargar();
 		} catch (e) {
 			console.error("admin Mi Salón:", e);
 			mensaje("error", "No se pudo cargar Mi Salón: " + errorTexto(e));
@@ -334,6 +336,8 @@ var AdminMiSalon = (function () {
 		pintarInterruptor();
 		pintarMetricas();
 		mensaje("ok", abrir ? "Mi Salón quedó abierto." : "Mi Salón quedó cerrado (solo el piloto).");
+		// Al abrir: se ofrece mandar el aviso de lanzamiento a las cuentas que ya existían (b22)
+		if (abrir && window.AdminMiSalonCobros) window.AdminMiSalonCobros.alAbrir();
 	}
 
 	async function darAcceso() {

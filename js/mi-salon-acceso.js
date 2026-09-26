@@ -20,14 +20,18 @@
 	    cargar dijera otra cosa (el acceso venció con la página abierta).
 	Sin estado (base sin migrar, lectura fallida) no se asume solo lectura: el servidor decide.
 
-	Botón de compra: mientras no exista la compra de Mi Salón (la hace el constructor de cobros),
-	lleva a la página de presentación de Mi Salón en la tienda (MiSalonAcceso.COMPRA).
+	Botón de compra: la página de compra y renovación de Mi Salón en la tienda
+	(tienda/mi-salon-compra.html, b22; MiSalonAcceso.COMPRA).
+	Cobros (b22): el estado trae además 'pago_pendiente' (un pago en OXXO o SPEI que aún no se
+	acredita, con su referencia) y 'aviso' (el del calendario de avisos que toca hoy, solo con Mi
+	Salón abierto). Con acceso vigente, Inicio muestra primero el pago pendiente y, si no hay, el
+	aviso (este se puede cerrar; se recuerda por aviso en el aparato). Mi cuenta muestra los dos.
 	Se carga en cada página del SaaS justo después de js/saas-guard.js.
 	Las reglas puras se prueban en pruebas/mi-salon-acceso.test.js.
 */
 var MiSalonAcceso = (function () {
 	var PISTA = "mi_salon_solo_lectura";
-	var COMPRA = "tienda/conoce-mi-salon.html";
+	var COMPRA = "tienda/mi-salon-compra.html";
 	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
 		"septiembre", "octubre", "noviembre", "diciembre"];
 	var ORIGEN = {
@@ -134,6 +138,44 @@ var MiSalonAcceso = (function () {
 		return /^\/salon\//.test(String(pathname || "")) ? "/" + COMPRA : COMPRA;
 	}
 
+	function pesos(n) {
+		var v = Number(n);
+		if (!isFinite(v)) return "";
+		return "$" + (Math.round(v * 100) % 100 === 0 ? String(Math.round(v)) : v.toFixed(2));
+	}
+
+	// Pago pendiente (OXXO o SPEI sin acreditar): { titulo, texto, referencia, ticket_url } o null
+	function textoPendiente(estado) {
+		var p = estado && estado.pago_pendiente;
+		if (!p || typeof p !== "object") return null;
+		var metodo = p.metodo === "oxxo" ? " en OXXO" : (p.tipo_metodo === "ticket" ? " en efectivo" : (p.tipo_metodo === "bank_transfer" ? " por SPEI" : ""));
+		return {
+			titulo: "Pago pendiente",
+			texto: "Tu pago" + metodo + " de " + pesos(p.monto) + " (" + (p.nombre || "Mi Salón") + ") todavía no se refleja. Cuando se acredite, tu acceso se activa solo.",
+			referencia: p.referencia || null,
+			ticket_url: /^https:\/\//.test(String(p.ticket_url || "")) ? p.ticket_url : null,
+		};
+	}
+
+	// Aviso del calendario que toca hoy: { clave, titulo, texto, boton, ruta } o null
+	function textoAviso(estado) {
+		var a = estado && estado.aviso;
+		if (!a || typeof a !== "object" || !a.texto) return null;
+		return { clave: String(a.clave || "") + ":" + String(a.fecha || ""), titulo: a.asunto || "", texto: a.texto, boton: a.boton_texto || null, ruta: a.boton_ruta || null };
+	}
+
+	/*
+		Enlace del botón de un aviso (su ruta viene de la tabla mi_salon_avisos, desde la raíz):
+		una página de la tienda (fuera de la app instalable) o una de Mi Salón (relativa: sirve en la
+		raíz y dentro de /salon/).
+	*/
+	function urlAviso(ruta, pathname) {
+		var r = String(ruta || "");
+		if (!/^\/[a-z0-9_\-\/]*$/i.test(r)) return null;
+		if (r.indexOf("/tienda/") === 0) return /^\/salon\//.test(String(pathname || "")) ? r : r.slice(1);
+		return r.slice(1) + ".html";
+	}
+
 	// ── Interfaz ─────────────────────────────────────────────────────────────────
 	var estadoActual = null;
 	var CSS =
@@ -168,23 +210,79 @@ var MiSalonAcceso = (function () {
 			(clase ? ' class="' + clase + '"' : "") + ">" + esc(texto) + "</a>";
 	}
 
-	// Banner fijo de Inicio: no se puede cerrar mientras dure el solo lectura
+	var ICONO_RELOJ = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
+	var ICONO_CAMPANA = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>';
+	var ICONO_X = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+	var BOTON = "shrink-0 inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-900";
+
+	function avisoCerrado(clave) {
+		try { return localStorage.getItem("jissez.aviso." + clave) === "1"; } catch (_) { return false; }
+	}
+
+	function enlaceAviso(a, clase) {
+		var url = urlAviso(a.ruta, window.location.pathname);
+		if (!url || !a.boton) return "";
+		if (url.indexOf("tienda/") !== -1) return enlaceCompra(a.boton, clase).replace(/href="[^"]*"/, 'href="' + esc(url) + '"');
+		return '<a href="' + esc(url) + '" class="' + clase + '">' + esc(a.boton) + "</a>";
+	}
+
+	function htmlPendiente(t) {
+		return '<div class="shrink-0 w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">' + ICONO_RELOJ + "</div>" +
+			'<div class="flex-1 min-w-0"><p class="font-semibold text-amber-950">' + esc(t.titulo) + "</p>" +
+			'<p class="text-sm text-amber-900 mt-0.5">' + esc(t.texto) + "</p>" +
+			(t.referencia ? '<p class="text-sm text-amber-950 mt-1">Referencia de pago: <strong class="font-mono">' + esc(t.referencia) + "</strong></p>" : "") + "</div>" +
+			(t.ticket_url ? '<a href="' + esc(t.ticket_url) + '" target="_blank" rel="noopener" class="' + BOTON + '">Ver mi ficha de pago</a>' : enlaceCompra("Ver mi pago", BOTON));
+	}
+
+	/*
+		Banner de Inicio. Sin acceso vigente: el de solo lectura (fijo, no se cierra). Con acceso:
+		el pago pendiente (con la referencia) o, si no hay, el aviso del día (se puede cerrar).
+	*/
 	function pintarBanner(el, estado) {
 		var t = textoBanner(estado);
-		if (!t) { el.classList.add("hidden"); el.innerHTML = ""; return; }
-		el.className = "rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4";
 		el.setAttribute("role", "status");
-		el.innerHTML =
-			'<div class="shrink-0 w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">' + ICONO_CANDADO + "</div>" +
-			'<div class="flex-1 min-w-0"><p class="font-semibold text-amber-950">' + esc(t.titulo) + "</p>" +
-			'<p class="text-sm text-amber-900 mt-0.5">' + esc(t.texto) + "</p></div>" +
-			enlaceCompra(t.boton, "shrink-0 inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-900");
+		if (t) {
+			el.className = "rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4";
+			el.innerHTML =
+				'<div class="shrink-0 w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">' + ICONO_CANDADO + "</div>" +
+				'<div class="flex-1 min-w-0"><p class="font-semibold text-amber-950">' + esc(t.titulo) + "</p>" +
+				'<p class="text-sm text-amber-900 mt-0.5">' + esc(t.texto) + "</p></div>" +
+				enlaceCompra(t.boton, BOTON);
+			return;
+		}
+		var p = textoPendiente(estado);
+		if (p) {
+			el.className = "rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4";
+			el.innerHTML = htmlPendiente(p);
+			return;
+		}
+		var a = textoAviso(estado);
+		if (a && !avisoCerrado(a.clave)) {
+			el.className = "rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4";
+			el.innerHTML =
+				'<div class="shrink-0 w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center">' + ICONO_CAMPANA + "</div>" +
+				'<div class="flex-1 min-w-0"><p class="text-sm text-blue-950">' + esc(a.texto) + "</p></div>" +
+				enlaceAviso(a, BOTON) +
+				'<button type="button" data-cerrar-aviso class="shrink-0 self-end sm:self-center inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl text-blue-900 hover:bg-blue-100" aria-label="Cerrar este aviso">' + ICONO_X + "</button>";
+			el.querySelector("[data-cerrar-aviso]").addEventListener("click", function () {
+				try { localStorage.setItem("jissez.aviso." + a.clave, "1"); } catch (_) {}
+				el.classList.add("hidden");
+				el.innerHTML = "";
+			});
+			return;
+		}
+		el.classList.add("hidden");
+		el.innerHTML = "";
 	}
 
 	// Mi cuenta: el estado del acceso (siempre que haya estado)
 	function pintarCuenta(el, estado) {
 		var t = textoCuenta(estado);
 		if (!t) { el.classList.add("hidden"); return; }
+		var p = textoPendiente(estado);
+		var a = textoAviso(estado);
+		// Con acceso vigente también se ofrece renovar cuando ya hay aviso o faltan 21 días o menos
+		var renovar = !t.solo && estado.origen !== "piloto" && (!!a || (typeof estado.dias_restantes === "number" && estado.dias_restantes <= 21));
 		el.classList.remove("hidden");
 		el.innerHTML =
 			'<div class="flex items-start gap-3">' +
@@ -194,7 +292,9 @@ var MiSalonAcceso = (function () {
 			'<p class="mt-1 font-semibold ' + (t.solo ? "text-amber-900" : "text-emerald-800") + '">' + esc(t.titulo) + "</p>" +
 			(t.origen ? '<p class="text-sm text-gray-600 mt-0.5">' + esc(t.origen) + "</p>" : "") +
 			'<p class="text-sm text-gray-600 mt-2">' + esc(t.detalle) + "</p>" +
-			(t.solo ? '<div class="mt-3">' + enlaceCompra(estado.vence ? "Renovar mi acceso" : "Ver cómo tener acceso",
+			(p ? '<div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 flex flex-col sm:flex-row sm:items-center gap-3">' + htmlPendiente(p) + "</div>" : "") +
+			(a ? '<p class="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">' + esc(a.texto) + "</p>" : "") +
+			(t.solo || renovar ? '<div class="mt-3">' + enlaceCompra(estado.vence ? "Renovar mi acceso" : "Ver cómo tener acceso",
 				"inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-900") + "</div>" : "") +
 			"</div></div>";
 	}
@@ -326,6 +426,9 @@ var MiSalonAcceso = (function () {
 		textoBloqueo: textoBloqueo,
 		textoCuenta: textoCuenta,
 		urlCompra: urlCompra,
+		textoPendiente: textoPendiente,
+		textoAviso: textoAviso,
+		urlAviso: urlAviso,
 		estado: function () { return estadoActual; },
 		avisar: avisar,
 		aplicar: aplicar,
