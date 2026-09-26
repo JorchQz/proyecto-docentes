@@ -775,20 +775,20 @@ async function iniciarExamenes() {
 			campos.map(function (c) {
 				return '<th scope="col" class="px-2 py-2 font-semibold text-gray-700 text-center whitespace-nowrap">' + esc(X.campo(c).corto) +
 					'<span class="block text-xs font-normal text-gray-500">de ' + ex.campos_resultados[c] + '</span></th>';
-			}).join("") + '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th>' +
-			'<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center"><span class="sr-only">No presentó</span></th></tr></thead><tbody>';
+			}).join("") + '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th></tr></thead><tbody>';
 		lista.forEach(function (a, fila) {
 			var np = X.noPresento(ex, datos, a.id);
 			html += '<tr data-alumno="' + esc(a.id) + '"' + (np ? ' class="bg-gray-50"' : '') + '><th scope="row" class="ex-fija px-3 py-1.5 text-left font-medium text-gray-800' + (np ? " bg-gray-50" : "") + '">' +
 				'<span class="text-gray-400 text-xs mr-1">' + esc(a.num_lista || "") + '</span>' + esc(a.nombre_completo) +
-				(gradosGrupo.length > 1 ? ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span>' : '') + '</th>' +
+				(gradosGrupo.length > 1 ? ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span>' : '') +
+				// «No presentó» bajo el nombre (una columna más ensanchaba la vista de celular)
+				'<div class="mt-1">' + botonNoPresento(ex, a) + '</div></th>' +
 				campos.map(function (c, col) {
 					var g = valorGuardado(ex, a.id, c);
 					return '<td class="px-2 py-1.5 text-center"><input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" ' +
 						'class="ex-celda w-16 min-h-[44px] rounded-lg border border-gray-300 text-center text-base' + (np ? " text-gray-400" : "") + '" data-campo="' + c + '" data-fila="' + fila + '" data-col="' + col + '" ' +
 						'aria-label="' + esc(X.campo(c).corto + ", " + a.nombre_completo) + '" value="' + (g ? esc(g.aciertos) : "") + '"></td>';
-				}).join("") + '<td class="px-3 py-1.5 text-center whitespace-nowrap" data-total>' + totalAlumno(ex, a.id) + '</td>' +
-				'<td class="px-2 py-1.5 text-center">' + botonNoPresento(ex, a) + '</td></tr>';
+				}).join("") + '<td class="px-3 py-1.5 text-center whitespace-nowrap" data-total>' + totalAlumno(ex, a.id) + '</td></tr>';
 		});
 		html += '</tbody></table></div><p id="exErrorCelda" class="hidden px-4 py-2 text-sm font-medium text-red-700" role="alert"></p></section>';
 		el.vista.innerHTML = html;

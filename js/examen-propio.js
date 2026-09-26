@@ -620,19 +620,19 @@
 			'<div class="overflow-x-auto"><table class="ex-tabla w-full text-sm"><thead><tr class="bg-gray-50 text-left">' +
 			'<th scope="col" class="ex-fija bg-gray-50 px-3 py-2 font-semibold text-gray-700 min-w-[10rem]">Alumno</th>' +
 			campos.map(function (c) { return '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center whitespace-nowrap">' + esc(c.corto) + '</th>'; }).join("") +
-			'<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th><th scope="col" class="px-3 py-2 font-semibold text-gray-700">Estado</th><th scope="col" class="px-2 py-2"><span class="sr-only">No presentó</span></th></tr></thead><tbody>';
+			'<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th><th scope="col" class="px-3 py-2 font-semibold text-gray-700">Estado</th></tr></thead><tbody>';
 		alumnos.forEach(function (a) {
 			var res = X.resultadoAlumno(ex, ctx.datos, a.id), av = X.avanceAlumno(ex, ctx.datos, a.id);
 			var estado = av.noPresento ? '<span class="text-gray-600 font-semibold">No presentó</span>' : !av.capturado ? '<span class="text-gray-500">Sin capturar</span>' : (av.completo ? '<span class="text-emerald-700 font-semibold">Completo</span>'
 				: '<span class="text-amber-800">' + (av.pendientesMano ? av.pendientesMano + " a mano por calificar" : "Faltan respuestas") + '</span>');
-			h += '<tr><th scope="row" class="ex-fija px-3 py-2 text-left font-medium text-gray-800">' + esc(a.nombre_completo) + ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span></th>' +
+			h += '<tr><th scope="row" class="ex-fija px-3 py-2 text-left font-medium text-gray-800">' + esc(a.nombre_completo) + ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span><div class="mt-1">' + ctx.botonNoPresento(ex, a) + '</div></th>' +
 				campos.map(function (c) {
 					var x = res.porCampo[c.codigo];
 					return '<td class="px-3 py-2 text-center whitespace-nowrap">' + (x ? '<span class="font-semibold">' + X.numeroAciertos(x.aciertos) + '</span> / ' + x.preguntas : '<span class="text-gray-400">—</span>') + '</td>';
 				}).join("") +
 				'<td class="px-3 py-2 text-center whitespace-nowrap">' + (res.preguntas ? '<span class="font-semibold">' + X.numeroAciertos(res.aciertos) + '</span> / ' + res.preguntas +
 					' <span class="text-xs text-gray-500">(' + Math.floor(res.porcentaje * 10 + 1e-9) / 10 + ' %)</span>' : '<span class="text-gray-400">—</span>') + '</td>' +
-				'<td class="px-3 py-2 whitespace-nowrap">' + estado + '</td><td class="px-2 py-1.5">' + ctx.botonNoPresento(ex, a) + '</td></tr>';
+				'<td class="px-3 py-2 whitespace-nowrap">' + estado + '</td></tr>';
 		});
 		h += '</tbody></table></div></section>';
 		t.innerHTML = h;
