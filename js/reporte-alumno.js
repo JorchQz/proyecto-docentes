@@ -186,13 +186,15 @@
 	*/
 	function calificacionCampo(datos, campo) {
 		var oficial = RD().calificacionOficial(filaBoleta(datos, campo));
+		var pc = datos.motor && datos.motor.porCampo ? datos.motor.porCampo[campo] : null;
+		// Calificación capturada directamente (registro histórico, b20): se rotula solo en pantalla
+		var directa = !!(RD().esDirecta && RD().esDirecta(pc));
 		if (oficial.confirmada) {
 			// juicio: el docente la eligió sin evidencias registradas (ReporteDatos.juicioSinEvidencias)
-			return { tipo: "confirmada", valor: oficial.valor, cerrada: oficial.cerrada, juicio: !!(datos.juicio && datos.juicio[campo]) };
+			return { tipo: "confirmada", valor: oficial.valor, cerrada: oficial.cerrada, juicio: !!(datos.juicio && datos.juicio[campo]), directa: directa };
 		}
-		var pc = datos.motor && datos.motor.porCampo ? datos.motor.porCampo[campo] : null;
 		var propuesta = pc ? pc.calificacionPropuesta : null;
-		if (!vacio(propuesta)) return { tipo: "propuesta", valor: Number(propuesta) };
+		if (!vacio(propuesta)) return { tipo: "propuesta", valor: Number(propuesta), directa: directa };
 		return { tipo: "sin_datos", valor: null };
 	}
 
@@ -277,12 +279,15 @@
 
 	function cajaCalificacion(cal, grande) {
 		var tam = grande ? "text-3xl" : "text-2xl";
+		// "Capturada directamente": solo en pantalla (el impreso no lleva la marca del registro histórico)
+		var marcaDirecta = cal.directa
+			? "<p class='mt-0.5 text-[11px] font-semibold text-violet-700 print:hidden' data-directa>" + esc(RD().ETIQUETA_DIRECTA) + "</p>" : "";
 		if (cal.tipo === "confirmada") {
 			return "<div><p class='" + tam + " font-bold text-gray-900 leading-none'>" + esc(cal.valor) + "</p>" +
 				"<p class='mt-1 text-[11px] font-semibold text-emerald-700'>Confirmada por el docente" +
 				(cal.cerrada ? " · boleta cerrada" : "") + "</p>" +
 				(cal.juicio ? "<p class='mt-0.5 text-[11px] font-semibold text-amber-800' data-juicio>Por juicio docente, sin evidencias registradas</p>" : "") +
-				"</div>";
+				marcaDirecta + "</div>";
 		}
 		if (cal.tipo === "propuesta") {
 			// En pantalla el docente ve la propuesta rotulada; impreso (puede llegar a la
@@ -290,7 +295,7 @@
 			// nunca se entrega como calificación (Acuerdo 10/09/23, art. 4 XI).
 			return "<div><div class='print:hidden'><p class='" + tam + " font-bold text-amber-700 leading-none'>" + esc(cal.valor) + "</p>" +
 				"<p class='mt-1 inline-block rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800'>" +
-				"Propuesta, sin confirmar</p></div>" +
+				"Propuesta, sin confirmar</p>" + marcaDirecta + "</div>" +
 				"<div class='hidden print:block'><p class='" + tam + " font-bold text-gray-400 leading-none'>pendiente</p>" +
 				"<p class='mt-1 text-[11px] text-gray-500'>Sin confirmar por el docente</p></div></div>";
 		}

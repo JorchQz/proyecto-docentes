@@ -651,7 +651,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				upserts.push({
 					maestro_id: userId, alumno_id: alumnoId, ciclo: cicloBoleta,
 					trimestre: trimestre, campo: codigo,
-					porcentaje: pctGuardado(datos.porcentaje),
+					// Calificación capturada directamente (registro histórico): no sale de un porcentaje
+					porcentaje: datos.porcentaje === null || datos.porcentaje === undefined ? null : pctGuardado(datos.porcentaje),
 					calificacion: propuesta, nivel: datos.nivel,
 				});
 			});
@@ -767,6 +768,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		CODIGOS.forEach(function (codigo) {
 			const vivo = porCampo[codigo] ? porCampo[codigo].porcentaje : null;
 			const fila = boletaPorCampo[codigo] || {};
+			// Calificación capturada directamente (registro histórico): sin porcentaje, y se dice
+			if (RDB.esDirecta(porCampoVisible[codigo])) {
+				filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-400' data-pct-directa='" + codigo + "'>—" +
+					"<span class='block text-xs text-gray-500 mt-1'>" + RDB.ETIQUETA_DIRECTA.toLowerCase() + "</span></td>";
+				return;
+			}
 			if (!fila.cerrada) {
 				filaPorcentaje += "<td class='px-3 py-2 text-center border border-gray-200 text-gray-700'>" + fmtPct(vivo) + "</td>";
 				return;
@@ -804,6 +811,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 			const propuesta = porCampo[codigo] ? porCampo[codigo].calificacionPropuesta : null;
 			const juicio = RDB.juicioSinEvidencias(boletaPorCampo, codigo, porCampo[codigo]);
 			const fuera = fuerasDeEscala[codigo];
+			/*
+				Calificación capturada directamente (registro histórico, spec §4.2): etiqueta discreta
+				(solo aquí, en la boleta interna; la imprimible no la lleva) y, con la boleta abierta,
+				"Usar el cálculo automático" la borra y la propuesta vuelve a salir de las actividades.
+			*/
+			const esDirecta = RDB.esDirecta(porCampoVisible[codigo]);
+			const quitarDirecta = esDirecta && !(todoCerrado || fila.cerrada) && RDB.esDirecta(porCampo[codigo])
+				? "<button type='button' data-quitar-directa='" + codigo + "' data-cal-nombre='" + esc(CAMPOS_CORTOS[i]) + "'" +
+					" class='mt-1 min-h-[44px] px-2 rounded-lg text-xs font-medium text-blue-700 hover:bg-blue-50'>Usar el cálculo automático</button>"
+				: "";
+			const marcaDirecta = esDirecta
+				? "<span class='block text-xs text-violet-700 mt-1' data-directa='" + codigo + "'>" + RDB.ETIQUETA_DIRECTA + "</span>" + quitarDirecta
+				: "";
 			if (fuera) {
 				// La confirmada no existe en la escala de hoy: "Elige", sin ningún número puesto
 				// por la pantalla, y el aviso de qué pasó
@@ -840,7 +860,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 			if (todoCerrado || fila.cerrada) {
 				filaCalificacion += "<td class='px-3 py-2 text-center font-bold border border-gray-200 " +
-					colorCalif(valor) + "'>" + valor + (juicio ? marcaJuicio : "") + "</td>";
+					colorCalif(valor) + "'>" + valor + (juicio ? marcaJuicio : "") + marcaDirecta + "</td>";
 				return;
 			}
 			haySelector = true;
@@ -861,7 +881,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					? "<span data-cal-aviso='" + codigo + "' class='block text-xs text-amber-600 mt-1" +
 						(ajustada ? "" : " hidden") + "'>propuesta: " + propuesta + "</span>"
 					: "") +
-				(juicio ? marcaJuicio : "") +
+				(juicio ? marcaJuicio : "") + marcaDirecta +
 				"</td>";
 		});
 
@@ -1167,6 +1187,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 				guardarBoleta(filas, confirmarBtn, "Guardando...");
 			});
 		}
+
+		// Calificación capturada directamente: borrarla vuelve al cálculo con las actividades (b20)
+		cont.querySelectorAll("button[data-quitar-directa]").forEach(function (btn) {
+			btn.addEventListener("click", async function () {
+				const campo = btn.dataset.quitarDirecta;
+				if (!window.confirm("Se borra la calificación que capturaste directamente en " + (btn.dataset.calNombre || campo) +
+					" y la propuesta vuelve a salir de las actividades del trimestre. Una calificación que ya confirmaste no cambia. ¿Continuar?")) return;
+				btn.disabled = true;
+				const { error } = await window.sb.from("calificacion_directa").delete()
+					.eq("maestro_id", userId).eq("alumno_id", alumnoId).eq("ciclo", cicloBoleta)
+					.eq("trimestre", trimestre).eq("campo", campo);
+				if (error) {
+					console.error("calificacion_directa:", error);
+					btn.disabled = false;
+					window.alert("No se pudo borrar: " + (error.message || "error desconocido") + ". " + queHacerGuardado(error, "inténtalo de nuevo."));
+					return;
+				}
+				await generarBoleta();
+			});
+		});
 
 		// "Volver a proponer": rehace los textos aunque el maestro ya los haya tocado
 		const regenerarBtn = document.getElementById("boletaRegenerarBtn");

@@ -389,7 +389,7 @@
 		var productos = [];
 		if (sesionIds.length) {
 			productos = await todas(function () {
-				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo" + (detalle ? ", nombre, orden" : ""))
+				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo" + (detalle ? ", nombre, orden, created_at, es_historico" : ""))
 					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
@@ -432,6 +432,7 @@
 		}
 
 		var examenes = await examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante);
+		var directas = await leerDirectas(sb, ctx, ids, campos);
 
 		// Por alumno: mismas entradas que la boleta individual
 		var porAlumno = {};
@@ -464,7 +465,11 @@
 				registros: misRegistros, camposPorFecha: camposPorFecha,
 				examenPorCampo: examen.porCampo, legacy: legacy, pesos: pesos,
 			});
+			// Calificación directa del trimestre (registro histórico, mi_salon_b20): la propuesta es
+			// esa calificación y no se recalcula con las actividades (aplicarDirectas)
+			aplicarDirectas(porCampo, directas[a.id] || null);
 			campos.forEach(function (campo) {
+				if (porCampo[campo].directa) return;
 				var pct = porCampo[campo].porcentaje;
 				porCampo[campo].calificacionPropuesta = null;
 				if (pct === null) return;
@@ -515,6 +520,64 @@
 			sesiones.forEach(function (s) { if (sueltas[s.proyecto_id]) s.suelta = true; });
 			salida.sesiones = sesiones;
 		}
+		return salida;
+	}
+
+	/*
+		── Calificación directa del trimestre (registro histórico; spec de Jorge del 2026-09-26, §4.2;
+		supabase/mi_salon_b20_registro_historico_2026-09.sql) ──
+		El docente que ya tiene su concentrado en papel o en Excel captura la calificación del
+		trimestre por alumno y campo. Es una PROPUESTA que la boleta toma EN LUGAR de la calculada:
+		  - calificacionPropuesta = esa calificación (ya validada en la escala del grado por la base;
+		    aquí no hay porcentaje que convertir: la conversión sigue siendo solo SQL);
+		  - porcentaje = null (no sale de las actividades; el de las actividades queda en
+		    porcentajeActividades, solo informativo) y nivel según la calificación, con los mismos
+		    cortes de la conversión (9 y 10 = 80 % o más: logrado; 7 y 8 = 60 a 79 %: en proceso;
+		    5 y 6: requiere apoyo);
+		  - directa = { calificacion, capturado_en }: las pantallas la rotulan "Capturada
+		    directamente" (no la boleta impresa).
+		La calificación oficial sigue siendo la que el docente confirma en la boleta. Borrar la
+		directa vuelve al cálculo automático.
+		directas: { LEN: {calificacion, capturado_en}, ... } de un alumno (o null).
+	*/
+	function nivelDeCalificacion(n) {
+		var v = Number(n);
+		if (!(v >= 5 && v <= 10)) return null;
+		return v >= 9 ? "logrado" : (v >= 7 ? "en_proceso" : "requiere_apoyo");
+	}
+	function aplicarDirectas(porCampo, directas) {
+		if (!porCampo || !directas) return porCampo;
+		Object.keys(directas).forEach(function (campo) {
+			var d = directas[campo], pc = porCampo[campo];
+			if (!pc || !d || d.calificacion === null || d.calificacion === undefined) return;
+			var n = Number(d.calificacion);
+			pc.directa = { calificacion: n, capturado_en: d.capturado_en || null };
+			pc.porcentajeActividades = pc.porcentaje === undefined ? null : pc.porcentaje;
+			pc.porcentaje = null;
+			pc.nivel = nivelDeCalificacion(n);
+			pc.calificacionPropuesta = n;
+		});
+		return porCampo;
+	}
+	// { alumnoId: { LEN: {calificacion, capturado_en} } } del grupo y trimestre (sin la tabla: ninguna)
+	async function leerDirectas(sb, ctx, ids, campos) {
+		var salida = {};
+		if (!ids.length) return salida;
+		var filas;
+		try {
+			filas = await todas(function () {
+				return sb.from("calificacion_directa").select("alumno_id, campo, calificacion, capturado_en")
+					.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre)
+					.in("alumno_id", ids).order("id");
+			});
+		} catch (e) {
+			if (!faltaTabla(e)) throw e;
+			return salida;
+		}
+		filas.forEach(function (f) {
+			if (campos.indexOf(f.campo) === -1) return;
+			(salida[f.alumno_id] = salida[f.alumno_id] || {})[f.campo] = { calificacion: f.calificacion, capturado_en: f.capturado_en };
+		});
 		return salida;
 	}
 
@@ -854,6 +917,8 @@
 		aciertosExamenSalon: aciertosExamenSalon,
 		noPresentoExamen: noPresentoExamen,
 		calcularPorcentajes: calcularPorcentajes,
+		aplicarDirectas: aplicarDirectas,
+		nivelDeCalificacion: nivelDeCalificacion,
 		cargarYCalcular: cargarYCalcular,
 		cargarYCalcularGrupo: cargarYCalcularGrupo,
 	};
