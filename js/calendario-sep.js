@@ -2,7 +2,8 @@
 	calendario-sep.js — Calendario escolar oficial de la SEP (primaria) y los ajustes de cada grupo.
 
 	Solo datos y reglas puras (sin base ni pantalla): lo usan calendario.html (vista del mes y rol
-	de aseo) y las pruebas (pruebas/calendario-sep.test.js).
+	de aseo), js/alcance-hoy.js (vencimiento de tareas y revisión de lo incompleto: Hoy, Inicio,
+	Tareas y Qué le falta) y las pruebas (pruebas/calendario-sep.test.js).
 
 	Fuente del ciclo 2026-2027: ACUERDO número 07/07/26 por el que se establecen los calendarios
 	escolares para el ciclo lectivo 2026-2027 (DOF 15-07-2026), calendario de 185 días para
@@ -34,16 +35,23 @@
 	Las funciones reciben los ajustes como arreglo de filas [{fecha, tipo, motivo}] o como mapa
 	{ "AAAA-MM-DD": {tipo, motivo} }.
 
-	── El calendario NO se conecta con la asistencia, las tareas ni el trimestre ──
-	Decisión de Jorge (2026-09-25), ya tomada:
-	  - Asistencia: el porcentaje se calcula por las veces que la maestra pasó lista (los días con
-	    lista capturada), no por los días de clase del calendario: la maestra también puede faltar,
-	    y un día sin lista no es falta de nadie. js/motor-calificacion.js, js/reportes.js y demás
-	    no leen el calendario.
-	  - Tareas: el vencimiento sigue siendo el de js/alcance-hoy.js (venceTarea: su fecha de
-	    entrega o el siguiente día hábil, lunes a viernes); no salta los días sin clase.
+	── Qué se conecta con el calendario ──
+	Decisiones de Jorge:
+	  - Asistencia (2026-09-25, sigue igual): el porcentaje se calcula por las
+	    veces que la maestra pasó lista (los días con lista capturada), no por los días de clase del
+	    calendario: la maestra también puede faltar, y un día sin lista no es falta de nadie.
+	    js/motor-calificacion.js, js/reportes.js y demás no leen el calendario.
+	  - Tareas (2026-09-26, revoca la del 25-sep): una tarea sin fecha de entrega vence el SIGUIENTE
+	    DÍA DE CLASE después de su sesión (siguienteDiaDeClase, con los ajustes del grupo), no el
+	    siguiente lunes a viernes: salta CTE, suspensiones oficiales, vacaciones, registro de
+	    calificaciones y los días sin clase del grupo. Lo aplica js/alcance-hoy.js (venceTarea), que
+	    usan Hoy, Inicio, Tareas y Qué le falta.
+	  - Actividad en clase "Incompleta" (2026-09-26): se revisa el siguiente día de clase
+	    (siguienteDiaDeClase), en "Pendientes de la clase anterior" de Hoy.
 	  - Trimestre: sigue siendo manual, en Mi grupo (grupos.trimestre_actual); el calendario no lo
 	    cambia ni lo sugiere.
+	Fuera de los ciclos cargados (antes del primero o después del último), siguienteDiaDeClase usa
+	la regla de antes (el siguiente lunes a viernes): nunca deja una tarea sin día.
 	El calendario sirve para ver el ciclo, marcar los ajustes del grupo y, si la maestra lo usa, el
 	rol de aseo (opcional).
 */
@@ -409,6 +417,31 @@
 		return null;
 	}
 
+	/*
+		siguienteDiaDeClase(fecha, ajustes) → "AAAA-MM-DD": el primer día DESPUÉS de `fecha` que tiene
+		clase según el calendario oficial y los ajustes del grupo (con_clase lo abre; suspension,
+		festividad_local y otro lo cierran). Si la búsqueda sale de los ciclos cargados (fecha fuera
+		de todo ciclo, o fin del último ciclo sin el siguiente cargado), el siguiente lunes a viernes
+		desde ahí: nunca null para una fecha válida. null solo si la fecha no es válida.
+	*/
+	function siguienteDiaDeClase(fecha, ajustes) {
+		var f = fechaISO(fecha);
+		if (!f) return null;
+		var m = mapaAjustes(ajustes);
+		function siguienteHabil(desde) {
+			var d = sumarDias(desde, 1);
+			while (esFinDeSemana(d)) d = sumarDias(d, 1);
+			return d;
+		}
+		if (!cicloDe(f)) return siguienteHabil(f);
+		var d = sumarDias(f, 1);
+		for (var i = 0; i < 400; i++, d = sumarDias(d, 1)) {
+			if (!cicloDe(d)) return esFinDeSemana(d) ? siguienteHabil(d) : d; // se acabó lo cargado
+			if (esDiaDeClase(d, m)) return d;
+		}
+		return siguienteHabil(f);
+	}
+
 	// Leyenda para la pantalla: los tipos que aparecen en un ciclo (en orden fijo)
 	var ORDEN_LEYENDA = ["clase", "cte", "festivo", "vacaciones", "registro", "formacion", "otro", "entrega", "jornada", "preinscripcion", "propio_sin_clase", "propio_con_clase", "fin_semana"];
 
@@ -423,6 +456,7 @@
 		cicloDe: cicloDe, cicloPorNombre: cicloPorNombre, cicloVigente: cicloVigente, mesesDelCiclo: mesesDelCiclo,
 		infoOficial: infoOficial, tipoDeDia: tipoDeDia, esDiaDeClase: esDiaDeClase,
 		diasDeClase: diasDeClase, diasSinClase: diasSinClase, proximoSinClase: proximoSinClase,
+		siguienteDiaDeClase: siguienteDiaDeClase,
 		ajustePermitido: ajustePermitido, mapaAjustes: mapaAjustes, ajusteEnPeriodo: ajusteEnPeriodo, ajustesVigentes: ajustesVigentes,
 		fechaISO: fechaISO, sumarDias: sumarDias, diaSemana: diaSemana, esFinDeSemana: esFinDeSemana,
 		hoyLocal: hoyLocal, diasDelMes: diasDelMes, mesSiguiente: mesSiguiente,
