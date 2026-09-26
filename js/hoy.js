@@ -1344,7 +1344,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var fechaOmision = window.AlcanceHoy.venceTarea(null, hoy);
 		var refs = {};
 		var pda = { spda: null, contenidos: null, errorCatalogo: false, contenido: null, pdaContenido: [], cargandoContenido: false,
-			quitadosSesion: {}, marcadosCatalogo: {} };
+			tocadosSesion: {}, marcadosCatalogo: {} };
 
 		function gradosElegidos() {
 			return gradosGrupo.length > 1 && refs.grados
@@ -1399,15 +1399,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 			refs.pdaSesion.addEventListener("change", function (e) {
 				var c = e.target.closest("input[name='pdaSesion']");
-				if (c) pda.quitadosSesion[c.value] = !c.checked;
+				if (c) pda.tocadosSesion[c.value] = c.checked;
 			});
 		}
 
 		async function cargarPda() {
 			try {
-				var res = await window.sb.from("sesiones_pda").select("id, pda_id, grado, criterio_aplicado, catalogo_pda(pda)").eq("sesion_id", sesion.id).order("grado");
+				var res = await window.sb.from("sesiones_pda").select("id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo))").eq("sesion_id", sesion.id).order("grado");
 				if (res.error) throw res.error;
-				pda.spda = res.data || [];
+				// El campo de cada PDA es el de su contenido en el catálogo (ProductosHoy.pdaDeSesionParaActividad)
+				pda.spda = (res.data || []).map(function (r) {
+					var cp = Array.isArray(r.catalogo_pda) ? r.catalogo_pda[0] : r.catalogo_pda;
+					var cc = cp && (Array.isArray(cp.catalogo_contenidos) ? cp.catalogo_contenidos[0] : cp.catalogo_contenidos);
+					var corto = cc && window.CamposFormativos ? window.CamposFormativos.corto(cc.campo_formativo) : null;
+					return Object.assign({}, r, { campo: corto || null });
+				});
 			} catch (err) {
 				console.error("hoy: PDA de la sesión", err);
 				pda.spda = null;
@@ -1419,6 +1425,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 				pda.errorCatalogo = true;
 			}
 			pintarPda();
+		}
+
+		// Marcado: lo que tocó la maestra; si no lo tocó, la regla (r.marcado)
+		function marcadoSesion(r) {
+			return Object.prototype.hasOwnProperty.call(pda.tocadosSesion, r.id) ? pda.tocadosSesion[r.id] : !!r.marcado;
 		}
 
 		function textoPda(r) {
@@ -1434,12 +1445,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (deSesion.length) {
 				var t = document.createElement("p");
 				t.className = "text-xs text-gray-500";
-				t.textContent = "De esta sesión (quita la marca si esta actividad no los evalúa):";
+				t.textContent = "De esta sesión (marca los que esta actividad evalúa):";
 				refs.pdaSesion.appendChild(t);
 				deSesion.forEach(function (r) {
 					var l = document.createElement("label");
 					l.className = estiloOpcion;
-					l.innerHTML = "<input type='checkbox' name='pdaSesion' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (pda.quitadosSesion[r.id] ? "" : " checked") + ">" +
+					l.innerHTML = "<input type='checkbox' name='pdaSesion' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (marcadoSesion(r) ? " checked" : "") + ">" +
 						"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(r.grado) + "°</span> · " + esc(textoPda(r)) + "</span>";
 					l.querySelector("input").value = r.id;
 					refs.pdaSesion.appendChild(l);
@@ -1529,8 +1540,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (pda.cargandoContenido) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Cargando sus PDA...</p>"); return; }
 			if (pda.pdaContenido === null) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>No se pudieron cargar sus PDA. Puedes agregar la actividad sin PDA.</p>"); return; }
 			var g = gradosElegidos();
-			var deGrados = pda.pdaContenido.filter(function (p) { return g.indexOf(Number(p.grado)) !== -1; });
-			if (!deGrados.length) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Este contenido no tiene PDA para los grados elegidos.</p>"); return; }
+			// Sin repetir los que ya se ofrecen arriba como PDA de esta sesión (planLigas los reutiliza)
+			var yaArriba = {};
+			window.ProductosHoy.pdaDeSesionParaActividad(pda.spda || [], campoSesion, refs.campo ? refs.campo.value : "", g)
+				.forEach(function (r) { if (r.pda_id) yaArriba[r.pda_id + "|" + Number(r.grado)] = true; });
+			var deGrados = pda.pdaContenido.filter(function (p) { return g.indexOf(Number(p.grado)) !== -1 && !yaArriba[p.id + "|" + Number(p.grado)]; });
+			if (!deGrados.length) {
+				var yaEstan = pda.pdaContenido.some(function (p) { return yaArriba[p.id + "|" + Number(p.grado)]; });
+				refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>" + (yaEstan
+					? "Sus PDA de estos grados ya están arriba, entre los de esta sesión."
+					: "Este contenido no tiene PDA para los grados elegidos.") + "</p>");
+				return;
+			}
 			deGrados.forEach(function (p) {
 				var l = document.createElement("label");
 				l.className = estiloOpcion;
@@ -1547,7 +1568,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var campo = refs.campo ? refs.campo.value : "";
 			var g = gradosElegidos();
 			var deSesion = window.ProductosHoy.pdaDeSesionParaActividad(pda.spda, campoSesion, campo, g)
-				.filter(function (r) { return !pda.quitadosSesion[r.id]; }).map(function (r) { return r.id; });
+				.filter(marcadoSesion).map(function (r) { return r.id; });
 			var deCatalogo = (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
 				.map(function (p) { return { pda_id: p.id, grado: Number(p.grado) }; });
 			return { deSesion: deSesion, deCatalogo: deCatalogo, spdaSesion: pda.spda };

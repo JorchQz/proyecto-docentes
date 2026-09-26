@@ -161,12 +161,22 @@
 		});
 		return tope ? r.slice(0, tope) : r;
 	}
-	// PDA de la sesión que se ofrecen (y se marcan por omisión) para la actividad: los de sus
-	// grados, solo si la actividad es del campo de la sesión
+	/*
+		PDA de la sesión que se ofrecen para la actividad: los de sus grados y de SU campo. El campo
+		de un PDA es el de su contenido en el catálogo (r.campo, código corto); sin él, el de la
+		sesión. Así un PDA de Saberes que se agregó desde Hoy a una sesión de Lenguajes no se ofrece
+		para una actividad de Lenguajes, y sí para otra de Saberes.
+		Se marcan por omisión (r.marcado) solo los del plan de la sesión cuando la actividad es del
+		campo de la sesión (la regla de siempre); los de otro campo se ofrecen sin marcar.
+	*/
 	function pdaDeSesionParaActividad(spdaSesion, campoSesion, campo, grados) {
-		if (!campo || campo !== campoSesion) return [];
+		if (!campo) return [];
 		var g = gradosOrdenados(grados);
-		return (spdaSesion || []).filter(function (r) { return r && g.indexOf(Number(r.grado)) !== -1; });
+		return (spdaSesion || []).filter(function (r) {
+			return r && g.indexOf(Number(r.grado)) !== -1 && (r.campo || campoSesion) === campo;
+		}).map(function (r) {
+			return Object.assign({}, r, { marcado: campo === campoSesion && (!r.campo || r.campo === campoSesion) });
+		});
 	}
 	// PDA de un contenido que se marcan solos: uno por grado si ese grado tiene uno solo
 	function pdaMarcadosPorOmision(pdaContenido, grados) {

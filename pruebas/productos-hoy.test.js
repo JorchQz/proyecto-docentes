@@ -128,6 +128,12 @@ if (tiene8.every(Boolean)) {
 	const spda = [{ id: "sp3", pda_id: "pA", grado: 3 }, { id: "sp4", pda_id: "pB", grado: 4 }];
 	ok("por omisión: los PDA de la sesión de esos grados si el campo coincide", P.pdaDeSesionParaActividad(spda, "LEN", "LEN", [4]).map((r) => r.id), ["sp4"]);
 	ok("otro campo: no se ofrecen los PDA de la sesión", P.pdaDeSesionParaActividad(spda, "LEN", "SAB", [3, 4]), []);
+	ok("los del plan del mismo campo salen marcados", P.pdaDeSesionParaActividad(spda, "LEN", "LEN", [4]).map((r) => r.marcado), [true]);
+	// Un PDA de Saberes que se agregó desde Hoy a esta sesión de Lenguajes (su campo viene del catálogo)
+	const conHoy = spda.concat([{ id: "spSab", pda_id: "pS", grado: 4, campo: "SAB" }]);
+	ok("un PDA de otro campo agregado desde Hoy no se ofrece para una actividad del campo de la sesión",
+		P.pdaDeSesionParaActividad(conHoy, "LEN", "LEN", [4]).map((r) => r.id), ["sp4"]);
+	ok("…y sí para otra actividad de su campo, sin marcar", P.pdaDeSesionParaActividad(conHoy, "LEN", "SAB", [4]).map((r) => r.id + ":" + r.marcado), ["spSab:false"]);
 	ok("PDA del contenido marcados solos: el único de cada grado", P.pdaMarcadosPorOmision([{ id: "x4", grado: 4 }, { id: "y5", grado: 5 }, { id: "z5", grado: 5 }], [4, 5]), ["x4"]);
 	const plan = P.planLigas({ grados: ["4"], deSesion: ["sp4", "sp3"], deCatalogo: [{ pda_id: "pB", grado: 4 }, { pda_id: "pN", grado: 4 }, { pda_id: "pN", grado: 4 }, { pda_id: "pZ", grado: 5 }], spdaSesion: spda });
 	ok("planLigas: liga los de la sesión de su grado, reutiliza el que ya está y crea el que falta (sin duplicar)", plan, { ligar: ["sp4"], crear: [{ pda_id: "pN", grado: 4 }] });
