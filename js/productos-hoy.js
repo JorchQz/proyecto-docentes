@@ -86,7 +86,8 @@
 		if (!TIPOS[d.tipo]) return { ok: false, foco: "tipo", error: "Elige si es una actividad en clase o una tarea." };
 		if (CAMPOS.indexOf(d.campo) === -1) return { ok: false, foco: "campo", error: "Elige el campo formativo." };
 		var grados = gradosOrdenados(d.grados);
-		if (!grados.length) return { ok: false, foco: "grados", error: "Elige al menos un grado." };
+		// Sin grados solo si es para alumnos elegidos ("¿Para quién?": d.incluidos > 0)
+		if (!grados.length && !(Number(d.incluidos) > 0)) return { ok: false, foco: "grados", error: "Elige al menos un grado." };
 		var fecha = null;
 		if (d.tipo === "tarea") {
 			fecha = String(d.fechaRevision || "");
@@ -221,8 +222,140 @@
 		return { ligar: ligar, crear: crear };
 	}
 
+	/*
+		── ¿Para quién? (decisión de Jorge del 2026-09-26) ──
+		Al crear una actividad o tarea: todo el grupo, uno o varios grados, o los alumnos que la
+		maestra marca (agrupados por grado). Se guarda como grados del producto + filas de
+		producto_sesion_alumnos (incluir / excluir) con la regla única de AlcanceHoy.asignadoA.
+
+		planAsignacion({ modo, gradosGrupo, gradosElegidos, alumnos, elegidos, nivel })
+		  modo: "grupo" | "grados" | "alumnos"
+		  alumnos: los del grupo [{ id, grado }]; elegidos: ids marcados (modo "alumnos")
+		  nivel: en "alumnos", el grado con el que trabajan (por ejemplo 2 para dos de 3° que trabajan
+		         con 2°); null = cada uno con el suyo.
+		→ { ok, error, foco, grados: ["3", ...], filas: [{ alumno_id, modo }], incluidos, gradosPda }
+		Con "cada uno con el suyo", por grado: si están todos, va el grado; si están más de la mitad,
+		el grado sin los que no (excluir); si no, se incluyen uno por uno. Con un nivel: ese grado,
+		se incluyen los marcados de otros grados y se excluyen los de ese grado que no se marcaron.
+		gradosPda: los grados cuyos PDA se ofrecen (los del producto y los de sus incluidos).
+	*/
+	function planAsignacion(d) {
+		d = d || {};
+		var grupo = gradosOrdenados(d.gradosGrupo);
+		var alumnos = (d.alumnos || []).filter(function (a) { return a && a.id; });
+		function listo(grados, filas) {
+			var inc = filas.filter(function (f) { return f.modo === "incluir"; });
+			var gp = gradosOrdenados(grados.concat(inc.map(function (f) {
+				var a = alumnos.find(function (x) { return x.id === f.alumno_id; });
+				return a ? a.grado : null;
+			})));
+			return { ok: true, error: "", grados: gradosOrdenados(grados).map(String), filas: filas, incluidos: inc.length, gradosPda: gp };
+		}
+		if (d.modo === "grupo" || !d.modo) {
+			if (!grupo.length) return { ok: false, foco: "para", error: "El grupo no tiene grados." };
+			return listo(grupo, []);
+		}
+		if (d.modo === "grados") {
+			var g = gradosOrdenados(d.gradosElegidos).filter(function (x) { return !grupo.length || grupo.indexOf(x) !== -1; });
+			if (!g.length) return { ok: false, foco: "grados", error: "Elige al menos un grado." };
+			return listo(g, []);
+		}
+		var elegidos = {};
+		(d.elegidos || []).forEach(function (id) { elegidos[id] = true; });
+		var marcados = alumnos.filter(function (a) { return elegidos[a.id]; });
+		if (!marcados.length) return { ok: false, foco: "alumnos", error: "Marca al menos un alumno." };
+		var filas = [];
+		var nivel = parseInt(d.nivel, 10);
+		if (nivel >= 1 && nivel <= 6) {
+			alumnos.forEach(function (a) {
+				var mismo = Number(a.grado) === nivel;
+				if (elegidos[a.id] && !mismo) filas.push({ alumno_id: a.id, modo: "incluir" });
+				if (!elegidos[a.id] && mismo) filas.push({ alumno_id: a.id, modo: "excluir" });
+			});
+			return listo([nivel], filas);
+		}
+		var grados = [];
+		gradosOrdenados(alumnos.map(function (a) { return a.grado; })).forEach(function (gr) {
+			var suyos = alumnos.filter(function (a) { return Number(a.grado) === gr; });
+			var si = suyos.filter(function (a) { return elegidos[a.id]; });
+			var no = suyos.filter(function (a) { return !elegidos[a.id]; });
+			if (!si.length) return;
+			if (!no.length) { grados.push(gr); return; }
+			if (si.length > no.length) {
+				grados.push(gr);
+				no.forEach(function (a) { filas.push({ alumno_id: a.id, modo: "excluir" }); });
+				return;
+			}
+			si.forEach(function (a) { filas.push({ alumno_id: a.id, modo: "incluir" }); });
+		});
+		return listo(grados, filas);
+	}
+
+	/*
+		Editar "para quién" de un producto ya creado: sus grados no cambian; cada alumno queda como
+		lo dejó la maestra. quieren: { alumnoId: true } los que deben recibirlo.
+		→ [{ alumno_id, modo }] (todas las filas del producto: guardar_asignacion_producto las
+		reemplaza). Un alumno de sus grados que no lo quiere: excluir; uno de otro grado que sí: incluir.
+	*/
+	function filasDeEdicion(grados, alumnos, quieren) {
+		var g = gradosOrdenados(grados);
+		var filas = [];
+		(alumnos || []).forEach(function (a) {
+			var suGrado = g.indexOf(Number(a.grado)) !== -1;
+			var quiere = !!(quieren && quieren[a.id]);
+			if (suGrado && !quiere) filas.push({ alumno_id: a.id, modo: "excluir" });
+			if (!suGrado && quiere) filas.push({ alumno_id: a.id, modo: "incluir" });
+		});
+		return filas;
+	}
+
+	/*
+		Rótulo de para quién es un producto: "3° y 4°" · "3° y 4° (sin 1 alumno)" ·
+		"2 alumnos de 3°" · "2° + 2 alumnos de 3°".
+		asignacion: { alumnoId: modo } del producto; alumnos: los del grupo.
+	*/
+	function resumenPara(producto, asignacion, alumnos) {
+		var g = gradosOrdenados(producto && producto.grados);
+		var base = etiquetaGrados(g);
+		var a = asignacion || {};
+		var sin = 0, inc = [];
+		(alumnos || []).forEach(function (al) {
+			var m = a[al.id];
+			var suGrado = g.indexOf(Number(al.grado)) !== -1;
+			if (m === "excluir" && suGrado) sin++;
+			if (m === "incluir" && !suGrado) inc.push(al);
+		});
+		var partes = base ? [base + (sin ? " (sin " + sin + (sin === 1 ? " alumno)" : " alumnos)") : "")] : [];
+		if (inc.length) {
+			var deGrados = etiquetaGrados(inc.map(function (x) { return x.grado; }));
+			partes.push(inc.length + (inc.length === 1 ? " alumno de " : " alumnos de ") + deGrados);
+		}
+		return partes.join(" + ");
+	}
+
+	/*
+		Actividad o tarea suelta (sin proyecto): lo mismo que validarNuevo y además la fecha
+		(el día en que se trabaja; en una tarea, el día en que se deja: hoy). No puede ser anterior
+		a hoy: una actividad de un día que ya pasó no se podría calificar en Hoy.
+	*/
+	function validarSuelta(d, ctx) {
+		d = d || {};
+		ctx = ctx || {};
+		var fecha = String(d.fecha || "");
+		if (d.tipo !== "tarea") {
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, foco: "fechaSuelta", error: "Elige el día de la actividad." };
+			if (ctx.hoy && fecha < ctx.hoy) return { ok: false, foco: "fechaSuelta", error: "El día de la actividad no puede ser anterior a hoy." };
+		}
+		var v = validarNuevo(d, ctx);
+		if (!v.ok) return v;
+		v.fecha = d.tipo === "tarea" ? ctx.hoy : fecha;
+		return v;
+	}
+
 	var api = {
 		CAMPOS: CAMPOS, TIPOS: TIPOS, NOMBRE_MAX: NOMBRE_MAX,
+		planAsignacion: planAsignacion, filasDeEdicion: filasDeEdicion, resumenPara: resumenPara, validarSuelta: validarSuelta,
+		gradosOrdenados: gradosOrdenados,
 		fasesDeGrados: fasesDeGrados, buscarContenidos: buscarContenidos,
 		pdaDeSesionParaActividad: pdaDeSesionParaActividad, pdaMarcadosPorOmision: pdaMarcadosPorOmision,
 		planLigas: planLigas,

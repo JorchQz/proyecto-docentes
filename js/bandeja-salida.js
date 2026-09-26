@@ -14,7 +14,9 @@
 	  tipo "registro_borrar" datos { alumno_id, fecha }                                      (se retira el cierre)
 	  tipo "calificacion"    datos { id?, fecha, fila }  (fila: la de calificaciones)
 	  campos  { campo: valor } solo lo que la maestra tocó (estado; participacion, conducta;
-	          estado_entrega, nivel, puntaje, retroalimentacion)
+	          estado_entrega, nivel, puntaje, retroalimentacion; y la revisión de una actividad
+	          que quedó incompleta en clase: revisar_en, estado_en_clase, completado_en, que van con
+	          el semáforo en captura_semaforo, mi_salon_b17)
 	  vistos  { campo: { fila, id, valor } } la versión de la base que la pantalla tenía al tocarlo
 	          (id: la marca del grupo de ese campo; null = fila sin marca o sin fila; undefined =
 	          no se sabe: se compara por contenido)
@@ -120,7 +122,7 @@ var BandejaSalida = (function () {
 	var CAMPOS = {
 		asistencia: ["estado"],
 		registro: ["participacion", "conducta"],
-		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion"],
+		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion", "revisar_en", "estado_en_clase", "completado_en"],
 	};
 	/*
 		Grupos de campos que Hoy escribe y decide juntos, cada uno con su marca (la columna de la
@@ -129,7 +131,8 @@ var BandejaSalida = (function () {
 	var MARCAS = {
 		asistencia: [["captura_id", ["estado"]]],
 		registro: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
-		calificacion: [["captura_semaforo", ["estado_entrega", "nivel"]], ["captura_puntaje", ["puntaje"]],
+		// La revisión de una actividad incompleta (mi_salon_b17) va con el semáforo: se decide junta
+		calificacion: [["captura_semaforo", ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"]], ["captura_puntaje", ["puntaje"]],
 			["captura_retroalimentacion", ["retroalimentacion"]]],
 	};
 	function familia(tipo) { return tipo === "registro_borrar" ? "registro" : tipo; }
@@ -229,7 +232,9 @@ var BandejaSalida = (function () {
 	// ── Valores ──────────────────────────────────────────────────────────────────
 	function num(v) { return v === null || v === undefined || v === "" ? null : Number(v); }
 	function txt(v) { return v === null || v === undefined || v === "" ? null : String(v); }
-	function normal(f, v) { return f === "participacion" || f === "conducta" || f === "puntaje" ? num(v) : txt(v); }
+	function fecha(v) { var t = txt(v); return t === null ? null : t.slice(0, 10); }
+	var FECHAS = ["revisar_en", "completado_en"];
+	function normal(f, v) { return f === "participacion" || f === "conducta" || f === "puntaje" ? num(v) : FECHAS.indexOf(f) !== -1 ? fecha(v) : txt(v); }
 	// Lo que la pantalla muestra cuando no hay fila (el cierre del día empieza en 1 y 1)
 	function predeterminado(tipo, f) { return familia(tipo) === "registro" ? 1 : null; }
 	function igual1(a, b) {
@@ -243,7 +248,11 @@ var BandejaSalida = (function () {
 		if (fam === "asistencia") return { estado: txt(f.asistencia_estado !== undefined ? f.asistencia_estado : f.estado) };
 		if (fam === "registro") return { participacion: num(f.participacion), conducta: num(f.conducta) };
 		if (fam === "calificacion") {
-			return { estado_entrega: txt(f.estado_entrega), nivel: txt(f.nivel), puntaje: num(f.puntaje), retroalimentacion: txt(f.retroalimentacion) };
+			var v = { estado_entrega: txt(f.estado_entrega), nivel: txt(f.nivel), puntaje: num(f.puntaje), retroalimentacion: txt(f.retroalimentacion) };
+			// La revisión de la incompleta (mi_salon_b17), si la fila la trae (una fila sin esas llaves:
+			// sin revisión; vistoDeCampo las lee como null)
+			["revisar_en", "estado_en_clase", "completado_en"].forEach(function (k) { if (f[k] !== undefined) v[k] = normal(k, f[k]); });
+			return v;
 		}
 		return null;
 	}
@@ -304,6 +313,12 @@ var BandejaSalida = (function () {
 	var ETIQ_ASISTENCIA = { presente: "Presente", ausente: "Falta", justificada: "Justificada" };
 	var ETIQ_NIVEL = { logrado: "Logrado", en_proceso: "En proceso", requiere_apoyo: "Requiere apoyo" };
 	var ETIQ_ENTREGA = { entregado: "Entregó", incompleto: "Incompleta", no_entregado: "No entregó", justificado: "Justificada", no_aplica: "No aplica" };
+	// "2026-09-29" → "29 sep"
+	function fechaTexto(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		if (!m) return String(iso || "");
+		return Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1];
+	}
 	function describir(tipo, v) {
 		var fam = familia(tipo);
 		function g(k) { return v && v[k] !== undefined ? v[k] : null; }
@@ -321,6 +336,11 @@ var BandejaSalida = (function () {
 			var nivel = g("nivel"), entrega = g("estado_entrega"), puntaje = g("puntaje"), retro = g("retroalimentacion");
 			if (nivel) partes.push(ETIQ_NIVEL[nivel] || nivel);
 			if (entrega && !(nivel && entrega === "entregado")) partes.push(ETIQ_ENTREGA[entrega] || entrega);
+			// La revisión de una actividad que quedó incompleta en clase
+			var enClase = g("estado_en_clase");
+			if (enClase === "incompleta") partes.push(g("revisar_en") ? "se revisa el " + fechaTexto(g("revisar_en")) : "por completar");
+			if (enClase === "completada") partes.push("la completó");
+			if (enClase === "sigue_incompleta") partes.push("sigue incompleta");
 			if (puntaje !== null) partes.push("puntaje " + puntaje);
 			if (retro) partes.push("retroalimentación “" + (retro.length > 60 ? retro.slice(0, 57) + "..." : retro) + "”");
 			if (partes.length) return partes.join(", ");
@@ -630,7 +650,7 @@ var BandejaSalida = (function () {
 		calificacion: {
 			// Una calificación por (maestro, alumno, producto): el índice único es parcial, así que
 			// no hay ON CONFLICT; el insert que choca responde 23505 y se trata como "ya existía"
-			tabla: "calificaciones", columnas: "id, estado_entrega, nivel, puntaje, retroalimentacion", conflicto: null,
+			tabla: "calificaciones", columnas: "id, estado_entrega, nivel, puntaje, retroalimentacion, revisar_en, estado_en_clase, completado_en", conflicto: null,
 			llave: function (it) {
 				var f = it.datos.fila;
 				return [["maestro_id", it.maestro_id], ["alumno_id", f.alumno_id], ["producto_sesion_id", f.producto_sesion_id]];
@@ -640,6 +660,7 @@ var BandejaSalida = (function () {
 			nueva: function (it, v) {
 				return Object.assign({ fecha: it.datos.fecha }, it.datos.fila, {
 					estado_entrega: v.estado_entrega, nivel: v.nivel, puntaje: v.puntaje, retroalimentacion: v.retroalimentacion,
+					revisar_en: v.revisar_en, estado_en_clase: v.estado_en_clase, completado_en: v.completado_en,
 					entrego: v.estado_entrega === "entregado" || v.estado_entrega === "incompleto",
 					maestro_id: it.maestro_id, evaluado_en: it.capturado_en,
 				});

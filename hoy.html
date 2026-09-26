@@ -49,11 +49,24 @@
 				<div id="tareasLista" class="flex flex-col gap-5"></div>
 			</section>
 
+			<!-- Pendientes de la clase anterior: actividades en clase que quedaron incompletas y hoy se revisan -->
+			<section id="pendientes" class="hidden scroll-mt-32 bg-white rounded-2xl shadow-sm border border-amber-200 p-4 sm:p-5">
+				<div class="flex items-center justify-between mb-1">
+					<h2 class="font-bold text-gray-800">Pendientes de la clase anterior</h2>
+					<span id="pendientesResumen" class="text-xs text-gray-500"></span>
+				</div>
+				<p class="text-xs text-gray-500 mb-3">Actividades que quedaron incompletas. Si ya la completó, elige el nivel que logró; si no, «Sigue incompleta». Se revisa una sola vez.</p>
+				<div id="pendientesLista" class="flex flex-col gap-2"></div>
+			</section>
+
 			<!-- 3. Sesiones de hoy -->
 			<section id="sesiones" class="scroll-mt-32 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
-				<div class="flex items-center justify-between mb-3">
+				<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
 					<h2 class="font-bold text-gray-800">3. Sesiones de hoy</h2>
-					<span id="sesionesResumen" class="text-xs text-gray-500"></span>
+					<span class="flex flex-wrap items-center gap-2">
+						<span id="sesionesResumen" class="text-xs text-gray-500"></span>
+						<button id="btnSuelta" type="button" class="min-h-[44px] px-4 rounded-xl border border-violet-300 text-sm font-semibold text-violet-700 hover:bg-violet-50">Actividad suelta</button>
+					</span>
 				</div>
 				<div id="sesionesLista" class="flex flex-col gap-6"></div>
 			</section>
@@ -79,11 +92,13 @@
 	<script src="js/saas-guard.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/grupo-activo.js"></script>
+	<script src="js/calendario-sep.js"></script>
 	<script src="js/alcance-hoy.js"></script>
 	<script src="js/section-shell.js"></script>
 	<script src="js/campos-formativos.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/productos-hoy.js"></script>
+	<script src="js/pasar-a-proyecto.js"></script>
 	<script src="js/hoy.js"></script>
 </body>
 </html>

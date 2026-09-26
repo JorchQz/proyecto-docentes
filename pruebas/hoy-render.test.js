@@ -59,12 +59,20 @@ const cuerpo = [
 	"var alumnos = ALUMNOS;",
 	"var calificaciones = CALIFICACIONES;",
 	"var detallesAbiertos = DETALLES;",
+	"var asignaciones = ASIGNACIONES || {};",
+	"var proyectoPorId = {};",
 	extraerLista("NIVELES"),
 	extraerLista("RETRO_RAPIDA"),
 	extraerFuncion("esc"),
 	extraerFuncion("chip"),
 	extraerFuncion("filaAlumno"),
 	extraerFuncion("alumnosDeProducto"),
+	extraerFuncion("notaTrabajaCon"),
+	extraerFuncion("paraQuien"),
+	extraerFuncion("esSuelta"),
+	extraerFuncion("notaIncompleta"),
+	extraerFuncion("fechaCorta"),
+	extraerFuncion("vacio"),
 	extraerFuncion("agruparPorGrado"),
 	extraerFuncion("detalleProducto"),
 	extraerFuncion("botonesProducto"),
@@ -72,7 +80,7 @@ const cuerpo = [
 	"return { bloqueProducto: bloqueProducto };",
 ].join("\n");
 
-const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", cuerpo)(alumnos, calificaciones, {}, ALCANCE, require("../js/productos-hoy.js"));
+const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", "ASIGNACIONES", cuerpo)(alumnos, calificaciones, {}, ALCANCE, require("../js/productos-hoy.js"));
 
 const producto = { id: "prod-1", nombre: "Cartel del cuento", campo: "LEN", grados: ["2", "3"], tipo: "trabajo" };
 let html = "";
@@ -104,7 +112,7 @@ ok("cada producto ofrece Renombrar y Quitar (44 px)",
 	/data-renombrar='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero) && /data-quitar-producto='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero), true);
 
 // El panel abierto sigue abierto tras redibujar
-const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE, require("../js/productos-hoy.js"));
+const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", "ASIGNACIONES", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE, require("../js/productos-hoy.js"));
 const htmlAbierto = api2.bloqueProducto(producto);
 ok("un detalle abierto sobrevive al redibujo",
 	htmlAbierto.indexOf("id='detalle-prod-1-al-3' class='rounded-xl") !== -1, true);

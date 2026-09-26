@@ -83,13 +83,17 @@ if (P.tieneCaptura) {
 const hoy = leer("js/hoy.js"), hoyHtml = leer("hoy.html");
 ok("Hoy: sin window.prompt", /window\.prompt/.test(hoy), false);
 ok("Hoy: diálogo accesible (role=dialog, aria-modal, Esc)", /setAttribute\("role", "dialog"\)/.test(hoy) && /aria-modal/.test(hoy) && /e\.key === "Escape"/.test(hoy), true);
-ok("Hoy: el diálogo valida con ProductosHoy.validarNuevo y el día por omisión es venceTarea", /ProductosHoy\.validarNuevo\(datos/.test(hoy) && /AlcanceHoy\.venceTarea\(null, hoy\)/.test(hoy), true);
+// Desde 2026-09-26 (fase 2) el día por omisión es el siguiente día de CLASE (calendario SEP y ajustes del grupo)
+ok("Hoy: el diálogo valida con ProductosHoy.validarNuevo y el día por omisión es venceTarea", /ProductosHoy\.validarNuevo\(datos/.test(hoy) && /AlcanceHoy\.venceTarea\(null, hoy, ajustesCal\)/.test(hoy), true);
 ok("Hoy: agregar, renombrar y quitar dicen que necesitan señal", (hoy.match(/necesita señal/g) || []).length >= 3, true);
 ok("Hoy: quitar revisa calificaciones (pantalla y base) antes de poner activo = false",
 	/tieneCaptura\(calificaciones\[/.test(hoy) && /\.eq\("producto_sesion_id", producto\.id\)/.test(hoy) && /update\(\{ activo: false \}\)/.test(hoy) &&
 	hoy.indexOf('.eq("producto_sesion_id", producto.id)') < hoy.indexOf("update({ activo: false })"), true);
 ok("Hoy: renombrar actualiza productos_sesion.nombre", /update\(\{ nombre: v\.nombre \}\)/.test(hoy), true);
-ok("Hoy: el producto nuevo se liga a los PDA de la sesión de sus grados", /producto_sesion_pda"\)\.insert\(ligas\)/.test(hoy), true);
+// Fase 2: producto, "para quién" y PDA se guardan juntos en la base (agregar_producto_sesion, mi_salon_b17)
+ok("Hoy: el producto nuevo se liga a los PDA de la sesión de sus grados (en la misma transacción)",
+	/rpc\("agregar_producto_sesion"/.test(hoy) && /p_ligar: ligas\.ligar, p_crear: ligas\.crear/.test(hoy) &&
+	/insert into public\.producto_sesion_pda \(producto_sesion_id, sesion_pda_id\)\s*select v_prod\.id, sp\.id from public\.sesiones_pda sp/.test(leer("supabase/mi_salon_b17_flujo_libre_2026-09.sql")), true);
 ok("Hoy: Trabajar hoy usa siguientesPorProyecto (sin .slice(0, 4))", /ProductosHoy\.siguientesPorProyecto/.test(hoy) && !/\.slice\(0, 4\)/.test(hoy), true);
 ok("hoy.html: carga js/productos-hoy.js antes de js/hoy.js",
 	hoyHtml.indexOf('src="js/productos-hoy.js"') > 0 && hoyHtml.indexOf('src="js/productos-hoy.js"') < hoyHtml.indexOf('src="js/hoy.js"'), true);
@@ -141,8 +145,9 @@ if (tiene8.every(Boolean)) {
 {
 	const h = leer("js/hoy.js");
 	ok("Hoy: el diálogo tiene buscador de contenidos y PDA opcionales", h.includes("PDA que evalúa") && h.includes("data-busca-contenido") && h.includes("(opcional)"), true);
-	ok("Hoy: liga con lo elegido y crea el PDA que falta en sesiones_pda de la sesión",
-		h.includes("ligarPdaElegidos(nuevo, sesion, eleccionPda())") && h.includes('from("sesiones_pda").insert(plan.crear.map'), true);
+	ok("Hoy: liga con lo elegido y crea el PDA que falta en sesiones_pda de la sesión (agregar_producto_sesion)",
+		h.includes("window.ProductosHoy.planLigas({ grados: plan.gradosPda") &&
+		/insert into public\.sesiones_pda \(sesion_id, pda_id, grado, criterio_aplicado\)\s*values \(p_sesion, r\.pda_id, r\.grado, null\)/.test(leer("supabase/mi_salon_b17_flujo_libre_2026-09.sql")), true);
 	ok("Hoy: Enter en el buscador no envía el diálogo", h.includes('refs.busca.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });'), true);
 	const q = leer("js/que-le-falta.js"), m = leer("js/motor-calificacion.js");
 	ok("Qué le falta: el PDA cuenta en el campo de su contenido del catálogo",

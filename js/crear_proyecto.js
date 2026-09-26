@@ -1989,7 +1989,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         .eq('id', id)
         .maybeSingle());
 
-      if (!proyecto) {
+      // "Actividades del trimestre" (actividades sueltas, tipo 'sueltas', mi_salon_b17) no es un
+      // proyecto que se edite aquí: sus actividades se ven en Proyectos y se pasan a un proyecto
+      if (!proyecto || proyecto.tipo === 'sueltas') {
         window.location.href = 'planeacion.html';
         return;
       }
@@ -2647,6 +2649,34 @@ document.addEventListener("DOMContentLoaded", async function () {
     paraMaterializar.forEach(function (s) {
       sesionesOriginales[s.id] = Object.assign({}, sesionesOriginales[s.id] || {}, s);
     });
+
+    /*
+      Carrera R25a-r08 (campo, relectura retrasada): la sesión recibió su PATCH completo (campo,
+      PDA, tareas) cuando aún no tenía fecha, pero antes de materializar la trabajaron en Hoy y la
+      calificaron: el materializador ya no toca sus productos (resumen.omitidas). Para que sesión y
+      productos digan lo mismo, se regresa lo evaluado de esa sesión (lo que no es texto) a como
+      estaba; el texto sí se queda, como en cualquier sesión trabajada. Si no se pudo regresar, el
+      aviso lo dice tal cual.
+    */
+    const sinRegresar = [];
+    for (const id of (resumen.omitidas || [])) {
+      if (!r.cambiadas || !r.cambiadas[id]) continue;
+      const e = existentes.find(function (x) { return x.id === id; });
+      if (!e || !e.actual) continue;
+      const vuelta = {};
+      Object.keys(e.completa || {}).forEach(function (k) {
+        if (!(k in (e.texto || {})) && k in e.actual) vuelta[k] = e.actual[k];
+      });
+      if (!Object.keys(vuelta).length) continue;
+      const { error: vError } = await window.sb.from('sesiones').update(vuelta).eq('id', id).eq('maestro_id', user.id);
+      if (vError) { sinRegresar.push(id); continue; }
+      sesionesOriginales[id] = Object.assign({}, sesionesOriginales[id] || {}, vuelta);
+    }
+    if (sinRegresar.length) {
+      throw errorHumano('Mientras guardabas, se empezó a trabajar ' + (sinRegresar.length === 1 ? 'la sesión ' : 'las sesiones ') +
+        sinRegresar.map(numeroDe).sort(function (a, b) { return a - b; }).join(', ') +
+        ' (en Hoy o en otro dispositivo). Su campo formativo, PDA o tareas sí cambiaron, pero sus productos y calificaciones siguieron como estaban. Recarga la página y revísala antes de seguir editando.');
+    }
     if (proyectoOriginal) proyectoOriginal = Object.assign({}, proyectoOriginal, { grados: proyectoPayload.grados });
 
     const enCarrera = Array.from(new Set([].concat(r.noBorradas || [], r.soloTexto || [], resumen.omitidas || [], resumen.carrera || [])));
@@ -2726,7 +2756,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       setTimeout(() => { window.location.href = 'planeacion.html'; }, 1800);
 
     } catch (err) {
-      console.error('Error al guardar:', err);
+      // Un aviso ya manejado ("Mientras editabas…") no es un error de la página (R25a)
+      if (err && err.humano) console.info('Guardar:', err.message);
+      else console.error('Error al guardar:', err);
       msgEl.className = 'mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm';
       msgEl.textContent = err && err.humano ? err.message : 'Error al guardar: ' + ((err && err.message) || 'Intenta de nuevo.') + ' Lo que capturaste sigue aquí; puedes volver a guardar.';
       msgEl.classList.remove('hidden');

@@ -61,7 +61,8 @@ const ESQUEMA = typeof B.columnasMarca === "function" ? "campo" : typeof B.baseD
 const GRUPOS_BD = {
 	asistencias: [["captura_id", ["asistencia_estado"]]],
 	registro_diario: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
-	calificaciones: [["captura_semaforo", ["estado_entrega", "nivel"]], ["captura_puntaje", ["puntaje"]], ["captura_retroalimentacion", ["retroalimentacion"]]],
+	// mi_salon_b17: la revisión de una actividad incompleta va con el semáforo
+	calificaciones: [["captura_semaforo", ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"]], ["captura_puntaje", ["puntaje"]], ["captura_retroalimentacion", ["retroalimentacion"]]],
 };
 let marcasServidor = 0;
 const marcaServidor = () => "srv-" + ++marcasServidor;
@@ -362,7 +363,9 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		ok("sin cambios: sin conflictos", bA.eventos.conflictos.length, 0);
 		ok("sin cambios: la pantalla recibe el valor que quedó", bA.eventos.guardadas.map(([c, r]) => c.split("|")[0] + ":" + JSON.stringify(r.valor)),
 			['asistencia:{"estado":"justificada"}', 'registro:{"participacion":2,"conducta":1}',
-				'calificacion:{"estado_entrega":"entregado","nivel":"en_proceso","puntaje":7,"retroalimentacion":"Revisa"}']);
+				// Sin opciones.campos la captura escribe todos sus campos, también los de la revisión de
+				// una actividad incompleta (mi_salon_b17), que quedan vacíos
+				'calificacion:{"estado_entrega":"entregado","nivel":"en_proceso","puntaje":7,"retroalimentacion":"Revisa","revisar_en":null,"estado_en_clase":null,"completado_en":null}']);
 	});
 
 	// 4b. Cambiado en otro lado: no se pisa y se avisa (r11: A sin red antes, B con red después)
@@ -1326,6 +1329,71 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		const nav = require("fs").readFileSync(require("path").join(__dirname, "..", "js", "navbar.js"), "utf8");
 		const iConf = nav.indexOf("BandejaSalida.confirmarSalida(window.sb)"), iLimp = nav.indexOf("BandejaSalida.limpiarAlSalir(window.sb)"), iSal = nav.indexOf("sb.auth.signOut()");
 		ok("la barra limpia después de confirmar y antes de cerrar la sesión", iConf !== -1 && iConf < iLimp && iLimp < iSal, true);
+	}
+
+	// ── §10 "Incompleta" pasa a revisarse el siguiente día de clase (mi_salon_b17) ──
+	// revisar_en, estado_en_clase y completado_en van en la marca del semáforo: se escriben y se
+	// deciden junto con la entrega y el nivel. Con 3cb15b8 la cola no los conoce y no los escribe.
+	if (ESQUEMA === "campo") {
+		const CAMPOS_SEM = ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"];
+		const incompleta = { estado_entrega: "incompleto", nivel: null, estado_en_clase: "incompleta", revisar_en: "2026-09-28", completado_en: null };
+		const completo = { estado_entrega: "entregado", nivel: "en_proceso", estado_en_clase: "completada", completado_en: "2026-09-28" };
+		const filaDe = (bdX, a) => bdX.calificaciones.find((c) => c.alumno_id === a && c.producto_sesion_id === "pInc");
+		const vista = (f) => f ? CAMPOS_SEM.map((k) => (f[k] === undefined ? null : f[k])) : null;
+
+		await caso("§10a sin red: Incompleta y Lo completó, vuelve la red: una fila, sin avisos falsos", async () => {
+			const bdI = crearBD();
+			const alm = B.almacenMemoria();
+			const off = bandeja(cliente(bdI, { red: true }), alm);
+			off.iniciar();
+			await off.agregar("calificacion", calif("ana", "pInc", incompleta), "Calificación de Ana", null, { campos: CAMPOS_SEM });
+			await dormir(5);
+			await off.agregar("calificacion", calif("ana", "pInc", completo), "Calificación de Ana", null, { campos: ["estado_entrega", "nivel", "estado_en_clase", "completado_en"] });
+			await dormir(30);
+			ok("§10a sin red: una captura por llave, nada en la base", [off.pendientes(), bdI.calificaciones.length], [1, 0]);
+			const on = bandeja(cliente(bdI, {}), alm);
+			await on.iniciar();
+			await vacia(on);
+			ok("§10a con red: queda completada con el nivel que logró y el día en que se revisaba",
+				vista(filaDe(bdI, "ana")), ["entregado", "en_proceso", "2026-09-28", "completada", "2026-09-28"]);
+			ok("§10a sin conflictos ni rechazos (sin avisos falsos)", [on.eventos.conflictos.length, on.eventos.rechazos.length, on.pendientes()], [0, 0, 0]);
+		});
+
+		await caso("§10b en línea: Incompleta hoy y, el siguiente día de clase, «Sigue incompleta» sobre lo leído", async () => {
+			const bdI = crearBD();
+			const b1 = bandeja(cliente(bdI, {}), B.almacenMemoria());
+			b1.iniciar();
+			await b1.agregar("calificacion", calif("beto", "pInc", incompleta), "Calificación de Beto", null, { campos: CAMPOS_SEM });
+			await vacia(b1);
+			const f = filaDe(bdI, "beto");
+			ok("§10b la incompleta llega con su día de revisión y su marca de semáforo", [vista(f), !!f.captura_semaforo], [["incompleto", null, "2026-09-28", "incompleta", null], true]);
+			// Otro día, otra pantalla: lee la fila (con sus marcas) y marca "Sigue incompleta"
+			const b2 = bandeja(cliente(bdI, {}), B.almacenMemoria());
+			b2.iniciar();
+			await b2.agregar("calificacion", calif("beto", "pInc", { estado_entrega: "incompleto", nivel: null, estado_en_clase: "sigue_incompleta", completado_en: "2026-09-28" }, f.id),
+				"Calificación de Beto", B.baseDeFila("calificacion", f), { campos: ["estado_entrega", "nivel", "estado_en_clase", "completado_en"] });
+			await vacia(b2);
+			ok("§10b queda «sigue incompleta» (definitiva), sin conflicto", [vista(filaDe(bdI, "beto")), b2.eventos.conflictos.length],
+				[["incompleto", null, "2026-09-28", "sigue_incompleta", "2026-09-28"], 0]);
+		});
+
+		await caso("§10c otra pantalla cambió la revisión: la marca del semáforo lo nota (no se pisa)", async () => {
+			const bdI = crearBD();
+			const b1 = bandeja(cliente(bdI, {}), B.almacenMemoria());
+			b1.iniciar();
+			await b1.agregar("calificacion", calif("caro", "pInc", incompleta), "Calificación de Caro", null, { campos: CAMPOS_SEM });
+			await vacia(b1);
+			const vio = B.baseDeFila("calificacion", Object.assign({}, filaDe(bdI, "caro")));
+			// Otro aparato (o SQL) mueve el día de revisión: el trigger le pone una marca del servidor
+			await cliente(bdI, {}).from("calificaciones").update({ revisar_en: "2026-09-29" }).eq("maestro_id", "m1").eq("alumno_id", "caro").eq("producto_sesion_id", "pInc");
+			const b2 = bandeja(cliente(bdI, {}), B.almacenMemoria());
+			b2.iniciar();
+			await b2.agregar("calificacion", calif("caro", "pInc", completo, filaDe(bdI, "caro").id), "Calificación de Caro", vio,
+				{ campos: ["estado_entrega", "nivel", "estado_en_clase", "completado_en"] });
+			await vacia(b2);
+			ok("§10c conflicto avisado y se conservó lo de la base", [b2.eventos.conflictos.length, filaDe(bdI, "caro").estado_en_clase], [1, "incompleta"]);
+			ok("§10c el aviso dice lo que quedó (incompleta, por completar) y lo que no se aplicó (la completó)", /quedó: Incompleta, por completar\)[\s\S]*\(En proceso, la completó\)/.test(String((b2.eventos.conflictos[0] || [])[1] && b2.eventos.conflictos[0][1].texto || "")), true);
+		});
 	}
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");

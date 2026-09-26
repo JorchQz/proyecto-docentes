@@ -26,6 +26,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var revisiones = {}; // producto_sesion_id → { alumno_id: estado_entrega }
 	var calPorClave = {}; // alumno_id|producto_sesion_id → { fecha } (regla del alta)
 	var grupoActual = null;
+	var ajustes = [];      // calendario_ajustes del grupo (vencen el siguiente día de clase)
+	var asignaciones = {}; // producto → { alumno: "incluir" | "excluir" } ("¿Para quién?")
 
 	function fechaLocalISO() {
 		var ahora = new Date();
@@ -69,7 +71,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Fecha de alta de cada alumno (hora de Ciudad de México): js/alcance-hoy.js
 		alumnos.forEach(function (a) { a.alta = window.AlcanceHoy.fechaAlta(a.created_at, grupo.created_at); });
 
-		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final")
+		// Días sin clase del grupo: una tarea vence el siguiente día de clase (js/alcance-hoy.js)
+		ajustes = await window.AlcanceHoy.leerAjustesCalendario(window.sb, maestroId, grupo.id);
+
+		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final, tipo")
 			.eq("maestro_id", maestroId).eq("grupo_id", grupo.id);
 		if (proyRes.error) throw proyRes.error;
 		var proyectos = proyRes.data || [];
@@ -98,9 +103,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return Object.assign({}, t, {
 				sesion: s,
 				proyecto: proyPorId[s.proyecto_id] || {},
-				vence: window.AlcanceHoy.venceTarea(t.fecha_entrega, s.fecha),
+				vence: window.AlcanceHoy.venceTarea(t.fecha_entrega, s.fecha, ajustes),
 			});
 		});
+
+		// Para quién es cada tarea además de sus grados (regla única: js/alcance-hoy.js)
+		var filasAsig = await window.AlcanceHoy.leerPorLotes(tareas.map(function (t) { return t.id; }), function (lote) {
+			return window.sb.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+				.eq("maestro_id", maestroId).in("producto_sesion_id", lote).order("id");
+		});
+		asignaciones = window.AlcanceHoy.indiceAsignaciones(filasAsig);
 
 		var cals = await window.AlcanceHoy.leerPorLotes(tareas.map(function (t) { return t.id; }), function (lote) {
 			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, estado_entrega, fecha")
@@ -110,6 +122,33 @@ document.addEventListener("DOMContentLoaded", async function () {
 			calPorClave[c.alumno_id + "|" + c.producto_sesion_id] = c;
 			if (!c.estado_entrega) return;
 			(revisiones[c.producto_sesion_id] = revisiones[c.producto_sesion_id] || {})[c.alumno_id] = c.estado_entrega;
+		});
+
+		/*
+			"Por completar" (decisión de Jorge del 2026-09-26): actividades en clase que quedaron
+			incompletas y se revisan el siguiente día de clase en "Hoy" (Pendientes de la clase
+			anterior). Una tarjeta por actividad con sus alumnos pendientes. Solo los alumnos activos.
+		*/
+		var activos = {};
+		alumnos.forEach(function (a) { activos[a.id] = true; });
+		var pendientes = await window.AlcanceHoy.leerPorLotes([grupo.id], function (lote) {
+			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, revisar_en")
+				.eq("maestro_id", maestroId).eq("grupo_id", lote[0]).eq("estado_en_clase", "incompleta").order("id");
+		});
+		pendientes = pendientes.filter(function (c) { return activos[c.alumno_id]; });
+		var idsInc = Array.from(new Set(pendientes.map(function (c) { return c.producto_sesion_id; })));
+		var prodInc = await window.AlcanceHoy.leerPorLotes(idsInc, function (lote) {
+			return window.sb.from("productos_sesion").select("id, sesion_id, nombre, descripcion, grados, campo, fecha_entrega")
+				.eq("activo", true).in("id", lote).order("id");
+		});
+		prodInc.forEach(function (p) {
+			var s = sesPorId[p.sesion_id] || {};
+			var suyos = pendientes.filter(function (c) { return c.producto_sesion_id === p.id; });
+			var revisar = suyos.map(function (c) { return String(c.revisar_en || "").slice(0, 10); }).filter(Boolean).sort()[0] || null;
+			tareas.push(Object.assign({}, p, {
+				porCompletar: suyos.map(function (c) { return c.alumno_id; }),
+				sesion: s, proyecto: proyPorId[s.proyecto_id] || {}, vence: revisar,
+			}));
 		});
 
 		// Lo más reciente arriba (como en "Hoy"); las que no tienen fecha, al final
@@ -134,14 +173,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return true;
 	}
 
-	// Alumnos a los que les toca la tarea: los de sus grados y solo si la tarea es desde su
-	// alta (misma regla que Hoy, Inicio y el motor: js/alcance-hoy.js)
+	// Alumnos a los que les toca la tarea: REGLA ÚNICA de js/alcance-hoy.js (sus grados sin los
+	// excluidos, más los incluidos, y solo si la tarea es desde su alta), la misma de Hoy, Inicio,
+	// el motor y Qué le falta
 	function alumnosDe(t) {
-		var grados = (t.grados || []).map(Number);
-		var fecha = window.AlcanceHoy.fechaProducto(t.sesion && t.sesion.fecha, t.fecha_entrega);
 		return alumnos.filter(function (a) {
-			if (grados.indexOf(Number(a.grado)) === -1) return false;
-			return window.AlcanceHoy.cuentaDesdeAlta(a.alta, fecha, calPorClave[a.id + "|" + t.id]);
+			return window.AlcanceHoy.recibeProducto(a, t, asignaciones, t.sesion && t.sesion.fecha, calPorClave[a.id + "|" + t.id]);
 		});
 	}
 
@@ -178,6 +215,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Una tarea pendiente de un proyecto que "Hoy" ya no mira (js/alcance-hoy.js) no se
 	// presenta como "Por revisar": no hay dónde revisarla y contradiría a "Hoy" e Inicio
 	function situacion(t) {
+		// Actividad en clase que quedó incompleta: "Por completar" mientras haya alumnos pendientes
+		if (t.porCompletar) return { total: t.porCompletar.length, revisados: 0, conteo: {}, estado: "por_completar" };
 		var s = situacionDe(alumnosDe(t), revisiones[t.id] || {}, t.vence, hoy);
 		if (s.estado === "por_revisar" && !window.AlcanceHoy.incluye(t.proyecto, grupoActual, hoy)) s.estado = "sin_revisar_cerrada";
 		return s;
@@ -201,6 +240,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var ETIQUETA_ESTADO = {
 		por_revisar: "<span class='inline-flex items-center bg-amber-50 text-amber-800 border border-amber-200 text-xs px-2 py-1 rounded-full font-semibold'>Por revisar</span>",
+		por_completar: "<span class='inline-flex items-center bg-violet-50 text-violet-800 border border-violet-200 text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap'>Por completar</span>",
 		revisada: "<span class='inline-flex items-center gap-1 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-semibold'><svg xmlns='http://www.w3.org/2000/svg' class='h-3.5 w-3.5 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='m5 12 5 5L20 7'/></svg>Revisada</span>",
 		proxima: "<span class='inline-flex items-center bg-blue-50 text-blue-800 text-xs px-2 py-1 rounded-full font-semibold'>Próxima</span>",
 		sin_fecha: "<span class='inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold'>Sin fecha</span>",
@@ -224,15 +264,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}).join("");
 			var campo = t.campo && COLOR_CAMPO[t.campo]
 				? "<span class='inline-flex items-center gap-1 text-xs text-gray-600'><span class='inline-block w-2 h-2 rounded-full' style='background:" + COLOR_CAMPO[t.campo] + "'></span>" + NOMBRE_CAMPO[t.campo] + "</span>" : "";
-			var fecha = t.vence
+			var fecha = t.porCompletar
+				? "<span class='text-xs text-gray-500'>" + (t.vence ? (t.vence <= hoy ? "Se revisa en Hoy desde el " : "Se revisa el ") + formatFecha(t.vence) : "Se revisa la siguiente clase") + "</span>"
+				: t.vence
 				? "<span class='text-xs text-gray-500'>" + (t.vence < hoy ? "Venció el " : t.vence === hoy ? "Vence hoy, " : "Vence el ") + formatFecha(t.vence) + "</span>"
 				: "<span class='text-xs text-gray-500'>Toma fecha cuando trabajes la sesión " + esc(t.sesion.numero_sesion || "") + " en Hoy</span>";
-			var avance = s.total
+			var avance = t.porCompletar
+				? "<p class='text-sm text-gray-700'><b>" + s.total + "</b> " + (s.total === 1 ? "alumno la dejó incompleta en clase" : "alumnos la dejaron incompleta en clase") + "</p>"
+				: s.total
 				? "<p class='text-sm text-gray-700'><b>" + s.revisados + " de " + s.total + "</b> alumnos revisados" +
 					(s.revisados ? " <span class='text-xs text-gray-500'>(" + detalleConteo(s.conteo) + ")</span>" : "") + "</p>"
 				: "<p class='text-sm text-gray-500'>No hay alumnos activos de ese grado.</p>";
 			// "Revisar en Hoy" solo cuando "Hoy" la va a mostrar (mismo alcance: js/alcance-hoy.js)
-			var accion = s.estado === "por_revisar"
+			var accion = s.estado === "por_completar" && t.vence && t.vence <= hoy
+				? "<a href='hoy.html#pendientes' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition'>Revisar en Hoy</a>"
+				: s.estado === "por_revisar"
 				? "<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition'>Revisar en Hoy</a>"
 				: s.estado === "sin_revisar_cerrada"
 				? "<span class='text-xs text-gray-500'>Su proyecto terminó hace más de " + window.AlcanceHoy.DIAS_RECIENTES + " días y es de otro trimestre: ya no aparece en Hoy.</span>"
@@ -240,7 +286,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return "<div class='bg-white rounded-2xl border border-gray-200 p-5 shadow-sm'>" +
 				"<div class='flex items-start justify-between gap-3 mb-2'>" +
 				"<div class='min-w-0'>" +
-				"<p class='text-xs text-gray-500 mb-0.5'>" + esc(t.proyecto.titulo || "Proyecto") + " · Sesión " + esc(t.sesion.numero_sesion || "") + "</p>" +
+				"<p class='text-xs text-gray-500 mb-0.5'>" + (window.AlcanceHoy.esSueltas(t.proyecto)
+					// Actividad suelta (sin proyecto): por su fecha, no "sesión N"
+					? esc(window.AlcanceHoy.TITULO_SUELTAS) + (t.sesion.fecha ? " · " + formatFecha(t.sesion.fecha) : "")
+					: esc(t.proyecto.titulo || "Proyecto") + " · Sesión " + esc(t.sesion.numero_sesion || "")) +
+				(t.porCompletar ? " · actividad en clase" : "") + "</p>" +
 				"<p class='font-semibold text-gray-800 text-sm leading-snug'>" + esc(t.nombre) + "</p>" +
 				(t.descripcion ? "<p class='text-sm text-gray-600 mt-1'>" + esc(t.descripcion) + "</p>" : "") +
 				"</div>" + ETIQUETA_ESTADO[s.estado] + "</div>" +

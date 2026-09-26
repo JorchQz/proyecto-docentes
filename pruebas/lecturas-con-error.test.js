@@ -27,7 +27,7 @@ function correr(prueba, variable, tabla) {
 	console.log((bien ? "OK   " : "FALLA ") + prueba.replace(".test.js", "") + " con " + tabla + " en error" + detalle);
 }
 
-["alumnos", "asistencias", "registro_diario", "proyectos", "sesiones", "productos_sesion", "calificaciones"]
+["alumnos", "asistencias", "registro_diario", "calendario_ajustes", "proyectos", "sesiones", "productos_sesion", "producto_sesion_alumnos", "calificaciones"]
 	.forEach((t) => correr("hoy-arranque.test.js", "HOY_FALLA", t));
 ["evaluacion_diagnostica", "boleta_trimestral", "v_avance_pda"]
 	.forEach((t) => correr("boleta-arranque.test.js", "BOLETA_FALLA", t));

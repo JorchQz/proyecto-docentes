@@ -761,6 +761,8 @@
 			avancePda: (avancePda || []).filter(function (f) { return !f.alumno_id || f.alumno_id === alumno.id; }),
 			calificacion: calificacion, asistencia: m.asistencia || null,
 			hoy: hoy || fechaLocal(), regla: window.ReglasEntidad ? window.ReglasEntidad.regla(ctx.estado || null) : null,
+			// Los días sin clase del grupo (los lee la pantalla): una tarea vence el siguiente día de clase
+			calendario: ctx.calendario || [],
 		});
 	}
 

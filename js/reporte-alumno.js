@@ -848,6 +848,17 @@
 
 		// Estado (todo declarado antes del arranque, que va al final)
 		var ctx = null;
+		// Días sin clase del grupo, para "Qué le falta" (una tarea vence el siguiente día de clase)
+		async function ajustesCalendario(c) {
+			if (!window.AlcanceHoy || !window.AlcanceHoy.leerAjustesCalendario || !c || !c.grupo) return [];
+			try {
+				return await window.AlcanceHoy.leerAjustesCalendario(window.sb, c.maestroId, c.grupo.id);
+			} catch (e) {
+				// lectura-opcional: sin los ajustes del grupo, "Qué le falta" usa el calendario oficial SEP (solo cambia qué tarea ya venció); no se escribe nada
+				console.error("reporte-alumno: ajustes del calendario", e);
+				return [];
+			}
+		}
 		var turno = 0;              // descarta respuestas viejas si el maestro cambia rápido de alumno
 		var extraAlumno = null;     // alumno de la URL que no está en la lista (p. ej. dado de baja)
 		var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -983,6 +994,7 @@
 		// ── Arranque ──────────────────────────────────────────────────────────
 		try {
 			ctx = await window.ReporteDatos.contexto(window.sb);
+			ctx.calendario = await ajustesCalendario(ctx);
 		} catch (e) {
 			console.error("reporte-alumno: contexto", e);
 			subtitulo.textContent = "";

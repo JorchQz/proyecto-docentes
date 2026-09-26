@@ -259,6 +259,13 @@
 		return A ? A.cuentaDesdeAlta(alta, fecha, cal) : true;
 	}
 
+	// ¿El alumno recibe el producto? (AlcanceHoy.recibeProducto; sin el script, sus grados y el alta)
+	function recibe(alumno, p, asignaciones, fechaSesion, cal, alta) {
+		var A = alcance();
+		if (A && A.recibeProducto) return A.recibeProducto(alumno, p, asignaciones, fechaSesion || null, cal, alta || null);
+		return (p.grados || []).map(Number).indexOf(Number(alumno.grado)) !== -1;
+	}
+
 	function fechaProductoDe(p, fechaSesion) {
 		var A = alcance();
 		return A ? A.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega) : null;
@@ -343,7 +350,7 @@
 		var alta = await fechasDeAlta(sb, alumnos, ctx.grupoId, altaInstante);
 
 		// Proyectos del trimestre (proyectos.trimestre es la fuente única) y sus sesiones
-		var proyRes = await sb.from("proyectos").select("id")
+		var proyRes = await sb.from("proyectos").select("id, tipo")
 			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre);
 		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
@@ -359,7 +366,7 @@
 		if (proyIds.length) {
 			sesiones = await todas(function () {
 				return sb.from("sesiones").select(detalle
-					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo)), producto_sesion_pda(producto_sesion_id))"
+					? "id, fecha, campo_formativo, numero_sesion, proyecto_id, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo)), producto_sesion_pda(producto_sesion_id))"
 					: "id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
 			});
 		}
@@ -385,12 +392,25 @@
 			});
 		}
 
-		// Calificaciones de los alumnos en los proyectos del trimestre (nuevas y legacy)
+		// Para quién es cada producto además de sus grados ("¿Para quién?", producto_sesion_alumnos,
+		// mi_salon_b17): las filas de estos alumnos (la regla de cada alumno solo mira las suyas)
+		var asignaciones = {};
+		if (ids.length && productos.length) {
+			var A0 = alcance();
+			var filasAsig = await todas(function () {
+				return sb.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids).order("id");
+			});
+			asignaciones = A0 ? A0.indiceAsignaciones(filasAsig) : {};
+		}
+
+		// Calificaciones de los alumnos en los proyectos del trimestre (nuevas y legacy); con la
+		// revisión de una actividad incompleta (estado_en_clase, revisar_en: "Qué le falta")
 		var califs = [];
 		if (ids.length && proyIds.length) {
 			califs = await todas(function () {
 				return sb.from("calificaciones")
-					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id, fecha")
+					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id, fecha, estado_en_clase, revisar_en, completado_en")
 					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids).in("proyecto_id", proyIds).order("id");
 			});
 		}
@@ -428,11 +448,11 @@
 				usaLegacy = true;
 				legacy.push({ rubro: rubro, campo: codigo, calificacion: c.calificacion });
 			});
-			// Los productos de su grado, y solo los que tienen fecha desde su alta (alumno dado
-			// de alta tarde: js/alcance-hoy.js, la misma regla que Hoy, Inicio y Tareas)
+			// Los productos que recibe (REGLA ÚNICA de js/alcance-hoy.js, la misma de Hoy, Inicio,
+			// Tareas y Qué le falta: sus grados sin excluirlo, o incluido), y solo los que tienen
+			// fecha desde su alta (alumno dado de alta tarde). Sigue en su grado para la boleta.
 			var misProductos = productos.filter(function (p) {
-				if ((p.grados || []).map(Number).indexOf(a.grado) === -1) return false;
-				return cuentaDesdeAlta(alta[a.id], fechaProductoDe(p, fechaSesion), calificaciones[p.id]);
+				return recibe(a, p, asignaciones, fechaSesion[p.sesion_id], calificaciones[p.id], alta[a.id]);
 			});
 			var misRegistros = registros.filter(function (r) { return r.alumno_id === a.id; });
 			var examen = examenes[a.id] || { porCampo: {}, aproximado: false };
@@ -485,7 +505,14 @@
 		}
 
 		var salida = { porAlumno: porAlumno, pesos: pesos, sinProyectos: proyIds.length === 0 };
-		if (detalle) salida.sesiones = sesiones;
+		if (detalle) {
+			// Las sesiones de "Actividades del trimestre" (actividades sueltas, mi_salon_b17) se marcan:
+			// "Qué le falta" las nombra por su fecha y no como "sesión N"
+			var sueltas = {};
+			(proyRes.data || []).forEach(function (p) { if (p.tipo === "sueltas") sueltas[p.id] = true; });
+			sesiones.forEach(function (s) { if (sueltas[s.proyecto_id]) s.suelta = true; });
+			salida.sesiones = sesiones;
+		}
 		return salida;
 	}
 

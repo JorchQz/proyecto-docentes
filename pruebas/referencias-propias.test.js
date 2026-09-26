@@ -90,7 +90,16 @@ const EXCEPCIONES = {
 	// B15 (supabase/mi_salon_b15_listas_2026-09.sql): nacen con la revisión en su política
 	listas_grupo: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
 	listas_valores: "sus políticas de insert y update ya exigen que la lista (abierta) y la columna sean del maestro y que el alumno sea suyo y del mismo grupo que la lista",
+	// B17 (supabase/mi_salon_b17_flujo_libre_2026-09.sql): nace con la revisión en su política
+	producto_sesion_alumnos: "sus políticas restrictivas de insert y update exigen producto y alumno propios (ref_propia_producto_sesion, ref_propia_alumno) y del mismo grupo (ref_asignacion_mismo_grupo)",
 };
+// Y lo comprobamos, no solo lo decimos
+{
+	const b17 = fs.readFileSync(path.join(DIR, "mi_salon_b17_flujo_libre_2026-09.sql"), "utf8");
+	const ins = /create policy producto_sesion_alumnos_refs_propias_ins on public\.producto_sesion_alumnos\s+as restrictive for insert to authenticated\s+with check \(public\.ref_propia_producto_sesion\(producto_sesion_id\) and public\.ref_propia_alumno\(alumno_id\)\s+and public\.ref_asignacion_mismo_grupo\(producto_sesion_id, alumno_id\)\)/.test(b17);
+	const upd = /create policy producto_sesion_alumnos_refs_propias_upd on public\.producto_sesion_alumnos\s+as restrictive for update to authenticated\s+using \(true\)\s+with check \(public\.ref_propia_producto_sesion\(producto_sesion_id\) and public\.ref_propia_alumno\(alumno_id\)\s+and public\.ref_asignacion_mismo_grupo\(producto_sesion_id, alumno_id\)\)/.test(b17);
+	ok("b17: producto_sesion_alumnos exige producto y alumno propios y del mismo grupo (insert y update)", ins && upd, ins && upd ? "" : JSON.stringify([ins, upd]));
+}
 
 // 1. Políticas por tabla
 const politicas = [...codigo.matchAll(/create policy\s+(\w+)\s+on\s+public\.(\w+)\s+as\s+(\w+)\s+for\s+(\w+)([\s\S]*?);/gi)]

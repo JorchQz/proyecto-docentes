@@ -194,9 +194,13 @@ async function crearCardHoy() {
 	let sinCalificar = 0;
 	let sesionesHoy = 0;
 	let tareasPorRevisar = 0;
+	// Actividades en clase que quedaron incompletas y hoy (o antes) toca revisar (una por alumno)
+	let porCompletar = 0;
 	// Si una lectura falla, Inicio sigue en pie: esos conteos dicen que no se pudieron leer
 	let sinLeer = false;
 	try {
+		// Días sin clase del grupo: las tareas vencen el siguiente día de clase (como en "Hoy")
+		const ajustes = await window.AlcanceHoy.leerAjustesCalendario(window.sb, user.id, grupoId);
 		const proys = await window.Lectura.uno(window.sb.from("proyectos").select("id")
 			.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy)));
 		const proyIds = (proys || []).map((p) => p.id);
@@ -216,11 +220,23 @@ async function crearCardHoy() {
 					.select("id, tipo, grados, sesion_id, fecha_entrega").in("sesion_id", lote).eq("activo", true).order("id"));
 				const trabajos = prods.filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
 				const tareas = prods.filter((p) => {
-					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id]) : null;
+					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id], ajustes) : null;
 					return vence && vence <= hoy;
 				});
 				const revisar = trabajos.concat(tareas);
+				// Lo incompleta en clase que ya toca revisar (Pendientes de la clase anterior de "Hoy"),
+				// de los mismos productos que mira Hoy, de alumnos activos
+				const activosIds = new Set(alumnos.map((a) => a.id));
+				const incompletas = await leer(prods.map((p) => p.id), (lote) => window.sb.from("calificaciones")
+					.select("alumno_id, producto_sesion_id, revisar_en")
+					.eq("maestro_id", user.id).eq("estado_en_clase", "incompleta").in("producto_sesion_id", lote).order("id"));
+				porCompletar = incompletas.filter((c) => activosIds.has(c.alumno_id) &&
+					window.AlcanceHoy.tocaRevisar(Object.assign({ estado_en_clase: "incompleta" }, c), hoy)).length;
 				if (revisar.length) {
+					// Para quién es cada producto además de sus grados (regla única: js/alcance-hoy.js)
+					const asignaciones = window.AlcanceHoy.indiceAsignaciones(await leer(revisar.map((p) => p.id), (lote) => window.sb
+						.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+						.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id")));
 					const cals = await leer(revisar.map((p) => p.id), (lote) => window.sb.from("calificaciones")
 						.select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje, fecha")
 						.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id"));
@@ -231,12 +247,9 @@ async function crearCardHoy() {
 						.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
 					const calPorClave = new Map(cals.map((c) => [c.alumno_id + "|" + c.producto_sesion_id, c]));
 					// A un alumno dado de alta tarde no se le cuenta lo anterior a su alta (misma regla que "Hoy")
-					const alumnosDe = (p) => {
-						const grados = (p.grados || []).map(Number);
-						const f = window.AlcanceHoy.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega);
-						return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1 &&
-							window.AlcanceHoy.cuentaDesdeAlta(a.alta, f, calPorClave.get(a.id + "|" + p.id)));
-					};
+					// y a quien se excluyó; sí a los incluidos (REGLA ÚNICA: AlcanceHoy.recibeProducto)
+					const alumnosDe = (p) => alumnos.filter((a) =>
+						window.AlcanceHoy.recibeProducto(a, p, asignaciones, fechaSesion[p.sesion_id], calPorClave.get(a.id + "|" + p.id)));
 					trabajos.forEach((p) => {
 						alumnosDe(p).forEach((a) => { if (!hechas.has(a.id + "|" + p.id)) sinCalificar++; });
 					});
@@ -258,14 +271,18 @@ async function crearCardHoy() {
 		"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3'>" +
 		"<div><h2 class='text-lg font-bold text-gray-800'>Tu día</h2>" +
 		"<p class='text-sm text-gray-500'>La captura se hace en Hoy: asistencia, tareas, productos y cierre.</p></div>" +
+		"<span class='flex flex-wrap gap-2'>" +
+		// Guiar sin obligar: una actividad o tarea suelta, sin proyecto (se abre en Hoy)
+		"<a href='hoy.html?nueva=suelta' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl border border-violet-300 text-violet-700 font-semibold hover:bg-violet-50'>Actividad suelta</a>" +
 		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
-		"</div>" +
+		"</span></div>" +
 		(sinLeerDia
 			? fila("Asistencia y cierre del día", "no se pudieron leer; ábrelos en Hoy", false)
 			: fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length)) +
 		(sinLeer
 			? fila("Tareas y productos", "no se pudieron leer; ábrelos en Hoy", false)
 			: fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
+			(porCompletar ? fila("Por completar de la clase anterior", String(porCompletar), false) : "") +
 			fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 			fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0)) +
 		(sinLeerDia ? "" : fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo));
