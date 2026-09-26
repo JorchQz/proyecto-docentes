@@ -362,13 +362,13 @@
 			if (!areValidWords(lastName1, true) || (lastName2 && !areValidWords(lastName2, true))) {
 				showStudentsMessage(
 					"error",
-					"Cada apellido solo puede contener letras, espacios, guiones y apóstrofos."
+					"Cada apellido solo puede contener letras (con acentos y Ñ), espacios y guiones."
 				);
 				return;
 			}
 
 			if (!areValidWords(firstNames, true)) {
-				showStudentsMessage("error", "Nombre(s) solo permite letras y espacios.");
+				showStudentsMessage("error", "Nombre(s) solo permite letras (con acentos y Ñ), espacios y guiones.");
 				return;
 			}
 
@@ -1152,16 +1152,13 @@
 		return areValidWords(text, false);
 	}
 
+	// Letras con acentos y Ñ, espacios y guiones (js/nombres-alumno.js)
 	function areValidWords(text, allowSpaces) {
 		if (!text) {
 			return false;
 		}
-
-		var pattern = allowSpaces
-			? /^[A-Za-zÑñ\-\s]+$/
-			: /^[A-Za-zÑñ\-]+$/;
-
-		return pattern.test(removeAccents(text));
+		if (!allowSpaces && /s/.test(text)) return false;
+		return window.NombresAlumno.valido(text);
 	}
 
 	function bindNameInput(input, allowSpaces, extra) {
@@ -1218,22 +1215,13 @@
 		return !lastName1 && !lastName2 && !firstNames;
 	}
 
+	// MAYÚSCULAS con acentos y Ñ ("JOSÉ PEÑA"; decisión de Jorge del 2026-09-26). Antes se
+	// quitaban los acentos al teclear. Los nombres ya guardados no cambian si no se editan
 	function formatNameInput(rawValue, allowSpaces) {
-		var cleaned = removeAccents(rawValue || "")
-			.replace(/[^A-Za-zÑñ\-\s]/g, "")
-			.replace(/\s+/g, " ")
-			.trimStart();
-
-		if (!allowSpaces) {
-			cleaned = cleaned.replace(/\s+/g, "");
-		}
-
-		return cleaned.toUpperCase();
+		return window.NombresAlumno.formatear(rawValue, allowSpaces);
 	}
 
-	function removeAccents(text) {
-		return text.normalize("NFD").replace(/[\u0300-\u0302\u0304-\u036f]/g, "").normalize("NFC");
-	}
+
 
 	function showStudentsMessage(type, text) {
 		if (!studentsMessageEl) {

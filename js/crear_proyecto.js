@@ -35,8 +35,15 @@ document.addEventListener("DOMContentLoaded", async function () {
   const _urlParams = new URLSearchParams(window.location.search);
   const editProyectoId = _urlParams.get('id');
   let proyectoId = editProyectoId || null;
-  // Motivo por el que "Guardar proyecto" no se permite en modo edición (null = se permite)
-  let edicionBloqueada = null;
+  // Modo edición: el proyecto y sus sesiones como estaban al abrir, y cuáles ya se trabajaron
+  let proyectoOriginal = null;
+  let sesionesOriginales = {};   // id -> fila de sesiones
+  let trabajadasAlAbrir = {};    // id -> true (con fecha o con calificaciones)
+  let hayTrabajo = false;
+  // Proyecto nuevo ya insertado en un intento de guardar que falló a medias y no se pudo
+  // revertir: el siguiente intento lo reutiliza (antes se creaba otro proyecto)
+  let proyectoCreadoId = null;
+  let guardando = false;
 
   // ============================================================
   // PASO 1 — Datos dinámicos
@@ -90,7 +97,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
     if (gradosUsuario.length > 1) {
       gradosCheckboxes.appendChild(makeSelectAll('selectAllGrados', 'Seleccionar todos', function () {
-        gradosCheckboxes.querySelectorAll("input[name='grados']").forEach(c => c.checked = this.checked);
+        gradosCheckboxes.querySelectorAll("input[name='grados']").forEach(c => { if (!c.disabled) c.checked = this.checked; });
         renderFaseBadges();
       }));
     }
@@ -151,7 +158,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   const cfBox = document.querySelector('[name="campos_formativos"]')?.closest('.flex');
   if (cfBox) {
     cfBox.prepend(makeSelectAll('selectAllCF', 'Seleccionar todos', function () {
-      cfBox.querySelectorAll("input[name='campos_formativos']").forEach(c => c.checked = this.checked);
+      cfBox.querySelectorAll("input[name='campos_formativos']").forEach(c => { if (!c.disabled) c.checked = this.checked; });
     }));
   }
 
@@ -226,22 +233,42 @@ document.addEventListener("DOMContentLoaded", async function () {
     cb.addEventListener('change', sugerirMetodologia);
   });
 
+  // Aviso del paso 1 (grados y campos formativos son obligatorios: js/proyecto-edicion.js)
+  function avisoPaso1(texto) {
+    const el = document.getElementById('mensajePaso1');
+    if (!el) return;
+    if (!texto) { el.textContent = ''; el.classList.add('hidden'); return; }
+    el.textContent = texto;
+    el.classList.remove('hidden');
+  }
+
   if (formPaso1) {
     formPaso1.addEventListener('submit', function (e) {
       e.preventDefault();
       const fd = new FormData(formPaso1);
-      paso1Data = {
-        titulo:             fd.get('titulo'),
-        trimestre:          parseInt(fd.get('trimestre'), 10) || null,
+      const datos = {
+        titulo:             String(fd.get('titulo') || '').trim(),
+        // Del select (no de FormData): en un proyecto en curso está deshabilitado y FormData lo omite
+        trimestre:          parseInt(trimestreSelect ? trimestreSelect.value : fd.get('trimestre'), 10) || null,
         fase:               Array.from(formPaso1.querySelectorAll('input[name="fase"]')).map(el => el.value),
         grados:             Array.from(formPaso1.querySelectorAll('input[name="grados"]:checked')).map(el => el.value),
         metodologia:        fd.get('metodologia'),
-        escenario:          fd.get('escenario'),
+        escenario:          window.ProyectoEdicion.escenarioOficial(fd.get('escenario')),
         campos_formativos:  Array.from(formPaso1.querySelectorAll('input[name="campos_formativos"]:checked')).map(el => el.value),
         ejes_articuladores: Array.from(formPaso1.querySelectorAll('input[name="ejes_articuladores"]:checked')).map(el => el.value),
         proposito:          fd.get('proposito'),
         pregunta_generadora: fd.get('pregunta_generadora'),
       };
+      const validacion = window.ProyectoEdicion.validarPaso1(datos);
+      if (!validacion.ok) {
+        avisoPaso1(validacion.error);
+        const foco = validacion.foco === 'grados' ? gradosCheckboxes?.querySelector('input')
+          : validacion.foco === 'campos' ? formPaso1.querySelector('input[name="campos_formativos"]') : null;
+        if (foco && foco.focus) foco.focus();
+        return;
+      }
+      avisoPaso1('');
+      paso1Data = datos;
       saveDraft();
       step1.classList.add('hidden');
       step2contenidos.classList.remove('hidden');
@@ -261,16 +288,27 @@ document.addEventListener("DOMContentLoaded", async function () {
   let catalogoCargado = false;
   let catalogoError = null;
   let renderContenidosToken = 0;
+  // Fases y grados con que se leyó el catálogo: si cambian en el paso 1, se vuelve a leer
+  // (antes quedaba el de la primera vez y faltaban los contenidos y PDA de un grado nuevo)
+  let catalogoClave = null;
+  let catalogoClavePromesa = null;
 
   async function cargarCatalogo() {
-    if (catalogoCargado) {
+    const fasesActuales = paso1Data ? paso1Data.fase : [];
+    const gradosActuales = paso1Data ? paso1Data.grados.map(Number) : [];
+    const clave = window.ProyectoEdicion.claveCatalogo(fasesActuales, gradosActuales);
+    if (catalogoCargado && catalogoClave === clave) {
       return { contenidos: catalogoContenidos, pdasCatalogo: catalogoPDA };
+    }
+    if (catalogoCargaPromise && catalogoClavePromesa !== clave) {
+      // Una lectura con otros grados sigue en curso: se espera y se lee la de ahora
+      try { await catalogoCargaPromise; } catch (_) { /* se vuelve a leer abajo */ }
+      return cargarCatalogo();
     }
 
     if (!catalogoCargaPromise) {
+      catalogoClavePromesa = clave;
       catalogoCargaPromise = (async function () {
-        const fasesActuales = paso1Data ? paso1Data.fase : [];
-        const gradosActuales = paso1Data ? paso1Data.grados.map(Number) : [];
 
         const contenidos = await window.LeerTodo.paginas(function () {
           return window.sb
@@ -292,12 +330,14 @@ document.addEventListener("DOMContentLoaded", async function () {
         catalogoContenidos = Array.isArray(contenidos) ? contenidos : [];
         catalogoPDA = Array.isArray(pdasCatalogo) ? pdasCatalogo : [];
         catalogoCargado = true;
+        catalogoClave = clave;
         catalogoError = null;
 
         return { contenidos: catalogoContenidos, pdasCatalogo: catalogoPDA };
       })().catch(function (error) {
         catalogoError = error;
         catalogoCargado = false;
+        catalogoClave = null;
         catalogoContenidos = [];
         catalogoPDA = [];
         throw error;
@@ -767,20 +807,22 @@ document.addEventListener("DOMContentLoaded", async function () {
       document.querySelectorAll('.session-block').forEach(function (block) {
         const cfSelect = block.querySelector('select[name="campo_formativo"]');
         if (cfSelect) {
+          // Se conserva el campo elegido (antes se perdía al volver del paso 2)
+          const prevCampo = cfSelect.value;
           const cf = buildCampoFormativoOptions();
           cfSelect.innerHTML = cf.html;
           cfSelect.disabled = cf.disabled;
+          if (prevCampo) ponerValorSelect(cfSelect, prevCampo);
         }
         const secSelect = block.querySelector('select[name="momento"]');
         if (secSelect) {
           const prevVal = secSelect.value;
           secSelect.innerHTML = buildSecuenciaOptions();
-          if (prevVal && secSelect.querySelector(`option[value="${prevVal}"]`)) {
-            secSelect.value = prevVal;
-          }
+          if (prevVal) ponerMomento(secSelect, prevVal);
         }
       });
       rebuildAllPdaBlocks();
+      aplicarCandados();
     }
 
     // Restaurar sesiones del borrador si hay pendientes
@@ -794,19 +836,32 @@ document.addEventListener("DOMContentLoaded", async function () {
   // PASO 3 — Sesiones
   // ============================================================
 
-  // Secuencias por metodología (Paso 2)
-  const metodologiaSecuencias = {
-    'ABPC': ['1. Identificamos','2. Recuperamos','3. Planificamos','4. Nos acercamos','5. Vamos y volvemos','6. Reorientamos','7. Seguimos','8. Integramos','9. Difundimos','10. Consideramos','11. Avanzamos'],
-    'STEAM': ['Fase 1. Introducción al tema','Fase 2. Diseño de investigación','Fase 3. Organizar y estructurar respuestas','Fase 4. Presentación de resultados','Fase 5. Metacognición'],
-    'ABP': ['1. Presentemos','2. Recolectemos','3. Formulemos el problema','4. Organicemos la experiencia','5. Vivamos la experiencia','6. Resultados y análisis'],
-    'AS': ['Etapa 1. Punto de partida','Etapa 2. Lo que sé y lo que quiero saber','Etapa 3. Organicemos las actividades','Etapa 4. Creatividad en marcha','Etapa 5. Compartimos y evaluamos'],
-  };
-
+  // Secuencia: los momentos oficiales de cada metodología (ltg_metodologias_estructuras,
+  // docs/CONTEXTO.md §2). Se guarda el nombre oficial; lo guardado con los nombres de antes
+  // se reconoce al leer (js/proyecto-edicion.js)
   function buildSecuenciaOptions() {
     const met = paso1Data ? paso1Data.metodologia : null;
-    const opciones = metodologiaSecuencias[met] || [];
+    const opciones = window.ProyectoEdicion.opcionesSecuencia(met);
     return '<option value="">Selecciona...</option>' +
-      opciones.map(o => `<option value="${o}">${o}</option>`).join('');
+      opciones.map(o => `<option value="${escapeHtml(o.valor)}">${escapeHtml(o.etiqueta)}</option>`).join('');
+  }
+
+  // Pone un valor en un select; si no está entre las opciones, lo agrega (no se pierde lo guardado)
+  function ponerValorSelect(select, valor) {
+    if (!select || valor == null || valor === '') return;
+    const existe = Array.from(select.options).some(function (o) { return o.value === String(valor); });
+    if (!existe) {
+      const opt = document.createElement('option');
+      opt.value = String(valor);
+      opt.textContent = String(valor);
+      select.appendChild(opt);
+    }
+    select.value = String(valor);
+  }
+
+  function ponerMomento(select, valor) {
+    const met = paso1Data ? paso1Data.metodologia : null;
+    ponerValorSelect(select, window.ProyectoEdicion.momentoOficial(met, valor));
   }
 
   function buildCampoFormativoOptions() {
@@ -815,10 +870,10 @@ document.addEventListener("DOMContentLoaded", async function () {
       return { html: '<option value="">Selecciona...</option><option>Lenguajes</option><option>Saberes y Pensamiento Científico</option><option>Ética, Naturaleza y Sociedades</option><option>De lo Humano y lo Comunitario</option>', disabled: false };
     }
     if (campos.length === 1) {
-      return { html: `<option value="${campos[0]}" selected>${campos[0]}</option>`, disabled: true };
+      return { html: `<option value="${escapeHtml(campos[0])}" selected>${escapeHtml(campos[0])}</option>`, disabled: true };
     }
     return {
-      html: '<option value="">Selecciona...</option>' + campos.map(c => `<option value="${c}">${c}</option>`).join(''),
+      html: '<option value="">Elige el campo formativo...</option>' + campos.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join(''),
       disabled: false,
     };
   }
@@ -1048,7 +1103,7 @@ document.addEventListener("DOMContentLoaded", async function () {
               class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Campo formativo</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Campo formativo (obligatorio)</label>
             <select name="campo_formativo"
               class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
               ${(function(){ const r = buildCampoFormativoOptions(); return r.disabled ? 'disabled' : ''; })()}>
@@ -1341,6 +1396,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     syncRecursosState();
     renderArchivos();
     renderLinks();
+    // Al abrir un proyecto guardado (o un borrador) se cargan sus recursos: antes se perdían
+    // al volver a guardar (el guardado los dejaba vacíos)
+    div._cargarRecursos = function (archivos, links) {
+      archivosSubidos = Array.isArray(archivos) ? archivos.slice() : [];
+      linksAgregados = Array.isArray(links) ? links.slice() : [];
+      renderArchivos();
+      renderLinks();
+    };
 
     if (mostrarBloquePda) {
       gradosSesion.forEach(function (grado) {
@@ -1609,6 +1672,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       const pdaSeleccionado = (catalogoPDA || []).find(function (p) {
         return String(p.id) === String(pdaId);
       });
+      // Sesión ya trabajada (sus PDA quedaron fijos): no se ofrecen sugerencias
+      if (select.disabled) return;
       if (!variantes.length && pdaSeleccionado && pdaSeleccionado.criterio_valoracion) {
         variantes = [{ id: null, criterio_texto: pdaSeleccionado.criterio_valoracion }];
       }
@@ -1838,7 +1903,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       if (d.escenario) {
-        const radio = formPaso1.querySelector(`input[name="escenario"][value="${d.escenario}"]`);
+        const radio = formPaso1.querySelector(`input[name="escenario"][value="${window.ProyectoEdicion.escenarioOficial(d.escenario)}"]`);
         if (radio) radio.checked = true;
       }
 
@@ -1890,7 +1955,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (radio) radio.checked = true;
     }
     if (data.escenario) {
-      const radio = formPaso1.querySelector('input[name="escenario"][value="' + data.escenario + '"]');
+      // "Escolar"/"Comunitario" (los del bot y los que guardaba esta pantalla) = Escuela/Comunidad
+      const radio = formPaso1.querySelector('input[name="escenario"][value="' + window.ProyectoEdicion.escenarioOficial(data.escenario) + '"]');
       if (radio) radio.checked = true;
     }
     if (data.campos_formativos) {
@@ -1942,7 +2008,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         fase:                toArr(proyecto.fase),
         grados:              toArr(proyecto.grados).map(String),
         metodologia:         proyecto.metodologia || '',
-        escenario:           proyecto.escenario || '',
+        escenario:           window.ProyectoEdicion.escenarioOficial(proyecto.escenario || ''),
         campos_formativos:   toArr(proyecto.campos_formativos),
         ejes_articuladores:  toArr(proyecto.ejes_articuladores),
         proposito:           proyecto.proposito || '',
@@ -1965,9 +2031,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         Catálogo, sesiones y calificaciones se leen ANTES de dibujar el paso 3: si alguna
         lectura falla, lanza y la página se detiene con el aviso común. Antes se dibujaba igual
         (sin sesiones salía una sesión en blanco, como si el proyecto no tuviera ninguna).
-        Guardar en modo edición borra las sesiones y las vuelve a crear; el borrado en
-        cascada se lleva sus productos, calificaciones y evidencias por PDA. Por eso, si el
-        proyecto ya se está trabajando, esta pantalla es solo de consulta.
+        Un proyecto iniciado se edita (decisión de Jorge del 2026-09-26): guardar ya no borra
+        las sesiones; corrige cada una en su lugar. Una sesión TRABAJADA (con fecha o con
+        calificaciones) conserva lo evaluado: campo, PDA y tareas (js/proyecto-edicion.js).
       */
       await cargarCatalogo();
       const sesiones = (await window.Lectura.uno(window.sb
@@ -1975,26 +2041,24 @@ document.addEventListener("DOMContentLoaded", async function () {
         .select('*')
         .eq('proyecto_id', id)
         .order('numero_sesion'))) || [];
-      const conCalificaciones = await window.Lectura.contar(window.sb
-        .from('calificaciones').select('id', { count: 'exact', head: true }).eq('proyecto_id', id));
-      const trabajadas = sesiones.some(function (s) {
-        return !!s.fecha || (s.estado_sesion && s.estado_sesion !== 'pendiente');
+      const conCalificaciones = await leerSesionesConCalificaciones(id);
+      proyectoOriginal = proyecto;
+      sesionesOriginales = {};
+      trabajadasAlAbrir = {};
+      sesiones.forEach(function (s) {
+        sesionesOriginales[s.id] = s;
+        if (window.ProyectoEdicion.sesionTrabajada(s, conCalificaciones)) trabajadasAlAbrir[s.id] = true;
       });
-      if (conCalificaciones > 0 || trabajadas) {
-        edicionBloqueada = 'Este proyecto ya se está trabajando (tiene sesiones en curso o calificaciones capturadas). Guardarlo desde aquí volvería a crear sus sesiones y borraría lo capturado, así que en un proyecto en curso esta pantalla es solo de consulta.';
-      }
-      if (edicionBloqueada) {
-        const aviso = document.getElementById('mensajePaso2');
+      hayTrabajo = Object.keys(trabajadasAlAbrir).length > 0;
+      if (hayTrabajo) {
+        const aviso = document.getElementById('avisoEnCurso');
         if (aviso) {
-          aviso.className = 'mt-4 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm';
-          aviso.textContent = edicionBloqueada;
+          aviso.textContent = 'Este proyecto ya se está trabajando. Puedes agregar sesiones y corregir las que aún no trabajas. ' +
+            'En las sesiones ya trabajadas (con fecha o con calificaciones) puedes corregir el texto; su campo formativo, sus PDA y sus tareas quedan como se calificaron. ' +
+            'Para agregar en plena clase una actividad o una tarea, usa Hoy.';
+          aviso.classList.remove('hidden');
         }
-        const guardar = document.getElementById('btnGuardar');
-        if (guardar) {
-          guardar.disabled = true;
-          guardar.classList.add('opacity-40', 'cursor-not-allowed');
-          guardar.title = edicionBloqueada;
-        }
+        bloquearPaso1EnCurso(proyecto);
       }
 
       // Ir directo al paso 3
@@ -2016,6 +2080,97 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
   }
 
+  // Sesiones del proyecto con alguna calificación (la lectura lanza: sin ella no se sabe
+  // qué está trabajado y no se dibuja nada)
+  async function leerSesionesConCalificaciones(idProyecto) {
+    const filas = await window.LeerTodo.paginas(function () {
+      return window.sb.from('calificaciones').select('sesion_id')
+        .eq('proyecto_id', idProyecto).order('id');
+    });
+    const con = {};
+    (filas || []).forEach(function (c) { if (c.sesion_id) con[c.sesion_id] = true; });
+    return con;
+  }
+
+  // Proyecto en curso: trimestre y grados fijos; los campos que ya tiene no se quitan
+  function bloquearPaso1EnCurso(proyecto) {
+    const motivo = 'El proyecto ya se está trabajando: esto queda como se calificó.';
+    if (trimestreSelect) { trimestreSelect.disabled = true; trimestreSelect.title = motivo; }
+    gradosCheckboxes?.querySelectorAll('input').forEach(function (cb) { cb.disabled = true; cb.title = motivo; });
+    const camposGuardados = (Array.isArray(proyecto.campos_formativos) ? proyecto.campos_formativos : []).map(String);
+    formPaso1.querySelectorAll('input[name="campos_formativos"]').forEach(function (cb) {
+      if (camposGuardados.indexOf(cb.value) !== -1) { cb.disabled = true; cb.title = motivo; }
+    });
+    const nota = document.getElementById('notaPaso1EnCurso');
+    if (nota) nota.classList.remove('hidden');
+  }
+
+  function fechaLegible(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    return Number(m[3]) + ' de ' + ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+      'septiembre', 'octubre', 'noviembre', 'diciembre'][Number(m[2]) - 1];
+  }
+
+  /*
+    Sesión trabajada: se corrige su texto, pero no lo evaluado. Queda fijo su campo
+    formativo, sus PDA y criterios, el modo del cierre y sus tareas; no se elimina.
+  */
+  function bloquearSesionTrabajada(block) {
+    const sesion = sesionesOriginales[block.dataset.sesionId] || {};
+    const body = block.querySelector('.session-body');
+    if (!body) return;
+    if (!body.querySelector('.aviso-trabajada')) {
+      const aviso = document.createElement('p');
+      aviso.className = 'aviso-trabajada text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3';
+      aviso.textContent = (sesion.fecha ? 'Se trabajó el ' + fechaLegible(sesion.fecha) + '. ' : 'Ya tiene calificaciones. ') +
+        'Puedes corregir su texto; su campo formativo, sus PDA y sus tareas quedan como se calificaron. ' +
+        'Para agregar una actividad o una tarea a esta sesión, hazlo desde Hoy.';
+      body.insertBefore(aviso, body.firstChild);
+      const etiqueta = block.querySelector('.session-label');
+      if (etiqueta && !block.querySelector('.session-trabajada')) {
+        const marca = document.createElement('span');
+        marca.className = 'session-trabajada ml-3 mr-auto inline-flex items-center rounded-full bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5';
+        marca.textContent = 'Trabajada';
+        etiqueta.after(marca);
+      }
+    }
+    const cf = block.querySelector('select[name="campo_formativo"]');
+    if (cf) cf.disabled = true;
+    block.querySelectorAll('.pda-block select, .pda-block textarea').forEach(function (el) { el.disabled = true; });
+    block.querySelectorAll('.pda-block [id^="sugerencia_grado_"]').forEach(function (el) { el.classList.add('hidden'); });
+    const cierre = block.querySelector('.didactic-section[data-section="cierre"]');
+    if (cierre) {
+      cierre.querySelectorAll('.mode-btn-todos, .mode-btn-dif').forEach(function (b) {
+        b.disabled = true;
+        b.classList.add('cursor-not-allowed', 'opacity-60');
+      });
+      cierre.querySelectorAll('.item-list-container[data-key^="cierre_tarea_"]').forEach(function (lista) {
+        lista.querySelectorAll('textarea, input').forEach(function (el) {
+          el.readOnly = true;
+          el.classList.add('bg-gray-100', 'text-gray-600');
+        });
+        lista.querySelectorAll('.add-item-btn, .remove-item-btn').forEach(function (b) { b.classList.add('hidden'); });
+      });
+    }
+    const eliminar = block.querySelector('.btn-eliminar');
+    if (eliminar) {
+      eliminar.classList.add('hidden');
+      if (!block.querySelector('.nota-no-eliminar')) {
+        const nota = document.createElement('p');
+        nota.className = 'nota-no-eliminar text-xs text-gray-500';
+        nota.textContent = 'Una sesión ya trabajada no se puede eliminar.';
+        eliminar.after(nota);
+      }
+    }
+  }
+
+  function aplicarCandados() {
+    document.querySelectorAll('.session-block').forEach(function (block) {
+      if (block.dataset.trabajada === '1') bloquearSesionTrabajada(block);
+    });
+  }
+
   function restoreSessionBlocks(sesiones) {
     if (!sesiones || !sesiones.length) return;
     const container = document.getElementById('sesionesContainer');
@@ -2028,6 +2183,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       const num = idx + 1;
       const block = createSessionBlock(num);
       container.appendChild(block);
+      // Sesión ya guardada (modo edición): se corrige en su lugar, no se vuelve a crear
+      if (data.id && sesionesOriginales[data.id]) {
+        block.dataset.sesionId = data.id;
+        if (trabajadasAlAbrir[data.id]) block.dataset.trabajada = '1';
+      }
 
       const set = function (name, val) {
         if (val == null) return;
@@ -2038,8 +2198,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       };
       set('duracion', data.duracion);
       set('observaciones', data.observaciones);
-      set('campo_formativo', data.campo_formativo);
-      set('momento', data.momento);
+      ponerValorSelect(block.querySelector('select[name="campo_formativo"]'), data.campo_formativo);
+      ponerMomento(block.querySelector('select[name="momento"]'), data.momento);
       updateLabel(block);
 
       function restoreSection(key, sectionData, actData, tareasData) {
@@ -2178,71 +2338,14 @@ document.addEventListener("DOMContentLoaded", async function () {
         });
       }
 
-      block._archivos = data._archivos || [];
-      block._links = data._links || [];
-      if (block._links.length) {
-        const linksContainer = block.querySelector('.links-chips-container');
-        if (linksContainer) {
-          block._links.forEach(function (link) {
-            const chip = document.createElement('div');
-            chip.className =
-              'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ' +
-              'bg-green-50 border border-green-100 text-green-800';
-            // textContent (no innerHTML) para no ejecutar datos guardados: el
-            // título/URL del recurso podría contener HTML malicioso.
-            const txtLink = document.createElement('span');
-            txtLink.textContent = (link.titulo || link.url || '');
-            const btnLink = document.createElement('button');
-            btnLink.type = 'button';
-            btnLink.className = 'remove-link-btn inline-flex items-center justify-center h-11 w-11 -my-3 -mr-3 text-gray-400 hover:text-red-500 transition text-base font-bold';
-            btnLink.setAttribute('aria-label', 'Quitar link');
-            btnLink.textContent = '×';
-            chip.appendChild(txtLink);
-            chip.appendChild(document.createTextNode(' '));
-            chip.appendChild(btnLink);
-            btnLink.addEventListener('click',
-              function () {
-                block._links = block._links.filter(function (l) {
-                  return l.url !== link.url;
-                });
-                chip.remove();
-              });
-            linksContainer.appendChild(chip);
-          });
-        }
-      }
-      if (block._archivos.length) {
-        const archivosContainer = block.querySelector('.archivos-chips-container');
-        if (archivosContainer) {
-          block._archivos.forEach(function (archivo) {
-            const chip = document.createElement('div');
-            chip.className =
-              'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ' +
-              'bg-blue-50 border border-blue-100 text-blue-800';
-            // textContent (no innerHTML): el nombre del archivo lo controla quien
-            // lo sube y podría contener HTML malicioso.
-            const txtArch = document.createElement('span');
-            txtArch.textContent = (archivo.nombre || '');
-            const btnArch = document.createElement('button');
-            btnArch.type = 'button';
-            btnArch.className = 'remove-archivo-btn inline-flex items-center justify-center h-11 w-11 -my-3 -mr-3 text-gray-400 hover:text-red-500 transition text-base font-bold';
-            btnArch.setAttribute('aria-label', 'Quitar archivo');
-            btnArch.textContent = '×';
-            chip.appendChild(txtArch);
-            chip.appendChild(document.createTextNode(' '));
-            chip.appendChild(btnArch);
-            btnArch.addEventListener('click',
-              function () {
-                block._archivos = block._archivos.filter(function (a) {
-                  return a.path !== archivo.path;
-                });
-                chip.remove();
-              });
-            archivosContainer.appendChild(chip);
-          });
-        }
-      }
+      // Recursos: el borrador los trae como _archivos/_links; la sesión guardada, en recursos
+      const recursos = data.recursos && typeof data.recursos === "object" && !Array.isArray(data.recursos) ? data.recursos : {};
+      if (block._cargarRecursos) block._cargarRecursos(data._archivos || recursos.archivos || [], data._links || recursos.links || []);
+      if (block.dataset.trabajada === "1") bloquearSesionTrabajada(block);
     });
+    // Llenar las listas enfoca su último renglón (y la página bajaba hasta ahí): se regresa arriba
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    window.scrollTo(0, 0);
   }
 
   document.getElementById('btnGuardarBorrador2')?.addEventListener('click', function () {
@@ -2255,16 +2358,295 @@ document.addEventListener("DOMContentLoaded", async function () {
   // GUARDAR EN SUPABASE
   // ============================================================
 
+  // La fila de `sesiones` que dibuja un bloque del paso 3 (sin proyecto_id: lo pone quien guarda)
+  function payloadDeBloque(block, idx, userId) {
+    const g    = name => block.querySelector(`[name="${name}"]`)?.value.trim() || null;
+    const mode = key  => block.querySelector(`.didactic-section[data-section="${key}"]`)?.dataset.mode || 'todos';
+
+    function getDifData(key) {
+      const obj = {};
+      block.querySelectorAll(`textarea[name^="${key}_grado_"]`).forEach(function (ta) {
+        const grado = ta.name.replace(`${key}_grado_`, '');
+        obj[grado] = ta.value.trim() || null;
+      });
+      return Object.keys(obj).length > 0 ? obj : null;
+    }
+
+    const mI = mode('inicio');
+    const mD = mode('desarrollo');
+    const mC = mode('cierre');
+
+    function getItems(selector) {
+      return Array.from(block.querySelectorAll(selector))
+        .map(i => i.value.trim()).filter(Boolean);
+    }
+
+    function getBlockActividades(sectionKey, sectionMode) {
+      if (sectionMode === 'todos') {
+        return { mode: 'todos', todos: getItems(`[name="${sectionKey}_act_todos_item"]`), diferenciado: null };
+      }
+      const dif = {};
+      block.querySelectorAll(`[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
+        const m = input.name.match(new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
+        if (m) {
+          const gr = m[1];
+          if (!dif[gr]) dif[gr] = [];
+          const v = input.value.trim();
+          if (v) dif[gr].push(v);
+        }
+      });
+      return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
+    }
+
+    function getBlockTareas(sectionMode) {
+      if (sectionMode === 'todos') {
+        return { mode: 'todos', todos: getItems('[name="cierre_tarea_todos_item"]'), diferenciado: null };
+      }
+      const dif = {};
+      block.querySelectorAll('[name^="cierre_tarea_dif_"]').forEach(function (input) {
+        const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
+        if (m) {
+          const gr = m[1];
+          if (!dif[gr]) dif[gr] = [];
+          const v = input.value.trim();
+          if (v) dif[gr].push(v);
+        }
+      });
+      return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
+    }
+
+    return {
+      maestro_id:              userId,
+      numero_sesion:           idx + 1,
+      duracion:                g('duracion') || '',
+      campo_formativo:         g('campo_formativo'),
+      momento:                 g('momento'),
+      inicio_todos:            mI === 'todos'        ? g('inicio_todos')        : null,
+      inicio_diferenciado:     mI === 'diferenciado' ? getDifData('inicio')     : null,
+      inicio_actividades:      getBlockActividades('inicio', mI),
+      desarrollo_todos:        mD === 'todos'        ? g('desarrollo_todos')    : null,
+      desarrollo_diferenciado: mD === 'diferenciado' ? getDifData('desarrollo') : null,
+      desarrollo_actividades:  getBlockActividades('desarrollo', mD),
+      cierre_todos:            mC === 'todos'        ? g('cierre_todos')        : null,
+      cierre_diferenciado:     mC === 'diferenciado' ? getDifData('cierre')     : null,
+      cierre_actividades:      getBlockActividades('cierre', mC),
+      cierre_tareas:           getBlockTareas(mC),
+      recursos:                {
+        archivos: block._archivos || [],
+        links: block._links || []
+      },
+      pda_sesion: (function() {
+        const resultado = [];
+        (paso1Data.grados || []).forEach(function(gr) {
+          const gNum = parseInt(gr, 10);
+          const pdaId = block.querySelector(`[name="pda_select_grado_${gNum}"]`)?.value || null;
+          const criterio = block.querySelector(`[name="criterio_grado_${gNum}"]`)?.value?.trim() || null;
+          if (!pdaId && !criterio) return;
+          const pda = (catalogoPDA || []).find(function(p) { return p.id === pdaId; });
+          resultado.push({
+            grado: gNum,
+            pda_id: pdaId,
+            pda_texto: pda ? pda.pda : null,
+            criterio_aplicado: criterio
+          });
+        });
+        return resultado.length > 0 ? resultado : null;
+      })(),
+      observaciones:           g('observaciones'),
+    };
+  }
+
+  function errorHumano(texto) {
+    const e = new Error(texto);
+    e.humano = true;
+    return e;
+  }
+
+  const COLUMNAS_MATERIALIZAR = 'id, numero_sesion, campo_formativo, pda_sesion, cierre_tareas';
+
+  /*
+    Proyecto NUEVO, sin proyectos a medias: se inserta el proyecto y luego sus sesiones; si
+    algo falla después de crear el proyecto, se borra (en cascada, sus sesiones, productos y
+    PDA), como el importador. Si ni eso se pudo (sin red), se recuerda su id y el siguiente
+    intento lo reutiliza: nunca quedan dos proyectos por reintentar.
+  */
+  async function guardarNuevo(user, proyectoPayload, blocks) {
+    let idProyecto = proyectoCreadoId;
+    if (idProyecto) {
+      const { error: upErr } = await window.sb.from('proyectos').update(proyectoPayload).eq('id', idProyecto);
+      if (upErr) throw upErr;
+      // Lo que quedó del intento anterior (sin trabajar: el proyecto nunca se abrió) se rehace
+      const { error: delErr } = await window.sb.from('sesiones').delete().eq('proyecto_id', idProyecto);
+      if (delErr) throw delErr;
+    } else {
+      const { data: proyectoNuevo, error: pError } = await window.sb
+        .from('proyectos')
+        .insert({ ...proyectoPayload, maestro_id: user.id, grupo_id: grupoId, visible_mercado: false })
+        .select('id')
+        .single();
+      if (pError) throw pError;
+      idProyecto = proyectoNuevo.id;
+      proyectoCreadoId = idProyecto;
+    }
+    try {
+      const filas = Array.from(blocks).map(function (block, idx) {
+        return Object.assign({ proyecto_id: idProyecto }, payloadDeBloque(block, idx, user.id));
+      });
+      if (filas.length) {
+        const { data: sesionesInsertadas, error: sError } = await window.sb
+          .from('sesiones').insert(filas).select(COLUMNAS_MATERIALIZAR);
+        if (sError) throw sError;
+        await window.materializarSesiones(sesionesInsertadas || [], user.id, {
+          gradosProyecto: paso1Data.grados || [],
+          camposProyecto: paso1Data.campos_formativos || [],
+          origenTrabajo: 'maestro',
+          origenTarea: 'maestro',
+        });
+      }
+    } catch (err) {
+      const { error: revErr } = await window.sb.from('proyectos').delete().eq('id', idProyecto);
+      if (!revErr) proyectoCreadoId = null;
+      throw err;
+    }
+    return idProyecto;
+  }
+
+  /*
+    Proyecto que YA EXISTE (también uno iniciado): cada sesión se corrige en su lugar.
+      - Se vuelve a revisar al guardar qué está trabajado (otra pestaña o Hoy pudieron
+        empezar una sesión después de abrir esta pantalla).
+      - Sesión trabajada: solo su texto (ProyectoEdicion.soloTexto).
+      - Sesión sin trabajar: la fila completa y su trazabilidad al día, sin duplicar
+        (materializarSesiones es idempotente y en la reedición quita lo que se quitó del plan).
+      - Sesión nueva: se inserta; su id queda en el bloque, así un reintento la actualiza en
+        vez de insertarla otra vez.
+      - Sesión quitada de la pantalla: se borra solo si sigue sin trabajar.
+  */
+  async function guardarEdicion(user, proyectoPayload, blocks) {
+    const actuales = await window.LeerTodo.paginas(function () {
+      return window.sb.from('sesiones').select('id, fecha, numero_sesion')
+        .eq('proyecto_id', proyectoId).order('numero_sesion').order('id');
+    });
+    const conCal = await leerSesionesConCalificaciones(proyectoId);
+    const existe = {};
+    const originales = (actuales || []).map(function (s) {
+      existe[s.id] = s;
+      return { id: s.id, trabajada: window.ProyectoEdicion.sesionTrabajada(s, conCal) };
+    });
+    const bloques = Array.from(blocks).map(function (b) { return { sesionId: b.dataset.sesionId || null }; });
+    const plan = window.ProyectoEdicion.planGuardado(originales, bloques, trabajadasAlAbrir);
+    const numeroDe = function (id) {
+      const i = Array.from(blocks).findIndex(function (b) { return b.dataset.sesionId === id; });
+      return i === -1 ? (existe[id] && existe[id].numero_sesion) : i + 1;
+    };
+    if (plan.trabajadasDesdeQueAbrio.length) {
+      throw errorHumano('Mientras editabas, se empezó a trabajar la sesión ' +
+        plan.trabajadasDesdeQueAbrio.map(numeroDe).join(', ') +
+        ' (en Hoy o en otro dispositivo). Para no cambiar lo que ya se calificó no se guardó nada: recarga la página y vuelve a hacer tus cambios.');
+    }
+    if (plan.faltanTrabajadas.length) {
+      throw errorHumano('Una sesión ya trabajada no se puede eliminar. Recarga la página; no se guardó nada.');
+    }
+    const perdida = bloques.find(function (b) { return b.sesionId && !existe[b.sesionId]; });
+    if (perdida) {
+      throw errorHumano('Una de las sesiones ya no existe (¿se borró en otro dispositivo?). Recarga la página; no se guardó nada.');
+    }
+
+    const { error: pError } = await window.sb.from('proyectos').update(proyectoPayload).eq('id', proyectoId);
+    if (pError) throw pError;
+
+    if (plan.borrar.length) {
+      const { error: delErr } = await window.sb.from('sesiones').delete()
+        .in('id', plan.borrar).eq('maestro_id', user.id);
+      if (delErr) throw delErr;
+      plan.borrar.forEach(function (id) { delete sesionesOriginales[id]; });
+    }
+
+    const paraMaterializar = [];
+    const anteriores = {};
+    const nuevas = [];
+    const bloquesNuevos = [];
+    const lista = Array.from(blocks);
+    for (let i = 0; i < lista.length; i++) {
+      const block = lista[i];
+      const fila = payloadDeBloque(block, i, user.id);
+      const id = block.dataset.sesionId || null;
+      if (!id) {
+        nuevas.push(Object.assign({ proyecto_id: proyectoId }, fila));
+        bloquesNuevos.push(block);
+        continue;
+      }
+      const trabajada = window.ProyectoEdicion.sesionTrabajada(existe[id], conCal);
+      const cambios = trabajada ? window.ProyectoEdicion.soloTexto(fila) : fila;
+      const { data: guardada, error: uErr } = await window.sb.from('sesiones').update(cambios)
+        .eq('id', id).eq('maestro_id', user.id).select(COLUMNAS_MATERIALIZAR).single();
+      if (uErr) throw uErr;
+      if (!trabajada) {
+        paraMaterializar.push(guardada);
+        if (sesionesOriginales[id]) anteriores[id] = sesionesOriginales[id];
+      }
+    }
+    if (nuevas.length) {
+      const { data: insertadas, error: iErr } = await window.sb.from('sesiones').insert(nuevas).select(COLUMNAS_MATERIALIZAR);
+      if (iErr) throw iErr;
+      (insertadas || []).forEach(function (s) {
+        paraMaterializar.push(s);
+        // numero_sesion = posición en la pantalla (payloadDeBloque)
+        const block = lista[Number(s.numero_sesion) - 1];
+        if (block && bloquesNuevos.indexOf(block) !== -1 && !block.dataset.sesionId) block.dataset.sesionId = s.id;
+        sesionesOriginales[s.id] = s;
+      });
+    }
+    if (paraMaterializar.length) {
+      await window.materializarSesiones(paraMaterializar, user.id, {
+        gradosProyecto: paso1Data.grados || [],
+        gradosProyectoAnterior: proyectoOriginal ? proyectoOriginal.grados : null,
+        camposProyecto: paso1Data.campos_formativos || [],
+        origenTrabajo: 'maestro',
+        origenTarea: 'maestro',
+        anteriores: anteriores,
+      });
+    }
+    // Un reintento parte de lo que ya quedó guardado
+    paraMaterializar.forEach(function (s) {
+      sesionesOriginales[s.id] = Object.assign({}, sesionesOriginales[s.id] || {}, s);
+    });
+    if (proyectoOriginal) proyectoOriginal = Object.assign({}, proyectoOriginal, { grados: paso1Data.grados });
+    return proyectoId;
+  }
+
   document.getElementById('btnGuardar')?.addEventListener('click', async function () {
     const btn  = this;
     const msgEl = document.getElementById('mensajePaso2');
-    if (edicionBloqueada) {
-      // Ver cargarProyectoParaEdicion: guardar borraría lo ya capturado
-      msgEl.className = 'mt-4 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm';
-      msgEl.textContent = edicionBloqueada;
+    if (guardando) return; // un doble toque no guarda dos veces
+    const blocks = document.querySelectorAll('.session-block');
+
+    // Cada sesión necesita su campo formativo (antes se guardaba como Lenguajes en silencio)
+    const sinCampo = window.ProyectoEdicion.sesionesSinCampo(Array.from(blocks).map(function (b, i) {
+      return { numero_sesion: i + 1, campo_formativo: b.querySelector('[name="campo_formativo"]')?.value || '' };
+    }));
+    if (!paso1Data || !window.ProyectoEdicion.validarPaso1(paso1Data).ok) {
+      msgEl.className = 'mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm';
+      msgEl.textContent = 'Revisa el paso 1: ' + (paso1Data ? window.ProyectoEdicion.validarPaso1(paso1Data).error : 'faltan los datos generales.');
+      msgEl.classList.remove('hidden');
+      return;
+    }
+    if (sinCampo.length) {
+      msgEl.className = 'mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm';
+      msgEl.textContent = (sinCampo.length === 1 ? 'La sesión ' + sinCampo[0] + ' no tiene' : 'Las sesiones ' + sinCampo.join(', ') + ' no tienen') +
+        ' campo formativo. Elígelo en la sesión para poder guardar.';
+      msgEl.classList.remove('hidden');
+      const primera = blocks[sinCampo[0] - 1];
+      const sel = primera && primera.querySelector('[name="campo_formativo"]');
+      if (primera) {
+        const body = primera.querySelector('.session-body');
+        if (body && body.classList.contains('hidden')) primera.querySelector('.session-toggle')?.click();
+      }
+      if (sel && sel.focus) sel.focus();
       return;
     }
 
+    guardando = true;
     btn.disabled = true;
     btn.textContent = 'Guardando...';
 
@@ -2281,169 +2663,19 @@ document.addEventListener("DOMContentLoaded", async function () {
         fase:                paso1Data.fase,
         grados:              paso1Data.grados,
         metodologia:         paso1Data.metodologia,
-        escenario:           paso1Data.escenario,
+        escenario:           window.ProyectoEdicion.escenarioOficial(paso1Data.escenario),
         campos_formativos:   paso1Data.campos_formativos,
         ejes_articuladores:  paso1Data.ejes_articuladores,
         proposito:           paso1Data.proposito,
         pregunta_generadora: paso1Data.pregunta_generadora,
+        es_multigrado:       (paso1Data.grados || []).length > 1,
         contenidos_pda:      collectContenidosData(),
       };
 
-      let proyectoFinalId;
-
       if (proyectoId) {
-        // Modo edición — actualizar proyecto existente
-        // Se vuelve a comprobar AL GUARDAR (otra pestaña pudo empezar a trabajarlo después de
-        // abrir esta): con trabajo registrado no se toca nada (ni el proyecto ni sus sesiones)
-        // error-revisado-en: sesRes.error
-        const [calRes, sesRes] = await Promise.all([
-          window.sb.from('calificaciones').select('id', { count: 'exact', head: true }).eq('proyecto_id', proyectoId),
-          window.sb.from('sesiones').select('id', { count: 'exact', head: true }).eq('proyecto_id', proyectoId)
-            .or('fecha.not.is.null,estado_sesion.neq.pendiente'),
-        ]);
-        if (calRes.error) throw calRes.error;
-        if (sesRes.error) throw sesRes.error;
-        if ((calRes.count || 0) > 0 || (sesRes.count || 0) > 0) {
-          throw new Error('este proyecto ya se está trabajando; guardarlo borraría lo capturado. Recarga la página.');
-        }
-        const { error: pError } = await window.sb
-          .from('proyectos')
-          .update(proyectoPayload)
-          .eq('id', proyectoId);
-        if (pError) throw pError;
-        proyectoFinalId = proyectoId;
-        // Eliminar sesiones anteriores para re-insertarlas
-        const { error: delError } = await window.sb
-          .from('sesiones')
-          .delete()
-          .eq('proyecto_id', proyectoId);
-        if (delError) throw delError;
+        await guardarEdicion(user, proyectoPayload, blocks);
       } else {
-        // Modo creación — insertar proyecto nuevo
-        const { data: proyectoNuevo, error: pError } = await window.sb
-          .from('proyectos')
-          .insert({ ...proyectoPayload, maestro_id: user.id, grupo_id: grupoId, visible_mercado: false })
-          .select('id')
-          .single();
-        if (pError) throw pError;
-        proyectoFinalId = proyectoNuevo.id;
-      }
-
-      // Construir payload de sesiones
-      const blocks = document.querySelectorAll('.session-block');
-      const sesionesPayload = Array.from(blocks).map((block, idx) => {
-        const g    = name => block.querySelector(`[name="${name}"]`)?.value.trim() || null;
-        const mode = key  => block.querySelector(`.didactic-section[data-section="${key}"]`)?.dataset.mode || 'todos';
-
-        function getDifData(key) {
-          const obj = {};
-          block.querySelectorAll(`textarea[name^="${key}_grado_"]`).forEach(function (ta) {
-            const grado = ta.name.replace(`${key}_grado_`, '');
-            obj[grado] = ta.value.trim() || null;
-          });
-          return Object.keys(obj).length > 0 ? obj : null;
-        }
-
-        const mI = mode('inicio');
-        const mD = mode('desarrollo');
-        const mC = mode('cierre');
-
-        function getItems(selector) {
-          return Array.from(block.querySelectorAll(selector))
-            .map(i => i.value.trim()).filter(Boolean);
-        }
-
-        function getBlockActividades(sectionKey, sectionMode) {
-          if (sectionMode === 'todos') {
-            return { mode: 'todos', todos: getItems(`[name="${sectionKey}_act_todos_item"]`), diferenciado: null };
-          }
-          const dif = {};
-          block.querySelectorAll(`[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
-            const m = input.name.match(new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
-            if (m) {
-              const gr = m[1];
-              if (!dif[gr]) dif[gr] = [];
-              const v = input.value.trim();
-              if (v) dif[gr].push(v);
-            }
-          });
-          return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
-        }
-
-        function getBlockTareas(sectionMode) {
-          if (sectionMode === 'todos') {
-            return { mode: 'todos', todos: getItems('[name="cierre_tarea_todos_item"]'), diferenciado: null };
-          }
-          const dif = {};
-          block.querySelectorAll('[name^="cierre_tarea_dif_"]').forEach(function (input) {
-            const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
-            if (m) {
-              const gr = m[1];
-              if (!dif[gr]) dif[gr] = [];
-              const v = input.value.trim();
-              if (v) dif[gr].push(v);
-            }
-          });
-          return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
-        }
-
-        return {
-          proyecto_id:             proyectoFinalId,
-          maestro_id:              user.id,
-          numero_sesion:           idx + 1,
-          duracion:                g('duracion') || '',
-          campo_formativo:         g('campo_formativo'),
-          momento:                 g('momento'),
-          inicio_todos:            mI === 'todos'        ? g('inicio_todos')        : null,
-          inicio_diferenciado:     mI === 'diferenciado' ? getDifData('inicio')     : null,
-          inicio_actividades:      getBlockActividades('inicio', mI),
-          desarrollo_todos:        mD === 'todos'        ? g('desarrollo_todos')    : null,
-          desarrollo_diferenciado: mD === 'diferenciado' ? getDifData('desarrollo') : null,
-          desarrollo_actividades:  getBlockActividades('desarrollo', mD),
-          cierre_todos:            mC === 'todos'        ? g('cierre_todos')        : null,
-          cierre_diferenciado:     mC === 'diferenciado' ? getDifData('cierre')     : null,
-          cierre_actividades:      getBlockActividades('cierre', mC),
-          cierre_tareas:           getBlockTareas(mC),
-          recursos:                {
-            archivos: block._archivos || [],
-            links: block._links || []
-          },
-          pda_sesion: (function() {
-            const resultado = [];
-            (paso1Data.grados || []).forEach(function(g) {
-              const gNum = parseInt(g, 10);
-              const pdaId = block.querySelector(`[name="pda_select_grado_${gNum}"]`)?.value || null;
-              const criterio = block.querySelector(`[name="criterio_grado_${gNum}"]`)?.value?.trim() || null;
-              if (!pdaId && !criterio) return;
-              const pda = (catalogoPDA || []).find(function(p) { return p.id === pdaId; });
-              resultado.push({
-                grado: gNum,
-                pda_id: pdaId,
-                pda_texto: pda ? pda.pda : null,
-                criterio_aplicado: criterio
-              });
-            });
-            return resultado.length > 0 ? resultado : null;
-          })(),
-          observaciones:           g('observaciones'),
-        };
-      });
-
-      if (sesionesPayload.length > 0) {
-        const { data: sesionesInsertadas, error: sError } = await window.sb
-          .from('sesiones')
-          .insert(sesionesPayload)
-          .select('id, numero_sesion, campo_formativo, pda_sesion, cierre_tareas');
-        if (sError) throw sError;
-
-        // Materializar trazabilidad: sesiones_pda + productos_sesion (+ links)
-        if (window.materializarSesiones) {
-          await window.materializarSesiones(sesionesInsertadas || [], user.id, {
-            gradosProyecto: paso1Data.grados || [],
-            origenTrabajo: 'maestro',
-            origenTarea: 'maestro',
-          });
-        }
+        await guardarNuevo(user, proyectoPayload, blocks);
       }
 
       msgEl.className = 'mt-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm';
@@ -2455,10 +2687,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     } catch (err) {
       console.error('Error al guardar:', err);
       msgEl.className = 'mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm';
-      msgEl.textContent = 'Error al guardar: ' + (err.message || 'Intenta de nuevo.');
+      msgEl.textContent = err && err.humano ? err.message : 'Error al guardar: ' + ((err && err.message) || 'Intenta de nuevo.') + ' Lo que capturaste sigue aquí; puedes volver a guardar.';
       msgEl.classList.remove('hidden');
       btn.disabled = false;
       btn.textContent = 'Guardar proyecto';
+      guardando = false;
     }
   });
 

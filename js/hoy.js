@@ -28,7 +28,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var registroGuardado = {}; // alumno_id -> true si ya hay fila de hoy en registro_diario
 	var calificaciones = {};  // alumno_id|producto_id -> fila de calificaciones
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
-	var siguientes = [];       // próximas sesiones sin fecha del proyecto activo (para "Trabajar hoy")
+	// "Trabajar hoy": por cada proyecto activo, su siguiente sesión sin fecha y las demás
+	// pendientes (js/productos-hoy.js): [{ proyecto, siguiente, otras }]
+	var siguientes = [];
+	var proyectoPorId = {};    // proyectos que mira Hoy (título y grados)
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
 	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { marcas, valor }
 	// (la marca de cada grupo de campos y el contenido) o null = no hay fila. Cada captura lo
@@ -529,7 +532,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Proyectos del grupo que mira "Hoy" (js/alcance-hoy.js) → sesiones → productos.
 		// Incluye los recién terminados: la tarea de su última sesión se revisa aquí.
-		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final")
+		var proyRes = await window.sb.from("proyectos").select("id, titulo, estado, trimestre, fecha_final, grados")
 			.eq("maestro_id", user.id).eq("grupo_id", grupo.id).or(window.AlcanceHoy.filtro(grupo, hoy));
 		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
@@ -543,26 +546,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		var sesionPorId = {};
 		sesiones.forEach(function (s) { sesionPorId[s.id] = s; });
+		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
+		// Con varios proyectos activos, las de hoy van por proyecto y luego por número
 		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; })
-			.sort(function (a, b) { return (a.numero_sesion || 0) - (b.numero_sesion || 0); });
+			.sort(function (a, b) {
+				var ta = (proyectoPorId[a.proyecto_id] || {}).titulo || "", tb = (proyectoPorId[b.proyecto_id] || {}).titulo || "";
+				return ta.localeCompare(tb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
+			});
 
 		/*
 			Las sesiones de una planeación no traen fecha: el maestro decide qué trabaja
-			cada día (y a veces son dos en un día, o una en dos). Estas son las siguientes
-			pendientes del proyecto activo; "Trabajar hoy" les pone la fecha de hoy y así
-			entran a la captura, al reparto de participación y a la asistencia del trimestre.
+			cada día (y a veces son dos en un día, o una en dos). Por cada proyecto ACTIVO se
+			ofrece su siguiente sesión pendiente y se puede elegir cualquier otra; "Trabajar hoy"
+			les pone la fecha de hoy y así entran a la captura, al reparto de participación y a
+			la asistencia del trimestre. Antes eran 4 sesiones en total, ordenadas por el id del
+			proyecto: con un proyecto por campo formativo, algunos no salían.
 		*/
-		var proyectoPorId = {};
-		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
-		siguientes = sesiones.filter(function (s) {
-			var p = proyectoPorId[s.proyecto_id];
-			return !s.fecha && s.estado_sesion !== "completada" && p && p.estado === "activo";
-		}).sort(function (a, b) {
-			if (a.proyecto_id !== b.proyecto_id) return a.proyecto_id < b.proyecto_id ? -1 : 1;
-			return (a.numero_sesion || 0) - (b.numero_sesion || 0);
-		}).slice(0, 4).map(function (s) {
-			return Object.assign({}, s, { proyectoTitulo: proyectoPorId[s.proyecto_id].titulo });
-		});
+		siguientes = window.ProductosHoy.siguientesPorProyecto(sesiones, proyRes.data || []);
 
 		if (!sesiones.length) return;
 		var productos = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
@@ -571,7 +571,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 				.in("sesion_id", lote).eq("activo", true)
 				.order("orden").order("id");
 		});
-		productos.sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
+		// Por orden y, a igual orden (los trabajos por grado del plan), de menor a mayor grado
+		function primerGrado(p) { return Math.min.apply(null, (p.grados || [9]).map(Number)); }
+		productos.sort(function (a, b) {
+			return (a.orden || 0) - (b.orden || 0) || primerGrado(a) - primerGrado(b);
+		});
 
 		productos.forEach(function (p) {
 			p.sesion = sesionPorId[p.sesion_id];
@@ -810,7 +814,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}).join("");
 			return "<div>" +
 				"<div class='flex items-center justify-between gap-2 mb-1'>" +
-				"<p class='font-semibold text-gray-800 text-sm'>" + esc(t.nombre) + "</p>" +
+				"<p class='font-semibold text-gray-800 text-sm'>" + esc(t.nombre) +
+				"<span class='text-blue-700'> · " + esc(window.ProductosHoy.etiquetaGrados(t.grados)) + "</span></p>" +
 				(atrasada ? "<span class='text-xs text-amber-600 shrink-0'>vencía el " + esc(fechaCorta(vence)) + "</span>" : "") +
 				"</div>" + filas + "</div>";
 		}).join("");
@@ -843,21 +848,36 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// ── 3. Sesiones de hoy ────────────────────────────────────────────────────
 	// Bloque "Trabajar hoy": las siguientes sesiones pendientes del proyecto activo
+	// Una sesión pendiente con su botón "Trabajar hoy"
+	function filaSiguiente(s) {
+		return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg bg-white border border-gray-200 px-3 py-2'>" +
+			"<span class='text-sm text-gray-700'>Sesión " + (s.numero_sesion || "") + " · " + esc(s.campo_formativo || "Sin campo formativo") +
+			(s.momento ? "<span class='block text-xs text-gray-400'>" + esc(s.momento) + "</span>" : "") + "</span>" +
+			"<button type='button' data-trabajar-hoy='" + s.id + "' aria-label='Trabajar hoy la sesión " + (s.numero_sesion || "") + " de " + esc(s.proyectoTitulo || "") + "' " +
+			"class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shrink-0'>Trabajar hoy</button>" +
+			"</div>";
+	}
+
+	// "Trabajar hoy": la siguiente de CADA proyecto activo, agrupadas, y las demás a un toque
 	function bloqueSiguientes() {
 		if (!siguientes.length) {
-			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en el proyecto activo. Inicia un proyecto desde Proyectos.");
+			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en tus proyectos activos. Inicia un proyecto desde Proyectos.");
 		}
 		return "<div class='rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
 			"<p class='text-sm font-semibold text-gray-800 mb-1'>" +
 			(sesionesHoy.length ? "¿Trabajarás otra sesión hoy?" : "¿Qué sesión trabajas hoy?") + "</p>" +
-			"<p class='text-xs text-gray-500 mb-2'>Las sesiones de tu planeación no traen fecha: elige la que vas a trabajar y sus productos aparecen aquí para calificarlos.</p>" +
-			"<div class='flex flex-col gap-2'>" +
-			siguientes.map(function (s) {
-				return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg bg-white border border-gray-200 px-3 py-2'>" +
-					"<span class='text-sm text-gray-700'>Sesión " + (s.numero_sesion || "") + " · " + esc(s.campo_formativo || "") +
-					"<span class='block text-xs text-gray-400'>" + esc(s.proyectoTitulo || "") + "</span></span>" +
-					"<button type='button' data-trabajar-hoy='" + s.id + "' class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shrink-0'>Trabajar hoy</button>" +
-					"</div>";
+			"<p class='text-xs text-gray-500 mb-2'>Las sesiones de tu planeación no traen fecha: elige la que vas a trabajar y sus productos aparecen aquí para calificarlos." +
+			(siguientes.length > 1 ? " Tienes " + siguientes.length + " proyectos activos." : "") + "</p>" +
+			"<div class='flex flex-col gap-3'>" +
+			siguientes.map(function (g) {
+				var otras = g.otras.length
+					? "<details class='mt-2'><summary class='min-h-[44px] flex items-center cursor-pointer text-sm text-blue-700 font-medium'>Elegir otra sesión (" +
+						g.otras.length + (g.otras.length === 1 ? " pendiente" : " pendientes") + ")</summary>" +
+						"<div class='flex flex-col gap-2 mt-1'>" + g.otras.map(filaSiguiente).join("") + "</div></details>"
+					: "";
+				return "<section class='rounded-lg bg-white/60 p-2' aria-label='" + esc(g.proyecto.titulo || "Proyecto") + "'>" +
+					"<p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>" + esc(g.proyecto.titulo || "Proyecto sin título") + "</p>" +
+					filaSiguiente(g.siguiente) + otras + "</section>";
 			}).join("") +
 			"</div></div>";
 	}
@@ -880,22 +900,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 		cont.innerHTML = sesionesHoy.map(function (ses) {
 			var productos = (productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea"; });
+			var tareasSesion = (productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo === "tarea"; });
 			var cuerpo = productos.length
 				? productos.map(function (p) { return bloqueProducto(p); }).join("")
-				: vacio("Esta sesión no tiene productos calificables.");
+				: vacio("Esta sesión no tiene actividades para calificar. Agrega una con \"Agregar actividad o tarea\".");
+			var proyecto = proyectoPorId[ses.proyecto_id];
 			return "<div class='rounded-xl border border-gray-200 p-3'>" +
-				"<div class='flex items-center justify-between gap-2 mb-2'>" +
+				"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2'>" +
 				"<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
-				" · " + esc(ses.campo_formativo || "") + "</p>" +
-				"<span class='flex gap-2 shrink-0'>" +
+				" · " + esc(ses.campo_formativo || "") +
+				(proyecto && proyecto.titulo ? "<span class='block text-xs font-normal text-gray-500'>" + esc(proyecto.titulo) + "</span>" : "") + "</p>" +
+				"<span class='flex flex-wrap gap-2 shrink-0'>" +
 				// Una sesión con calificaciones o ya terminada no se quita de hoy (volvería a "pendiente")
 				(sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" ? "" :
 					"<button type='button' data-quitar-hoy='" + ses.id + "' " +
 					"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-500 hover:bg-gray-50'>Quitar de hoy</button>") +
 				"<button type='button' data-agregar-producto='" + ses.id + "' " +
-				"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50'>Agregar producto</button>" +
+				"class='min-h-[44px] px-3 rounded-lg border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50'>Agregar actividad o tarea</button>" +
 				"</span>" +
-				"</div>" + cuerpo + "</div>";
+				"</div>" + cuerpo + bloqueTareasDeSesion(tareasSesion) + "</div>";
 		}).join("") + bloqueSiguientes();
 		var sinCalificar = 0;
 		sesionesHoy.forEach(function (ses) {
@@ -946,9 +969,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}).join("");
 		}).join("");
 		return "<div class='mb-3'>" +
+			"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2'>" +
 			"<p class='text-sm font-medium text-gray-700'>" + esc(producto.nombre) +
+			// Sus grados: en multigrado salían bloques iguales sin decir de qué grado eran
+			"<span class='text-sm font-semibold text-blue-700'> · " + esc(window.ProductosHoy.etiquetaGrados(producto.grados)) + "</span>" +
 			"<span class='text-xs text-gray-400 ml-2'>" + esc(producto.campo || "") + "</span></p>" +
+			botonesProducto(producto) + "</div>" +
 			filas + "</div>";
+	}
+
+	// Renombrar y quitar un producto (quitar solo si no tiene calificaciones: lo revisa al tocar)
+	function botonesProducto(producto) {
+		return "<span class='flex gap-2 shrink-0'>" +
+			"<button type='button' data-renombrar='" + producto.id + "' aria-label='Renombrar " + esc(producto.nombre) + "' " +
+			"class='min-h-[44px] px-3 rounded-lg text-sm text-gray-600 hover:bg-gray-100'>Renombrar</button>" +
+			"<button type='button' data-quitar-producto='" + producto.id + "' aria-label='Quitar " + esc(producto.nombre) + "' " +
+			"class='min-h-[44px] px-3 rounded-lg text-sm text-red-600 hover:bg-red-50'>Quitar</button>" +
+			"</span>";
+	}
+
+	// Las tareas que se dejaron en la sesión: se califican en "Tareas por revisar" el día que se revisan
+	function bloqueTareasDeSesion(lista) {
+		if (!lista.length) return "";
+		return "<div class='mt-2 rounded-lg bg-gray-50 border border-gray-200 p-3'>" +
+			"<p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>Tareas de esta sesión</p>" +
+			lista.map(function (t) {
+				var vence = window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha);
+				return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1 border-b border-gray-100 last:border-0'>" +
+					"<p class='text-sm text-gray-700'>" + esc(t.nombre) +
+					"<span class='text-sm font-semibold text-blue-700'> · " + esc(window.ProductosHoy.etiquetaGrados(t.grados)) + "</span>" +
+					(vence ? "<span class='block text-xs text-gray-500'>" + (vence === hoy ? "Se revisa hoy, arriba en Tareas por revisar" : "Se revisa el " + esc(fechaCorta(vence))) + "</span>" : "") +
+					"</p>" + botonesProducto(t) + "</div>";
+			}).join("") + "</div>";
 	}
 
 	function detalleProducto(producto, alumno, cal) {
@@ -989,7 +1041,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (btnHoy) { await fecharSesion(btnHoy); return; }
 
 		var btnAgregar = e.target.closest("button[data-agregar-producto]");
-		if (btnAgregar) { await agregarProducto(btnAgregar.dataset.agregarProducto); return; }
+		if (btnAgregar) { agregarProducto(btnAgregar.dataset.agregarProducto, btnAgregar); return; }
+
+		var btnRenombrar = e.target.closest("button[data-renombrar]");
+		if (btnRenombrar) { renombrarProducto(btnRenombrar.dataset.renombrar, btnRenombrar); return; }
+
+		var btnQuitarProd = e.target.closest("button[data-quitar-producto]");
+		if (btnQuitarProd) { await quitarProducto(btnQuitarProd.dataset.quitarProducto, btnQuitarProd); return; }
 
 		var btnDetalle = e.target.closest("button[data-detalle]");
 		if (btnDetalle) {
@@ -1136,33 +1194,378 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	/*
-		"Agregar producto": cuando el maestro pidió algo que no estaba en la planeación.
-		Se crea con origen 'maestro' para distinguirlo de lo importado.
+		Diálogo accesible (role="dialog", foco dentro, Esc cierra y el foco vuelve al botón que
+		lo abrió). construir(form) arma el contenido; alAceptar(form, avisar) guarda y devuelve
+		false si el diálogo debe seguir abierto (con el aviso que puso).
 	*/
-	async function agregarProducto(sesionId) {
+	var numeroDialogo = 0;
+	function abrirDialogo(opciones) {
+		var previo = opciones.origen || document.activeElement;
+		var id = "hoyDialogo" + (++numeroDialogo);
+		var fondo = document.createElement("div");
+		fondo.className = "fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4";
+		var caja = document.createElement("div");
+		caja.setAttribute("role", "dialog");
+		caja.setAttribute("aria-modal", "true");
+		caja.setAttribute("aria-labelledby", id + "-titulo");
+		caja.className = "bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto";
+		var form = document.createElement("form");
+		form.noValidate = true;
+		form.className = "flex flex-col";
+		var cabeza = document.createElement("div");
+		cabeza.className = "p-5 border-b border-gray-100";
+		var titulo = document.createElement("h2");
+		titulo.id = id + "-titulo";
+		titulo.className = "text-lg font-bold text-gray-800";
+		titulo.textContent = opciones.titulo;
+		cabeza.appendChild(titulo);
+		if (opciones.subtitulo) {
+			var sub = document.createElement("p");
+			sub.className = "text-sm text-gray-500 mt-1";
+			sub.textContent = opciones.subtitulo;
+			cabeza.appendChild(sub);
+		}
+		var cuerpo = document.createElement("div");
+		cuerpo.className = "p-5 flex flex-col gap-4";
+		var aviso = document.createElement("p");
+		aviso.setAttribute("role", "alert");
+		aviso.className = "hidden text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2";
+		var pie = document.createElement("div");
+		pie.className = "p-5 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2";
+		var cancelar = document.createElement("button");
+		cancelar.type = "button";
+		cancelar.className = "min-h-[44px] px-5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
+		cancelar.textContent = "Cancelar";
+		var aceptar = document.createElement("button");
+		aceptar.type = "submit";
+		aceptar.className = "min-h-[44px] px-5 rounded-xl font-semibold text-white " + (opciones.peligro ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700");
+		aceptar.textContent = opciones.aceptar || "Guardar";
+		pie.appendChild(cancelar);
+		pie.appendChild(aceptar);
+		form.appendChild(cabeza);
+		form.appendChild(cuerpo);
+		form.appendChild(pie);
+		caja.appendChild(form);
+		fondo.appendChild(caja);
+		if (opciones.construir) opciones.construir(cuerpo);
+		cuerpo.appendChild(aviso);
+
+		function avisar(texto, foco) {
+			aviso.textContent = texto || "";
+			aviso.classList.toggle("hidden", !texto);
+			if (foco && foco.focus) foco.focus();
+		}
+		function cerrar() {
+			document.removeEventListener("keydown", teclas, true);
+			if (fondo.parentNode) fondo.parentNode.removeChild(fondo);
+			if (previo && previo.focus && document.body.contains(previo)) previo.focus();
+		}
+		function enfocables() {
+			return Array.from(caja.querySelectorAll("input, select, textarea, button, summary"))
+				.filter(function (el) { return !el.disabled && el.offsetParent !== null; });
+		}
+		function teclas(e) {
+			if (e.key === "Escape") { e.preventDefault(); cerrar(); return; }
+			if (e.key !== "Tab") return;
+			var lista = enfocables();
+			if (!lista.length) return;
+			var primero = lista[0], ultimo = lista[lista.length - 1];
+			if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+			else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+		}
+		cancelar.addEventListener("click", cerrar);
+		fondo.addEventListener("click", function (e) { if (e.target === fondo) cerrar(); });
+		document.addEventListener("keydown", teclas, true);
+		form.addEventListener("submit", async function (e) {
+			e.preventDefault();
+			avisar("");
+			aceptar.disabled = true;
+			var textoAceptar = aceptar.textContent;
+			aceptar.textContent = "Guardando...";
+			var seguir = false;
+			try {
+				seguir = (await opciones.alAceptar(form, avisar)) === false;
+			} catch (err) {
+				console.error("hoy: diálogo", err);
+				avisar("No se pudo guardar: " + ((err && err.message) || "error desconocido") + ".");
+				seguir = true;
+			}
+			aceptar.disabled = false;
+			aceptar.textContent = textoAceptar;
+			if (!seguir) cerrar();
+		});
+		document.body.appendChild(fondo);
+		var primero = caja.querySelector("[data-foco]") || enfocables()[0];
+		if (primero) primero.focus();
+		return { cerrar: cerrar, avisar: avisar };
+	}
+
+	function campoTexto(etiqueta, atributos) {
+		var cont = document.createElement("label");
+		cont.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
+		cont.textContent = etiqueta;
+		var input = document.createElement("input");
+		Object.keys(atributos || {}).forEach(function (k) { input.setAttribute(k, atributos[k]); });
+		input.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600";
+		cont.appendChild(input);
+		return { cont: cont, input: input };
+	}
+
+	// Sin señal no se crea, renombra ni quita un producto (no va por la cola: la captura de sus
+	// calificaciones necesita su id de la base). Lo capturado sigue a salvo en el dispositivo
+	var TEXTO_SIN_SENAL = "Esto necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal.";
+
+	function gradosDeLaSesion(sesion) {
+		var deProductos = [];
+		(productosPorSesion[sesion.id] || []).forEach(function (p) { deProductos = deProductos.concat(p.grados || []); });
+		var proyecto = proyectoPorId[sesion.proyecto_id] || {};
+		return window.ProductosHoy.gradosPorOmision(deProductos, proyecto.grados || [], grupo.grados || []);
+	}
+
+	/*
+		"Agregar actividad o tarea" en plena clase (decisión de Jorge del 2026-09-26): nombre,
+		tipo, campo formativo (el de la sesión), grados (los de la sesión y el proyecto, con las
+		casillas de los grados del grupo) y, en tareas, el día en que se revisa (por omisión el
+		siguiente día hábil: AlcanceHoy.venceTarea). Se crea con origen 'maestro', se liga a los
+		PDA de la sesión de sus grados (si es del campo de la sesión) y aparece de inmediato.
+		La regla del alta tarde se respeta sola: la fecha del producto es la de la sesión.
+	*/
+	function agregarProducto(sesionId, origen) {
 		var sesion = sesionesHoy.find(function (s) { return s.id === sesionId; });
 		if (!sesion) return;
-		var nombre = window.prompt("¿Qué producto pediste? (por ejemplo: Cartel del cuento)");
-		if (!nombre || !nombre.trim()) return;
-		var campo = window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
-		if (!campo) { mensaje("error", "La sesión no tiene campo formativo; no se puede agregar el producto."); return; }
-		var grados = (grupo.grados || []).map(String).sort();
+		if (sinSenal()) { mensaje("error", "Agregar una actividad o una tarea necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal."); return; }
+		var campoSesion = window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
+		var gradosGrupo = (grupo.grados || []).map(Number).filter(function (g) { return g >= 1 && g <= 6; }).sort(function (a, b) { return a - b; });
+		var porOmision = gradosDeLaSesion(sesion);
+		var fechaOmision = window.AlcanceHoy.venceTarea(null, hoy);
+		var refs = {};
+
+		abrirDialogo({
+			origen: origen,
+			titulo: "Agregar actividad o tarea",
+			subtitulo: "Sesión " + (sesion.numero_sesion || "") + " · " + (sesion.campo_formativo || "") +
+				((proyectoPorId[sesion.proyecto_id] || {}).titulo ? " · " + proyectoPorId[sesion.proyecto_id].titulo : ""),
+			aceptar: "Agregar",
+			construir: function (cuerpo) {
+				var nombre = campoTexto("Nombre", { type: "text", maxlength: String(window.ProductosHoy.NOMBRE_MAX), autocomplete: "off",
+					placeholder: "Por ejemplo: Cartel del cuento", "data-foco": "1" });
+				refs.nombre = nombre.input;
+				cuerpo.appendChild(nombre.cont);
+
+				var tipo = document.createElement("fieldset");
+				tipo.className = "flex flex-col gap-2";
+				tipo.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>¿Qué es?</legend>" +
+					"<div class='grid grid-cols-1 sm:grid-cols-2 gap-2'>" +
+					["trabajo", "tarea"].map(function (t, i) {
+						return "<label class='flex items-center gap-3 min-h-[44px] rounded-xl border border-gray-300 px-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50'>" +
+							"<input type='radio' name='tipoNuevo' value='" + t + "'" + (i === 0 ? " checked" : "") + " class='h-5 w-5 text-blue-600'>" +
+							"<span class='text-sm text-gray-800'>" + (t === "trabajo" ? "Actividad en clase" : "Tarea para casa") + "</span></label>";
+					}).join("") + "</div>";
+				cuerpo.appendChild(tipo);
+
+				var campo = document.createElement("label");
+				campo.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
+				campo.textContent = "Campo formativo";
+				var sel = document.createElement("select");
+				sel.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 bg-white";
+				window.ProductosHoy.CAMPOS.forEach(function (c) {
+					var o = document.createElement("option");
+					o.value = c;
+					o.textContent = window.CamposFormativos ? window.CamposFormativos.largo(c) : c;
+					if (c === campoSesion) o.selected = true;
+					sel.appendChild(o);
+				});
+				if (!campoSesion) {
+					var elige = document.createElement("option");
+					elige.value = "";
+					elige.textContent = "Elige el campo formativo...";
+					elige.selected = true;
+					sel.insertBefore(elige, sel.firstChild);
+				}
+				refs.campo = sel;
+				campo.appendChild(sel);
+				cuerpo.appendChild(campo);
+
+				var grados = document.createElement("fieldset");
+				grados.className = "flex flex-col gap-2" + (gradosGrupo.length > 1 ? "" : " hidden");
+				grados.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>¿Para qué grados?</legend>" +
+					"<div class='flex flex-wrap gap-2'>" + gradosGrupo.map(function (g) {
+						return "<label class='flex items-center gap-2 min-h-[44px] rounded-xl border border-gray-300 px-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50'>" +
+							"<input type='checkbox' name='gradoNuevo' value='" + g + "'" + (porOmision.indexOf(g) !== -1 ? " checked" : "") + " class='h-5 w-5 text-blue-600 rounded'>" +
+							"<span class='text-sm text-gray-800'>" + g + "°</span></label>";
+					}).join("") + "</div>";
+				cuerpo.appendChild(grados);
+
+				var fecha = campoTexto("Día en que se revisa la tarea", { type: "date", min: hoy, value: fechaOmision || "" });
+				fecha.cont.classList.add("hidden");
+				var ayuda = document.createElement("span");
+				ayuda.className = "text-xs font-normal text-gray-500";
+				ayuda.textContent = "Por omisión, el siguiente día de clase. Ese día aparece en Tareas por revisar.";
+				fecha.cont.appendChild(ayuda);
+				refs.fecha = fecha.input;
+				refs.fechaCont = fecha.cont;
+				cuerpo.appendChild(fecha.cont);
+
+				tipo.addEventListener("change", function () {
+					var esTarea = (tipo.querySelector("input:checked") || {}).value === "tarea";
+					refs.fechaCont.classList.toggle("hidden", !esTarea);
+				});
+				refs.tipo = tipo;
+				refs.grados = grados;
+			},
+			alAceptar: async function (form, avisar) {
+				var datos = {
+					nombre: refs.nombre.value,
+					tipo: (refs.tipo.querySelector("input:checked") || {}).value,
+					campo: refs.campo.value,
+					grados: gradosGrupo.length > 1
+						? Array.from(refs.grados.querySelectorAll("input:checked")).map(function (c) { return c.value; })
+						: gradosGrupo,
+					fechaRevision: refs.fecha.value,
+				};
+				var v = window.ProductosHoy.validarNuevo(datos, { hoy: hoy, gradosSesion: porOmision });
+				if (!v.ok) {
+					var foco = { nombre: refs.nombre, campo: refs.campo, fecha: refs.fecha,
+						grados: refs.grados.querySelector("input"), tipo: refs.tipo.querySelector("input") }[v.foco];
+					avisar(v.error, foco);
+					return false;
+				}
+				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
+				var fila = Object.assign({ sesion_id: sesion.id, maestro_id: user.id }, v.fila);
+				var ultimo = (productosPorSesion[sesion.id] || []).reduce(function (m, p) { return Math.max(m, Number(p.orden) || 0); }, 0);
+				fila.orden = Math.min(ultimo + 1, 32000);
+				var res = await window.sb.from("productos_sesion").insert(fila)
+					.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden").single();
+				if (res.error) {
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo agregar: " + (res.error.message || "error desconocido") + ".");
+					return false;
+				}
+				var nuevo = res.data;
+				nuevo.sesion = sesion;
+				(productosPorSesion[sesion.id] = productosPorSesion[sesion.id] || []).push(nuevo);
+				if (nuevo.tipo === "tarea") {
+					var vence = window.AlcanceHoy.venceTarea(nuevo.fecha_entrega, sesion.fecha);
+					if (vence && vence <= hoy) tareas.unshift(nuevo);
+				}
+				var ligado = await ligarAPdaDeSesion(nuevo, sesion);
+				renderTareas();
+				renderSesiones();
+				mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
+					window.ProductosHoy.etiquetaGrados(nuevo.grados) + "." +
+					(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(window.AlcanceHoy.venceTarea(nuevo.fecha_entrega, sesion.fecha)) + "." : "") +
+					(ligado ? "" : " No se pudo ligar a los PDA de la sesión; sus calificaciones cuentan igual para la boleta."));
+			},
+		});
+	}
+
+	// Liga el producto nuevo con los PDA de su sesión y de sus grados, como los del plan
+	// (js/sesiones-materializar.js). Si es de otro campo, no evalúa esos PDA
+	async function ligarAPdaDeSesion(producto, sesion) {
+		var campoSesion = window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
+		if (!campoSesion || producto.campo !== campoSesion) return true;
 		try {
-			var res = await window.sb.from("productos_sesion").insert({
-				sesion_id: sesion.id, maestro_id: user.id, tipo: "trabajo",
-				nombre: nombre.trim(), grados: grados,
-				modalidad: grados.length > 1 ? "compartida" : "compartida",
-				campo: campo, origen: "maestro", activo: true,
-			}).select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden").single();
+			var res = await window.sb.from("sesiones_pda").select("id, grado").eq("sesion_id", sesion.id);
 			if (res.error) throw res.error;
-			var nuevo = res.data;
-			nuevo.sesion = sesion;
-			(productosPorSesion[sesion.id] = productosPorSesion[sesion.id] || []).push(nuevo);
-			renderSesiones();
-			mensaje("", "");
+			var grados = (producto.grados || []).map(Number);
+			var ligas = (res.data || []).filter(function (r) { return grados.indexOf(Number(r.grado)) !== -1; })
+				.map(function (r) { return { producto_sesion_id: producto.id, sesion_pda_id: r.id }; });
+			if (!ligas.length) return true;
+			var ins = await window.sb.from("producto_sesion_pda").insert(ligas);
+			if (ins.error) throw ins.error;
+			return true;
 		} catch (err) {
-			mensaje("error", "No se pudo agregar el producto: " + (err.message || "error desconocido"));
+			console.error("hoy: ligar a los PDA", err);
+			return false;
 		}
+	}
+
+	function renombrarProducto(productoId, origen) {
+		var producto = productoPorId(productoId);
+		if (!producto) return;
+		if (sinSenal()) { mensaje("error", "Renombrar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		var refs = {};
+		abrirDialogo({
+			origen: origen,
+			titulo: "Renombrar",
+			subtitulo: (producto.tipo === "tarea" ? "Tarea" : "Actividad") + " para " + window.ProductosHoy.etiquetaGrados(producto.grados),
+			aceptar: "Guardar nombre",
+			construir: function (cuerpo) {
+				var n = campoTexto("Nombre", { type: "text", maxlength: String(window.ProductosHoy.NOMBRE_MAX), autocomplete: "off", "data-foco": "1" });
+				n.input.value = producto.nombre || "";
+				refs.nombre = n.input;
+				cuerpo.appendChild(n.cont);
+			},
+			alAceptar: async function (form, avisar) {
+				var v = window.ProductosHoy.validarNombre(refs.nombre.value);
+				if (!v.ok) { avisar(v.error, refs.nombre); return false; }
+				if (v.nombre === producto.nombre) return;
+				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
+				var res = await window.sb.from("productos_sesion").update({ nombre: v.nombre })
+					.eq("id", producto.id).eq("maestro_id", user.id);
+				if (res.error) {
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo renombrar: " + (res.error.message || "error desconocido") + ".");
+					return false;
+				}
+				producto.nombre = v.nombre;
+				renderTareas();
+				renderSesiones();
+				mensaje("info", "Nombre guardado: «" + v.nombre + "».");
+			},
+		});
+	}
+
+	/*
+		Quitar un producto (activo = false: ya no se califica ni cuenta en el motor, "Qué le
+		falta" ni los reportes). Solo si no tiene calificaciones: se revisa lo de esta pantalla
+		(también lo pendiente de enviar) y la base.
+	*/
+	async function quitarProducto(productoId, origen) {
+		var producto = productoPorId(productoId);
+		if (!producto) return;
+		var conCaptura = alumnos.some(function (al) {
+			return window.ProductosHoy.tieneCaptura(calificaciones[al.id + "|" + producto.id]);
+		});
+		var avisoConCal = "«" + producto.nombre + "» ya tiene calificaciones, así que no se puede quitar. Si el nombre no es el correcto, usa Renombrar.";
+		if (conCaptura) { mensaje("error", avisoConCal); return; }
+		if (sinSenal()) { mensaje("error", "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		origen.disabled = true;
+		var enBaseCon = 0;
+		try {
+			var res = await window.sb.from("calificaciones").select("id", { count: "exact", head: true })
+				.eq("maestro_id", user.id).eq("producto_sesion_id", producto.id)
+				.or("estado_entrega.not.is.null,nivel.not.is.null,puntaje.not.is.null,retroalimentacion.not.is.null");
+			if (res.error) throw res.error;
+			enBaseCon = res.count || 0;
+		} catch (err) {
+			origen.disabled = false;
+			mensaje("error", sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
+				: "No se pudo revisar si tiene calificaciones, así que no se quitó: " + ((err && err.message) || "error desconocido") + ".");
+			return;
+		}
+		origen.disabled = false;
+		if (enBaseCon > 0) { mensaje("error", avisoConCal); return; }
+		abrirDialogo({
+			origen: origen,
+			titulo: "¿Quitar «" + producto.nombre + "»?",
+			subtitulo: "Ya no aparecerá para calificar y no cuenta en la boleta. Nadie lo ha calificado todavía.",
+			aceptar: "Quitar",
+			peligro: true,
+			alAceptar: async function (form, avisar) {
+				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
+				var upd = await window.sb.from("productos_sesion").update({ activo: false })
+					.eq("id", producto.id).eq("maestro_id", user.id);
+				if (upd.error) {
+					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo quitar: " + (upd.error.message || "error desconocido") + ".");
+					return false;
+				}
+				var lista = productosPorSesion[producto.sesion_id] || [];
+				productosPorSesion[producto.sesion_id] = lista.filter(function (p) { return p.id !== producto.id; });
+				tareas = tareas.filter(function (t) { return t.id !== producto.id; });
+				renderTareas();
+				renderSesiones();
+				mensaje("info", "Se quitó «" + producto.nombre + "».");
+			},
+		});
 	}
 
 	// ── 4. Cierre del día ─────────────────────────────────────────────────────

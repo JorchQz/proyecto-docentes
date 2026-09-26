@@ -122,6 +122,10 @@
 		});
 	}
 
+	// ¿Quedó un alta a medias en este aparato? Se ofrece continuarla (después de conectar el
+	// tipo de organización: llenar el formulario lo usa)
+	ofrecerBorrador();
+
 	groupForm.addEventListener("submit", async function (event) {
 		event.preventDefault();
 
@@ -213,7 +217,13 @@
 			}
 			currentGroupType = groupType;
 			currentGroupGrades = gradeList.slice();
+			// Alumnos de un borrador recuperado: en un grupo de un solo grado, van a ese grado
+			if (!shouldCaptureStudentGrade()) {
+				students.forEach(function (s) { s.grado = currentGroupGrades[0] || null; s.key = normalizeName(s.nombre_completo) + "|" + String(s.grado || ""); });
+			}
 			configureStudentGradeSelector();
+			updateStudentsList();
+			guardarBorrador();
 			showMessage("groupMessage", "success", isEditing ? "Grupo actualizado exitosamente." : "Grupo creado exitosamente.");
 
 			setTimeout(function () {
@@ -235,9 +245,10 @@
 	studentForm.addEventListener("submit", async function (event) {
 		event.preventDefault();
 
-		var lastName1 = normalizeSpaces(document.getElementById("studentLastName1").value);
-		var lastName2 = normalizeSpaces(document.getElementById("studentLastName2").value);
-		var firstNames = normalizeSpaces(document.getElementById("studentFirstNames").value);
+		// MAYÚSCULAS con acentos y Ñ (js/nombres-alumno.js)
+		var lastName1 = normalizeSpaces(document.getElementById("studentLastName1").value).toUpperCase();
+		var lastName2 = normalizeSpaces(document.getElementById("studentLastName2").value).toUpperCase();
+		var firstNames = normalizeSpaces(document.getElementById("studentFirstNames").value).toUpperCase();
 		var selectedGrade = studentGradeSelect ? parseInt(studentGradeSelect.value, 10) : null;
 
 		if (!lastName1 || !firstNames) {
@@ -253,7 +264,7 @@
 			showMessage(
 				"studentsMessage",
 				"error",
-				"Cada apellido solo puede contener letras, espacios, guiones y apostrofes."
+				"Cada apellido solo puede contener letras (con acentos y Ñ), espacios y guiones."
 			);
 			return;
 		}
@@ -262,7 +273,7 @@
 			showMessage(
 				"studentsMessage",
 				"error",
-				"Nombre(s) solo permite letras y espacios."
+				"Nombre(s) solo permite letras (con acentos y Ñ), espacios y guiones."
 			);
 			return;
 		}
@@ -272,7 +283,7 @@
 				showMessage(
 					"studentsMessage",
 					"error",
-					"Selecciona un grado valido para el alumno."
+					"Selecciona un grado válido para el alumno."
 				);
 				return;
 			}
@@ -370,6 +381,8 @@
 			// Terminó el alta: la raíz y el login la regresan a Mi Salón (el candado ya
 			// confirmó el acceso para llegar aquí)
 			if (window.Secciones) window.Secciones.guardarUltima("salon");
+			// La lista ya está en la base: el borrador de este aparato ya no hace falta
+			if (window.AltaBorrador) window.AltaBorrador.borrar(userId);
 
 			setTimeout(function () {
 				window.location.href = "dashboard.html";
@@ -449,6 +462,110 @@
 		} else {
 			completeBtn.classList.remove("opacity-50", "cursor-not-allowed");
 		}
+		guardarBorrador();
+	}
+
+	// ── Borrador en este aparato (js/alta-borrador.js) ───────────────────────────
+	// Lo capturado del grupo (el formulario) y la lista de alumnos, por si se cierra la pestaña
+	function datosFormularioGrupo() {
+		return {
+			nombre: document.getElementById("groupName").value,
+			tipo: groupTypeSelect ? groupTypeSelect.value : "",
+			grados: Array.from(groupGradeCheckboxes).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; }),
+			escuela: document.getElementById("groupSchool").value,
+			cicloInicio: cicloInicioSelect.value,
+			cicloFin: cicloFinSelect.value,
+			trimestre: trimestreActualSelect.value,
+		};
+	}
+
+	function guardarBorrador() {
+		if (!window.AltaBorrador) return;
+		window.AltaBorrador.guardar(userId, { grupoId: currentGroupId, grupo: datosFormularioGrupo(), alumnos: students });
+	}
+
+	function llenarFormularioGrupo(g) {
+		if (!g) return;
+		if (g.nombre) document.getElementById("groupName").value = g.nombre;
+		if (g.escuela) document.getElementById("groupSchool").value = g.escuela;
+		if (g.cicloInicio) cicloInicioSelect.value = String(g.cicloInicio);
+		if (g.cicloFin) cicloFinSelect.value = String(g.cicloFin);
+		if (g.trimestre) trimestreActualSelect.value = String(g.trimestre);
+		if (g.tipo && groupTypeSelect) {
+			groupTypeSelect.value = g.tipo;
+			groupTypeSelect.dispatchEvent(new Event("change")); // habilita las casillas de grado
+		}
+		var grados = (g.grados || []).map(String);
+		groupGradeCheckboxes.forEach(function (cb) { cb.checked = grados.indexOf(cb.value) !== -1; });
+	}
+
+	// Al volver: se ofrece la lista que quedó a medias
+	function ofrecerBorrador() {
+		if (!window.AltaBorrador) return;
+		var b = window.AltaBorrador.leer(userId);
+		var banner = document.getElementById("borradorAlta");
+		if (!b || !banner) return;
+		var n = (b.alumnos || []).length;
+		var cuando = new Date(b.guardado);
+		document.getElementById("borradorAltaTexto").textContent =
+			(n ? "Quedó en este aparato la lista que estabas capturando: " + n + (n === 1 ? " alumno" : " alumnos") : "Quedaron en este aparato los datos de tu grupo") +
+			", guardada el " + cuando.toLocaleDateString("es-MX", { day: "numeric", month: "long" }) +
+			(" a las " + cuando.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + ".").replace(/\.\.$/, "."); // "a.m." ya trae punto
+		banner.classList.remove("hidden");
+		document.getElementById("borradorAltaContinuar").onclick = function () { continuarBorrador(b); };
+		document.getElementById("borradorAltaDescartar").onclick = function () {
+			window.AltaBorrador.borrar(userId);
+			banner.classList.add("hidden");
+		};
+	}
+
+	async function continuarBorrador(b) {
+		var banner = document.getElementById("borradorAlta");
+		llenarFormularioGrupo(b.grupo);
+		students = (b.alumnos || []).map(function (a) {
+			return { nombre_completo: a.nombre_completo, grado: a.grado, key: normalizeName(a.nombre_completo) + "|" + String(a.grado || "") };
+		});
+		if (b.grupoId) {
+			// El grupo ya se había creado: se revisa que siga ahí y que aún no tenga alumnos
+			var g = await window.sb.from("grupos").select("id, tipo_organizacion, grados")
+				.eq("id", b.grupoId).eq("maestro_id", userId).maybeSingle();
+			if (g.error) {
+				showMessage("groupMessage", "error", "No se pudo revisar tu grupo guardado. Revisa tu conexión e inténtalo de nuevo; tu lista sigue guardada en este aparato.");
+				return;
+			}
+			if (g.data) {
+				var cuenta = await window.sb.from("alumnos").select("id", { count: "exact", head: true }).eq("grupo_id", b.grupoId);
+				if (cuenta.error) {
+					showMessage("groupMessage", "error", "No se pudo revisar tu grupo guardado. Revisa tu conexión e inténtalo de nuevo; tu lista sigue guardada en este aparato.");
+					return;
+				}
+				if ((cuenta.count || 0) > 0) {
+					// La lista ya se había guardado: no se duplica
+					window.AltaBorrador.borrar(userId);
+					banner.classList.add("hidden");
+					showMessage("groupMessage", "success", "Tu grupo ya tiene sus alumnos guardados. Te llevamos a Inicio...");
+					setTimeout(function () { window.location.href = "dashboard.html"; }, 1200);
+					return;
+				}
+				currentGroupId = g.data.id;
+				currentGroupType = g.data.tipo_organizacion || (b.grupo && b.grupo.tipo) || "";
+				currentGroupGrades = (g.data.grados || []).map(function (x) { return parseInt(x, 10); }).filter(Boolean).sort(function (x, y) { return x - y; });
+				if (window.GrupoActivo) window.GrupoActivo.elegir(currentGroupId);
+				configureStudentGradeSelector();
+				updateStudentsList();
+				banner.classList.add("hidden");
+				stepGroup.classList.add("hidden");
+				stepStudents.classList.remove("hidden");
+				showMessage("studentsMessage", "success", "Recuperamos tu lista. Revisa que esté completa y presiona \"Completar configuración\".");
+				return;
+			}
+		}
+		// El grupo aún no existe (o ya no): se crea con los datos recuperados
+		updateStudentsList();
+		banner.classList.add("hidden");
+		showMessage("groupMessage", "success", students.length
+			? "Recuperamos tus datos y tu lista de alumnos. Revisa el grupo y presiona \"Crear grupo\" para seguir."
+			: "Recuperamos los datos de tu grupo. Revísalos y presiona \"Crear grupo\".");
 	}
 
 	function configureStudentGradeSelector() {
@@ -580,11 +697,10 @@
 		return areValidWords(text, false);
 	}
 
+	// Letras con acentos y Ñ, espacios y guiones (js/nombres-alumno.js)
 	function areValidWords(text, allowSpaces) {
-		var pattern = allowSpaces
-			? /^[A-Za-zÑñ\-\s]+$/
-			: /^[A-Za-zÑñ\-]+$/;
-		return pattern.test(removeAccents(text || ""));
+		if (!allowSpaces && /\s/.test(text || "")) return false;
+		return window.NombresAlumno.valido(text);
 	}
 
 	function bindNameInput(input, allowSpaces) {
@@ -603,19 +719,9 @@
 		if (studentFirstNamesInput) bindNameInput(studentFirstNamesInput, true);
 	}
 
+	// MAYÚSCULAS con acentos y Ñ ("JOSÉ PEÑA"; decisión de Jorge del 2026-09-26). Antes se
+	// quitaban los acentos al teclear
 	function formatNameInput(value, allowSpaces) {
-		var clean = removeAccents(value || "").replace(/[^A-Za-zÑñ\-\s]/g, "");
-
-		if (allowSpaces) {
-			clean = clean.replace(/\s+/g, " ").replace(/^\s+/, "");
-		} else {
-			clean = clean.replace(/\s+/g, "");
-		}
-
-		return clean.toUpperCase();
-	}
-
-	function removeAccents(text) {
-		return text.normalize("NFD").replace(/[\u0300-\u0302\u0304-\u036f]/g, "").normalize("NFC");
+		return window.NombresAlumno.formatear(value, allowSpaces);
 	}
 });

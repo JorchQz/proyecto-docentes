@@ -39,6 +39,16 @@
 			</div>
 		</header>
 
+		<!-- Alta a medias en este aparato (js/alta-borrador.js): se ofrece continuarla -->
+		<section id="borradorAlta" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-5" aria-labelledby="borradorAltaTitulo">
+			<h2 id="borradorAltaTitulo" class="font-semibold text-amber-900">Tienes un alta sin terminar</h2>
+			<p id="borradorAltaTexto" class="text-sm text-amber-800 mt-1"></p>
+			<div class="mt-3 flex flex-col sm:flex-row gap-2">
+				<button type="button" id="borradorAltaContinuar" class="min-h-[44px] px-5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600">Continuar con ella</button>
+				<button type="button" id="borradorAltaDescartar" class="min-h-[44px] px-5 rounded-lg border border-amber-300 text-amber-800 bg-white hover:bg-amber-100">Empezar de nuevo</button>
+			</div>
+		</section>
+
 		<!-- PASO 1: Crear Grupo -->
 		<section id="stepGroup" class="bg-white rounded-2xl shadow-md p-6 md:p-8">
 			<h2 class="text-xl font-bold text-gray-800 mb-4">Paso 1: Crear tu Grupo</h2>
@@ -212,6 +222,9 @@
 	<!-- Sin selector de secciones (es un paso de alta); solo para guardar Mi Salón como la
 	     última sección al terminar -->
 	<script src="js/secciones.js"></script>
+	<!-- Nombres en MAYÚSCULAS con acentos y Ñ; borrador del alta en este aparato -->
+	<script src="js/nombres-alumno.js"></script>
+	<script src="js/alta-borrador.js"></script>
 	<script src="js/onboarding.js"></script>
 </body>
 </html>
