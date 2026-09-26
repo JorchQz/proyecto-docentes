@@ -368,6 +368,20 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
     **Pasar a un proyecto** (`mover_producto_a_sesion`, `js/pasar-a-proyecto.js`): a una sesión
     de un proyecto del mismo grupo y trimestre, con calificaciones, asignación, PDA y evidencia;
     la sesión suelta que queda vacía se borra.
+    **Fecha pasada (2026-09-26, tarde):** una actividad suelta puede ser de cualquier día del
+    trimestre en curso (`ProductosHoy.rangoTrimestre`: del calendario SEP según
+    `grupos.trimestre_actual`; hoy siempre cabe) y se califica al momento: la de un día que ya pasó
+    entra a Hoy al agregarla y ese mismo día (su producto se creó hoy), y en cualquier momento desde
+    Proyectos → Actividades del trimestre → «Calificar» (`hoy.html?calificar=<producto>`). Su
+    calificación lleva la fecha del día en que se captura; la actividad cuenta con la fecha de su
+    sesión. Un alumno dado de alta el MISMO día que su grupo (el onboarding) no es "alta tarde"
+    (`AlcanceHoy.fechaAlta`): recibe también las sueltas de días anteriores a su grupo.
+  - **¿Para quién? al planear (2026-09-26):** en Crear proyecto, cada sesión lista los trabajos y
+    tareas que materializa (`SesionesMaterializar.huecosDeSesion`/`emparejarPlan`) con su "para
+    quién" y un diálogo compartido (`js/para-quien.js`). Los grados del producto los fija el plan;
+    la elección se guarda como filas de `producto_sesion_alumnos` (`filasDeEdicion`) con
+    `guardar_asignacion_producto` después de materializar. En un proyecto iniciado, un alumno con
+    calificación sale bloqueado y la base rechaza quitarlo. Lo agregado en Hoy se cambia en Hoy.
   - **Incompleta → siguiente día de clase:** en actividades en clase, "Incompleta" guarda
     `estado_entrega='incompleto'`, `estado_en_clase='incompleta'` y `revisar_en` (siguiente día de
     clase). "Pendientes de la clase anterior" (Hoy) lista los de `revisar_en <= hoy`, uno por
@@ -376,6 +390,16 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
     una vez; si el alumno falta, sigue pendiente. Pendiente vale 0.5 (incompleto sin nivel). Las
     tres columnas van en la marca `captura_semaforo` de la cola sin señal. Tareas: estado "Por
     completar"; Inicio: conteo; Qué le falta: "se revisa el {fecha}".
+  **Exámenes, "No presentó" y sin señal (b19, 2026-09-26):** por alumno y examen
+  (`examen_alumnos.no_presento`): no cuenta ni a favor ni en contra (el motor lo salta aunque tenga
+  algo capturado) y cuenta como listo para que el examen quede "Calificado"; capturar algo suyo
+  quita la marca. Las capturas de un examen (letra tocada o escaneada, a mano, aciertos por campo,
+  No presentó) van por la cola de la tablet (`js/bandeja-salida.js`, tipos `examen_respuesta`,
+  `examen_resultado`, `examen_alumno`, cada uno con `_borrar` donde aplica) con marca `captura_id`
+  por fila (trigger del servidor para cualquier otra escritura): se guardan sin señal, sobreviven
+  a recargar y se envían solas; si otro aparato cambió la fila, se conserva lo suyo y se avisa.
+  Crear o editar el examen y sus preguntas sí necesita señal. El lector del QR se precarga al
+  abrir «Revisar». Varios exámenes del trimestre se suman (aciertos / preguntas por campo).
   **Cierre del día:** la primera excepción guarda el día de todo el grupo (1 y 1, sin los
   que faltaron); botón "Guardar el cierre de hoy" para días sin excepciones. Hoy e Inicio
   lo cuentan con `AlcanceHoy.resumenCierre`; si faltó todo el grupo, "Nadie asistió hoy".
@@ -494,6 +518,7 @@ común).
 | `plantillas_sugerencia` | Catálogo global de sugerencias para padres (Capa 1): `clave` PK (`tareas`, `trabajos`, `calidad`, `participacion`, `conducta`, `examen`, `lectura_ppm`, `comprension`, `matematicas` con `{habilidades}`, `cuaderno`, `asistencia`, `pda_mejora`, `pda_apoyo`), `texto`, `descripcion`, `activo`. Lectura para `authenticated`; escritura solo `es_admin()`. Sin pantalla de edición todavía |
 | `maestro_ajustes` | PK `maestro_id`; ponderación `peso_tareas`/`peso_trabajos`/`peso_participacion`/`peso_examen`, NOT NULL, DEFAULT 28/28/6/33, CHECK `pesos_con_valor` (los cuatro suman más de 0; `NOT VALID`, desde b10). `peso_conducta` se conserva con DEFAULT 0 pero **no se usa**: la conducta no pondera (LGE art. 21; ver §3). **Sin peso de asistencia** (Acuerdo 10/09/23 art. 7). Onboarding crea la fila solo con `maestro_id` y la BD pone los defaults |
 | `examenes` / `respuestas_examen` / `banco_preguntas` | **Modelo anterior (catálogo).** Desde el 2026-09-26 los exámenes del catálogo se venden en la tienda y **no se ofrecen en Mi Salón** (decisión de Jorge): la pantalla ya no lista plantillas ni las aplica; lo ya aplicado se abre en `examen.html?examen_id=` (`js/examen-anterior.js`) y el motor lo sigue leyendo. Las plantillas (`maestro_id` null) son solo legibles: b18a quitó "reclamar" (UPDATE solo de lo propio). **Limitación:** `banco_preguntas` no guarda cuánto vale cada pregunta; el máximo por campo se **aproxima** como `valor_total / total_preguntas` y así se rotula (solo cuando entra este modelo) |
+| `examen_alumnos` | "No presentó" (b19): `examen_id` (cascada), `alumno_id` (cascada), `maestro_id`, `no_presento` bool, `captura_id` (marca de la cola), UNIQUE `(examen_id, alumno_id)`; RLS propios y del mismo grupo que el examen. b19 agrega también `captura_id` a `examen_respuestas` y `examen_resultados` |
 | `examenes_grupo` / `examen_preguntas` / `examen_resultados` / `examen_respuestas` | **Exámenes de Mi Salón (b18, 2026-09-26).** `examenes_grupo`: `grupo_id`, `titulo`, `modo` (`resultados` = solo subir aciertos por campo; `propio` = preguntas creadas aquí), `trimestre`, `grados` smallint[] (los que lo presentan; todas las preguntas son para todos ellos), `fecha_aplicacion`, `instrucciones`, `campos_resultados` jsonb (`{"LEN": 10}`). `examen_resultados`: alumno × campo con `preguntas` y `aciertos` (CHECK 0 ≤ aciertos ≤ preguntas). `examen_preguntas`: `tipo` (`opcion_multiple` 2-5 opciones y clave A-E / `verdadero_falso` clave V-F / `completar` clave = respuesta esperada opcional / `abierta`), `campo` (código corto), `orden`. `examen_respuestas`: alumno × pregunta; automáticas `respuesta` A-E/V/F, `*` doble marca, null vacía; a mano `resultado` correcta/parcial/incorrecta; `origen` toque/escaneo/manual. RLS por `maestro_id` y referencias propias del MISMO grupo en las políticas; un examen no cambia de grupo ni de modo (trigger). Cálculo exacto en el motor: aciertos / preguntas por campo, solo lo capturado |
 | `evaluacion_diagnostica` | **Fuente única de cuaderno y habilidades básicas.** `maestro_id`, `alumno_id`, `grupo_id`, `momento` (`inicio_ciclo`/`trimestre_1`/`trimestre_2`/`trimestre_3`), `cuaderno` y `matematicas` (jsonb `[{clave, nivel}]`, claves estables de `js/catalogo-habilidades.js`, nivel `logrado`/`en_proceso`/`requiere_apoyo`; un CHECK valida prefijo y nivel), `lectura_ppm`, `lectura_comprension`, `observaciones`, UNIQUE `(maestro_id, alumno_id, momento)`. La fluidez lectora no se guarda: se deriva de `lectura_ppm` + `bandas_ppm` |
 | `incidencias` / `incidencia_alumnos` | Registro de sucesos del salón **por grupo** (B13): `maestro_id`, `grupo_id` (CASCADE: borrar el grupo borra sus incidencias), `asunto`, `fecha`, `hora` (opcional), `descripcion`, `acuerdos` (opcional). La puente `incidencia_alumnos` (`incidencia_id`, `alumno_id`, `maestro_id`) guarda los involucrados; borrar un alumno lo quita de sus incidencias (CASCADE en la puente) y la incidencia se conserva. RLS `auth.uid() = maestro_id`; insert/update exigen grupo propio y la puente exige alumno del mismo grupo. Se guarda con `guardar_incidencia()` (security invoker, una transacción). Pantalla `incidencias.html` (documento imprimible con firmas); hoja «Incidencias» del Excel de Exportar; `delete_own_account` las borra. Migración `supabase/mi_salon_b13_ficha_incidencias_2026-09.sql` |
