@@ -150,16 +150,21 @@
 		textoInicio(lista) → "Ana Pérez, hoy (cumple 8) · Luis Ríos, el jueves 1 de octubre (cumple 9)"
 		hoy / mañana / el día de la semana con la fecha.
 	*/
+	// Como mucho MAX_INICIO nombres; el resto como "y N más" (en celular la línea no empuja Inicio)
+	var MAX_INICIO = 3;
 	function textoInicio(lista) {
-		return (lista || []).map(function (c) {
+		var todos = lista || [];
+		var texto = todos.slice(0, MAX_INICIO).map(function (c) {
 			var cuandoEs = c.dias === 0 ? "hoy" : (c.dias === 1 ? "mañana" : elDia(c.fecha));
 			return (c.alumno.nombre_completo || "Alumno sin nombre") + ", " + cuandoEs + " (cumple " + c.edad + ")";
 		}).join(" · ");
+		var resto = todos.length - MAX_INICIO;
+		return resto > 0 ? texto + " · y " + resto + " más" : texto;
 	}
 
 	var api = {
 		siguiente: siguiente, proximos: proximos, cuando: cuando, porFecha: porFecha, textoSinFecha: textoSinFecha, bisiesto: bisiesto,
-		delMes: delMes, DIAS_AVISO_INICIO: DIAS_AVISO_INICIO, paraInicio: paraInicio, textoInicio: textoInicio, elDia: elDia,
+		delMes: delMes, DIAS_AVISO_INICIO: DIAS_AVISO_INICIO, MAX_INICIO: MAX_INICIO, paraInicio: paraInicio, textoInicio: textoInicio, elDia: elDia,
 	};
 	if (typeof window !== "undefined") window.Cumpleanos = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api; // pruebas en node

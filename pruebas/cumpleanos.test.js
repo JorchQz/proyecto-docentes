@@ -119,5 +119,12 @@ ok("Inicio: línea discreta en el encabezado (oculta si no hay), enlace a Calend
 		dh.indexOf('src="js/cumpleanos.js"') > 0 && dh.indexOf('src="js/cumpleanos.js"') < dh.indexOf('src="js/dashboard.js"')],
 	[true, true, true, true, true]);
 
+// Tope en Inicio: como mucho 3 nombres y "y N más" (R22: en celular la línea crecía sin límite)
+const cinco = ["A", "B", "C", "D", "E"].map((n) => al("t" + n, "Tope " + n, "2018-09-26"));
+const txtTope = K.textoInicio(K.paraInicio(cinco, HOY));
+ok("textoInicio: con 5 cumpleaños muestra 3 nombres y «y 2 más»",
+	[K.MAX_INICIO, (txtTope.match(/Tope /g) || []).length, / · y 2 más$/.test(txtTope)], [3, 3, true]);
+ok("textoInicio: con 3 o menos no agrega «más»", / más$/.test(K.textoInicio(K.paraInicio(cinco.slice(0, 3), HOY))), false);
+
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);
