@@ -2,3 +2,18 @@
 # para no duplicar las páginas de la raíz.
 /salon/*
   X-Robots-Tag: noindex
+
+# Páginas de presentación de Mi Salón y Sala de Maestros (tienda/conoce-*.html): publicadas pero
+# OCULTAS mientras no se lancen (decisión de Jorge, 2026-09-26). Llevan también el meta robots.
+# Al lanzarlas, quitar estas reglas junto con el meta (ver el comentario del <head> de cada página).
+/tienda/conoce-mi-salon
+  X-Robots-Tag: noindex, nofollow
+/tienda/conoce-mi-salon.html
+  X-Robots-Tag: noindex, nofollow
+/tienda/conoce-sala
+  X-Robots-Tag: noindex, nofollow
+/tienda/conoce-sala.html
+  X-Robots-Tag: noindex, nofollow
+# Sus capturas de pantalla
+/presentacion/*
+  X-Robots-Tag: noindex

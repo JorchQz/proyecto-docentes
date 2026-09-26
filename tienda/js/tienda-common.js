@@ -511,8 +511,12 @@
 	// montarNav(activo, opts?)
 	//   opts.anchors: [{href,label}] → en el landing, anclas de sección en el centro.
 	//   opts.cta: {href,label,icon?} → botón verde de acción (p. ej. "Ver planeaciones").
+	//   opts.seccion: "salon" | "sala" → la pestaña que marca el selector de secciones en las
+	//     páginas de presentación de esas secciones (tienda/conoce-*.html); ahí no se guarda
+	//     como última sección. Sin ella, "tienda", como siempre.
 	async function montarNav(activo, opts) {
 		opts = opts || {};
+		var seccion = opts.seccion === "salon" || opts.seccion === "sala" ? opts.seccion : "tienda";
 		// Cuenta con Mi Salón ya conocida: su espacio queda apartado desde ahora (ver
 		// reservarEncabezado). Para un comprador no se aparta nada.
 		var reserva = reservarEncabezado();
@@ -620,7 +624,7 @@
 		document.body.insertBefore(header, document.body.firstChild);
 		// En el mismo turno: el selector entra con el encabezado y el espacio apartado se
 		// libera sin que nada se mueva
-		if (S) { aplicarSecciones(header, S, nombre); }
+		if (S) { aplicarSecciones(header, S, nombre, seccion); }
 		quitarReserva();
 		iconos();
 
@@ -650,7 +654,7 @@
 		// Selector de secciones (Tienda, Mi Salón, Sala de Maestros): solo para cuentas con
 		// Mi Salón. A un comprador la barra le llega igual que siempre: nada se espera ni se
 		// carga por él.
-		if (session && !S) { conSecciones(header, session, nombre); }
+		if (session && !S) { conSecciones(header, session, nombre, seccion); }
 
 		// Cerrar sesión (botón desktop y móvil, y el de la fila del selector, que puede
 		// llegar después): un solo oyente en el encabezado.
@@ -817,26 +821,28 @@
 	// la última sección. En PC y tablet la fila de marca (logo, pestañas y cuenta) va
 	// encima y la barra de la tienda queda como su sub-navegación (tienda/css/tienda.css,
 	// .jz-con-secciones); en celular el encabezado no cambia y el selector va abajo.
-	function aplicarSecciones(header, S, nombre) {
+	// `seccion` (montarNav, opts.seccion): la pestaña marcada; solo "tienda" se guarda.
+	function aplicarSecciones(header, S, nombre, seccion) {
 		if (!S || header.classList.contains("jz-con-secciones")) { return; }
-		S.guardarUltima("tienda");
-		var m = S.montar({ actual: "tienda", arriba: header });
+		seccion = seccion || "tienda";
+		if (seccion === "tienda") { S.guardarUltima("tienda"); }
+		var m = S.montar({ actual: seccion, arriba: header });
 		header.classList.add("jz-con-secciones");
 		m.cuenta.innerHTML = (nombre ? '<span class="jz-sec-nombre">' + esc(nombre) + "</span>" : "") +
 			'<button type="button" data-logout class="jz-sec-boton">Salir</button>';
 	}
 
-	function conSecciones(header, session, nombre) {
+	function conSecciones(header, session, nombre, seccion) {
 		var uid = session && session.user && session.user.id;
 		if (!uid) { return; }
 		var ya = saasEnPestana(uid);
 		if (ya === "0") { return; }
 		// Ya se sabe y el archivo ya está: en el mismo turno, antes de pintar
-		if (ya === "1" && window.Secciones) { aplicarSecciones(header, window.Secciones, nombre); return; }
+		if (ya === "1" && window.Secciones) { aplicarSecciones(header, window.Secciones, nombre, seccion); return; }
 		tieneSaas(session).then(function (si) {
 			return si ? cargarSecciones() : null;
 		}).then(function (S) {
-			if (S) { aplicarSecciones(header, S, nombre); }
+			if (S) { aplicarSecciones(header, S, nombre, seccion); }
 		}).catch(function () {});
 	}
 
