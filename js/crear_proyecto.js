@@ -1500,7 +1500,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <span class="activity-num text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-1 rounded mt-0.5 shrink-0 min-w-[1.75rem] text-center leading-4">1</span>
           <textarea name="${key}_item" rows="1"
             class="flex-1 min-h-[44px] px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden break-words"
-            placeholder="${placeholder}" style="min-height:2.1rem"></textarea>
+            placeholder="${placeholder}"></textarea>
           <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -mt-1.5 -mb-3 rounded-full transition shrink-0" aria-label="Eliminar">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
           </button>`;

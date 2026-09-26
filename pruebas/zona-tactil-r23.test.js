@@ -29,6 +29,9 @@ ok("crear: los botones de quitar (contenido, archivo, link) no se encogen ni usa
 	[/remove-contenido-btn shrink-0[^"]*h-11 w-11/.test(cp), /resource-remove-file shrink-0[^"]*h-11 w-11/.test(cp), /resource-remove-link shrink-0[^"]*h-11 w-11/.test(cp), /-my-3 -mr-3/.test(cp)],
 	[true, true, true, false]);
 
+ok("crear: los renglones de actividades y tareas del paso 3 miden al menos 44 de alto (sin min-height en línea que lo pise)",
+	[cp.includes('class="flex-1 min-h-[44px] px-3 py-2.5 border'), cp.includes('style="min-height:2.1rem"')], [true, false]);
+
 const hoy = leer("js/hoy.js");
 ok("Hoy: los chips (0/1/2 del cierre y demás) miden al menos 44 de ancho", /function chip\(texto, activo, clasesActivo, atributos\) \{\s*return "<button type='button' " \+ atributos \+ " class='min-h-\[44px\] min-w-\[44px\]/.test(hoy), true);
 
