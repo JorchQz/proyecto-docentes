@@ -1157,7 +1157,8 @@
 		if (!text) {
 			return false;
 		}
-		if (!allowSpaces && /s/.test(text)) return false;
+		// Un espacio (antes /s/: rechazaba cualquier palabra con la letra "s"; R25a)
+		if (!allowSpaces && /\s/.test(text)) return false;
 		return window.NombresAlumno.valido(text);
 	}
 
