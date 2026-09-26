@@ -8,7 +8,8 @@
 	- Teléfono del tutor: se acepta como lo escriba la maestra ("33 1234 5678", "+52 1 33…",
 	  "(33) 1234-5678", "044 33…") y se guarda como 10 dígitos de México. El enlace de WhatsApp
 	  le antepone 52 (wa.me/52XXXXXXXXXX). Validación suave: si no quedan 10 dígitos, se explica
-	  qué falta y no se guarda (la base también exige 10 dígitos).
+	  qué falta y no se guarda (la base también exige 10 dígitos). Tras R20: una lada que empieza
+	  con 0 o con 1 (después de quitar prefijos) no existe en México y tampoco se guarda.
 	- Fecha de nacimiento: razonable para primaria, entre EDAD_MIN y EDAD_MAX años cumplidos a
 	  la fecha de hoy (a un alumno de 6° que repitió le caben 15 o 16; a uno que entró antes, 5).
 	- Género: niña, niño o "prefiero no decir" (null = sin dato).
@@ -63,6 +64,14 @@
 			return {
 				ok: false, vacio: false, digitos: "",
 				error: "El teléfono debe tener 10 dígitos (tiene " + d.length + "). Escríbelo con lada, por ejemplo 33 1234 5678.",
+			};
+		}
+		// Tras R20: en México ninguna lada empieza con 0 ni con 1 ("1" + 9 dígitos se guardaba). La
+		// base lo exige también (CHECK alumnos_tutor_telefono_lada_valida, mi_salon_b13a).
+		if (d.charAt(0) === "0" || d.charAt(0) === "1") {
+			return {
+				ok: false, vacio: false, digitos: "",
+				error: "Revisa el teléfono: en México la lada no empieza con " + d.charAt(0) + ". Escribe los 10 dígitos con lada, por ejemplo 33 1234 5678.",
 			};
 		}
 		return { ok: true, vacio: false, digitos: d, error: "" };

@@ -35,6 +35,13 @@
 			.imp-tabla th, .imp-tabla td { border: 1px solid #9ca3af; padding: 4pt; vertical-align: top; font-size: 11pt; }
 			.imp-tabla th { background: #f3f4f6; }
 			.imp-tabla td span { display: block; }
+			/* Rol de aseo (tras R20): una semana nunca se parte entre dos hojas (con 5 por día se
+			   cortaban nombres) y la letra es compacta para que quepan las semanas del mes */
+			.imp-tabla thead { display: table-header-group; }
+			.imp-tabla tr { break-inside: avoid; page-break-inside: avoid; }
+			.imp-tabla td { padding: 3pt 4pt; }
+			.imp-tabla td span { font-size: 9.5pt !important; line-height: 1.2 !important; margin-top: 1pt !important; }
+			.imp-rol .imp-titulo { font-size: 18pt; margin-bottom: 2pt; } .imp-rol .imp-sub { font-size: 10.5pt; } .imp-rol .imp-tabla { margin-top: 8pt; }
 			/* Margen a los lados: las columnas Sáb y Dom no quedan pegadas al borde de la hoja */
 			.imp-mes { padding: 0 6mm; box-sizing: border-box; }
 			.imp-mes button { min-height: 58pt !important; box-shadow: none !important; }
@@ -52,8 +59,9 @@
 			<p id="calSubtitulo" class="text-blue-100 text-sm md:text-base mt-1">Cargando...</p>
 		</header>
 
-		<div role="tablist" aria-label="Calendario y rol de aseo (opcional)" class="flex gap-1 p-1 rounded-xl bg-gray-200/70 self-start max-w-full overflow-x-auto">
+		<div role="tablist" aria-label="Calendario, cumpleaños y rol de aseo (opcional)" class="flex gap-1 p-1 rounded-xl bg-gray-200/70 self-start max-w-full overflow-x-auto">
 			<button id="tabCalendario" type="button" role="tab" data-tab="calendario" aria-controls="panelCalendario" aria-selected="true" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-white text-blue-800 shadow-sm">Calendario</button>
+			<button id="tabCumples" type="button" role="tab" data-tab="cumpleanos" aria-controls="panelCumples" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold text-gray-600 whitespace-nowrap">Cumpleaños</button>
 			<button id="tabAseo" type="button" role="tab" data-tab="aseo" aria-controls="panelAseo" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold text-gray-600 whitespace-nowrap">Rol de aseo (opcional)</button>
 		</div>
 
@@ -106,6 +114,16 @@
 				<p><span id="calFuente">Fuente: Calendario escolar SEP 2026-2027 (DOF 15-07-2026). Tu entidad o escuela puede ajustarlo.</span>
 				<a id="calFuenteLink" href="https://dof.gob.mx/nota_detalle.php?codigo=5793645&amp;fecha=15/07/2026" target="_blank" rel="noopener" class="inline-flex items-center min-h-[44px] font-semibold text-blue-700 underline underline-offset-2">Ver el acuerdo en el DOF</a></p>
 			</footer>
+		</section>
+
+		<!-- ═══ Cumpleaños (fecha de nacimiento de la ficha, js/cumpleanos.js) ═══ -->
+		<section id="panelCumples" role="tabpanel" aria-labelledby="tabCumples" class="flex flex-col gap-4" hidden>
+			<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+				<h2 class="font-bold text-gray-800">Próximos cumpleaños</h2>
+				<p class="mt-1 text-sm text-gray-600">De los alumnos activos del grupo, según la fecha de nacimiento de su ficha. En el calendario del mes se marcan con un pastel.</p>
+				<div id="cumSinFecha" class="mt-3" hidden></div>
+				<ul id="cumLista" class="mt-3 flex flex-col gap-2"><li class="text-sm text-gray-400">Cargando...</li></ul>
+			</div>
 		</section>
 
 		<!-- ═══ Rol de aseo ═══ -->
@@ -227,6 +245,7 @@
 	<script src="js/section-shell.js"></script>
 	<script src="js/calendario-sep.js"></script>
 	<script src="js/rol-aseo.js"></script>
+	<script src="js/cumpleanos.js"></script>
 	<script src="js/calendario.js"></script>
 </body>
 </html>

@@ -144,13 +144,39 @@
 		guardar(id);
 	}
 
+	/*
+		trasEliminar(sb, maestroId, idEliminado) → el grupo con el que se sigue trabajando después de
+		eliminar uno, o null si ya no queda ninguno (tras R20: Mi grupo mandaba al onboarding aunque
+		la maestra tuviera otro grupo). Si el eliminado era el activo, queda activo el guardado si
+		sigue existiendo o, si no, el primero por fecha de creación (la misma regla que cargar).
+		Sin grupos, se olvida el guardado. Si la lectura falla, LANZA: quien llama decide.
+	*/
+	async function trasEliminar(sb, maestroId, idEliminado) {
+		var res = await sb.from("grupos").select("id, nombre")
+			.eq("maestro_id", maestroId)
+			.neq("id", idEliminado)
+			.order("created_at", { ascending: true })
+			.order("nombre", { ascending: true }).order("id", { ascending: true });
+		if (res.error) throw res.error;
+		var grupos = res.data || [];
+		var guardado = leerGuardado();
+		var sigue = null;
+		for (var i = 0; i < grupos.length; i++) if (grupos[i].id === guardado) { sigue = grupos[i]; break; }
+		if (!sigue) sigue = grupos[0] || null;
+		enCurso = null;
+		elegido = sigue ? sigue.id : null;
+		if (sigue) guardar(sigue.id);
+		else { try { window.localStorage.removeItem(CLAVE); window.localStorage.removeItem("grupo_activo"); } catch (e) {} }
+		return sigue;
+	}
+
 	// Si la lectura llegó antes que la navegación, ésta lo vuelve a pintar al montarse
 	var pintado = null;
 	function repintar() {
 		if (pintado) pintarSelector(pintado.grupos, pintado.activo);
 	}
 
-	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, elegir: elegir, leerGuardado: leerGuardado, repintar: repintar };
+	window.GrupoActivo = { cargar: cargar, cambiar: cambiar, elegir: elegir, trasEliminar: trasEliminar, leerGuardado: leerGuardado, repintar: repintar };
 
 	// En pantallas que no usan el grupo (Ajustes, Mi cuenta…) el selector de la barra
 	// también debe aparecer: se carga solo, con la misma consulta compartida. Si esta

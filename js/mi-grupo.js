@@ -266,7 +266,7 @@
 					(currentGroup.nombre || "Sin nombre") +
 					"\" y " +
 					countText +
-					" asociado(s), con sus incidencias. Esta acción no se puede deshacer."
+					" asociado(s), con sus incidencias, su calendario, su rol de aseo y sus listas de cooperación y materiales. Esta acción no se puede deshacer."
 			);
 			if (!confirmation) {
 				return;
@@ -299,9 +299,21 @@
 					throw deleteGroupResult.error;
 				}
 
-				showMessage("success", "Grupo eliminado. Redirigiendo a onboarding...");
+				// Tras R20: si la maestra tiene otro grupo, se sigue con él (lo decide
+				// js/grupo-activo.js); solo sin grupos se va a crear uno. Si no se pudo leer
+				// cuáles quedan, Inicio lo decide al cargar (GrupoActivo.cargar).
+				var siguiente = null, destino = "dashboard.html";
+				try {
+					siguiente = await window.GrupoActivo.trasEliminar(window.sb, userId, currentGroup.id);
+					if (!siguiente) destino = "onboarding.html";
+				} catch (errorSiguiente) {
+					console.error("mi-grupo: grupo que sigue tras eliminar", errorSiguiente);
+				}
+				showMessage("success", siguiente
+					? "Grupo eliminado. Ahora trabajas con «" + (siguiente.nombre || "tu otro grupo") + "»."
+					: (destino === "onboarding.html" ? "Grupo eliminado. Ya no tienes grupos: vamos a crear uno." : "Grupo eliminado."));
 				setTimeout(function () {
-					window.location.href = "onboarding.html";
+					window.location.href = destino;
 				}, 900);
 			} catch (error) {
 				showMessage(

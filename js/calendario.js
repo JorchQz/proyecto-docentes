@@ -79,6 +79,26 @@
 		fin_semana: "Fin de semana",
 	};
 	var ENCABEZADO_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+	// Pastel (Lucide "cake") para los cumpleaños en la vista de mes
+	var ICONO_PASTEL = '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/><path d="M7 4h.01"/><path d="M12 4h.01"/><path d="M17 4h.01"/>';
+	function pastel(clase) {
+		return "<svg xmlns='http://www.w3.org/2000/svg' class='" + clase + "' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>" + ICONO_PASTEL + "</svg>";
+	}
+	// "Ana Pérez (cumple 8) y Luis (cumple 9)"
+	function textoCumples(lista) {
+		var t = (lista || []).map(function (c) { return c.nombre + " (cumple " + c.edad + ")"; });
+		return t.length <= 1 ? t.join("") : t.slice(0, -1).join(", ") + " y " + t[t.length - 1];
+	}
+	/*
+		Nota de un cumpleaños que cae en un día sin clase (se muestra igual, decisión de Jorge):
+		"Cae en fin de semana", "Sin clase: Vacaciones…", "Fuera del periodo de clases"; "" si hay clase.
+	*/
+	function notaDia(t) {
+		if (!t || t.clase) return "";
+		if (t.tipo === "fin_semana") return "Cae en fin de semana";
+		if (t.tipo === "fuera_ciclo") return "Fuera del periodo de clases";
+		return "Sin clase: " + (t.motivo || t.etiqueta || "día sin clase");
+	}
 
 	function estilo(tipo) { return ESTILOS[tipo] || ESTILOS.clase; }
 
@@ -99,10 +119,12 @@
 	}
 
 	/*
-		htmlMes(mes, ajustes, hoy) → la cuadrícula del mes (lunes a domingo) con un botón por día.
+		htmlMes(mes, ajustes, hoy, cumples) → la cuadrícula del mes (lunes a domingo) con un botón por día.
 		mes "AAAA-MM" · ajustes: filas o mapa (CalendarioSEP) · hoy "AAAA-MM-DD"
+		cumples (opcional): { "AAAA-MM-DD": [{nombre, edad}] } (Cumpleanos.porFecha): un pastel
+		discreto abajo a la izquierda; los nombres solo en el nombre accesible y al tocar el día.
 	*/
-	function htmlMes(mes, ajustes, hoy) {
+	function htmlMes(mes, ajustes, hoy, cumples) {
 		var mapa = C.mapaAjustes(ajustes);
 		var dias = C.diasDelMes(mes);
 		var primero = C.diaSemana(dias[0]); // 0 domingo
@@ -114,8 +136,9 @@
 			var e = estilo(t.tipo);
 			var esHoy = f === hoy;
 			var corta = textoCorto(t);
+			var cum = cumples && cumples[f] && cumples[f].length ? cumples[f] : null;
 			celdas.push(
-				"<button type='button' data-fecha='" + f + "' aria-label='" + esc(descripcionDia(t) + (esHoy ? " (hoy)" : "")) + "'" +
+				"<button type='button' data-fecha='" + f + "' aria-label='" + esc(descripcionDia(t) + (esHoy ? " (hoy)" : "") + (cum ? ". Cumpleaños de " + textoCumples(cum) : "")) + "'" +
 				(esHoy ? " aria-current='date'" : "") +
 				" class='cal-dia relative flex flex-col items-start justify-start min-h-[48px] sm:min-h-[64px] lg:min-h-[76px] w-full rounded-lg border p-1.5 sm:p-2 text-left transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700 " +
 				e.celda + (esHoy ? " ring-2 ring-blue-700 ring-offset-1" : "") + "'>" +
@@ -123,6 +146,7 @@
 				(corta ? "<span class='hidden sm:block mt-1 text-[11px] leading-tight font-medium line-clamp-2 break-words'>" + esc(corta) + "</span>" : "") +
 				(e.punto ? "<span class='absolute top-1.5 right-1.5 h-2 w-2 rounded-full " + e.punto + "' aria-hidden='true'></span>" : "") +
 				(t.ajuste ? "<span class='absolute bottom-1 right-1.5 text-[10px] font-bold uppercase tracking-wide opacity-70' aria-hidden='true'>tuyo</span>" : "") +
+				(cum ? "<span class='cal-pastel absolute bottom-1 left-1.5 text-pink-600' data-cumple='" + cum.length + "'>" + pastel("h-3.5 w-3.5 sm:h-4 sm:w-4") + "</span>" : "") +
 				"</button>");
 		});
 		return "<div class='grid grid-cols-7 gap-1 sm:gap-1.5 mb-1' aria-hidden='true'>" +
@@ -210,7 +234,7 @@
 
 	// Hoja para imprimir el rol (carta vertical): encabezado y calendario de lunes a viernes
 	function htmlImpresionRol(meta, semanas) {
-		return "<div class='imp-hoja'>" +
+		return "<div class='imp-hoja imp-rol'>" +
 			"<p class='imp-etq'>Rol de aseo</p><h1 class='imp-titulo'>" + esc(meta.mes) + "</h1>" +
 			(meta.escuela ? "<p class='imp-sub'>" + esc(meta.escuela) + "</p>" : "") +
 			(meta.grupo ? "<p class='imp-sub'>Grupo: " + esc(meta.grupo) + "</p>" : "") +
@@ -218,12 +242,12 @@
 			"</div>";
 	}
 
-	function htmlImpresionMes(meta, mes, ajustes, hoy) {
+	function htmlImpresionMes(meta, mes, ajustes, hoy, cumples) {
 		return "<div class='imp-hoja'>" +
 			"<p class='imp-etq'>Calendario escolar " + esc(meta.ciclo || "") + "</p><h1 class='imp-titulo'>" + esc(C.nombreMes(mes)) + "</h1>" +
 			(meta.escuela ? "<p class='imp-sub'>" + esc(meta.escuela) + "</p>" : "") +
 			(meta.grupo ? "<p class='imp-sub'>Grupo: " + esc(meta.grupo) + "</p>" : "") +
-			"<div class='imp-mes'>" + htmlMes(mes, ajustes, hoy) + "</div>" +
+			"<div class='imp-mes'>" + htmlMes(mes, ajustes, hoy, cumples) + "</div>" +
 			"<ul class='imp-leyenda'>" + htmlLeyenda() + "</ul>" +
 			"<p class='imp-fuente'>" + esc(meta.fuente || "") + "</p></div>";
 	}
@@ -240,7 +264,7 @@
 
 	var api = {
 		ESTILOS: ESTILOS, ETIQUETA_LEYENDA: ETIQUETA_LEYENDA,
-		htmlMes: htmlMes, htmlLeyenda: htmlLeyenda, descripcionDia: descripcionDia, fechaSemana: fechaSemana,
+		htmlMes: htmlMes, htmlLeyenda: htmlLeyenda, notaDia: notaDia, textoCumples: textoCumples, pastel: pastel, descripcionDia: descripcionDia, fechaSemana: fechaSemana,
 		htmlRolLista: htmlRolLista, htmlRolCalendario: htmlRolCalendario,
 		htmlImpresionRol: htmlImpresionRol, htmlImpresionMes: htmlImpresionMes, nombreArchivo: nombreArchivo,
 	};
@@ -258,7 +282,8 @@
 		var $ = function (id) { return document.getElementById(id); };
 		var el = {
 			subtitulo: $("calSubtitulo"), mensaje: $("calMensaje"),
-			tabs: [$("tabCalendario"), $("tabAseo")], paneles: { calendario: $("panelCalendario"), aseo: $("panelAseo") },
+			tabs: [$("tabCalendario"), $("tabCumples"), $("tabAseo")], paneles: { calendario: $("panelCalendario"), cumpleanos: $("panelCumples"), aseo: $("panelAseo") },
+			cumLista: $("cumLista"), cumSinFecha: $("cumSinFecha"),
 			hoy: $("calHoy"), proximo: $("calProximo"), cuenta: $("calCuenta"),
 			mesTitulo: $("calMesTitulo"), mesResumen: $("calMesResumen"), grid: $("calGrid"),
 			anterior: $("calAnterior"), siguiente: $("calSiguiente"), irHoy: $("calIrHoy"),
@@ -277,6 +302,7 @@
 		var ajustes = [];            // filas de calendario_ajustes del grupo
 		var todos = [], activos = []; // alumnos del grupo (todos, para bajas) y activos en orden de lista
 		var roles = {};              // "AAAA-MM" → fila de roles_aseo
+		var cumples = { lista: [], sinFecha: 0 }, cumplesPorFecha = {}; // js/cumpleanos.js
 		var hoy = C.hoyLocal();
 		var ciclo = C.cicloVigente(hoy);
 		var meses = ciclo ? C.mesesDelCiclo(ciclo) : [];
@@ -346,7 +372,7 @@
 
 		// ── Pestañas ──────────────────────────────────────────────────────────
 		function elegirPestana(cual, foco) {
-			pestana = cual === "aseo" ? "aseo" : "calendario";
+			pestana = cual === "aseo" || cual === "cumpleanos" ? cual : "calendario";
 			el.tabs.forEach(function (t) {
 				var si = t.getAttribute("data-tab") === pestana;
 				t.setAttribute("aria-selected", si ? "true" : "false");
@@ -355,16 +381,15 @@
 					(si ? "bg-white text-blue-800 shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-white/60");
 				if (si && foco) t.focus();
 			});
-			el.paneles.calendario.hidden = pestana !== "calendario";
-			el.paneles.aseo.hidden = pestana !== "aseo";
-			try { window.history.replaceState(null, "", pestana === "aseo" ? "#aseo" : window.location.pathname + window.location.search); } catch (_) {}
+			Object.keys(el.paneles).forEach(function (k) { el.paneles[k].hidden = pestana !== k; });
+			try { window.history.replaceState(null, "", pestana !== "calendario" ? "#" + pestana : window.location.pathname + window.location.search); } catch (_) {}
 		}
 		el.tabs.forEach(function (t, i) {
 			t.addEventListener("click", function () { elegirPestana(t.getAttribute("data-tab")); });
 			t.addEventListener("keydown", function (e) {
 				if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
 				e.preventDefault();
-				elegirPestana(el.tabs[(i + 1) % el.tabs.length].getAttribute("data-tab"), true);
+				elegirPestana(el.tabs[(i + (e.key === "ArrowRight" ? 1 : el.tabs.length - 1)) % el.tabs.length].getAttribute("data-tab"), true);
 			});
 		});
 
@@ -399,7 +424,7 @@
 
 		function pintarMes() {
 			el.mesTitulo.textContent = C.nombreMes(mesVista);
-			el.grid.innerHTML = htmlMes(mesVista, ajustes, hoy);
+			el.grid.innerHTML = htmlMes(mesVista, ajustes, hoy, cumplesPorFecha);
 			var dias = C.diasDelMes(mesVista);
 			var n = C.diasDeClase(dias[0], dias[dias.length - 1], ajustes).length;
 			el.mesResumen.textContent = n === 1 ? "1 día de clase este mes" : n + " días de clase este mes";
@@ -458,6 +483,9 @@
 			var h = "<p class='text-xs font-semibold uppercase tracking-wide text-gray-500'>" + esc(C.fechaLarga(fecha)) + "</p>" +
 				"<h2 id='dlgDiaTitulo' class='mt-1 text-lg font-bold text-gray-900'>" + esc(t.tipo === "clase" ? "Día de clase" : t.etiqueta) + "</h2>";
 			if (t.motivo && t.tipo !== "clase") h += "<p class='mt-1 text-sm text-gray-700 break-words'>" + esc(t.motivo) + "</p>";
+			if (cumplesPorFecha[fecha]) {
+				h += "<p class='mt-2 flex items-start gap-2 text-sm text-pink-800'>" + pastel("h-4 w-4 shrink-0 mt-0.5") + "<span class='break-words'>Cumpleaños de " + esc(textoCumples(cumplesPorFecha[fecha])) + ".</span></p>";
+			}
 			h += "<p class='mt-2 text-sm " + (t.clase ? "text-emerald-700" : "text-gray-600") + "'>" + (t.clase ? "Hay clase con los alumnos." : "No hay clase con los alumnos.") + "</p>";
 			if (t.ajuste) {
 				h += "<p class='mt-2 text-sm text-gray-600'>Calendario oficial: " + esc(of.tipo === "clase" ? "día de clase" : (of.motivo || of.etiqueta)) + ". Lo cambiaste para tu grupo.</p>";
@@ -560,6 +588,41 @@
 				console.error("calendario: quitar ajuste", e);
 				mensaje("error", "No se pudo quitar el ajuste del " + C.fechaLarga(fecha) + ": " + textoError(e) + ".");
 			}
+		}
+
+		// ═══ Cumpleaños ═══════════════════════════════════════════════════════
+		// Próximos cumpleaños (12 meses) de los alumnos activos; los que caen sin clase, con su nota
+		function pintarCumples() {
+			var K = window.Cumpleanos;
+			if (!K) return;
+			// La leyenda del mes explica el pastel solo si hay cumpleaños que marcar
+			el.leyenda.innerHTML = htmlLeyenda() + (cumples.lista.length ? "<li class='flex items-center gap-2 text-sm text-gray-700'><span class='inline-flex h-5 w-5 shrink-0 items-center justify-center text-pink-600'>" + pastel("h-4 w-4") + "</span><span>Cumpleaños de un alumno</span></li>" : "");
+			if (cumples.sinFecha) {
+				el.cumSinFecha.hidden = false;
+				el.cumSinFecha.innerHTML = "<div class='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center gap-3'>" +
+					"<p class='flex-1'>" + esc(K.textoSinFecha(cumples.sinFecha)) + ". Agrégala en su ficha para ver su cumpleaños aquí.</p>" +
+					"<a href='mi-grupo.html' class='shrink-0 inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg border border-amber-300 bg-white font-semibold text-amber-900 hover:bg-amber-100'>Ir a Mi grupo</a></div>";
+			} else {
+				el.cumSinFecha.hidden = true;
+				el.cumSinFecha.innerHTML = "";
+			}
+			if (!cumples.lista.length) {
+				el.cumLista.innerHTML = "<li class='rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500'>" +
+					(todos.some(function (a) { return a.estatus === "activo"; }) ? "Ningún alumno activo tiene fecha de nacimiento en su ficha." : "Este grupo no tiene alumnos activos.") + "</li>";
+				return;
+			}
+			el.cumLista.innerHTML = cumples.lista.map(function (c) {
+				var t = C.tipoDeDia(c.fecha, ajustes);
+				var nota = notaDia(t);
+				var esHoy = c.dias === 0;
+				return "<li class='flex items-start gap-3 rounded-xl border px-3 py-2.5 " + (esHoy ? "border-pink-300 bg-pink-50" : "border-gray-100 bg-white") + "'>" +
+					"<span class='mt-0.5 text-pink-600'>" + pastel("h-5 w-5") + "</span>" +
+					"<div class='min-w-0 flex-1'><p class='font-semibold text-gray-900 break-words'>" + esc(c.alumno.nombre_completo || "Alumno sin nombre") + "</p>" +
+					"<p class='text-sm text-gray-700'>" + esc(C.fechaLarga(c.fecha, false)) + " · cumple " + c.edad + (c.edad === 1 ? " año" : " años") + "</p>" +
+					(nota ? "<p class='text-xs text-gray-500'>" + esc(nota) + "</p>" : "") +
+					(c.bisiesto && c.fecha.slice(5) === "02-28" ? "<p class='text-xs text-gray-500'>Nació un 29 de febrero: este año se marca el 28.</p>" : "") + "</div>" +
+					"<span class='shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold " + (esHoy ? "bg-pink-600 text-white" : "bg-gray-100 text-gray-700") + "'>" + esc(K.cuando(c.dias)) + "</span></li>";
+			}).join("");
 		}
 
 		// ═══ Rol de aseo ══════════════════════════════════════════════════════
@@ -692,7 +755,9 @@
 			pintarVistaRol();
 		}
 
-		el.aseoMes.addEventListener("change", function () { aseo.mes = el.aseoMes.value; cargarConfigMes(); pintarVistaRol(); estadoAseo(""); });
+		el.aseoMes.addEventListener("change", function () {
+			if (generandoImagenes) { el.aseoMes.value = aseo.mes; return; } // se está generando el mes elegido
+			aseo.mes = el.aseoMes.value; cargarConfigMes(); pintarVistaRol(); estadoAseo(""); });
 		el.aseoPorDia.addEventListener("click", function (e) {
 			var b = e.target.closest ? e.target.closest("button[data-pordia]") : null;
 			if (!b) return;
@@ -813,7 +878,19 @@
 		}
 
 		// Las imágenes del rol (una o varias, de 2400 px como máximo) → [{ blob, nombre }]
+		/*
+			Tras R20: cambiar de mes mientras se generaban las imágenes mezclaba los archivos (el
+			nombre se armaba con el mes de ese momento, después de cada espera). Ahora el mes, el
+			grupo y los datos se congelan al empezar, y el selector de mes y los botones de salida
+			quedan bloqueados hasta terminar (generandoImagenes).
+		*/
+		var generandoImagenes = false;
+		function bloquearSalida(si) {
+			generandoImagenes = si;
+			[el.aseoMes, el.aseoImagen, el.aseoCompartir].forEach(function (b) { b.disabled = si; });
+		}
 		async function crearImagenes() {
+			var mes = aseo.mes, nombreGrupo = grupo.nombre;
 			var d = datosSalida();
 			var m = metaImagen();
 			var medidor = document.createElement("canvas").getContext("2d");
@@ -824,7 +901,7 @@
 				var blob = await new Promise(function (resolver, rechazar) {
 					canvas.toBlob(function (b) { if (b) resolver(b); else rechazar(new Error("el navegador no pudo crear la imagen")); }, "image/png");
 				});
-				salida.push({ blob: blob, nombre: nombreArchivo(aseo.mes, grupo.nombre, i + 1, hojas.length) });
+				salida.push({ blob: blob, nombre: nombreArchivo(mes, nombreGrupo, i + 1, hojas.length), mes: mes });
 			}
 			return salida;
 		}
@@ -849,11 +926,15 @@
 		}
 
 		el.aseoImagen.addEventListener("click", async function () {
+			if (generandoImagenes) return;
+			bloquearSalida(true);
 			try {
 				descargarTodas(await crearImagenes());
 			} catch (e) {
 				console.error("calendario: imagen", e);
 				mensaje("error", "No se pudo crear la imagen: " + textoError(e) + ".");
+			} finally {
+				bloquearSalida(false);
 			}
 		});
 
@@ -866,12 +947,14 @@
 		el.aseoCompartir.hidden = !puedeCompartir;
 		// Compartir manda TODAS las imágenes del mes en un solo envío
 		el.aseoCompartir.addEventListener("click", async function () {
+			if (generandoImagenes) return;
+			bloquearSalida(true);
 			var imagenes = null;
 			try {
 				imagenes = await crearImagenes();
 				var archivos = imagenes.map(function (im) { return new File([im.blob], im.nombre, { type: "image/png" }); });
 				if (navigator.canShare && !navigator.canShare({ files: archivos })) throw new Error("sin compartir");
-				await navigator.share({ files: archivos, title: "Rol de aseo, " + C.nombreMes(aseo.mes) });
+				await navigator.share({ files: archivos, title: "Rol de aseo, " + C.nombreMes(imagenes[0].mes) });
 			} catch (e) {
 				if (e && e.name === "AbortError") return; // la maestra cerró el menú de compartir
 				if (imagenes && imagenes.length) {
@@ -880,6 +963,8 @@
 					return;
 				}
 				mensaje("error", "No se pudo crear la imagen: " + textoError(e) + ".");
+			} finally {
+				bloquearSalida(false);
 			}
 		});
 
@@ -907,7 +992,7 @@
 			if (pestana === "aseo" && roles[aseo.mes]) {
 				el.impresion.innerHTML = htmlImpresionRol({ mes: C.nombreMes(aseo.mes), escuela: escuela, grupo: meta.grupo }, datosSalida().semanas);
 			} else {
-				el.impresion.innerHTML = htmlImpresionMes(meta, mesVista, ajustes, hoy);
+				el.impresion.innerHTML = htmlImpresionMes(meta, mesVista, ajustes, hoy, cumplesPorFecha);
 			}
 		}
 		window.addEventListener("beforeprint", prepararImpresion);
@@ -916,8 +1001,9 @@
 		if (imprimirMes) imprimirMes.addEventListener("click", function () { prepararImpresion(); window.print(); });
 
 		// ── Arranque ──────────────────────────────────────────────────────────
-		elegirPestana(window.location.hash === "#aseo" ? "aseo" : "calendario");
-		window.addEventListener("hashchange", function () { elegirPestana(window.location.hash === "#aseo" ? "aseo" : "calendario"); });
+		function pestanaDelHash() { return (window.location.hash || "").replace(/^#/, ""); }
+		elegirPestana(pestanaDelHash());
+		window.addEventListener("hashchange", function () { elegirPestana(pestanaDelHash()); });
 		el.leyenda.innerHTML = htmlLeyenda();
 		if (ciclo) {
 			el.fuente.textContent = C.textoFuente(ciclo);
@@ -935,7 +1021,7 @@
 				window.Lectura.uno(window.sb.from("perfiles").select("escuela").eq("id", userId).maybeSingle()),
 				window.Lectura.uno(window.sb.from("calendario_ajustes").select("id, fecha, tipo, motivo")
 					.eq("maestro_id", userId).eq("grupo_id", grupo.id).order("fecha")),
-				window.Lectura.uno(window.sb.from("alumnos").select("id, nombre_completo, num_lista, estatus")
+				window.Lectura.uno(window.sb.from("alumnos").select("id, nombre_completo, num_lista, estatus, fecha_nacimiento")
 					.eq("maestro_id", userId).eq("grupo_id", grupo.id).order("num_lista", { ascending: true }).order("nombre_completo", { ascending: true })),
 				window.Lectura.uno(window.sb.from("roles_aseo").select("*").eq("maestro_id", userId).eq("grupo_id", grupo.id).order("mes")),
 			]);
@@ -950,6 +1036,9 @@
 			(lecturas[3] || []).forEach(function (r) { roles[String(r.mes).slice(0, 7)] = r; });
 
 			el.subtitulo.textContent = (grupo.nombre || "Grupo") + (ciclo ? " · Ciclo " + ciclo.ciclo : "") + (escuela ? " · " + escuela : "");
+			cumples = window.Cumpleanos ? window.Cumpleanos.proximos(todos, hoy) : { lista: [], sinFecha: 0 };
+			cumplesPorFecha = window.Cumpleanos ? window.Cumpleanos.porFecha(cumples.lista) : {};
+			pintarCumples();
 			pintarCalendario();
 			pintarAseo();
 		});

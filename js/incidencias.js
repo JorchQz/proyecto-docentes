@@ -16,7 +16,7 @@
 	    queda en blanco con "Director(a)") y Madre, padre o tutor (con el nombre del tutor
 	    cuando hay un solo alumno y su ficha lo tiene).
 	Al imprimir (decisiones de Jorge, 2026-09-25 y 2026-09-26: dos tantos):
-	  - "Para las familias" (hojasFamilias): por CADA alumno, dos hojas carta, cada una solo con
+	  - "Para las familias" (hojasFamilias): por CADA alumno, dos hojas (cada una empieza en su página), cada una solo con
 	    ese alumno y su tutor y con firma de la familia: el "Ejemplar para el expediente" (lo
 	    firma la familia y se queda con la maestra, que así junta todas las firmas) y la "Copia
 	    para la familia" (se la lleva la familia). Ninguna familia ve los nombres de los otros
@@ -231,6 +231,46 @@
 	}
 
 	/*
+		Pie corrido de cada página impresa (tras R20: en una incidencia larga, la página 2 y las
+		siguientes no decían de qué alumno ni de qué tanto eran). Cada hoja se imprime con su propia
+		página con nombre (CSS "page") y su propio contador, así que el pie dice, en TODAS sus
+		páginas: "Registro de incidencia · Ana Pérez · Ejemplar para el expediente" a la izquierda
+		y "p. 2" a la derecha, contando desde 1 en cada hoja. Cuando se imprime una sola hoja (el
+		resumen o la hoja sin alumnos) el total del documento es el de la hoja: "p. 2 de 3". Con
+		varias hojas, CSS no puede saber cuántas páginas ocupa cada una (Chrome no reinicia el total
+		por hoja): por eso ahí va "p. 2" sin total.
+		piesDeImpresion(d, version) → [{ texto, conTotal }] en el orden de las hojas.
+		cssPaginas(pies) → las reglas @page (texto escapado para CSS: comillas, diagonales, saltos).
+	*/
+	function piesDeImpresion(d, version) {
+		d = d || {};
+		var alumnos = d.alumnos || [];
+		var base = "Registro de incidencia";
+		if (!alumnos.length) return [{ texto: base + " · " + limpiar((d.incidencia || {}).asunto).slice(0, 60), conTotal: true }];
+		if (version === "resumen" && alumnos.length > 1) return [{ texto: base + " · " + COPIAS.resumen.titulo, conTotal: true }];
+		var pies = [];
+		alumnos.forEach(function (al) {
+			var n = nombreAlumno(al, false);
+			pies.push({ texto: base + " · " + n + " · " + COPIAS.expediente.titulo, conTotal: false });
+			pies.push({ texto: base + " · " + n + " · " + COPIAS.familia.titulo, conTotal: false });
+		});
+		return pies;
+	}
+	function cadenaCSS(t) {
+		return "\"" + String(t || "").replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/[\r\n\f]+/g, " ").replace(/</g, "\\3C ") + "\"";
+	}
+	function cssPaginas(pies) {
+		var estilo = "font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-size: 8pt; color: #4b5563;";
+		return (pies || []).map(function (p, i) {
+			var nombre = "incHoja" + i, contador = "incPag" + i;
+			return ".inc-hoja[data-pag='" + i + "'] { page: " + nombre + "; }\n" +
+				"@page " + nombre + " { counter-increment: " + contador + ";" +
+				" @bottom-left { content: " + cadenaCSS(p.texto) + "; " + estilo + " }" +
+				" @bottom-right { content: \"p. \" counter(" + contador + ")" + (p.conTotal ? " \" de \" counter(pages)" : "") + "; " + estilo + " } }";
+		}).join("\n");
+	}
+
+	/*
 		tarjeta(inc, nombres, permitir) → HTML de una incidencia en la lista (escapado).
 		nombres: los nombres de los alumnos involucrados que siguen en el grupo.
 	*/
@@ -278,6 +318,8 @@
 		hojasFamilias: hojasFamilias,
 		hojaResumen: hojaResumen,
 		cabeEnCarta: cabeEnCarta,
+		piesDeImpresion: piesDeImpresion,
+		cssPaginas: cssPaginas,
 		tarjeta: tarjeta,
 	};
 	if (typeof window !== "undefined") window.Incidencias = api;
@@ -319,6 +361,7 @@
 			imprimirFamilias: document.getElementById("incImprimirFamiliasBtn"),
 			imprimirExpediente: document.getElementById("incImprimirExpedienteBtn"),
 			docNota: document.getElementById("incDocNota"),
+			paginas: document.getElementById("incPaginas"),
 			confirmar: document.getElementById("incConfirmar"),
 			confirmarFondo: document.getElementById("incConfirmarFondo"),
 			confirmarTexto: document.getElementById("incConfirmarTexto"),
@@ -583,17 +626,24 @@
 				nota = "En pantalla: el resumen para tu expediente, con los " + n + " alumnos y firma solo tuya y del director o directora. Las familias firman su propia hoja (botón «Imprimir para las familias»).";
 			} else {
 				el.hoja.innerHTML = hojasFamilias(d).join("");
-				nota = "En pantalla: " + (n * 2) + " hojas carta, dos por alumno" + (n === 1 ? "" : " (" + n + " alumnos)") +
+				nota = "En pantalla: " + (n * 2) + " hojas, dos por alumno" + (n === 1 ? "" : " (" + n + " alumnos)") + "; cada una empieza en una página carta nueva" +
 					". El «Ejemplar para el expediente» lo firma la familia y se queda contigo; la «Copia para la familia» también la firma y se la lleva. Cada hoja lleva solo el nombre de ese alumno y su tutor." +
 					(n > 1 ? " Para tu expediente puedes imprimir además el resumen con todos los alumnos." : "");
 			}
-			// Texto largo: la hoja no cabe en una carta y sigue en una segunda página
+			// Texto largo: la hoja no cabe en una carta y sigue en otra página (tras R20: la nota dice
+			// lo que de verdad sale y cómo se reconocen las páginas que siguen)
 			var cabe = cabeEnCarta(docActual.inc, esResumen ? n : 1);
 			if (!cabe) {
-				nota = (nota ? nota + " " : "") + "La descripción y los acuerdos son largos: " + (n && !esResumen ? "cada hoja" : "la hoja") +
-					" puede seguir en una segunda página (la hoja siguiente empieza en su propia página). Si la quieres en una sola hoja carta, acórtalos con «Editar».";
+				nota = (nota ? nota + " " : "") + "La descripción y los acuerdos son largos: " + (n && !esResumen ? "cada hoja ocupa" : "la hoja ocupa") +
+					" más de una página carta. Cada página lleva abajo " + (n && !esResumen ? "el alumno, qué tanto es y su número de página dentro de esa hoja" : "su número de página") +
+					". Si la quieres en una sola página, acorta el texto con «Editar».";
 			}
 			el.docNota.textContent = nota;
+			// Pie corrido de cada hoja (alumno, tanto y página)
+			var hojasPintadas = el.hoja.querySelectorAll(".inc-hoja");
+			var pies = piesDeImpresion(d, esResumen ? "resumen" : "familias");
+			Array.prototype.forEach.call(hojasPintadas, function (h, i) { h.setAttribute("data-pag", String(i)); });
+			el.paginas.textContent = cssPaginas(pies.slice(0, hojasPintadas.length));
 			el.docNota.classList.toggle("hidden", !nota);
 			document.title = tituloPdf(docActual.inc, !n ? "" : (esResumen ? "resumen" : "familias"));
 		}
