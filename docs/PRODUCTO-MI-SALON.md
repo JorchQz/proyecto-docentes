@@ -289,7 +289,15 @@ la exportación.
    docente); calificación (confirmada o, si no, la propuesta de la función SQL) debajo del
    mínimo por campo de su grado ("Revisar"; nunca en 1°); faltas sin justificar como
    referencia. Los productos que la maestra aún no revisa se listan aparte ("Docente") y no
-   cuentan como pendiente del alumno. Está en el reporte detallado (sección 2, imprimible: lo
+   cuentan como pendiente del alumno. **Un PDA trabajado en varias sesiones** es un solo
+   pendiente: se agrupa por PDA (su clave del catálogo), sus números de sesión se listan juntos
+   ("sesiones 2 y 5") y sus productos ligados se juntan de TODAS esas sesiones. Sin evidencia,
+   el PDA deja de ser pendiente del alumno solo si todos sus productos de todas esas sesiones
+   están justificados, en "no aplica" o sin revisar (lo sin revisar queda como "Docente · Por
+   revisar"); con uno solo sin entregar, incompleto o ya revisado, sigue como "Mostrar
+   evidencia del PDA". El criterio que se muestra es el de la sesión más reciente. Si el
+   alumno ya no tiene nada calificado pero sí pendientes, el reporte muestra la sección 2 (no
+   el estado vacío). Está en el reporte detallado (sección 2, imprimible: lo
    de la maestra y una propuesta sin confirmar no se imprimen) y en Reportes → "Qué le falta"
    (lista del grupo con la cuenta por campo; al tocar un alumno, su detalle). Usa las mismas
    lecturas del motor (más columnas, ninguna petición más). **Boleta cerrada:** dice

@@ -66,7 +66,7 @@
 					<li>Una fila por alumno con las columnas de la hoja <span class="font-medium">BD_Alumnos</span>: por campo (LEN, SAB, ETI, DHL) lo <span class="font-medium">obtenido</span> en tareas, trabajos, asistencia, participación, conducta y examen; cuaderno, lectura, matemáticas, trabajo diario, fortalezas y áreas de oportunidad. La asistencia y la conducta van como <span class="font-medium">referencia</span>: no ponderan.</li>
 					<li>Al final, la <span class="font-medium">asistencia como referencia</span> (no pondera) y la <span class="font-medium">calificación confirmada</span> por campo. Si aún no la confirmas, dice «pendiente».</li>
 					<li>Después, la <span class="font-medium">evaluación final del ciclo</span>: la final de cada campo, el promedio final de grado y si acredita. Dicen «pendiente» hasta que confirmes los tres trimestres de los cuatro campos.</li>
-					<li>El Excel agrega la hoja <span class="font-medium">Máximos</span> (en multigrado el máximo cambia por alumno), la hoja <span class="font-medium">Léeme</span> con la explicación de cada columna y la hoja <span class="font-medium">Incidencias</span> con las incidencias registradas del grupo. El CSV trae solo la hoja principal.</li>
+					<li>El Excel agrega la hoja <span class="font-medium">Máximos</span> (en multigrado el máximo cambia por alumno), la hoja <span class="font-medium">Léeme</span> con la explicación de cada columna y, solo si las hay, la hoja <span class="font-medium">Incidencias</span> con las incidencias registradas del grupo y la hoja <span class="font-medium">Calendario</span> con los días que cambiaste del calendario escolar oficial. El CSV trae solo la hoja principal.</li>
 				</ul>
 				<div class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900 flex gap-2">
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5v.01"/></svg>
@@ -101,6 +101,7 @@
 	<script src="js/reglas-entidad.js"></script>
 	<script src="js/reporte-datos.js"></script>
 	<script src="js/leer-todo.js"></script>
+	<script src="js/calendario-sep.js"></script>
 	<script src="js/exportar.js"></script>
 </body>
 </html>

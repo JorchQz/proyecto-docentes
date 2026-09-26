@@ -269,6 +269,30 @@ ok("vacío: hayDatos es falso", RA.hayDatos(d3), false);
 ok("vacío: estado vacío claro", h3.includes("data-estado='vacio'") && h3.includes("Todavía no hay datos del trimestre 2"), true);
 ok("vacío: no inventa calificaciones", h3.includes("data-campo="), false);
 
+// Tras R19a: sin nada calificado pero con pendientes en «Qué le falta», el reporte se muestra con la sección 2
+{
+	const Q = require(path.join(JS, "que-le-falta.js"));
+	const qlf = Q.calcular({
+		alumno: { id: "al-juan", grado: 2 }, porCampo: {}, hoy: "2026-09-23",
+		detalle: {
+			sesiones: [{ id: "s1", fecha: "2026-09-10", campo_formativo: "Lenguajes", numero_sesion: 3, sesiones_pda: [] }],
+			productos: [{ id: "p1", sesion_id: "s1", tipo: "trabajo", campo: "Lenguajes", nombre: "Cartel de mi comunidad" }],
+			calificaciones: { p1: { estado_entrega: "no_entregado" } }, alta: null,
+		},
+	});
+	window.QueLeFalta = Q;
+	const d3q = Object.assign({}, d3, { queLeFalta: qlf });
+	const h3q = RA.render(d3q, INFO);
+	ok("sin calificaciones pero con pendientes: hayDatos es verdadero", [qlf.total > 0, RA.hayDatos(d3q)].join(), "true,true");
+	ok("sin calificaciones pero con pendientes: se ve la sección 2 y no el estado vacío",
+		[h3q.includes("data-seccion='que-le-falta'"), h3q.includes("Cartel de mi comunidad"), h3q.includes("data-estado='vacio'")].join(), "true,true,false");
+	ok("solo por revisar de la maestra también cuenta", RA.hayDatos(Object.assign({}, d3, { queLeFalta: { cerrada: false, total: 0, porRevisar: 2, campos: {} } })), true);
+	ok("sin pendientes o con la boleta cerrada: sigue el estado vacío",
+		[RA.hayDatos(Object.assign({}, d3, { queLeFalta: { cerrada: false, sinTrabajo: true, total: 0, porRevisar: 0, campos: {} } })),
+			RA.hayDatos(Object.assign({}, d3, { queLeFalta: { cerrada: true, total: 0, porRevisar: 0, campos: {} } }))].join(), "false,false");
+	delete window.QueLeFalta;
+}
+
 // Con diagnóstica pero sin proyectos: se muestra, con aviso
 const d3b = Object.assign({}, d3, { diagnostica: DIAG_RIESGO, fluidez: "requiere_apoyo" });
 const h3b = RA.render(d3b, INFO);

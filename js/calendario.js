@@ -18,11 +18,15 @@
 	    días de clase (oficial + ajustes). Reglas en js/rol-aseo.js.
 	  - "Generar y guardar" guarda en roles_aseo (una fila por grupo y mes) para reimprimir igual.
 	    Si ya había uno, pide confirmar antes de reemplazarlo. Tocar un nombre permite cambiarlo.
-	  - Si el calendario cambió después de guardar (un ajuste nuevo), se avisa y se ofrece
-	    volver a generar; no se cambia solo.
-	  - Salida: vista previa en lista y en calendario, imagen PNG (Canvas, sin librerías) para
-	    WhatsApp, Compartir (Web Share API con archivo, cuando el aparato lo permite), Copiar
+	  - Si el calendario cambió después de guardar (un ajuste nuevo), hay alumnos de baja o
+	    alumnos NUEVOS sin turno (dados de alta después de generar: roles_aseo.activos_al_generar),
+	    se avisa y se ofrece volver a generar; no se cambia solo.
+	  - Salida: vista previa en lista y en calendario, imágenes PNG (Canvas, sin librerías) para
+	    WhatsApp de 2400 px de alto como máximo (un mes largo sale en varias, "1 de 3"),
+	    Compartir (Web Share API con todos los archivos, cuando el aparato lo permite), Copiar
 	    texto e Imprimir.
+	  - Los ajustes guardados fuera del periodo de clases de un ciclo cargado se ignoran (la base
+	    solo acepta de lunes a viernes; el periodo depende del ciclo).
 
 	No cambia ningún cálculo de asistencia, tareas ni calificaciones, ni el trimestre (decisión de
 	Jorge, 2026-09-25: no se conectan; ver js/calendario-sep.js). El rol de aseo es un extra
@@ -136,11 +140,22 @@
 		}).join("");
 	}
 
-	// "Semana del 5 al 9 de octubre" / "Semana del 28 de septiembre al 2 de octubre"
+	/*
+		"Semana del 5 al 9 de octubre". Solo con los días del mes del rol (el de sus filas): la
+		semana del 30 de noviembre al 4 de diciembre, en el rol de noviembre, es "30 de noviembre"
+		y en el de diciembre, "Semana del 1 al 4 de diciembre". Sin filas, la semana completa.
+	*/
 	function fechaSemana(s) {
 		var lunes = s.lunes, viernes = C.sumarDias(s.lunes, 4);
+		var mes = s.filas && s.filas.length ? String(s.filas[0].fecha).slice(0, 7) : null;
+		if (mes) {
+			var delMes = C.diasDelMes(mes);
+			if (lunes < delMes[0]) lunes = delMes[0];
+			if (viernes > delMes[delMes.length - 1]) viernes = delMes[delMes.length - 1];
+		}
 		var ml = Number(lunes.slice(5, 7)) - 1, mv = Number(viernes.slice(5, 7)) - 1;
 		var dl = Number(lunes.slice(8)), dv = Number(viernes.slice(8));
+		if (lunes === viernes) return dl + " de " + C.MESES[ml];
 		if (ml === mv) return "Semana del " + dl + " al " + dv + " de " + C.MESES[mv];
 		return "Semana del " + dl + " de " + C.MESES[ml] + " al " + dv + " de " + C.MESES[mv];
 	}
@@ -156,16 +171,16 @@
 							"<span class='w-16 shrink-0 font-semibold'>" + esc(C.fechaCorta(f.fecha)) + "</span><span>Sin clase: " + esc(f.motivo) + "</span></li>";
 					}
 					var nombres = f.alumnos.length ? f.alumnos.map(function (a, i) {
-						var clase = "inline-flex items-center min-h-[44px] max-w-full px-3 rounded-lg text-sm font-medium text-left " +
+						var clase = "inline-flex items-center min-h-[44px] max-w-full px-3 py-1.5 rounded-lg text-sm font-medium text-left leading-snug " +
 							(a.baja ? "bg-gray-100 text-gray-500 italic" : "bg-blue-50 text-blue-900") + (editable ? " hover:bg-blue-100 cursor-pointer" : "");
 						return editable
 							? "<button type='button' class='" + clase + "' data-cambiar-fecha='" + f.fecha + "' data-cambiar-pos='" + i + "' aria-label='Cambiar a " + esc(a.nombre) + " del " + esc(C.fechaLarga(f.fecha, false)) + "'>" +
-								"<span class='truncate'>" + esc(a.nombre) + "</span></button>"
-							: "<span class='" + clase + "'><span class='truncate'>" + esc(a.nombre) + "</span></span>";
+								"<span class='min-w-0 break-words'>" + esc(a.nombre) + "</span></button>"
+							: "<span class='" + clase + "'><span class='min-w-0 break-words'>" + esc(a.nombre) + "</span></span>";
 					}).join("") : "<span class='text-sm text-gray-400'>Sin alumnos</span>";
 					return "<li class='flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2'>" +
 						"<span class='w-16 shrink-0 text-sm font-bold text-blue-800'>" + esc(C.fechaCorta(f.fecha)) + "</span>" +
-						"<span class='flex flex-wrap gap-1.5 min-w-0'>" + nombres + "</span></li>";
+						"<span class='flex flex-wrap gap-1.5 min-w-0 flex-1'>" + nombres + "</span></li>";
 				}).join("") + "</ul></div>";
 		}).join("");
 	}
@@ -217,8 +232,10 @@
 		return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
 			.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 	}
-	function nombreArchivo(mes, grupo) {
-		return ["rol-de-aseo", slug(C.nombreMes(mes)), slug(grupo)].filter(Boolean).join("-") + ".png";
+	// "rol-de-aseo-octubre-2026-3-a.png"; con varias imágenes, "…-1-de-3.png"
+	function nombreArchivo(mes, grupo, i, n) {
+		return ["rol-de-aseo", slug(C.nombreMes(mes)), slug(grupo)].filter(Boolean).join("-") +
+			(n > 1 ? "-" + i + "-de-" + n : "") + ".png";
 	}
 
 	var api = {
@@ -643,15 +660,25 @@
 			var g = roles[aseo.mes];
 			var dif = R.diferencias(R.asignacionValida(g.asignacion), diasClaseMes(aseo.mes));
 			var bajas = filas.some(function (f) { return f.clase && f.alumnos.some(function (a) { return a.baja; }); });
+			// Altas después de guardar: activos que no estaban al generar y no tienen turno
+			var nuevos = R.nuevosSinTurno(R.asignacionValida(g.asignacion), activos, g.activos_al_generar);
 			var avisos = [];
 			if (dif.sobran.length) avisos.push("ya no hay clase el " + dif.sobran.map(function (f) { return C.fechaCorta(f).toLowerCase(); }).join(", "));
 			if (dif.faltan.length) avisos.push("ahora hay clase el " + dif.faltan.map(function (f) { return C.fechaCorta(f).toLowerCase(); }).join(", "));
 			if (bajas) avisos.push("hay alumnos que ya no están activos");
+			if (nuevos.length) avisos.push((nuevos.length === 1 ? "hay un alumno nuevo sin turno (" : "hay alumnos nuevos sin turno (") + nuevos.map(nombreAlumno).join(", ") + ")");
 			if (avisos.length) {
-				el.aseoAviso.className = "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900";
-				el.aseoAviso.textContent = "Desde que guardaste este rol cambió algo: " + avisos.join("; ") + ". Toca Generar y guardar para rehacerlo, o cambia a mano los nombres.";
+				el.aseoAviso.className = "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center gap-3";
+				el.aseoAviso.innerHTML = "<p class='flex-1 min-w-0 break-words'>" + esc("Desde que guardaste este rol cambió algo: " + avisos.join("; ") +
+					". El rol no cambia solo: vuelve a generarlo para repartir de nuevo" + (nuevos.length ? " e incluir a quien se dio de alta" : "") + ", o cambia a mano los nombres.") + "</p>" +
+					"<button type='button' data-regenerar class='shrink-0 min-h-[44px] px-4 rounded-xl border border-amber-300 bg-white text-sm font-semibold text-amber-900 hover:bg-amber-100'>Volver a generar</button>";
 			}
 		}
+		// "Volver a generar" del aviso: el mismo botón de Generar y guardar (pide confirmar el reemplazo)
+		el.aseoAviso.addEventListener("click", function (e) {
+			var b = e.target.closest ? e.target.closest("button[data-regenerar]") : null;
+			if (b && !el.aseoGenerar.disabled) el.aseoGenerar.click();
+		});
 
 		function pintarAseo() {
 			if (!grupo) return;
@@ -714,6 +741,8 @@
 						inicia_alumno_id: inicioId || null, continua: continua,
 						siguiente_alumno_id: r.siguienteId, siguiente_num_lista: r.siguienteNum,
 						asignacion: r.asignacion,
+						// Quiénes estaban activos: para avisar después de las altas (nuevosSinTurno)
+						activos_al_generar: activos.map(function (a) { return a.id; }),
 					}, { onConflict: "grupo_id,mes" }).select("*");
 				});
 				if (res.error) throw res.error;
@@ -783,14 +812,21 @@
 			return { filas: filas, semanas: R.porSemanas(filas, C.sumarDias, C.diaSemana) };
 		}
 
-		function crearImagen() {
+		// Las imágenes del rol (una o varias, de 2400 px como máximo) → [{ blob, nombre }]
+		async function crearImagenes() {
 			var d = datosSalida();
 			var m = metaImagen();
-			var canvas = document.createElement("canvas");
-			R.pintar(canvas, { mes: m.mes, escuela: m.escuela, grupo: m.grupo, semanas: d.semanas, fechaCorta: C.fechaCorta, fechaSemana: fechaSemana });
-			return new Promise(function (resolver, rechazar) {
-				canvas.toBlob(function (blob) { if (blob) resolver(blob); else rechazar(new Error("el navegador no pudo crear la imagen")); }, "image/png");
-			});
+			var medidor = document.createElement("canvas").getContext("2d");
+			var hojas = R.paginas(medidor, { mes: m.mes, escuela: m.escuela, grupo: m.grupo, semanas: d.semanas, fechaCorta: C.fechaCorta, fechaSemana: fechaSemana });
+			var salida = [];
+			for (var i = 0; i < hojas.length; i++) {
+				var canvas = R.pintar(document.createElement("canvas"), hojas[i]);
+				var blob = await new Promise(function (resolver, rechazar) {
+					canvas.toBlob(function (b) { if (b) resolver(b); else rechazar(new Error("el navegador no pudo crear la imagen")); }, "image/png");
+				});
+				salida.push({ blob: blob, nombre: nombreArchivo(aseo.mes, grupo.nombre, i + 1, hojas.length) });
+			}
+			return salida;
 		}
 
 		function descargar(blob, nombre) {
@@ -804,11 +840,17 @@
 			setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1500);
 		}
 
+		// Descarga todas (una tras otra: algunos navegadores piden permiso para varias descargas)
+		function descargarTodas(imagenes) {
+			imagenes.forEach(function (im, i) { setTimeout(function () { descargar(im.blob, im.nombre); }, i * 400); });
+			estadoAseo(imagenes.length === 1
+				? "Imagen guardada en tus descargas: " + imagenes[0].nombre + "."
+				: imagenes.length + " imágenes guardadas en tus descargas, de " + imagenes[0].nombre + " a " + imagenes[imagenes.length - 1].nombre + ". Si el navegador pregunta, permite descargar varios archivos.");
+		}
+
 		el.aseoImagen.addEventListener("click", async function () {
 			try {
-				var blob = await crearImagen();
-				descargar(blob, nombreArchivo(aseo.mes, grupo.nombre));
-				estadoAseo("Imagen guardada en tus descargas: " + nombreArchivo(aseo.mes, grupo.nombre) + ".");
+				descargarTodas(await crearImagenes());
 			} catch (e) {
 				console.error("calendario: imagen", e);
 				mensaje("error", "No se pudo crear la imagen: " + textoError(e) + ".");
@@ -822,17 +864,21 @@
 				navigator.canShare({ files: [new File([new Blob(["x"], { type: "image/png" })], "rol.png", { type: "image/png" })] }));
 		} catch (_) { puedeCompartir = false; }
 		el.aseoCompartir.hidden = !puedeCompartir;
+		// Compartir manda TODAS las imágenes del mes en un solo envío
 		el.aseoCompartir.addEventListener("click", async function () {
-			var nombre = nombreArchivo(aseo.mes, grupo.nombre);
-			var blob = null;
+			var imagenes = null;
 			try {
-				blob = await crearImagen();
-				var archivo = new File([blob], nombre, { type: "image/png" });
-				if (navigator.canShare && !navigator.canShare({ files: [archivo] })) throw new Error("sin compartir");
-				await navigator.share({ files: [archivo], title: "Rol de aseo, " + C.nombreMes(aseo.mes) });
+				imagenes = await crearImagenes();
+				var archivos = imagenes.map(function (im) { return new File([im.blob], im.nombre, { type: "image/png" }); });
+				if (navigator.canShare && !navigator.canShare({ files: archivos })) throw new Error("sin compartir");
+				await navigator.share({ files: archivos, title: "Rol de aseo, " + C.nombreMes(aseo.mes) });
 			} catch (e) {
 				if (e && e.name === "AbortError") return; // la maestra cerró el menú de compartir
-				if (blob) { descargar(blob, nombre); estadoAseo("No se pudo abrir Compartir; la imagen quedó en tus descargas."); return; }
+				if (imagenes && imagenes.length) {
+					descargarTodas(imagenes);
+					estadoAseo("No se pudo abrir Compartir; " + (imagenes.length === 1 ? "la imagen quedó" : "las " + imagenes.length + " imágenes quedaron") + " en tus descargas.");
+					return;
+				}
 				mensaje("error", "No se pudo crear la imagen: " + textoError(e) + ".");
 			}
 		});
@@ -895,7 +941,9 @@
 			]);
 			var perfil = lecturas[0] || {};
 			escuela = String(grupo.escuela || perfil.escuela || "").trim();
-			ajustes = lecturas[1] || [];
+			// Solo los ajustes de un día hábil dentro del periodo de clases de un ciclo cargado: la base
+			// ya no acepta fines de semana y el periodo depende del ciclo (CalendarioSEP.ajusteEnPeriodo)
+			ajustes = (lecturas[1] || []).filter(function (a) { return C.ajusteEnPeriodo(a.fecha); });
 			todos = lecturas[2] || [];
 			activos = R.ordenarAlumnos(todos.filter(function (a) { return a.estatus === "activo"; }));
 			roles = {};

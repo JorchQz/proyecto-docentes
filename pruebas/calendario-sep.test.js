@@ -154,26 +154,79 @@ ok("filas del mes en orden, con los días sin clase", filas.map((f) => f.fecha +
 ok("baja y alumno borrado", [filas[0].alumnos[1].baja, filas[2].alumnos[0].nombre], [true, "Alumno que ya no está en la lista"]);
 const semanas = R.porSemanas(filas, C.sumarDias, C.diaSemana);
 ok("por semanas (lunes)", semanas.map((s) => s.lunes), ["2026-09-28", "2026-10-12"]);
-ok("título de semana entre dos meses", [P.fechaSemana(semanas[0]), P.fechaSemana(semanas[1])], ["Semana del 28 de septiembre al 2 de octubre", "Semana del 12 al 16 de octubre"]);
+ok("título de semana entre dos meses: solo los días del mes del rol", [P.fechaSemana(semanas[0]), P.fechaSemana(semanas[1])], ["Semana del 1 al 2 de octubre", "Semana del 12 al 16 de octubre"]);
+{
+	// Tras R19b: la semana del 30 de noviembre al 4 de diciembre
+	const novFin = R.porSemanas(R.filasDelMes([{ fecha: "2026-11-30", alumnos: ["a"] }], [], nombres), C.sumarDias, C.diaSemana);
+	const dicIni = R.porSemanas(R.filasDelMes([{ fecha: "2026-12-01", alumnos: ["a"] }, { fecha: "2026-12-04", alumnos: ["a"] }], [], nombres), C.sumarDias, C.diaSemana);
+	ok("título de semana: en noviembre, «30 de noviembre» (solo ese día es del mes); en diciembre, «Semana del 1 al 4 de diciembre»",
+		[P.fechaSemana(novFin[0]), P.fechaSemana(dicIni[0]), P.fechaSemana({ lunes: "2026-11-30", filas: [] })],
+		["30 de noviembre", "Semana del 1 al 4 de diciembre", "Semana del 30 de noviembre al 4 de diciembre"]);
+}
 ok("texto para copiar", R.texto({ mes: "Octubre 2026", escuela: "Esc. Benito Juárez", grupo: "3° A" }, filas, C.fechaCorta),
 	"Rol de aseo, Octubre 2026\nEsc. Benito Juárez\nGrupo: 3° A\n\nJue 1: Ana, Beto\nMar 13: Alumno que ya no está en la lista");
 ok("texto sin escuela ni días", R.texto({ mes: "Julio 2027" }, [], C.fechaCorta), "Rol de aseo, Julio 2027\n\nEste mes no tiene días de clase.");
 ok("nombre del archivo PNG", P.nombreArchivo("2026-10", "3° A Mañana"), "rol-de-aseo-octubre-2026-3-a-manana.png");
+ok("nombre del archivo PNG con varias imágenes: «1-de-3»", [P.nombreArchivo("2026-10", "3° A", 1, 3), P.nombreArchivo("2026-10", "3° A", 1, 1)], ["rol-de-aseo-octubre-2026-3-a-1-de-3.png", "rol-de-aseo-octubre-2026-3-a.png"]);
+
+// Alumnos nuevos sin turno (tras R19b): altas después de guardar el rol
+{
+	const asig = [{ fecha: "2026-10-01", alumnos: ["a", "b"] }, { fecha: "2026-10-02", alumnos: ["c", "d"] }];
+	const hoyActivos = alumnos.concat([{ id: "f", num_lista: 6, nombre_completo: "Fer" }, { id: "g", num_lista: 7, nombre_completo: "Gabi" }]);
+	ok("nuevos sin turno: activos que no estaban al generar y no tienen día", R.nuevosSinTurno(asig, hoyActivos, ["a", "b", "c", "d", "e"]).map((a) => a.id), ["f", "g"]);
+	ok("nuevos sin turno: si ya se puso a mano en un día, no se avisa", R.nuevosSinTurno(R.cambiar(asig, "2026-10-01", 1, "f"), hoyActivos, ["a", "b", "c", "d", "e"]).map((a) => a.id), ["g"]);
+	ok("nuevos sin turno: quien ya estaba al generar y no alcanzó turno no es «nuevo»", R.nuevosSinTurno(asig, alumnos, ["a", "b", "c", "d", "e"]), []);
+	ok("nuevos sin turno: un rol sin la lista (anterior a la columna) no avisa", [R.nuevosSinTurno(asig, hoyActivos, null), R.nuevosSinTurno(asig, hoyActivos, undefined)], [[], []]);
+}
 
 // Imagen: diseño con un ctx falso (cada carácter mide 20 px a cualquier tamaño)
 const ctxFalso = { font: "", measureText: (t) => ({ width: String(t).length * 20 }) };
 const largo = "María Guadalupe Hernández Martínez de la Concepción";
-const d1 = R.disenar(ctxFalso, { mes: "Octubre 2026", escuela: "Escuela Primaria Rural Federal Emiliano Zapata", grupo: "Multigrado 1° a 6°",
-	semanas: R.porSemanas(R.filasDelMes([{ fecha: "2026-10-01", alumnos: ["x"] }], [], { x: { nombre: largo, activo: true } }), C.sumarDias, C.diaSemana),
-	fechaCorta: C.fechaCorta, fechaSemana: P.fechaSemana });
-const textos = d1.ops.filter((o) => o.t === "texto");
-ok("imagen: 1080 de ancho, nada se sale del margen derecho", textos.every((o) => o.x + ctxFalso.measureText(o.texto).width <= R.IMG.ancho - R.IMG.margen + 1), true);
-ok("imagen: el nombre largo se parte en renglones", textos.filter((o) => largo.indexOf(o.texto) !== -1).length > 1, true);
+const datosImg = (sem, extra) => Object.assign({ mes: "Octubre 2026", semanas: sem, fechaCorta: C.fechaCorta, fechaSemana: P.fechaSemana }, extra || {});
+const p1 = R.paginas(ctxFalso, datosImg(R.porSemanas(R.filasDelMes([{ fecha: "2026-10-01", alumnos: ["x"] }], [], { x: { nombre: largo, activo: true } }), C.sumarDias, C.diaSemana),
+	{ escuela: "Escuela Primaria Rural Federal Emiliano Zapata", grupo: "Multigrado 1° a 6°" }));
+const textos = p1[0].ops.filter((o) => o.t === "texto");
+ok("imagen: un mes corto cabe en una sola imagen, sin «1 de 1»", [p1.length, textos.some((o) => / de \d+$/.test(o.texto))], [1, false]);
+ok("imagen: 1080 de ancho, nada se sale del margen derecho", textos.every((o) => o.alinear === "right" ? o.x <= R.IMG.ancho - R.IMG.margen : o.x + ctxFalso.measureText(o.texto).width <= R.IMG.ancho - R.IMG.margen + 1), true);
+const renglonesLargo = textos.filter((o) => largo.indexOf(o.texto) !== -1 && / 42px /.test(o.fuente));
+ok("imagen: el nombre largo se parte en renglones", renglonesLargo.length > 1, true);
+ok("imagen: sangría colgante (los renglones que siguen del mismo nombre van más adentro)",
+	[renglonesLargo[0].x, renglonesLargo.slice(1).every((o) => o.x === renglonesLargo[0].x + R.IMG.sangria), R.IMG.sangria >= 24], [R.IMG.margen + 190, true, true]);
+ok("imagen: un nombre corto que sigue a uno largo empieza sin sangría",
+	(() => {
+		const pp = R.paginas(ctxFalso, datosImg(R.porSemanas(R.filasDelMes([{ fecha: "2026-10-01", alumnos: ["x", "y"] }], [], { x: { nombre: largo, activo: true }, y: { nombre: "Ana López", activo: true } }), C.sumarDias, C.diaSemana)));
+		const ana = pp[0].ops.find((o) => o.texto === "Ana López");
+		return ana.x;
+	})(), R.IMG.margen + 190);
 ok("imagen: lleva título, mes, escuela y grupo", ["ROL DE ASEO", "Octubre 2026"].every((t) => textos.some((o) => o.texto === t)) && textos.some((o) => /^Grupo: /.test(o.texto)) && textos.some((o) => /^Escuela/.test(o.texto)), true);
-ok("imagen: letra de los nombres de 42 px (legible en el teléfono)", textos.filter((o) => largo.indexOf(o.texto) !== -1).every((o) => / 42px /.test(o.fuente)), true);
-const d2 = R.disenar(ctxFalso, { mes: "Octubre 2026", semanas: R.porSemanas(filas, C.sumarDias, C.diaSemana), fechaCorta: C.fechaCorta, fechaSemana: P.fechaSemana });
-ok("imagen: vertical (más alta que ancha) con un mes completo", R.disenar(ctxFalso, { mes: "Octubre 2026", semanas: R.porSemanas(R.filasDelMes(rolOct.asignacion, C.diasSinClase(oct[0], oct[oct.length - 1], ajustes), { a: { nombre: "Ana López", activo: true } }), C.sumarDias, C.diaSemana), fechaCorta: C.fechaCorta, fechaSemana: P.fechaSemana }).alto > R.IMG.ancho, true);
+ok("imagen: letra de los nombres de 42 px (legible en el teléfono)", renglonesLargo.every((o) => / 42px /.test(o.fuente)), true);
+// Un mes completo con 2 por día (antes, una sola imagen de 1080 × 5084)
+const nombresMes = {};
+alumnos.forEach((a) => { nombresMes[a.id] = { nombre: a.nombre_completo + " Hernández Martínez", activo: true }; });
+const semOct = R.porSemanas(R.filasDelMes(rolOct.asignacion, C.diasSinClase(oct[0], oct[oct.length - 1], ajustes), nombresMes), C.sumarDias, C.diaSemana);
+const pOct = R.paginas(ctxFalso, datosImg(semOct, { escuela: "Escuela Primaria Rural Federal Emiliano Zapata", grupo: "3° A" }));
+ok("imagen: un mes de 2 por día sale en varias imágenes de 1080 × 2400 como máximo", [pOct.length > 1, pOct.every((p) => p.alto <= R.IMG.altoMax), R.IMG.altoMax], [true, true, 2400]);
+ok("imagen: cada imagen dice «i de n» arriba y, salvo la última, «Sigue en la imagen…» abajo",
+	pOct.map((p, i) => [p.ops.some((o) => o.texto === (i + 1) + " de " + pOct.length), p.ops.some((o) => o.texto === "Sigue en la imagen " + (i + 2) + " de " + pOct.length)]),
+	pOct.map((p, i) => [true, i < pOct.length - 1]));
+const fechasEn = (p) => p.ops.filter((o) => /^800 42px /.test(o.fuente) && o.color === R.IMG.azul).map((o) => o.texto);
+ok("imagen: todos los días de clase salen una sola vez entre las imágenes, en orden",
+	pOct.map(fechasEn).reduce((a, b) => a.concat(b), []), rolOct.asignacion.map((d) => C.fechaCorta(d.fecha)));
+ok("imagen: ninguna semana que cabe entera se parte entre dos imágenes",
+	pOct.every((p) => !p.ops.some((o) => / \(continúa\)$/.test(o.texto))), true);
+ok("imagen: cada imagen repite el encabezado (se comparten sueltas)", pOct.every((p) => p.ops.some((o) => o.texto === "ROL DE ASEO") && p.ops.some((o) => o.texto === "Octubre 2026")), true);
+// 5 por día con nombres larguísimos: una semana sola no cabe → se parte por días y dice "(continúa)"
+const muchos = [];
+for (let i = 0; i < 12; i++) muchos.push({ id: "m" + i, num_lista: i + 1, nombre_completo: "N" + i });
+const nomLargos = {};
+muchos.forEach((a) => { nomLargos[a.id] = { nombre: largo + " " + a.nombre_completo, activo: true }; });
+const rol5 = R.generar({ dias: diasOct, alumnos: muchos, porDia: 5, inicioId: "m0" });
+const p5 = R.paginas(ctxFalso, datosImg(R.porSemanas(R.filasDelMes(rol5.asignacion, [], nomLargos), C.sumarDias, C.diaSemana)));
+ok("imagen: 5 por día con nombres largos, cada imagen de 2400 como máximo y la semana partida dice «(continúa)»",
+	[p5.every((p) => p.alto <= R.IMG.altoMax), p5.some((p) => p.ops.some((o) => / \(continúa\)$/.test(o.texto))), p5.map(fechasEn).reduce((a, b) => a.concat(b), []).length], [true, true, 21]);
+const d2 = R.paginas(ctxFalso, datosImg(R.porSemanas(filas, C.sumarDias, C.diaSemana)))[0];
 ok("imagen: sin escuela ni grupo no pinta renglones vacíos", d2.ops.some((o) => o.t === "texto" && /^Grupo: $/.test(o.texto)), false);
+ok("imagen: un mes sin días de clase, una imagen que lo dice", R.paginas(ctxFalso, datosImg([])).map((p) => p.ops.some((o) => o.texto === "Este mes no tiene días de clase.")), [true]);
 
 // ── Escape de textos ─────────────────────────────────────────────────────────
 const MALO = "<img src=x onerror=alert(1)>'\"&";
@@ -187,6 +240,8 @@ const htmls = [
 ];
 ok("escape: ningún HTML trae la etiqueta, la comilla simple ni la doble sin escapar",
 	htmls.map((h) => [h.indexOf("<img"), /onerror=alert\(1\)>'/.test(h)]), htmls.map(() => [-1, false]));
+ok("lista del rol: nombres completos con salto de línea, sin cortarlos con «…» (390 px)",
+	[/truncate/.test(P.htmlRolLista(semMalas, true) + P.htmlRolLista(semMalas, false)), /<span class='min-w-0 break-words'>/.test(P.htmlRolLista(semMalas, true))], [false, true]);
 ok("escape: el nombre aparece escapado", P.htmlRolLista(semMalas, true).indexOf("&lt;img src=x onerror=alert(1)&gt;&#39;&quot;&amp;") !== -1, true);
 ok("escape: el motivo propio va escapado en la etiqueta del día", P.htmlMes("2026-10", [{ fecha: "2026-10-12", tipo: "otro", motivo: MALO }], "").indexOf("aria-label='lunes 12 de octubre: &lt;img") !== -1, true);
 ok("esc", R.esc("<a href='x'>&\"</a>"), "&lt;a href=&#39;x&#39;&gt;&amp;&quot;&lt;/a&gt;");
@@ -214,6 +269,23 @@ ok("roles_aseo: los alumnos de inicio y de continuación, propios y del mismo gr
 ok("índices únicos por grupo y fecha / grupo y mes", [/unique index if not exists calendario_ajustes_grupo_fecha_uidx on public\.calendario_ajustes \(grupo_id, fecha\)/.test(codigo), /unique index if not exists roles_aseo_grupo_mes_uidx on public\.roles_aseo \(grupo_id, mes\)/.test(codigo)], [true, true]);
 ok("CHECK de tipos = los de la pantalla", /tipo in \('suspension', 'festividad_local', 'otro', 'con_clase'\)/.test(codigo), true);
 ok("CHECK de 1 a 5 alumnos por día", /por_dia between 1 and 5/.test(codigo), true);
+ok("CHECK de día hábil en los ajustes (lunes a viernes), creado solo si falta",
+	/if not exists \(select 1 from pg_constraint where conname = 'calendario_ajustes_dia_habil'\) then\s*alter table public\.calendario_ajustes add constraint calendario_ajustes_dia_habil\s*check \(extract\(isodow from fecha\) < 6\);/.test(codigo), true);
+ok("roles_aseo guarda los activos al generar (columna nula, con tope)",
+	[/alter table public\.roles_aseo add column if not exists activos_al_generar uuid\[\];/.test(codigo), /cardinality\(activos_al_generar\) <= 200/.test(codigo)], [true, true]);
+ok("la pantalla guarda los activos al generar y avisa de alumnos nuevos sin turno, sin cambiar el rol sola",
+	[/activos_al_generar: activos\.map\(function \(a\) \{ return a\.id; \}\)/.test(leer("js/calendario.js")), /R\.nuevosSinTurno\(R\.asignacionValida\(g\.asignacion\), activos, g\.activos_al_generar\)/.test(leer("js/calendario.js")),
+		/hay alumnos nuevos sin turno \(/.test(leer("js/calendario.js")), /data-regenerar/.test(leer("js/calendario.js")), /El rol no cambia solo/.test(leer("js/calendario.js"))],
+	[true, true, true, true, true]);
+ok("Compartir manda todas las imágenes; Guardar las descarga todas",
+	[/navigator\.share\(\{ files: archivos/.test(leer("js/calendario.js")), /descargarTodas\(await crearImagenes\(\)\)/.test(leer("js/calendario.js"))], [true, true]);
+// Ajustes que no aplican: fuera del periodo de clases o en fin de semana (la base ya no los acepta en fin de semana)
+ok("ajuste en periodo: de lunes a viernes dentro del periodo de clases del ciclo",
+	["2026-10-12", "2026-10-10", "2026-08-10", "2027-07-30", "2026-09-01"].map(C.ajusteEnPeriodo), [true, false, false, false, true]);
+ok("ajustes vigentes: solo los que cambian un día, en orden de fecha",
+	C.ajustesVigentes([{ fecha: "2026-10-30", tipo: "con_clase" }, { fecha: "2026-10-12", tipo: "festividad_local" }, { fecha: "2026-10-10", tipo: "otro" }, { fecha: "2026-08-10", tipo: "otro" }, { fecha: "2026-09-25", tipo: "otro" }, { fecha: "2026-10-13", tipo: "con_clase" }]).map((a) => a.fecha),
+	["2026-10-12", "2026-10-30"]);
+ok("la pantalla ignora los ajustes fuera del periodo al cargarlos", /ajustes = \(lecturas\[1\] \|\| \[\]\)\.filter\(function \(a\) \{ return C\.ajusteEnPeriodo\(a\.fecha\); \}\);/.test(leer("js/calendario.js")), true);
 ok("motivo de hasta " + C.MOTIVO_MAX + " caracteres", new RegExp("char_length\\(motivo\\) <= " + C.MOTIVO_MAX).test(codigo), true);
 ok("delete_own_account borra las dos tablas", [/delete from public\.roles_aseo where maestro_id = v;/.test(codigo), /delete from public\.calendario_ajustes where maestro_id = v;/.test(codigo)], [true, true]);
 ok("delete_own_account conserva lo de b10 y las incidencias (con guarda)", ["evaluacion_formativa", "calificaciones", "registro_diario", "boleta_trimestral", "evaluacion_diagnostica", "tareas", "productos_sesion", "dias_no_habiles_extra", "maestro_ajustes", "zz_deprecated_diagnosticos"].every((t) => new RegExp("delete from public\\." + t + " where maestro_id = v;").test(codigo)) &&
@@ -227,6 +299,7 @@ ok("navegación en el head", /<script src="js\/navbar\.js"><\/script>/.test(head
 const orden = ["js/supabase.js", "js/lectura.js", "js/saas-guard.js", "js/secciones.js", "js/bandeja-salida.js", "js/grupo-activo.js", "js/calendario-sep.js", "js/rol-aseo.js", "js/calendario.js"].map((s) => html.indexOf('src="' + s + '"'));
 ok("candado y scripts en orden", orden.every((v, i) => v > 0 && (i === 0 || v > orden[i - 1])), true);
 ok("pie con la fuente y el enlace al DOF", /Fuente: Calendario escolar SEP 2026-2027 \(DOF 15-07-2026\)\. Tu entidad o escuela puede ajustarlo\./.test(html) && /href="https:\/\/dof\.gob\.mx\/nota_detalle\.php\?codigo=5793645/.test(html), true);
+ok("mes impreso: margen a los lados (Sáb y Dom no quedan pegadas al borde)", /@media print \{[\s\S]*\.imp-mes \{ padding: 0 6mm;/.test(html), true);
 ok("sin librerías externas nuevas (la imagen es Canvas)", (html.match(/<script src="https?:\/\/[^"]+"/g) || []).map((s) => s.replace(/<script src="|"/g, "")), ["https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"]);
 ok("/salon/: regla en _redirects", leer("_redirects").indexOf("/salon/calendario.html /salon/calendario 301") !== -1, true);
 const N = require("../js/navbar.js");

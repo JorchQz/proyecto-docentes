@@ -35,6 +35,8 @@
 			.imp-tabla th, .imp-tabla td { border: 1px solid #9ca3af; padding: 4pt; vertical-align: top; font-size: 11pt; }
 			.imp-tabla th { background: #f3f4f6; }
 			.imp-tabla td span { display: block; }
+			/* Margen a los lados: las columnas Sáb y Dom no quedan pegadas al borde de la hoja */
+			.imp-mes { padding: 0 6mm; box-sizing: border-box; }
 			.imp-mes button { min-height: 58pt !important; box-shadow: none !important; }
 			.imp-mes .hidden { display: block !important; }
 			.imp-leyenda { list-style: none; padding: 0; margin: 10pt 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4pt 12pt; }
@@ -173,7 +175,7 @@
 						Imprimir
 					</button>
 				</div>
-				<p class="mt-2 text-xs text-gray-500">La imagen es vertical, para verse bien en el celular. En el celular, Compartir la manda directo a WhatsApp.</p>
+				<p class="mt-2 text-xs text-gray-500">La imagen es vertical, para verse bien en el celular. Si el mes no cabe en una, salen varias (1 de 3, 2 de 3…) para que la letra se lea bien. En el celular, Compartir las manda todas directo a WhatsApp.</p>
 			</div>
 		</section>
 	</main>

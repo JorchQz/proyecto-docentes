@@ -90,29 +90,43 @@ ok("sin docente registrado: la línea de Docente queda en blanco con su rol",
 	/<p class='inc-firma-nombre'>&nbsp;<\/p><p class='inc-firma-rol'>Docente<\/p>/.test(docSin), true);
 ok("pie: no es documento oficial de la SEP", /No es un documento oficial de la SEP/.test(doc), true);
 
-// ── Varios alumnos: una hoja por familia y la completa para el expediente (Jorge, 2026-09-25) ──
+// ── Dos tantos por alumno y resumen para el expediente (Jorge, 2026-09-25 y 2026-09-26) ──
 const MAL_F = `<img src=x onerror="alert(1)">`;
 const al3 = { nombre_completo: "SOTO DÍAZ ELENA", grado: 3, tutor_nombre: "" };
 const dVarios = { incidencia: inc, alumnos: [al1, al2, al3], grupo: grupo, docente: "Fanny Ruiz" };
 const fam = I.hojasFamilias(dVarios);
-ok("familias: una hoja por alumno", fam.length, 3);
+const ALS = [al1, al2, al3];
+ok("familias: DOS hojas por alumno (3 alumnos, 6 hojas), cada una un artículo aparte",
+	[fam.length, fam.every((h) => (h.match(/<article /g) || []).length === 1)], [6, true]);
+ok("familias: por alumno, primero el «Ejemplar para el expediente» y luego la «Copia para la familia»",
+	fam.map((h) => (h.match(/data-copia='(\w+)'/) || [])[1]), ["expediente", "familia", "expediente", "familia", "expediente", "familia"]);
 ok("familias: cada hoja lleva SOLO a su alumno (ningún nombre de los otros)",
-	fam.map((h, i) => [al1, al2, al3].map((a, j) => h.indexOf(a.nombre_completo) !== -1 ? j : -1).filter((j) => j !== -1).join(",") === String(i)), [true, true, true]);
-ok("familias: «Alumno involucrado» en singular y la leyenda de copia para la familia",
-	fam.every((h) => /Alumno involucrado</.test(h) && !/Alumnos involucrados/.test(h) && /<p class='inc-copia'>Copia para la familia<\/p>/.test(h) && /data-copia='familia'/.test(h)), true);
-ok("familias: el tutor de ESE alumno en su línea (y en blanco si su ficha no lo tiene)",
-	[/<p class='inc-firma-nombre'>María López<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[0]),
-		/<p class='inc-firma-nombre'>Pedro Ruiz<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[1]),
-		/<p class='inc-firma-nombre'>&nbsp;<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[2]),
-		fam[0].indexOf("Pedro Ruiz") === -1 && fam[1].indexOf("María López") === -1], [true, true, true, true]);
+	fam.map((h, i) => ALS.map((a, j) => h.indexOf(a.nombre_completo) !== -1 ? j : -1).filter((j) => j !== -1).join(",") === String(Math.floor(i / 2))), [true, true, true, true, true, true]);
+ok("familias: «Alumno involucrado» en singular y la leyenda de su tanto",
+	fam.every((h, i) => /Alumno involucrado</.test(h) && !/Alumnos involucrados/.test(h) &&
+		(i % 2 === 0 ? /<span class='inc-copia-titulo'>Ejemplar para el expediente<\/span> <span class='inc-copia-nota'>Lo firma la familia y se queda con la docente\.<\/span>/.test(h)
+			: /<span class='inc-copia-titulo'>Copia para la familia<\/span> <span class='inc-copia-nota'>La firma la familia y se la queda\.<\/span>/.test(h))), true);
+ok("familias: las dos hojas llevan firma de la familia (las tres firmas), con el tutor de ESE alumno (en blanco si su ficha no lo tiene)",
+	[fam.every((h) => /<p class='inc-firma-rol'>Madre, padre o tutor<\/p>/.test(h) && /<p class='inc-firma-rol'>Docente<\/p>/.test(h) && /<p class='inc-firma-rol'>Director\(a\)<\/p>/.test(h) && !/inc-firmas-2/.test(h)),
+		[0, 1].every((i) => /<p class='inc-firma-nombre'>María López<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[i])),
+		[2, 3].every((i) => /<p class='inc-firma-nombre'>Pedro Ruiz<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[i])),
+		[4, 5].every((i) => /<p class='inc-firma-nombre'>&nbsp;<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[i])),
+		fam[0].indexOf("Pedro Ruiz") === -1 && fam[2].indexOf("María López") === -1], [true, true, true, true, true]);
 ok("familias: la misma descripción, acuerdos, escuela, director y docente en cada hoja",
 	fam.every((h) => h.indexOf("Línea 1\nLínea 2") !== -1 && h.indexOf("Hablar con ambos.") !== -1 && h.indexOf("Esc. Benito Juárez") !== -1 && h.indexOf("Mtra. Rosa Díaz") !== -1 && h.indexOf("Fanny Ruiz") !== -1), true);
-const exp = I.hojaExpediente(dVarios);
-ok("expediente: una hoja con los tres alumnos y la leyenda de expediente",
-	[[al1, al2, al3].every((a) => exp.indexOf(a.nombre_completo) !== -1), /Alumnos involucrados/.test(exp), /Copia para el expediente de la docente/.test(exp), (exp.match(/<article /g) || []).length], [true, true, true, 1]);
-ok("un solo alumno: una hoja, sin leyenda de copia (familia y expediente son la misma)",
-	[I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo }).length, /inc-copia/.test(I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo })[0]), /inc-copia/.test(I.hojaExpediente({ incidencia: inc, alumnos: [al1], grupo: grupo }))],
-	[1, false, false]);
+const res = I.hojaResumen(dVarios);
+ok("resumen: una hoja con los tres alumnos y la leyenda «Resumen para el expediente»",
+	[ALS.every((a) => res.indexOf(a.nombre_completo) !== -1), /Alumnos involucrados/.test(res), /<span class='inc-copia-titulo'>Resumen para el expediente<\/span>/.test(res), (res.match(/<article /g) || []).length, /data-copia='resumen'/.test(res)],
+	[true, true, true, 1, true]);
+const firmasRes = res.slice(res.indexOf("inc-firmas"));
+ok("resumen: firma solo de docente y director(a), sin líneas para las familias",
+	[texto(firmasRes.slice(firmasRes.indexOf(">") + 1)).replace(/ Registro interno.*$/, ""), /Madre, padre o tutor/.test(res), /class='inc-firmas inc-firmas-2'/.test(res)],
+	["Fanny Ruiz Docente Mtra. Rosa Díaz Director(a)", false, true]);
+ok("un solo alumno: también dos tantos (expediente y familia), con el nombre de su tutor",
+	[I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo }).length, I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo }).map((h) => (h.match(/data-copia='(\w+)'/) || [])[1]),
+		I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo }).every((h) => /<p class='inc-firma-nombre'>María López<\/p>/.test(h))],
+	[2, ["expediente", "familia"], true]);
+ok("la hoja sin tanto (incidencia sin alumnos) no lleva leyenda y sí las tres firmas", [/inc-copia/.test(doc), /Madre, padre o tutor/.test(doc)], [false, true]);
 // Medido con PDF (constructor Y, v06-hoja-larga.js): 1400 + 400 caracteres caben en una carta; 1600 + 500 no
 const txt = (n) => "x".repeat(n);
 ok("cabe en una carta: 1400 + 400 sí; 1600 + 500 no; con 5 alumnos en la lista del expediente, menos",
@@ -120,7 +134,8 @@ ok("cabe en una carta: 1400 + 400 sí; 1600 + 500 no; con 5 alumnos en la lista 
 		I.cabeEnCarta({ descripcion: txt(1400), acuerdos: txt(400) }, 5), I.cabeEnCarta({ descripcion: "Corta.\nDos renglones.", acuerdos: "" }, 3)],
 	[true, false, false, true]);
 ok("sin alumnos: ninguna hoja para familias", I.hojasFamilias({ incidencia: inc, alumnos: [], grupo: grupo }).length, 0);
-ok("familias: nombres escapados", I.hojasFamilias({ incidencia: inc, alumnos: [{ nombre_completo: MAL_F, tutor_nombre: MAL_F }, al2], grupo: grupo })[0].indexOf("<img") === -1, true);
+ok("familias y resumen: nombres escapados", [I.hojasFamilias({ incidencia: inc, alumnos: [{ nombre_completo: MAL_F, tutor_nombre: MAL_F }, al2], grupo: grupo }).join("").indexOf("<img"),
+	I.hojaResumen({ incidencia: inc, alumnos: [{ nombre_completo: MAL_F, tutor_nombre: MAL_F }, al2], grupo: grupo }).indexOf("<img")], [-1, -1]);
 
 // ── Escape de todo lo capturado ──────────────────────────────────────────────
 const MAL = `<img src=x onerror="alert(1)">'"&`;
@@ -163,26 +178,41 @@ ok("la escuela y el director salen del GRUPO (no del perfil)", /escuela: grupo\.
 ok("controles de al menos 44 px (botones y casillas de alumnos)",
 	(html.match(/<button[^>]*>/g) || []).every((b) => /min-h-\[44px\]/.test(b)) && /min-h-\[44px\] px-3 py-2 rounded-lg border border-gray-200/.test(js), true);
 ok("sin Lucide por CDN ni emojis: íconos en línea", !/unpkg\.com\/lucide/.test(html) && /<svg/.test(html), true);
-ok("varios alumnos: botones «Imprimir para las familias (una hoja por alumno)» e «Imprimir para mi expediente»",
-	[/id="incImprimirFamiliasBtn"[\s\S]*?Imprimir para las familias \(una hoja por alumno\)/.test(html), /id="incImprimirExpedienteBtn"[\s\S]*?Imprimir para mi expediente/.test(html),
-		/imprimirVersion\("familias"/.test(js) && /imprimirVersion\("expediente"/.test(js)], [true, true, true]);
-ok("impresión: cada hoja de familia empieza en su propia página carta",
+ok("botones: «Imprimir para las familias (2 hojas por alumno)» y «Imprimir resumen para mi expediente»",
+	[/id="incImprimirFamiliasBtn"[\s\S]*?Imprimir para las familias \(2 hojas por alumno\)/.test(html), /id="incImprimirExpedienteBtn"[\s\S]*?Imprimir resumen para mi expediente/.test(html),
+		/imprimirVersion\("familias"/.test(js) && /imprimirVersion\("resumen"/.test(js)], [true, true, true]);
+ok("con alumnos se imprimen los dos tantos; el resumen solo con varios alumnos; la hoja sola solo sin alumnos",
+	[/el\.imprimir\.classList\.toggle\("hidden", n > 0\)/.test(js), /el\.imprimirFamilias\.classList\.toggle\("hidden", n === 0\)/.test(js), /el\.imprimirExpediente\.classList\.toggle\("hidden", n <= 1\)/.test(js)],
+	[true, true, true]);
+ok("la ayuda explica los dos tantos y el resumen",
+	[/El «Ejemplar para el expediente» lo firma la familia y se queda contigo; la «Copia para la familia» también la firma y se la lleva\./.test(js), /el resumen para tu expediente, con los " \+ n \+ " alumnos y firma solo tuya y del director o directora/.test(js)], [true, true]);
+ok("impresión: cada hoja empieza en su propia página carta (no se mezcla con otra)",
 	/@media print \{[\s\S]*\.inc-hoja \+ \.inc-hoja \{[^}]*break-before: page; page-break-before: always;/.test(html), true);
+ok("impresión: el resumen con dos firmas en dos columnas", /@media print \{[\s\S]*\.inc-firmas\.inc-firmas-2 \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/.test(html), true);
+ok("al guardar no se agrega ninguna casilla de datos sensibles (basta el aviso del formulario)",
+	[/<input[^>]*type="checkbox"/.test(html.slice(html.indexOf('id="incForm"'), html.indexOf("</form>"))), /No escribas diagnósticos médicos ni datos de salud/.test(html)], [false, true]);
 ok("el formulario pide no escribir nombres de otros alumnos en la descripción", /evita escribir aquí los nombres de los otros alumnos/.test(html), true);
 
 // ── Excel: hoja Incidencias ──────────────────────────────────────────────────
 const hoja = E.hojaIncidencias([
 	{ fecha: "2026-09-20", hora: "08:00:00", asunto: "A", descripcion: "d", acuerdos: null, created_at: "2026-09-20T15:00:00Z", incidencia_alumnos: [{ alumno_id: "1" }] },
-	{ fecha: "2026-09-25", hora: null, asunto: "B", descripcion: "e", acuerdos: "x", created_at: "2026-09-25T15:00:00Z", incidencia_alumnos: [{ alumno_id: "1" }, { alumno_id: "2" }, { alumno_id: "borrado" }] },
+	{ fecha: "2026-09-25", hora: null, asunto: "B", descripcion: "e", acuerdos: "x", created_at: "2026-09-25T15:00:00Z", incidencia_alumnos: [{ alumno_id: "2" }, { alumno_id: "1" }, { alumno_id: "borrado" }] },
 	{ fecha: "2026-09-21", hora: "09:00:00", asunto: "C", descripcion: "f", acuerdos: "", created_at: "", incidencia_alumnos: [] },
-], { 1: "ANA", 2: "LUIS" });
+], { 1: "ANA", 2: "LUIS" }, { 1: { grado: 3, num_lista: 1 }, 2: { grado: 3, num_lista: 2 } });
 ok("Excel: encabezado de la hoja Incidencias", hoja[0], ["Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"]);
-ok("Excel: la más reciente primero, hora HH:MM, alumnos con ; y sin alumnos explicado",
+ok("Excel: la más reciente primero, hora HH:MM, alumnos en orden de lista con ; y sin alumnos explicado",
 	hoja.slice(1), [
 		["2026-09-25", "", "B", "ANA; LUIS", "e", "x", "2026-09-25"],
 		["2026-09-21", "09:00", "C", "Sin alumnos (se eliminaron del grupo)", "f", "", ""],
 		["2026-09-20", "08:00", "A", "ANA", "d", "", "2026-09-20"],
 	]);
+ok("Excel: alumnos en orden de lista en multigrado (grado y número de lista, no el orden de captura)",
+	E.hojaIncidencias([{ fecha: "2026-09-25", asunto: "M", descripcion: "d", incidencia_alumnos: [{ alumno_id: "c" }, { alumno_id: "a" }, { alumno_id: "b" }] }],
+		{ a: "ZETA", b: "BETO", c: "ALMA" }, { a: { grado: 3, num_lista: 2 }, b: { grado: 3, num_lista: 7 }, c: { grado: 4, num_lista: 1 } })[1][3], "ZETA; BETO; ALMA");
+ok("Excel: «Registrada el» en la fecha local de México (21:00 del 25 en México son las 03:00Z del 26)",
+	[E.fechaMexico("2026-09-26T03:00:00Z"), E.fechaMexico("2026-09-26T05:59:00+00:00"), E.fechaMexico("2026-09-26T06:00:00Z"), E.fechaMexico(""), E.fechaMexico(null)],
+	["2026-09-25", "2026-09-25", "2026-09-26", "", ""]);
+ok("Excel: la columna usa la fecha de México", E.hojaIncidencias([{ fecha: "2026-09-25", asunto: "N", descripcion: "d", created_at: "2026-09-26T02:30:00Z", incidencia_alumnos: [] }], {})[1][6], "2026-09-25");
 ok("Excel: sin incidencias, una fila que lo dice", E.hojaIncidencias([], {}), [hoja[0], ["Sin incidencias registradas en este grupo."]]);
 const hojas = [];
 const XLSXf = {
@@ -193,10 +223,19 @@ const XLSXf = {
 	},
 };
 const tablaMin = { encabezados: ["Alumno"], filas: [["ANA"]], maximos: [["ANA"]] };
-ok("Excel: con incidencias leídas, cuarta hoja «Incidencias»; sin leerlas, las tres de siempre",
-	[E.libroXLSX(XLSXf, tablaMin, { incidencias: [], nombrePorId: {} }).SheetNames, E.libroXLSX(XLSXf, tablaMin, {}).SheetNames],
-	[["Concentrado", "Máximos", "Léeme", "Incidencias"], ["Concentrado", "Máximos", "Léeme"]]);
-ok("Excel: la hoja Léeme menciona la hoja Incidencias", E.hojaLeeme({}).some((f) => /«Incidencias»/.test(f[1] || "")), true);
+const unaInc = [{ fecha: "2026-09-25", asunto: "A", descripcion: "d", incidencia_alumnos: [] }];
+ok("Excel: la hoja «Incidencias» solo si el grupo tiene incidencias; sin ellas, las tres hojas de siempre",
+	[E.libroXLSX(XLSXf, tablaMin, { incidencias: unaInc, nombrePorId: {} }).SheetNames, E.libroXLSX(XLSXf, tablaMin, { incidencias: [], nombrePorId: {} }).SheetNames, E.libroXLSX(XLSXf, tablaMin, {}).SheetNames],
+	[["Concentrado", "Máximos", "Léeme", "Incidencias"], ["Concentrado", "Máximos", "Léeme"], ["Concentrado", "Máximos", "Léeme"]]);
+// El renglón «Hojas» de la Léeme de 016770a (antes de B13 y B14), palabra por palabra
+const HOJAS_016770A = "«Concentrado»: una fila por alumno. «Máximos»: el máximo posible de cada alumno, en la misma celda que su obtenido. «Léeme»: esta explicación. El CSV trae solo la hoja «Concentrado».";
+const renglonHojas = (meta) => E.hojaLeeme(meta).find((f) => f[0] === "Hojas")[1];
+ok("Léeme: sin incidencias ni ajustes, el renglón «Hojas» queda exactamente como en 016770a",
+	[renglonHojas({}), renglonHojas({ incidencias: [], ajustesCalendario: [] })], [HOJAS_016770A, HOJAS_016770A]);
+ok("Léeme: sin incidencias ni ajustes, la hoja entera es la de antes (sin renglones de más)",
+	E.hojaLeeme({ incidencias: [], ajustesCalendario: [] }).some((f) => f[0] === "Calendario" || /Incidencias|Calendario/.test(f[1] || "")), false);
+ok("Léeme: el renglón «Hojas» menciona «Incidencias» solo si la hoja está",
+	[/«Incidencias»: las incidencias registradas del grupo/.test(renglonHojas({ incidencias: unaInc })), /«Incidencias»/.test(renglonHojas({ incidencias: [] }))], [true, false]);
 ok("exportar.html carga leer-todo antes de exportar.js",
 	leer("exportar.html").indexOf('src="js/leer-todo.js"') !== -1 && leer("exportar.html").indexOf('src="js/leer-todo.js"') < leer("exportar.html").indexOf('src="js/exportar.js"'), true);
 

@@ -318,6 +318,29 @@
 	}
 
 	/*
+		¿El ajuste guardado cae en un día que se puede ajustar? De lunes a viernes y dentro del
+		periodo de clases de un ciclo cargado (tras R19b: la base solo exige lunes a viernes; el
+		periodo depende del ciclo, así que lo revisan la pantalla y el Excel). No mira el tipo.
+	*/
+	function ajusteEnPeriodo(fecha) {
+		var f = fechaISO(fecha);
+		if (!f || esFinDeSemana(f)) return false;
+		var c = cicloDe(f);
+		return !!(c && f >= c.inicio && f <= c.fin);
+	}
+
+	/*
+		Los ajustes que de verdad cambian un día (tipoDeDia los aplica): en periodo, en día hábil y
+		con un tipo que contradice al oficial. Los demás no cambian nada. En orden de fecha.
+	*/
+	function ajustesVigentes(ajustes) {
+		return (ajustes || []).filter(function (a) {
+			var f = a && fechaISO(a.fecha);
+			return !!(f && AJUSTES[a.tipo] && ajustePermitido(f, a.tipo).ok);
+		}).sort(function (a, b) { return String(a.fecha) < String(b.fecha) ? -1 : (String(a.fecha) > String(b.fecha) ? 1 : 0); });
+	}
+
+	/*
 		tipoDeDia(fecha, ajustes) → { fecha, tipo, clase, etiqueta, motivo, ciclo, oficial, ajuste }
 		oficial: lo que dice el calendario SEP; ajuste: {tipo, motivo} del grupo si cambió el día.
 	*/
@@ -400,7 +423,7 @@
 		cicloDe: cicloDe, cicloPorNombre: cicloPorNombre, cicloVigente: cicloVigente, mesesDelCiclo: mesesDelCiclo,
 		infoOficial: infoOficial, tipoDeDia: tipoDeDia, esDiaDeClase: esDiaDeClase,
 		diasDeClase: diasDeClase, diasSinClase: diasSinClase, proximoSinClase: proximoSinClase,
-		ajustePermitido: ajustePermitido, mapaAjustes: mapaAjustes,
+		ajustePermitido: ajustePermitido, mapaAjustes: mapaAjustes, ajusteEnPeriodo: ajusteEnPeriodo, ajustesVigentes: ajustesVigentes,
 		fechaISO: fechaISO, sumarDias: sumarDias, diaSemana: diaSemana, esFinDeSemana: esFinDeSemana,
 		hoyLocal: hoyLocal, diasDelMes: diasDelMes, mesSiguiente: mesSiguiente,
 		nombreMes: nombreMes, fechaLarga: fechaLarga, fechaCorta: fechaCorta, textoFuente: textoFuente,

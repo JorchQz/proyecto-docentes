@@ -128,7 +128,7 @@
 			if (window.BandejaSalida && window.BandejaSalida.limpiarAlSalir) { try { await window.BandejaSalida.limpiarAlSalir(window.sb); } catch (_) { /* se sigue */ } }
 			var result = await window.sb.auth.signOut();
 			if (result.error) {
-				showMessage("error", "No se pudo cerrar sesion: " + result.error.message);
+				showMessage("error", "No se pudo cerrar sesión: " + result.error.message);
 				logoutBtn.disabled = false;
 				logoutBtn.classList.remove("opacity-70", "cursor-not-allowed");
 			}
@@ -192,7 +192,7 @@
 			var descripcion = (editGroupDescriptionInput.value || "").trim();
 
 			if (!nombre || !tipo) {
-				showMessage("error", "Nombre y tipo de organizacion son requeridos.");
+				showMessage("error", "Nombre y tipo de organización son requeridos.");
 				return;
 			}
 
@@ -262,11 +262,11 @@
 			}
 			var countText = formatStudentCount(studentsCount);
 			var confirmation = await showDeleteConfirmModal(
-				"Se eliminara el grupo \"" +
+				"Se eliminará el grupo \"" +
 					(currentGroup.nombre || "Sin nombre") +
 					"\" y " +
 					countText +
-					" asociado(s), con sus incidencias. Esta accion no se puede deshacer."
+					" asociado(s), con sus incidencias. Esta acción no se puede deshacer."
 			);
 			if (!confirmation) {
 				return;
@@ -350,7 +350,7 @@
 			if (!areValidWords(lastName1, true) || (lastName2 && !areValidWords(lastName2, true))) {
 				showStudentsMessage(
 					"error",
-					"Cada apellido solo puede contener letras, espacios, guiones y apostrofes."
+					"Cada apellido solo puede contener letras, espacios, guiones y apóstrofos."
 				);
 				return;
 			}
@@ -365,7 +365,7 @@
 					Number.isNaN(selectedGrade) ||
 					currentGroupGrades.indexOf(selectedGrade) === -1
 				) {
-					showStudentsMessage("error", "Selecciona un grado valido para el alumno.");
+					showStudentsMessage("error", "Selecciona un grado válido para el alumno.");
 					return;
 				}
 			}
@@ -473,7 +473,7 @@
 				var message = error.message || "Error desconocido";
 				if (message.toLowerCase().indexOf("grado") !== -1) {
 					hasStudentGradeColumn = false;
-					message += ". Verifica que exista la columna public.alumnos.grado y vuelve a cargar la pagina.";
+					message += ". Verifica que exista la columna public.alumnos.grado y vuelve a cargar la página.";
 				}
 
 				showStudentsMessage("error", "No se pudo guardar el alumno: " + message);
@@ -616,7 +616,7 @@
 		} catch (error) {
 			showStudentsMessage(
 				"error",
-				"No se pudo actualizar el No. de lista alfabetico: " +
+				"No se pudo actualizar el No. de lista alfabético: " +
 					(error.message || "Error desconocido")
 			);
 		}
@@ -708,7 +708,7 @@
 
 		if (!students.length) {
 			studentsListEl.innerHTML =
-				"<div class='rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500'>Aun no hay alumnos en este grupo.</div>";
+				"<div class='rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500'>Aún no hay alumnos en este grupo.</div>";
 			return;
 		}
 
@@ -826,9 +826,9 @@
 
 	async function deleteStudent(student) {
 		var confirmation = await showDeleteConfirmModal(
-			"Se eliminara el alumno \"" +
+			"Se eliminará el alumno \"" +
 				(student.nombre_completo || "Sin nombre") +
-				"\" con su ficha, y se quitara de las incidencias donde aparece (las incidencias se conservan). Esta accion no se puede deshacer."
+				"\" con su ficha, y se quitará de las incidencias donde aparece (las incidencias se conservan). Esta acción no se puede deshacer."
 		);
 
 		if (!confirmation) {
@@ -1341,18 +1341,18 @@
 			editGroupDataForm.classList.add("hidden");
 			editStudentsTabPanel.classList.remove("hidden");
 			tabGroupBtn.className =
-				"inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors";
+				"inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors";
 			tabStudentsBtn.className =
-				"inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white";
+				"inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white";
 			return;
 		}
 
 		editGroupDataForm.classList.remove("hidden");
 		editStudentsTabPanel.classList.add("hidden");
 		tabGroupBtn.className =
-			"inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white";
+			"inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white";
 		tabStudentsBtn.className =
-			"inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors";
+			"inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors";
 	}
 
 	function bindEditGradeRules() {
@@ -1387,12 +1387,12 @@
 		}
 
 		var messages = {
-			completa:     "En organizacion completa, cada maestro atiende un solo grado. Selecciona el grado que tu atiendes.",
-			bidocente:    "En escuelas bidocentes, generalmente cada maestro atiende 2 o 3 grados. Selecciona los grados que tu atiendes.",
-			tridocente:   "En escuelas tridocentes, generalmente cada maestro atiende 2 grados. Selecciona los grados que tu atiendes.",
-			tetradocente: "En escuelas tetradocentes, el maestro puede tener 1, 2 o mas grados. Selecciona los grados que tu atiendes.",
-			pentadocente: "En escuelas pentadocentes, generalmente un maestro atiende 2 grados. Selecciona los grados que tu atiendes.",
-			unitaria:     "En escuelas unitarias, un solo maestro atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tu atiendes.",
+			completa:     "En organización completa, cada maestro atiende un solo grado. Selecciona el grado que tú atiendes.",
+			bidocente:    "En escuelas bidocentes, generalmente cada maestro atiende 2 o 3 grados. Selecciona los grados que tú atiendes.",
+			tridocente:   "En escuelas tridocentes, generalmente cada maestro atiende 2 grados. Selecciona los grados que tú atiendes.",
+			tetradocente: "En escuelas tetradocentes, el maestro puede tener 1, 2 o más grados. Selecciona los grados que tú atiendes.",
+			pentadocente: "En escuelas pentadocentes, generalmente un maestro atiende 2 grados. Selecciona los grados que tú atiendes.",
+			unitaria:     "En escuelas unitarias, un solo maestro atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tú atiendes.",
 		};
 
 		editGroupGradesHelp.textContent = messages[type] || "Selecciona los grados que atiendes.";

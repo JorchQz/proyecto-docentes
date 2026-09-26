@@ -3,8 +3,10 @@
 	Salón (decisión de Jorge, 2026-09-25; va con el Aviso de privacidad aprobado ese día).
 
 	Un párrafo simple, en primera persona de la maestra: la lista, la asistencia, las
-	calificaciones, la ficha (fecha de nacimiento, datos del tutor) y el registro de incidencias;
-	solo ella los ve; pueden pedirle corregirlos o borrarlos. En Mi grupo, con tres botones:
+	calificaciones y los trabajos, la participación y la conducta, el diagnóstico, sus
+	observaciones, la ficha (fecha de nacimiento, género, datos del tutor) y el registro de
+	incidencias; solo ella los ve; pueden pedirle corregirlos o borrarlos; al final, "Más
+	información: jissez.com/tienda/privacidad" (decisión de Jorge, 2026-09-26). En Mi grupo, con tres botones:
 	  - Copiar (portapapeles; si el navegador no deja, se selecciona el texto para copiarlo a mano);
 	  - Compartir por WhatsApp (https://wa.me/?text=..., sin número: ella elige el chat);
 	  - Imprimir (una hoja carta solo con el aviso y su nombre).
@@ -13,17 +15,22 @@
 (function () {
 	"use strict";
 
+	// Lo mismo que lista el Aviso de privacidad (tienda/privacidad.html, punto 2) de los alumnos
+	// (decisión de Jorge, 2026-09-26: también participación y conducta, diagnóstico y observaciones)
+	var ENLACE_PRIVACIDAD = "jissez.com/tienda/privacidad";
 	var TEXTO = "Estimadas familias: les informo que llevo el registro del grupo en Mi Salón, una herramienta personal " +
-		"para mi trabajo como docente. Ahí anoto la lista del grupo, la asistencia, las calificaciones, la ficha de cada " +
-		"alumno (fecha de nacimiento y datos de la madre, padre o tutor) y el registro de incidencias. Solo yo veo esa " +
-		"información. Si algún dato de su hija o hijo está mal, o si quieren que lo borre, díganmelo y lo corrijo o lo borro.";
+		"para mi trabajo como docente. Ahí anoto la lista del grupo, la asistencia, las calificaciones y los trabajos, " +
+		"la participación y la conducta, el diagnóstico (cuaderno, lectura y matemáticas), mis observaciones, la ficha de " +
+		"cada alumno (fecha de nacimiento, género y datos de la madre, padre o tutor) y el registro de incidencias. Solo yo " +
+		"veo esa información. Si algún dato de su hija o hijo está mal, o si quieren que lo borre, díganmelo y lo corrijo o " +
+		"lo borro. Más información: " + ENLACE_PRIVACIDAD;
 
 	// wa.me sin número: WhatsApp abre el texto y la maestra elige el chat o grupo
 	function enlaceWhatsApp(texto) {
 		return "https://wa.me/?text=" + encodeURIComponent(texto || TEXTO);
 	}
 
-	var api = { TEXTO: TEXTO, enlaceWhatsApp: enlaceWhatsApp };
+	var api = { TEXTO: TEXTO, ENLACE_PRIVACIDAD: ENLACE_PRIVACIDAD, enlaceWhatsApp: enlaceWhatsApp };
 	if (typeof window !== "undefined") window.AvisoFamilias = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api; // pruebas en node
 

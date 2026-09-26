@@ -43,6 +43,8 @@
 		  "+52 33 1234 5678"          → ok, "3312345678"  (lada de país)
 		  "+52 1 33 1234 5678"        → ok, "3312345678"  (el "1" de celular que ya no se usa)
 		  "044 33 1234 5678" / "045…" → ok, "3312345678"  (prefijos de celular que ya no se usan)
+		  "01 33 1234 5678"           → ok, "3312345678"  (el 01 de larga distancia que ya no se usa)
+		  "1 33 1234 5678"            → ok, "3312345678"  (el 1 de celular sin el +52)
 		  "1234"                      → error: cuántos dígitos tiene y que deben ser 10
 	*/
 	function normalizarTelefono(texto) {
@@ -55,6 +57,8 @@
 		if (d.length === 13 && d.indexOf("521") === 0) d = d.slice(3);
 		else if (d.length === 12 && d.indexOf("52") === 0) d = d.slice(2);
 		else if (d.length === 13 && (d.indexOf("044") === 0 || d.indexOf("045") === 0)) d = d.slice(3);
+		else if (d.length === 12 && d.indexOf("01") === 0) d = d.slice(2);
+		else if (d.length === 11 && d.charAt(0) === "1") d = d.slice(1);
 		if (d.length !== 10) {
 			return {
 				ok: false, vacio: false, digitos: "",

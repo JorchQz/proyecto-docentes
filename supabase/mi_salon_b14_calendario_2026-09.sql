@@ -14,13 +14,16 @@
 --                                              (la autoridad educativa local ajustó el calendario,
 --                                              LGE art. 87)
 --    motivo: texto libre opcional (hasta 140 caracteres). Quitar un ajuste = borrar la fila.
+--    Solo de lunes a viernes (CHECK calendario_ajustes_dia_habil); el periodo de clases del
+--    ciclo lo revisan la pantalla y el Excel, que ignoran un ajuste fuera de él.
 --
 -- 2. roles_aseo: el rol de aseo de un grupo en un mes, guardado para poder reimprimirlo igual.
 --    Una fila por grupo y mes (mes = primer día del mes). Guarda la configuración (alumnos por
 --    día, con quién empezó, si continuó del mes anterior), el reparto día por día en asignacion
 --    (jsonb [{fecha, alumnos: [alumno_id]}], con los cambios a mano ya aplicados) y con quién
 --    sigue el mes siguiente (siguiente_alumno_id y su número de lista, por si ese alumno se da de
---    baja o se borra).
+--    baja o se borra) y los alumnos activos al generarlo (activos_al_generar, para avisar de
+--    altas posteriores).
 --
 -- RLS (las dos tablas): cada maestra solo lo suyo (auth.uid() = maestro_id) y, al escribir, solo
 -- en un grupo suyo; en roles_aseo, además, los alumnos de inicio y de continuación deben ser
@@ -59,6 +62,18 @@ create table if not exists public.calendario_ajustes (
 comment on table public.calendario_ajustes is
   'Días que la maestra cambia del calendario oficial SEP (js/calendario-sep.js) para un grupo: suspension/festividad_local/otro = sin clase; con_clase = sí hay clase aunque el oficial diga que no. Una fila por grupo y fecha.';
 
+-- Solo de lunes a viernes (tras R19b, 2026-09-26): los sábados y domingos nunca hay clase, así
+-- que un ajuste ahí no significa nada. extract(isodow) es inmutable para un date (1 lunes … 7
+-- domingo). El periodo de clases depende del ciclo (js/calendario-sep.js), así que ese límite
+-- no va en la base: la pantalla y el Excel ignoran los ajustes que no aplican.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'calendario_ajustes_dia_habil') then
+    alter table public.calendario_ajustes add constraint calendario_ajustes_dia_habil
+      check (extract(isodow from fecha) < 6);
+  end if;
+end $$;
+
 create unique index if not exists calendario_ajustes_grupo_fecha_uidx on public.calendario_ajustes (grupo_id, fecha);
 create index if not exists calendario_ajustes_maestro_idx on public.calendario_ajustes (maestro_id);
 
@@ -87,7 +102,23 @@ create table if not exists public.roles_aseo (
 );
 
 comment on table public.roles_aseo is
-  'Rol de aseo de un grupo en un mes (mes = primer día). asignacion: [{fecha, alumnos:[alumno_id]}] con los cambios a mano aplicados; siguiente_*: con quién sigue el mes siguiente si la maestra elige continuar.';
+  'Rol de aseo de un grupo en un mes (mes = primer día). asignacion: [{fecha, alumnos:[alumno_id]}] con los cambios a mano aplicados; siguiente_*: con quién sigue el mes siguiente si la maestra elige continuar; activos_al_generar: los alumnos activos cuando se generó.';
+
+-- Los alumnos activos al generar el rol (tras R19b, 2026-09-26): con esta lista la pantalla sabe
+-- quién se dio de alta (o volvió a estar activo) DESPUÉS de guardar y avisa "alumnos nuevos sin
+-- turno" para que la maestra regenere; el rol no cambia solo. Nula en un rol guardado antes de
+-- esta columna (solo en pruebas): entonces no se avisa de altas. Hasta 200 ids.
+alter table public.roles_aseo add column if not exists activos_al_generar uuid[];
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'roles_aseo_activos_largo') then
+    alter table public.roles_aseo add constraint roles_aseo_activos_largo
+      check (activos_al_generar is null or cardinality(activos_al_generar) <= 200);
+  end if;
+end $$;
+
+comment on column public.roles_aseo.activos_al_generar is 'Ids de los alumnos activos del grupo cuando se generó el rol (para avisar de altas posteriores). Nula en roles anteriores a la columna.';
 
 create unique index if not exists roles_aseo_grupo_mes_uidx on public.roles_aseo (grupo_id, mes);
 create index if not exists roles_aseo_maestro_idx on public.roles_aseo (maestro_id);

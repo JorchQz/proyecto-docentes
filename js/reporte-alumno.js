@@ -232,8 +232,12 @@
 		var algunPct = CAMPOS.some(function (c) { return porCampo[c] && !vacio(porCampo[c].porcentaje); });
 		var algunaConfirmada = CAMPOS.some(function (c) { return calificacionCampo(datos, c).tipo === "confirmada"; });
 		var asistencia = m.asistencia && m.asistencia.total > 0;
+		// "Qué le falta" con pendientes (del alumno o por revisar de la maestra) también es algo que
+		// mostrar: un alumno sin nada calificado puede deber productos (tras R19a)
+		var q = datos.queLeFalta;
+		var pendientes = !!(q && !q.cerrada && ((q.total || 0) > 0 || (q.porRevisar || 0) > 0));
 		return algunPct || algunaConfirmada || !!asistencia || !!datos.diagnostica ||
-			(datos.avancePda || []).length > 0 || (datos.retroalimentaciones || []).length > 0;
+			(datos.avancePda || []).length > 0 || (datos.retroalimentaciones || []).length > 0 || pendientes;
 	}
 
 	// ── Render: encabezado ────────────────────────────────────────────────────

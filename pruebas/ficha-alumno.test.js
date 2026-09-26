@@ -36,6 +36,11 @@ ok("teléfono: con lada de país +52 o 52, se quita",
 ok("teléfono: el 1 viejo de celular (+52 1) y los prefijos 044/045 se quitan",
 	["+52 1 33 1234 5678", "521 3312345678", "044 33 1234 5678", "045 55 1234 5678"].map(dig),
 	["3312345678", "3312345678", "3312345678", "5512345678"]);
+ok("teléfono: el 01 de larga distancia (12 dígitos) y el 1 de celular sin +52 (11 dígitos) se quitan (tras R19a)",
+	["01 33 1234 5678", "013312345678", "1 33 1234 5678", "13312345678", "01 (55) 1234-5678"].map(dig),
+	["3312345678", "3312345678", "3312345678", "3312345678", "5512345678"]);
+ok("teléfono: 12 dígitos que no empiezan con 52 ni 01, u 11 que no empiezan con 1, siguen sin guardarse",
+	["02 33 1234 5678", "23312345678"].map((t) => F.normalizarTelefono(t).ok), [false, false]);
 ok("teléfono vacío: válido (es opcional)", F.normalizarTelefono("   "), { ok: true, vacio: true, digitos: "", error: "" });
 ok("teléfono vacío: null y undefined también", [F.normalizarTelefono(null).vacio, F.normalizarTelefono(undefined).vacio], [true, true]);
 ok("teléfono corto o largo: no se guarda y dice cuántos dígitos tiene",
@@ -105,6 +110,20 @@ ok("Mi grupo: el enlace de WhatsApp abre aparte y sin referer", /id="editStudent
 	/waLink\.rel = "noopener noreferrer"/.test(mgJs), true);
 ok("Mi grupo: la lista pinta con textContent (sin innerHTML con datos de la ficha)",
 	!/innerHTML[^;]*(tutor_|nombre_completo|genero)/.test(mgJs), true);
+// Tras R19a: textos con acentos y objetos táctiles de 44 px en Mi grupo
+const SIN_ACENTO = /\b(eliminara|quitara|accion|pagina|Aun no|apostrofes|tu atiendes|mas grados|organizacion completa|tipo de organizacion|alfabetico|cerrar sesion|valido para|Aqui si)\b/;
+const cadenas = (mgJs.match(/"(?:[^"\\\n]|\\.)*"/g) || []).concat(mgHtml.replace(/<[^>]*>/g, "\n").split("\n"));
+ok("Mi grupo: mensajes con acentos (se eliminará, se quitará, esta acción, página, aún, tú, más, organización…)",
+	cadenas.filter((c) => SIN_ACENTO.test(c)), []);
+ok("Mi grupo: el aviso de eliminar alumno y grupo, con acentos",
+	[/Se eliminará el alumno/.test(mgJs), /se quitará de las incidencias/.test(mgJs), /Se eliminará el grupo/.test(mgJs), (mgJs.match(/Esta acción no se puede deshacer/g) || []).length], [true, true, true, 2]);
+ok("Mi grupo: todos los botones de 44 px o más (menú de acciones, pestañas, modal, guardar y cerrar)",
+	(mgHtml.match(/<button[^>]*>/g) || []).filter((b) => !/min-h-\[44px\]|h-12 w-12/.test(b)), []);
+ok("Mi grupo: las pestañas conservan los 44 px al cambiar (setEditTab)",
+	(mgJs.match(/tab(Group|Students)Btn\.className =\s*"[^"]*"/g) || []).map((c) => /min-h-\[44px\]/.test(c)), [true, true, true, true]);
+ok("Mi grupo: campos del alumno y casillas de grado de 44 px",
+	[["editStudentLastName1", "editStudentLastName2", "editStudentFirstNames", "editStudentGrade"].every((id) => new RegExp('id="' + id + '" class="[^"]*min-h-\\[44px\\]').test(mgHtml)),
+		(mgHtml.match(/<label class="flex items-center gap-2 min-h-\[44px\][^"]*">\s*<input type="checkbox" name="editGroupGrades"/g) || []).length], [true, 6]);
 ok("onboarding: el alta rápida no pide la ficha", !/tutor_|fecha_nacimiento|genero/.test(leer("js/onboarding.js")), true);
 
 // ── Migración B13 (lo que la base exige) ─────────────────────────────────────
@@ -112,6 +131,14 @@ const sql = leer("supabase/mi_salon_b13_ficha_incidencias_2026-09.sql");
 ok("base: teléfono de 10 dígitos, género cerrado, fecha acotada, largos",
 	[/tutor_telefono ~ '\^\[0-9\]\{10\}\$'/, /genero in \('nina', 'nino', 'prefiero_no_decir'\)/, /fecha_nacimiento >= date '1990-01-01'/,
 		/char_length\(tutor_nombre\) <= 120/, /char_length\(director_nombre\) <= 120/].map((r) => r.test(sql)), [true, true, true, true, true]);
+const sqlCodigo = sql.split(/\r?\n/).map((l) => l.replace(/--.*$/, "")).join("\n");
+ok("base: fecha de nacimiento futura rechazada por un trigger BEFORE INSERT OR UPDATE (no un CHECK con current_date)",
+	[/create or replace function public\.alumnos_fecha_nacimiento_no_futura\(\)\s*returns trigger\s*language plpgsql\s*security invoker\s*set search_path = ''/.test(sqlCodigo),
+		/if new\.fecha_nacimiento is not null and new\.fecha_nacimiento > current_date then\s*raise exception/.test(sqlCodigo),
+		/create trigger alumnos_fecha_nacimiento_no_futura\s*before insert or update of fecha_nacimiento on public\.alumnos\s*for each row execute function public\.alumnos_fecha_nacimiento_no_futura\(\);/.test(sqlCodigo),
+		/drop trigger if exists alumnos_fecha_nacimiento_no_futura on public\.alumnos;/.test(sqlCodigo),
+		/check \([^;]*current_date/.test(sqlCodigo)],
+	[true, true, true, true, false]);
 ok("base: columnas nuevas nulas (add column if not exists, sin not null ni default)",
 	(sql.match(/alter table public\.(alumnos|grupos) add column if not exists \w+ (date|text);/g) || []).length, 5);
 ok("base: sin CURP ni CCT por grupo", /add column[^;]*\b(curp|cct)\b/i.test(sql), false);

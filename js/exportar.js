@@ -347,6 +347,9 @@
 	*/
 	function hojaLeeme(meta) {
 		meta = meta || {};
+		// Las hojas opcionales solo se mencionan si el libro las trae (mismas reglas que libroXLSX)
+		var conIncidencias = hayIncidencias(meta);
+		var conCalendario = ajustesDelLibro(meta).length > 0;
 		var escala = meta.escala || {};
 		var valores = [];
 		if (escala.logrado !== undefined) valores.push("Logrado = " + escala.logrado);
@@ -371,8 +374,11 @@
 			["Asistencia", "La asistencia no es criterio de acreditación (Acuerdo 10/09/23, art. 7). Por eso NO debe usarse esta exportación para recalcular calificaciones con una plantilla que pondere la asistencia (por ejemplo, una que le dé 10 % a la asistencia). Las columnas de asistencia son solo dato de referencia."],
 			["Examen", "El examen por campo es APROXIMADO: el banco de preguntas no guarda el valor de cada pregunta, así que el máximo de cada campo se estima como valor total del examen entre número de preguntas."],
 			["Documento", "Mi salón es un complemento de la boleta oficial (SIGED). Este archivo no es un documento oficial de la SEP."],
-			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación. «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero. El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
-		].concat(meta.ajustesCalendario && meta.ajustesCalendario.length ? [
+			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación." +
+				(conIncidencias ? " «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero." : "") +
+				(conCalendario ? " «" + HOJA_CALENDARIO + "»: los días que el docente cambió del calendario escolar oficial para este grupo." : "") +
+				" El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
+		].concat(conCalendario ? [
 			["Calendario", "La hoja «" + HOJA_CALENDARIO + "» lista los días que el docente cambió del calendario escolar oficial de la SEP para este grupo (suspensiones propias o días con clase por un ajuste de la autoridad educativa local). Es solo dato: no cambia ningún cálculo de asistencia ni de calificaciones."],
 		] : []).concat([
 			[],
@@ -407,6 +413,30 @@
 		con_clase: "Con clase (ajuste al calendario oficial)",
 	};
 	var DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+	// Calendario SEP (js/calendario-sep.js): en el navegador, el global; en node, require
+	function calendarioSEP() {
+		if (typeof window !== "undefined" && window.CalendarioSEP) return window.CalendarioSEP;
+		if (typeof require === "function") { try { return require("./calendario-sep.js"); } catch (e) { /* sin el módulo */ } }
+		return null;
+	}
+	/*
+		Los ajustes que van al libro: solo los que de verdad cambian un día (lunes a viernes, dentro
+		del periodo de clases del ciclo y contrarios al calendario oficial), en orden de fecha. Un
+		ajuste fuera de eso no cambia nada (la pantalla también lo ignora). Sin el módulo del
+		calendario, al menos se quitan los fines de semana.
+	*/
+	function ajustesDelLibro(meta) {
+		var lista = (meta && meta.ajustesCalendario) || [];
+		var C = calendarioSEP();
+		if (C && C.ajustesVigentes) return C.ajustesVigentes(lista);
+		return lista.filter(function (a) {
+			var p = String(a.fecha || "").slice(0, 10).split("-");
+			if (p.length !== 3) return false;
+			var d = new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2]))).getUTCDay();
+			return d >= 1 && d <= 5;
+		});
+	}
 	// ajustes: filas de calendario_ajustes [{fecha, tipo, motivo}]
 	function hojaCalendario(ajustes) {
 		return [["Fecha", "Día", "Qué es", "Motivo"]].concat((ajustes || []).map(function (a) {
@@ -446,15 +476,53 @@
 	*/
 	var HOJA_INCIDENCIAS = "Incidencias";
 	var ENC_INCIDENCIAS = ["Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"];
-	function hojaIncidencias(incidencias, nombrePorId) {
+
+	// La hoja solo va si el grupo tiene incidencias (sin ellas, el libro queda como antes de B13)
+	function hayIncidencias(meta) {
+		return !!(meta && Array.isArray(meta.incidencias) && meta.incidencias.length);
+	}
+
+	/*
+		"Registrada el": la fecha LOCAL de México (created_at viene en UTC: una incidencia guardada
+		a las 21:00 del 25 es "2026-09-26T03:00Z"). America/Mexico_City, sin horario de verano desde
+		2022; si el navegador no tiene la zona, UTC-6.
+	*/
+	function fechaMexico(ts) {
+		if (!ts) return "";
+		var d = new Date(ts);
+		if (isNaN(d.getTime())) return String(ts).slice(0, 10);
+		try {
+			var partes = {};
+			new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" })
+				.formatToParts(d).forEach(function (p) { partes[p.type] = p.value; });
+			if (partes.year && partes.month && partes.day) return partes.year + "-" + partes.month + "-" + partes.day;
+		} catch (e) { /* sin la zona horaria */ }
+		return new Date(d.getTime() - 6 * 3600000).toISOString().slice(0, 10);
+	}
+
+	/*
+		ordenPorId: { alumno_id: { grado, num_lista, nombre } } para poner a los alumnos de cada
+		incidencia en orden de lista (grado, número de lista y nombre, como en la pantalla).
+	*/
+	function hojaIncidencias(incidencias, nombrePorId, ordenPorId) {
 		nombrePorId = nombrePorId || {};
+		ordenPorId = ordenPorId || {};
+		function clave(id) {
+			var o = ordenPorId[id] || {};
+			return [typeof o.grado === "number" ? o.grado : 99, typeof o.num_lista === "number" ? o.num_lista : 9999, String(nombrePorId[id] || "")];
+		}
+		function enOrden(a, b) {
+			var ka = clave(a), kb = clave(b);
+			return (ka[0] - kb[0]) || (ka[1] - kb[1]) || ka[2].localeCompare(kb[2], "es");
+		}
 		var lista = (incidencias || []).slice().sort(function (a, b) {
 			var ka = String(a.fecha || "") + " " + String(a.hora || ""), kb = String(b.fecha || "") + " " + String(b.hora || "");
 			return ka === kb ? 0 : (ka < kb ? 1 : -1);
 		});
 		if (!lista.length) return [ENC_INCIDENCIAS, ["Sin incidencias registradas en este grupo."]];
 		return [ENC_INCIDENCIAS].concat(lista.map(function (inc) {
-			var nombres = (inc.incidencia_alumnos || []).map(function (v) { return nombrePorId[v.alumno_id]; }).filter(Boolean);
+			var ids = (inc.incidencia_alumnos || []).map(function (v) { return v.alumno_id; }).filter(function (id) { return nombrePorId[id]; });
+			var nombres = ids.sort(enOrden).map(function (id) { return nombrePorId[id]; });
 			return [
 				inc.fecha || "",
 				inc.hora ? String(inc.hora).slice(0, 5) : "",
@@ -462,7 +530,7 @@
 				nombres.length ? nombres.join("; ") : "Sin alumnos (se eliminaron del grupo)",
 				inc.descripcion || "",
 				inc.acuerdos || "",
-				inc.created_at ? String(inc.created_at).slice(0, 10) : "",
+				fechaMexico(inc.created_at),
 			];
 		}));
 	}
@@ -490,16 +558,18 @@
 		hoja3["!cols"] = [{ wch: 34 }, { wch: 120 }];
 		XLSX.utils.book_append_sheet(wb, hoja3, HOJA_LEEME);
 
-		// Incidencias del grupo (solo si la página las leyó: meta.incidencias es una lista)
-		if (meta && Array.isArray(meta.incidencias)) {
-			var hoja4 = XLSX.utils.aoa_to_sheet(hojaIncidencias(meta.incidencias, meta.nombrePorId));
+		// Incidencias del grupo: solo si tiene alguna. Sin incidencias ni ajustes del calendario, el
+		// libro queda como siempre (tres hojas)
+		if (hayIncidencias(meta)) {
+			var hoja4 = XLSX.utils.aoa_to_sheet(hojaIncidencias(meta.incidencias, meta.nombrePorId, meta.ordenPorId));
 			hoja4["!cols"] = [{ wch: 12 }, { wch: 7 }, { wch: 40 }, { wch: 40 }, { wch: 80 }, { wch: 60 }, { wch: 14 }];
 			XLSX.utils.book_append_sheet(wb, hoja4, HOJA_INCIDENCIAS);
 		}
 
-		// Solo si el grupo tiene ajustes: sin ellos el libro queda como siempre (tres hojas)
-		if (meta && meta.ajustesCalendario && meta.ajustesCalendario.length) {
-			var hoja5 = XLSX.utils.aoa_to_sheet(hojaCalendario(meta.ajustesCalendario));
+		// Solo si el grupo tiene ajustes que cambian algún día (ajustesDelLibro)
+		var ajustesLibro = ajustesDelLibro(meta);
+		if (ajustesLibro.length) {
+			var hoja5 = XLSX.utils.aoa_to_sheet(hojaCalendario(ajustesLibro));
 			hoja5["!cols"] = [{ wch: 12 }, { wch: 11 }, { wch: 40 }, { wch: 60 }];
 			XLSX.utils.book_append_sheet(wb, hoja5, HOJA_CALENDARIO);
 		}
@@ -526,6 +596,8 @@
 		HOJA_LEEME: HOJA_LEEME,
 		HOJA_INCIDENCIAS: HOJA_INCIDENCIAS,
 		hojaIncidencias: hojaIncidencias,
+		fechaMexico: fechaMexico,
+		ajustesDelLibro: ajustesDelLibro,
 		HOJA_CALENDARIO: HOJA_CALENDARIO,
 		hojaCalendario: hojaCalendario,
 		encabezados: encabezados,
@@ -747,19 +819,22 @@
 		async function leerIncidencias() {
 			var filas = await window.LeerTodo.paginas(function () {
 				return window.sb.from("incidencias")
-					.select("id, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo))")
+					.select("id, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo, grado, num_lista))")
 					.eq("maestro_id", ctx.maestroId)
 					.eq("grupo_id", ctx.grupo.id)
 					.order("fecha", { ascending: false })
 					.order("id", { ascending: true });
 			});
-			var nombrePorId = {};
+			var nombrePorId = {}, ordenPorId = {};
 			filas.forEach(function (f) {
 				(f.incidencia_alumnos || []).forEach(function (v) {
-					if (v.alumnos && v.alumnos.nombre_completo) nombrePorId[v.alumno_id] = v.alumnos.nombre_completo;
+					if (v.alumnos && v.alumnos.nombre_completo) {
+						nombrePorId[v.alumno_id] = v.alumnos.nombre_completo;
+						ordenPorId[v.alumno_id] = { grado: v.alumnos.grado, num_lista: v.alumnos.num_lista };
+					}
 				});
 			});
-			return { incidencias: filas, nombrePorId: nombrePorId };
+			return { incidencias: filas, nombrePorId: nombrePorId, ordenPorId: ordenPorId };
 		}
 
 		/*
@@ -792,7 +867,7 @@
 					escuela: ctx.escuela, maestro: ctx.maestroNombre, fecha: hoyISO(),
 					alumnos: tabla.filas.length,
 					escala: window.MotorCalificacion ? window.MotorCalificacion.ESCALA_NIVEL : null,
-					incidencias: inc.incidencias, nombrePorId: inc.nombrePorId,
+					incidencias: inc.incidencias, nombrePorId: inc.nombrePorId, ordenPorId: inc.ordenPorId,
 				});
 				XLSX.writeFile(wb, nombre("xlsx"), { compression: true });
 			} catch (e) {

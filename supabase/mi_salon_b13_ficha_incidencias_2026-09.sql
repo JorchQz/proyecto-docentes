@@ -9,9 +9,10 @@
 -- no se puede leer).
 --
 -- 1. Ficha del alumno (todo opcional; SIN CURP, decisión de Jorge):
---      alumnos.fecha_nacimiento  date   entre 1990 y 2100 (la regla fina "edad de primaria" va en la
---                                       pantalla, js/ficha-alumno.js: un CHECK con current_date no es
---                                       inmutable)
+--      alumnos.fecha_nacimiento  date   entre 1990 y 2100 (CHECK) y nunca futura (trigger BEFORE
+--                                       INSERT OR UPDATE: un CHECK con current_date no es
+--                                       inmutable); la regla fina "edad de primaria" va en la
+--                                       pantalla, js/ficha-alumno.js
 --      alumnos.genero            text   'nina' | 'nino' | 'prefiero_no_decir'
 --      alumnos.tutor_nombre      text   hasta 120 caracteres
 --      alumnos.tutor_telefono    text   exactamente 10 dígitos (México, sin +52: la pantalla lo
@@ -82,7 +83,33 @@ begin
   end if;
 end $$;
 
-comment on column public.alumnos.fecha_nacimiento is 'Ficha (opcional): fecha de nacimiento. La pantalla pide una edad razonable para primaria (js/ficha-alumno.js).';
+-- Fecha de nacimiento futura: la base la rechaza con un trigger (tras R19a, 2026-09-26). Un CHECK
+-- con current_date no sirve (un CHECK debe ser inmutable: la fila que hoy pasa mañana también
+-- tendría que pasar, y current_date cambia). El trigger corre en cada alta o cambio de la fila,
+-- con la fecha del servidor: rechaza fecha_nacimiento > current_date. Solo mira NEW (no lee
+-- otras tablas): SECURITY INVOKER y search_path vacío. Las filas ya guardadas no se revisan al
+-- crearlo; solo al volver a escribirlas. La regla fina (edad de primaria) sigue en la pantalla.
+create or replace function public.alumnos_fecha_nacimiento_no_futura()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if new.fecha_nacimiento is not null and new.fecha_nacimiento > current_date then
+    raise exception 'La fecha de nacimiento no puede ser futura.' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+
+revoke all on function public.alumnos_fecha_nacimiento_no_futura() from public, anon, authenticated;
+
+drop trigger if exists alumnos_fecha_nacimiento_no_futura on public.alumnos;
+create trigger alumnos_fecha_nacimiento_no_futura
+  before insert or update of fecha_nacimiento on public.alumnos
+  for each row execute function public.alumnos_fecha_nacimiento_no_futura();
+
+comment on column public.alumnos.fecha_nacimiento is 'Ficha (opcional): fecha de nacimiento. La base rechaza una fecha futura (trigger alumnos_fecha_nacimiento_no_futura); la pantalla pide una edad razonable para primaria (js/ficha-alumno.js).';
 comment on column public.alumnos.genero is 'Ficha (opcional): nina | nino | prefiero_no_decir. Null = sin dato.';
 comment on column public.alumnos.tutor_nombre is 'Ficha (opcional): nombre de la madre, padre o tutor.';
 comment on column public.alumnos.tutor_telefono is 'Ficha (opcional): teléfono del tutor, 10 dígitos de México sin +52 (WhatsApp: wa.me/52 + este número).';

@@ -298,6 +298,24 @@ ok("XLSX: anchos de columna", hojas["Concentrado"]["!cols"].length, 62);
 	]);
 	ok("Léeme explica la hoja Calendario solo si está", [E.hojaLeeme({ ajustesCalendario: ajustes }).some((f) => f[0] === "Calendario"), E.hojaLeeme({}).some((f) => f[0] === "Calendario")], [true, false]);
 	ok("sin ajustes: tres hojas, como siempre", E.libroXLSX(XLSXFalso, tabla, { ajustesCalendario: [] }).SheetNames, ["Concentrado", "Máximos", "Léeme"]);
+	// Tras R19b: el renglón «Hojas» menciona «Calendario» cuando la hoja existe
+	const hojasDe = (meta) => E.hojaLeeme(meta).find((f) => f[0] === "Hojas")[1];
+	ok("Léeme: el renglón «Hojas» menciona «Calendario» solo si la hoja está",
+		[/«Calendario»: los días que el docente cambió del calendario escolar oficial/.test(hojasDe({ ajustesCalendario: ajustes })), /Calendario/.test(hojasDe({}))], [true, false]);
+	// Ajustes que no aplican (fin de semana, fuera del periodo, o que no cambian nada): fuera del libro
+	const raros = [{ fecha: "2026-10-10", tipo: "otro", motivo: "sábado" }, { fecha: "2026-08-10", tipo: "otro", motivo: "antes del periodo" }, { fecha: "2026-09-25", tipo: "otro", motivo: "ya es CTE" }];
+	ok("ajustes que no aplican: no van a la hoja ni hacen aparecer la hoja", [E.ajustesDelLibro({ ajustesCalendario: raros }), E.libroXLSX(XLSXFalso, tabla, { ajustesCalendario: raros }).SheetNames, /Calendario/.test(hojasDe({ ajustesCalendario: raros }))],
+		[[], ["Concentrado", "Máximos", "Léeme"], false]);
+	const mezcla = E.libroXLSX(XLSXFalso, tabla, { ajustesCalendario: raros.concat(ajustes.slice().reverse()) });
+	ok("ajustes mezclados: solo los que aplican, en orden de fecha", [mezcla.SheetNames, hojas["Calendario"].aoa.slice(1).map((f) => f[0])], [["Concentrado", "Máximos", "Léeme", "Calendario"], ["2026-10-12", "2026-10-30"]]);
+	// Sin incidencias ni ajustes: el libro y el renglón «Hojas» exactamente como en 016770a
+	ok("sin incidencias ni ajustes: tres hojas y el renglón «Hojas» de 016770a",
+		[E.libroXLSX(XLSXFalso, tabla, { incidencias: [], ajustesCalendario: [] }).SheetNames, hojasDe({ incidencias: [], ajustesCalendario: [] })],
+		[["Concentrado", "Máximos", "Léeme"], "«Concentrado»: una fila por alumno. «Máximos»: el máximo posible de cada alumno, en la misma celda que su obtenido. «Léeme»: esta explicación. El CSV trae solo la hoja «Concentrado»."]);
+	const pag = require("fs").readFileSync(require("path").join(__dirname, "..", "exportar.html"), "utf8");
+	ok("exportar.html menciona las hojas Incidencias y Calendario (solo si las hay) y carga el calendario SEP antes de exportar.js",
+		[/solo si las hay, la hoja <span class="font-medium">Incidencias<\/span>[\s\S]*la hoja <span class="font-medium">Calendario<\/span>/.test(pag),
+			pag.indexOf('src="js/calendario-sep.js"') > 0 && pag.indexOf('src="js/calendario-sep.js"') < pag.indexOf('src="js/exportar.js"')], [true, true]);
 }
 
 // ── Boleta cerrada y juicio docente (decisiones de Jorge 5, 6 y 7) ─────────

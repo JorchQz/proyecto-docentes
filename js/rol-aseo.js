@@ -17,6 +17,11 @@
 
 	Imagen: se dibuja con Canvas 2D (sin librerías): vertical, 1080 px de ancho, letra grande,
 	con título, mes, escuela y grupo si existen, los días por semana y los días sin clase en gris.
+	Un mes largo sale en varias imágenes de 2400 px como máximo ("1 de 3"), por semanas.
+
+	Alta después de guardar (tras R19b): el rol guarda los alumnos activos al generarlo
+	(activos_al_generar); un alumno activo que no estaba y no tiene turno sale en el aviso
+	"alumnos nuevos sin turno" (nuevosSinTurno) y la pantalla ofrece regenerar. No cambia solo.
 */
 
 (function () {
@@ -107,6 +112,19 @@
 		};
 	}
 
+	/*
+		Alumnos nuevos sin turno: activos hoy que NO estaban activos cuando se generó el rol
+		(activosAlGenerar, columna roles_aseo.activos_al_generar) y que no tienen ningún día en la
+		asignación (si la maestra ya lo puso a mano, no se avisa). Sin la lista (rol anterior a la
+		columna) no se puede saber quién es nuevo: []. → los alumnos (en el orden de activos).
+	*/
+	function nuevosSinTurno(asignacion, activos, activosAlGenerar) {
+		if (!Array.isArray(activosAlGenerar)) return [];
+		var conTurno = {};
+		(asignacion || []).forEach(function (d) { (d.alumnos || []).forEach(function (id) { conTurno[id] = true; }); });
+		return (activos || []).filter(function (a) { return activosAlGenerar.indexOf(a.id) === -1 && !conTurno[a.id]; });
+	}
+
 	// Validar lo leído de la base (jsonb): solo [{fecha, alumnos: [texto]}]
 	function asignacionValida(v) {
 		if (!Array.isArray(v)) return [];
@@ -162,24 +180,40 @@
 	}
 
 	// ── Imagen (Canvas 2D) ──────────────────────────────────────────────────────
+	/*
+		Una o varias imágenes de 1080 px de ancho y como máximo altoMax (2400 px, proporción de
+		teléfono): WhatsApp reduce una imagen muy alta y la letra queda chica (tras R19b, un mes
+		con 2 por día medía 1080 × 5084). Las semanas se reparten en imágenes sin partir una
+		semana si cabe entera en una imagen; si una semana sola no cabe (5 por día con nombres
+		largos), se parte entre días y su título dice "(continúa)". Con más de una imagen, cada
+		una dice "1 de 3" arriba y "Sigue en la imagen 2 de 3" abajo, y todas llevan el mismo
+		encabezado (se comparten sueltas en WhatsApp).
+		Un nombre que no cabe en un renglón sigue en el de abajo con sangría (colgante), para que
+		no parezca otro alumno.
+	*/
 	var IMG = {
-		ancho: 1080, margen: 64,
+		ancho: 1080, margen: 64, altoMax: 2400, sangria: 40,
 		fuente: "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
 		azul: "#1e3a8a", azulClaro: "#dbeafe", tinta: "#1c2434", gris: "#6b7280", grisClaro: "#e5e7eb", fondo: "#ffffff", verde: "#059669",
 	};
 
-	// Parte un texto en renglones que caben en `ancho` (por palabras; una palabra larguísima se corta)
-	function renglones(ctx, textoLargo, ancho) {
+	/*
+		Parte un texto en renglones que caben en `ancho` (por palabras; una palabra larguísima se
+		corta). anchoSiguientes: el ancho de los renglones 2 en adelante (más angosto con sangría);
+		si falta, el mismo.
+	*/
+	function renglones(ctx, textoLargo, ancho, anchoSiguientes) {
 		var palabras = String(textoLargo || "").split(/\s+/).filter(Boolean);
 		var out = [], linea = "";
+		function tope() { return out.length ? (anchoSiguientes || ancho) : ancho; }
 		palabras.forEach(function (p) {
 			var prueba = linea ? linea + " " + p : p;
-			if (ctx.measureText(prueba).width <= ancho) { linea = prueba; return; }
+			if (ctx.measureText(prueba).width <= tope()) { linea = prueba; return; }
 			if (linea) out.push(linea);
 			linea = p;
-			while (ctx.measureText(linea).width > ancho && linea.length > 1) {
+			while (ctx.measureText(linea).width > tope() && linea.length > 1) {
 				var corte = linea.length - 1;
-				while (corte > 1 && ctx.measureText(linea.slice(0, corte)).width > ancho) corte--;
+				while (corte > 1 && ctx.measureText(linea.slice(0, corte)).width > tope()) corte--;
 				out.push(linea.slice(0, corte));
 				linea = linea.slice(corte);
 			}
@@ -188,88 +222,154 @@
 		return out.length ? out : [""];
 	}
 
-	/*
-		disenar(ctx, datos) → { alto, ops } — calcula cada texto y rectángulo y su posición.
-		datos: { mes, escuela, grupo, semanas: porSemanas(filas), fechaCorta, fechaSemana }
-		Separado de pintar() para poder probarlo con un ctx falso.
-	*/
-	function disenar(ctx, datos) {
-		var W = IMG.ancho, M = IMG.margen, F = IMG.fuente;
-		var ops = [], y = 0;
-		function fuente(tam, peso) { return (peso || 400) + " " + tam + "px " + F; }
-		function textoOp(t, x, yy, tam, peso, color, alinear) { ops.push({ t: "texto", texto: t, x: x, y: yy, fuente: fuente(tam, peso), color: color, alinear: alinear || "left" }); }
+	function fuenteImg(tam, peso) { return (peso || 400) + " " + tam + "px " + IMG.fuente; }
+	function opTexto(t, x, y, tam, peso, color, alinear) {
+		return { t: "texto", texto: t, x: x, y: y, fuente: fuenteImg(tam, peso), color: color, alinear: alinear || "left" };
+	}
+	// Mueve hacia abajo las operaciones de un bloque armado desde y = 0
+	function mover(ops, dy) {
+		return ops.map(function (o) { var c = {}; for (var k in o) c[k] = o[k]; c.y = o.y + dy; return c; });
+	}
 
-		// Encabezado azul
-		ctx.font = fuente(58, 800);
+	// Encabezado azul (igual en todas las imágenes). etiqueta: "1 de 3" o "".
+	function encabezado(ctx, datos) {
+		var W = IMG.ancho, M = IMG.margen;
+		ctx.font = fuenteImg(58, 800);
 		var titulo = renglones(ctx, datos.mes, W - 2 * M);
-		ctx.font = fuente(34, 500);
+		ctx.font = fuenteImg(34, 500);
 		var escuela = datos.escuela ? renglones(ctx, datos.escuela, W - 2 * M) : [];
 		var grupo = datos.grupo ? renglones(ctx, "Grupo: " + datos.grupo, W - 2 * M) : [];
 		var alto = 56 + 40 + 16 + titulo.length * 70 + (escuela.length || grupo.length ? 18 : 0) + (escuela.length + grupo.length) * 46 + 48;
-		ops.push({ t: "rect", x: 0, y: 0, w: W, h: alto, color: IMG.azul });
-		y = 56;
-		textoOp("ROL DE ASEO", M, y + 30, 30, 700, "#bfdbfe");
-		y += 40 + 16;
-		titulo.forEach(function (l) { textoOp(l, M, y + 56, 58, 800, "#ffffff"); y += 70; });
-		if (escuela.length || grupo.length) y += 18;
-		escuela.forEach(function (l) { textoOp(l, M, y + 34, 34, 500, IMG.azulClaro); y += 46; });
-		grupo.forEach(function (l) { textoOp(l, M, y + 34, 34, 500, IMG.azulClaro); y += 46; });
-		y = alto + 40;
-
-		var colDia = 190;
-		var anchoNombres = W - 2 * M - colDia;
-		if (!datos.semanas.length) {
-			textoOp("Este mes no tiene días de clase.", M, y + 40, 40, 500, IMG.gris);
-			y += 80;
-		}
-		datos.semanas.forEach(function (s, si) {
-			if (si > 0) y += 18;
-			textoOp(datos.fechaSemana(s), M, y + 28, 28, 700, IMG.gris);
-			y += 48;
-			s.filas.forEach(function (f, fi) {
-				var inicio = y;
-				if (f.clase) {
-					ctx.font = fuente(42, 600);
-					var lineas = [];
-					if (!f.alumnos.length) lineas.push({ texto: "Sin alumnos", color: IMG.gris });
-					f.alumnos.forEach(function (a) {
-						renglones(ctx, a.nombre, anchoNombres).forEach(function (l) { lineas.push({ texto: l, color: a.baja ? IMG.gris : IMG.tinta }); });
-					});
-					var altoFila = Math.max(1, lineas.length) * 56 + 28;
-					if (fi % 2 === 0) ops.push({ t: "rect", x: M - 16, y: inicio, w: W - 2 * M + 32, h: altoFila, color: "#f3f6fc", radio: 18 });
-					textoOp(datos.fechaCorta(f.fecha), M + 8, inicio + 14 + 44, 42, 800, IMG.azul);
-					lineas.forEach(function (l, li) { textoOp(l.texto, M + colDia, inicio + 14 + 44 + li * 56, 42, 600, l.color); });
-					y += altoFila;
-				} else {
-					ctx.font = fuente(32, 500);
-					var motivo = renglones(ctx, "Sin clase: " + f.motivo, anchoNombres);
-					var altoGris = motivo.length * 42 + 24;
-					textoOp(datos.fechaCorta(f.fecha), M + 8, inicio + 12 + 34, 34, 700, "#9ca3af");
-					motivo.forEach(function (l, li) { textoOp(l, M + colDia, inicio + 12 + 34 + li * 42, 32, 500, "#9ca3af"); });
-					y += altoGris;
-				}
-				y += 8;
-			});
-		});
-		y += 32;
-		ops.push({ t: "rect", x: M, y: y, w: W - 2 * M, h: 2, color: IMG.grisClaro });
-		y += 30;
-		textoOp("Hecho con Jissez Mi Salón", M, y + 26, 26, 500, IMG.gris);
-		y += 26 + M;
-		return { alto: Math.ceil(y), ops: ops };
+		return {
+			alto: alto,
+			ops: function (etiqueta) {
+				var ops = [{ t: "rect", x: 0, y: 0, w: W, h: alto, color: IMG.azul }];
+				var y = 56;
+				ops.push(opTexto("ROL DE ASEO", M, y + 30, 30, 700, "#bfdbfe"));
+				if (etiqueta) ops.push(opTexto(etiqueta, W - M, y + 30, 30, 700, "#ffffff", "right"));
+				y += 40 + 16;
+				titulo.forEach(function (l) { ops.push(opTexto(l, M, y + 56, 58, 800, "#ffffff")); y += 70; });
+				if (escuela.length || grupo.length) y += 18;
+				escuela.forEach(function (l) { ops.push(opTexto(l, M, y + 34, 34, 500, IMG.azulClaro)); y += 46; });
+				grupo.forEach(function (l) { ops.push(opTexto(l, M, y + 34, 34, 500, IMG.azulClaro)); y += 46; });
+				return ops;
+			},
+		};
 	}
 
-	// Dibuja en un <canvas> (navegador). Devuelve el canvas.
-	function pintar(canvas, datos) {
+	var COL_DIA = 190, ALTO_TITULO_SEMANA = 48, SEP_SEMANA = 18, SEP_DIA = 8, ALTO_PIE = 32 + 2 + 30 + 26 + 64;
+
+	// Un día (con clase o sin clase), armado desde y = 0. par: fondo gris claro alternado.
+	function bloqueDia(ctx, datos, f, par) {
+		var W = IMG.ancho, M = IMG.margen;
+		var anchoNombres = W - 2 * M - COL_DIA;
+		var ops = [];
+		if (f.clase) {
+			ctx.font = fuenteImg(42, 600);
+			var lineas = [];
+			if (!f.alumnos.length) lineas.push({ texto: "Sin alumnos", color: IMG.gris, x: M + COL_DIA });
+			f.alumnos.forEach(function (a) {
+				// Sangría colgante: los renglones que siguen del mismo nombre, más adentro
+				renglones(ctx, a.nombre, anchoNombres, anchoNombres - IMG.sangria).forEach(function (l, i) {
+					lineas.push({ texto: l, color: a.baja ? IMG.gris : IMG.tinta, x: M + COL_DIA + (i ? IMG.sangria : 0) });
+				});
+			});
+			var alto = Math.max(1, lineas.length) * 56 + 28;
+			if (par) ops.push({ t: "rect", x: M - 16, y: 0, w: W - 2 * M + 32, h: alto, color: "#f3f6fc", radio: 18 });
+			ops.push(opTexto(datos.fechaCorta(f.fecha), M + 8, 14 + 44, 42, 800, IMG.azul));
+			lineas.forEach(function (l, li) { ops.push(opTexto(l.texto, l.x, 14 + 44 + li * 56, 42, 600, l.color)); });
+			return { alto: alto, ops: ops };
+		}
+		ctx.font = fuenteImg(32, 500);
+		var motivo = renglones(ctx, "Sin clase: " + f.motivo, anchoNombres, anchoNombres - IMG.sangria);
+		ops.push(opTexto(datos.fechaCorta(f.fecha), M + 8, 12 + 34, 34, 700, "#9ca3af"));
+		motivo.forEach(function (l, li) { ops.push(opTexto(l, M + COL_DIA + (li ? IMG.sangria : 0), 12 + 34 + li * 42, 32, 500, "#9ca3af")); });
+		return { alto: motivo.length * 42 + 24, ops: ops };
+	}
+
+	/*
+		paginas(ctx, datos, altoMax?) → [{ alto, ops }] — una por imagen, con cada texto y
+		rectángulo y su posición. datos: { mes, escuela, grupo, semanas: porSemanas(filas),
+		fechaCorta, fechaSemana }. Separado de pintar() para probarlo con un ctx falso.
+	*/
+	function paginas(ctx, datos, altoMax) {
+		var W = IMG.ancho, M = IMG.margen;
+		var tope = altoMax || IMG.altoMax;
+		var cab = encabezado(ctx, datos);
+		var inicio = cab.alto + 40;
+		var disponible = Math.max(200, tope - inicio - ALTO_PIE);
+
+		// Las semanas en bloques: título y días (con su alto)
+		var semanas = (datos.semanas || []).map(function (s) {
+			var dias = s.filas.map(function (f, fi) { return bloqueDia(ctx, datos, f, fi % 2 === 0); });
+			var alto = ALTO_TITULO_SEMANA + dias.reduce(function (t, d) { return t + d.alto + SEP_DIA; }, 0);
+			return { titulo: datos.fechaSemana(s), dias: dias, alto: alto };
+		});
+
+		// Reparto en páginas: [{ elementos: [{titulo}|{dia}], usado }]
+		var hojas = [{ elementos: [], usado: 0 }];
+		function actual() { return hojas[hojas.length - 1]; }
+		function nueva() { hojas.push({ elementos: [], usado: 0 }); }
+		function poner(el, alto) {
+			var h = actual();
+			var sep = el.titulo !== undefined && h.elementos.length ? SEP_SEMANA : 0;
+			h.elementos.push(el);
+			h.usado += sep + alto;
+		}
+		semanas.forEach(function (s) {
+			var h = actual();
+			var sep = h.elementos.length ? SEP_SEMANA : 0;
+			// La semana entera no cabe en lo que queda pero sí en una imagen nueva: a la siguiente
+			if (h.elementos.length && h.usado + sep + s.alto > disponible) nueva();
+			poner({ titulo: s.titulo }, ALTO_TITULO_SEMANA);
+			s.dias.forEach(function (d) {
+				var hh = actual();
+				if (hh.usado + d.alto + SEP_DIA > disponible && hh.elementos.length > 1) {
+					nueva();
+					poner({ titulo: s.titulo + " (continúa)" }, ALTO_TITULO_SEMANA);
+				}
+				poner({ dia: d }, d.alto + SEP_DIA);
+			});
+		});
+
+		var n = hojas.length;
+		return hojas.map(function (h, hi) {
+			var ops = cab.ops(n > 1 ? (hi + 1) + " de " + n : "");
+			var y = inicio;
+			if (!semanas.length) {
+				ops.push(opTexto("Este mes no tiene días de clase.", M, y + 40, 40, 500, IMG.gris));
+				y += 80;
+			}
+			h.elementos.forEach(function (el, ei) {
+				if (el.titulo !== undefined) {
+					if (ei > 0) y += SEP_SEMANA;
+					ops.push(opTexto(el.titulo, M, y + 28, 28, 700, IMG.gris));
+					y += ALTO_TITULO_SEMANA;
+					return;
+				}
+				ops = ops.concat(mover(el.dia.ops, y));
+				y += el.dia.alto + SEP_DIA;
+			});
+			y += 32;
+			ops.push({ t: "rect", x: M, y: y, w: W - 2 * M, h: 2, color: IMG.grisClaro });
+			y += 30;
+			ops.push(opTexto("Hecho con Jissez Mi Salón", M, y + 26, 26, 500, IMG.gris));
+			if (hi < n - 1) ops.push(opTexto("Sigue en la imagen " + (hi + 2) + " de " + n, W - M, y + 26, 26, 700, IMG.azul, "right"));
+			y += 26 + M;
+			return { alto: Math.ceil(y), ops: ops };
+		});
+	}
+
+	// Dibuja una página de paginas() en un <canvas> (navegador). Devuelve el canvas.
+	function pintar(canvas, pagina) {
 		var ctx = canvas.getContext("2d");
-		var d = disenar(ctx, datos);
 		canvas.width = IMG.ancho;
-		canvas.height = d.alto;
+		canvas.height = pagina.alto;
 		ctx = canvas.getContext("2d");
 		ctx.fillStyle = IMG.fondo;
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
 		ctx.textBaseline = "alphabetic";
-		d.ops.forEach(function (op) {
+		pagina.ops.forEach(function (op) {
 			if (op.t === "rect") {
 				ctx.fillStyle = op.color;
 				if (op.radio && ctx.roundRect) { ctx.beginPath(); ctx.roundRect(op.x, op.y, op.w, op.h, op.radio); ctx.fill(); }
@@ -287,9 +387,9 @@
 	var api = {
 		POR_DIA_MIN: POR_DIA_MIN, POR_DIA_MAX: POR_DIA_MAX, IMG: IMG,
 		esc: esc, porDiaValido: porDiaValido, ordenarAlumnos: ordenarAlumnos, generar: generar,
-		inicioContinuo: inicioContinuo, cambiar: cambiar, diferencias: diferencias, asignacionValida: asignacionValida,
+		inicioContinuo: inicioContinuo, cambiar: cambiar, diferencias: diferencias, nuevosSinTurno: nuevosSinTurno, asignacionValida: asignacionValida,
 		filasDelMes: filasDelMes, porSemanas: porSemanas, texto: texto,
-		renglones: renglones, disenar: disenar, pintar: pintar,
+		renglones: renglones, paginas: paginas, pintar: pintar,
 	};
 	if (typeof window !== "undefined") window.RolAseo = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api; // pruebas en node
