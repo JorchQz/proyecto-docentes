@@ -55,7 +55,7 @@ const calificaciones = {
 };
 
 const cuerpo = [
-	"var window = { AlcanceHoy: ALCANCE };",
+	"var window = { AlcanceHoy: ALCANCE, ProductosHoy: PH };",
 	"var alumnos = ALUMNOS;",
 	"var calificaciones = CALIFICACIONES;",
 	"var detallesAbiertos = DETALLES;",
@@ -67,11 +67,12 @@ const cuerpo = [
 	extraerFuncion("alumnosDeProducto"),
 	extraerFuncion("agruparPorGrado"),
 	extraerFuncion("detalleProducto"),
+	extraerFuncion("botonesProducto"),
 	extraerFuncion("bloqueProducto"),
 	"return { bloqueProducto: bloqueProducto };",
 ].join("\n");
 
-const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", cuerpo)(alumnos, calificaciones, {}, ALCANCE);
+const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", cuerpo)(alumnos, calificaciones, {}, ALCANCE, require("../js/productos-hoy.js"));
 
 const producto = { id: "prod-1", nombre: "Cartel del cuento", campo: "LEN", grados: ["2", "3"], tipo: "trabajo" };
 let html = "";
@@ -96,8 +97,14 @@ const soloTercero = api.bloqueProducto({ id: "prod-2", nombre: "Problemas", camp
 ok("producto de un grado: un solo alumno", soloTercero.indexOf("ALUMNO DE SEGUNDO") === -1, true);
 ok("producto de un grado: sin encabezado de grado", (soloTercero.match(/° grado/g) || []).length, 0);
 
+// Rotulado con sus grados (2026-09-26): en multigrado salían bloques iguales sin decir el grado
+ok("el producto de un grado dice «· 3°»", /Problemas<span[^>]*> · 3°<\/span>/.test(soloTercero), true);
+ok("el producto multigrado dice «· 2° y 3°»", /Cartel del cuento<span[^>]*> · 2° y 3°<\/span>/.test(html), true);
+ok("cada producto ofrece Renombrar y Quitar (44 px)",
+	/data-renombrar='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero) && /data-quitar-producto='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero), true);
+
 // El panel abierto sigue abierto tras redibujar
-const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE);
+const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE, require("../js/productos-hoy.js"));
 const htmlAbierto = api2.bloqueProducto(producto);
 ok("un detalle abierto sobrevive al redibujo",
 	htmlAbierto.indexOf("id='detalle-prod-1-al-3' class='rounded-xl") !== -1, true);

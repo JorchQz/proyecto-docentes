@@ -66,6 +66,7 @@ global.Event = function () {};
 require("../js/campos-formativos.js");
 require("../js/grupo-activo.js");
 require("../js/alcance-hoy.js");
+require("../js/productos-hoy.js");
 // La bandeja de salida (en node no hay IndexedDB: la cola vive en memoria, como sin él)
 require("../js/bandeja-salida.js");
 
@@ -82,7 +83,12 @@ const DATOS = {
 	alumnos: ALUMNOS,
 	asistencias: [{ alumno_id: "al-2", asistencia_estado: "presente" }],
 	registro_diario: [{ alumno_id: "al-3", participacion: 2, conducta: 1 }],
-	proyectos: [{ id: "p1", titulo: "Proyecto de prueba", estado: "activo" }],
+	proyectos: [
+		{ id: "p1", titulo: "Proyecto de prueba", estado: "activo" },
+		// Un proyecto por campo formativo: también activo (su id "ordena" antes que p1)
+		{ id: "0-otro", titulo: "Otro proyecto activo", estado: "activo" },
+		{ id: "pz", titulo: "Pausado", estado: "pausado" },
+	],
 	sesiones: [
 		{ id: "s1", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1" },
 		{ id: "s2", numero_sesion: 2, fecha: HOY, campo_formativo: "Saberes y Pensamiento Científico", momento: "Desarrollo", proyecto_id: "p1" },
@@ -90,6 +96,13 @@ const DATOS = {
 		{ id: "s3", numero_sesion: 3, fecha: null, campo_formativo: "Ética, Naturaleza y Sociedades", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "pendiente" },
 		// Ya completada y sin fecha: no se ofrece
 		{ id: "s0", numero_sesion: 0, fecha: null, campo_formativo: "Lenguajes", momento: "Cierre", proyecto_id: "p1", estado_sesion: "completada" },
+		// Segundo proyecto activo con 5 pendientes (antes el tope de 4 escondía proyectos)
+		{ id: "q1", numero_sesion: 1, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q2", numero_sesion: 2, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q3", numero_sesion: 3, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q4", numero_sesion: 4, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q5", numero_sesion: 5, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "z1", numero_sesion: 1, fecha: null, campo_formativo: "Lenguajes", proyecto_id: "pz", estado_sesion: "pendiente" },
 	],
 	productos_sesion: [
 		{ id: "pr1", sesion_id: "s1", tipo: "trabajo", nombre: "Cartel del cuento", grados: ["2", "3"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1 },
@@ -197,7 +210,21 @@ new Function(codigo)();
 		trasExperimento.indexOf("ALUMNO DE SEGUNDO"), -1);
 	ok("3. hay panel de detalle por alumno y producto",
 		sesiones.indexOf("id='detalle-pr1-al-2'") !== -1 && sesiones.indexOf("id='detalle-pr1-al-3'") !== -1, true);
-	ok("3. la tarea no se repite dentro de la sesión", sesiones.indexOf("Leer en casa"), -1);
+	// La tarea se califica en "Tareas por revisar"; en la sesión solo se lista (para renombrarla
+	// o quitarla), sin controles de calificación
+	ok("3. la tarea no se califica dentro de la sesión", sesiones.indexOf("data-producto='pr2'"), -1);
+	ok("3. la sesión lista sus tareas con su día de revisión",
+		/Tareas de esta sesión[\s\S]*Leer en casa[\s\S]*Se revisa hoy/.test(sesiones), true);
+	ok("3. el botón de la sesión es «Agregar actividad o tarea» (sin window.prompt)",
+		sesiones.indexOf("data-agregar-producto='s1'") !== -1 && sesiones.indexOf("Agregar actividad o tarea") !== -1 &&
+		!/window\.prompt/.test(codigo), true);
+	// Varios proyectos activos: la siguiente de CADA uno, con su nombre (antes 4 en total por uuid)
+	ok("3. Trabajar hoy: la siguiente del segundo proyecto activo también sale", sesiones.indexOf("data-trabajar-hoy='q1'") !== -1, true);
+	ok("3. Trabajar hoy: cada proyecto con su nombre",
+		sesiones.indexOf("Proyecto de prueba") !== -1 && sesiones.indexOf("Otro proyecto activo") !== -1, true);
+	ok("3. Trabajar hoy: sin tope, las demás pendientes se pueden elegir",
+		["q2", "q3", "q4", "q5"].every((id) => sesiones.indexOf("data-trabajar-hoy='" + id + "'") !== -1), true);
+	ok("3. Trabajar hoy: no ofrece sesiones de un proyecto pausado", sesiones.indexOf("data-trabajar-hoy='z1'"), -1);
 
 	// Y esto es lo que se caía en cadena: la sección 4
 	// Planeación → Hoy: las sesiones no traen fecha; el maestro elige cuál trabaja hoy
