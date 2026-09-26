@@ -93,7 +93,7 @@
 		</div>
 
 		<!-- Formulario (alta y edición) -->
-		<section id="incFormulario" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6" aria-labelledby="incFormTitulo">
+		<section id="incFormulario" data-captura-zona class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6" aria-labelledby="incFormTitulo">
 			<h2 id="incFormTitulo" class="text-lg font-bold text-gray-800">Nueva incidencia</h2>
 			<p class="text-sm text-gray-500 mt-1">Registra lo que pasó con hechos concretos. No escribas diagnósticos médicos ni datos de salud.</p>
 			<form id="incForm" class="mt-4 flex flex-col gap-4" novalidate>
@@ -141,7 +141,7 @@
 					<h2 id="incListaTitulo" class="text-lg font-bold text-gray-800">Registro del grupo</h2>
 					<p id="incListaResumen" class="text-sm text-gray-500"></p>
 				</div>
-				<button id="incNuevaBtn" type="button" disabled class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-lg bg-blue-700 text-white font-semibold hover:bg-blue-800 transition-colors disabled:opacity-60">
+				<button id="incNuevaBtn" data-captura type="button" disabled class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-lg bg-blue-700 text-white font-semibold hover:bg-blue-800 transition-colors disabled:opacity-60">
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
 					Nueva incidencia
 				</button>
@@ -197,6 +197,7 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>

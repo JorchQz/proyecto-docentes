@@ -32,7 +32,7 @@
 
 				<div id="notificationsMessage" class="mt-4"></div>
 
-				<form id="notificationsForm" class="mt-4 space-y-3">
+				<form id="notificationsForm" data-captura-zona class="mt-4 space-y-3">
 					<label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
 						<input id="notifTaskReview" type="checkbox" class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
 						<span>
@@ -63,7 +63,7 @@
 				</form>
 			</section>
 
-			<section id="pesoPonderacion" class="bg-white rounded-2xl shadow-md p-6">
+			<section id="pesoPonderacion" data-captura-zona class="bg-white rounded-2xl shadow-md p-6">
 				<h2 class="text-lg font-bold text-gray-800">Ponderación de calificaciones</h2>
 				<p class="text-sm text-gray-500 mt-1">Define el peso de cada rubro en la calificación trimestral. <span class="font-medium text-gray-700">Los pesos son relativos: no tienen que sumar 100.</span> Cada rubro vale su peso entre la suma de los rubros que tienen datos en ese campo, y entre todos siempre valen el 100 %. Con los de fábrica (28, 28, 6 y 33, que suman 95), si los cuatro tienen datos las tareas valen 28 de 95, es decir 29.5 %; si un campo no tiene examen, las tareas valen 28 de 62 en ese campo. Un rubro en 0 no cuenta. Reportes muestra cuánto valió cada rubro en cada cálculo.</p>
 
@@ -147,6 +147,7 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>
