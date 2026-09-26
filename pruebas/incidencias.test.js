@@ -90,6 +90,38 @@ ok("sin docente registrado: la línea de Docente queda en blanco con su rol",
 	/<p class='inc-firma-nombre'>&nbsp;<\/p><p class='inc-firma-rol'>Docente<\/p>/.test(docSin), true);
 ok("pie: no es documento oficial de la SEP", /No es un documento oficial de la SEP/.test(doc), true);
 
+// ── Varios alumnos: una hoja por familia y la completa para el expediente (Jorge, 2026-09-25) ──
+const MAL_F = `<img src=x onerror="alert(1)">`;
+const al3 = { nombre_completo: "SOTO DÍAZ ELENA", grado: 3, tutor_nombre: "" };
+const dVarios = { incidencia: inc, alumnos: [al1, al2, al3], grupo: grupo, docente: "Fanny Ruiz" };
+const fam = I.hojasFamilias(dVarios);
+ok("familias: una hoja por alumno", fam.length, 3);
+ok("familias: cada hoja lleva SOLO a su alumno (ningún nombre de los otros)",
+	fam.map((h, i) => [al1, al2, al3].map((a, j) => h.indexOf(a.nombre_completo) !== -1 ? j : -1).filter((j) => j !== -1).join(",") === String(i)), [true, true, true]);
+ok("familias: «Alumno involucrado» en singular y la leyenda de copia para la familia",
+	fam.every((h) => /Alumno involucrado</.test(h) && !/Alumnos involucrados/.test(h) && /<p class='inc-copia'>Copia para la familia<\/p>/.test(h) && /data-copia='familia'/.test(h)), true);
+ok("familias: el tutor de ESE alumno en su línea (y en blanco si su ficha no lo tiene)",
+	[/<p class='inc-firma-nombre'>María López<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[0]),
+		/<p class='inc-firma-nombre'>Pedro Ruiz<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[1]),
+		/<p class='inc-firma-nombre'>&nbsp;<\/p><p class='inc-firma-rol'>Madre, padre o tutor/.test(fam[2]),
+		fam[0].indexOf("Pedro Ruiz") === -1 && fam[1].indexOf("María López") === -1], [true, true, true, true]);
+ok("familias: la misma descripción, acuerdos, escuela, director y docente en cada hoja",
+	fam.every((h) => h.indexOf("Línea 1\nLínea 2") !== -1 && h.indexOf("Hablar con ambos.") !== -1 && h.indexOf("Esc. Benito Juárez") !== -1 && h.indexOf("Mtra. Rosa Díaz") !== -1 && h.indexOf("Fanny Ruiz") !== -1), true);
+const exp = I.hojaExpediente(dVarios);
+ok("expediente: una hoja con los tres alumnos y la leyenda de expediente",
+	[[al1, al2, al3].every((a) => exp.indexOf(a.nombre_completo) !== -1), /Alumnos involucrados/.test(exp), /Copia para el expediente de la docente/.test(exp), (exp.match(/<article /g) || []).length], [true, true, true, 1]);
+ok("un solo alumno: una hoja, sin leyenda de copia (familia y expediente son la misma)",
+	[I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo }).length, /inc-copia/.test(I.hojasFamilias({ incidencia: inc, alumnos: [al1], grupo: grupo })[0]), /inc-copia/.test(I.hojaExpediente({ incidencia: inc, alumnos: [al1], grupo: grupo }))],
+	[1, false, false]);
+// Medido con PDF (constructor Y, v06-hoja-larga.js): 1400 + 400 caracteres caben en una carta; 1600 + 500 no
+const txt = (n) => "x".repeat(n);
+ok("cabe en una carta: 1400 + 400 sí; 1600 + 500 no; con 5 alumnos en la lista del expediente, menos",
+	[I.cabeEnCarta({ descripcion: txt(1400), acuerdos: txt(400) }, 1), I.cabeEnCarta({ descripcion: txt(1600), acuerdos: txt(500) }, 1),
+		I.cabeEnCarta({ descripcion: txt(1400), acuerdos: txt(400) }, 5), I.cabeEnCarta({ descripcion: "Corta.\nDos renglones.", acuerdos: "" }, 3)],
+	[true, false, false, true]);
+ok("sin alumnos: ninguna hoja para familias", I.hojasFamilias({ incidencia: inc, alumnos: [], grupo: grupo }).length, 0);
+ok("familias: nombres escapados", I.hojasFamilias({ incidencia: inc, alumnos: [{ nombre_completo: MAL_F, tutor_nombre: MAL_F }, al2], grupo: grupo })[0].indexOf("<img") === -1, true);
+
 // ── Escape de todo lo capturado ──────────────────────────────────────────────
 const MAL = `<img src=x onerror="alert(1)">'"&`;
 const docMal = I.documento({
@@ -131,6 +163,12 @@ ok("la escuela y el director salen del GRUPO (no del perfil)", /escuela: grupo\.
 ok("controles de al menos 44 px (botones y casillas de alumnos)",
 	(html.match(/<button[^>]*>/g) || []).every((b) => /min-h-\[44px\]/.test(b)) && /min-h-\[44px\] px-3 py-2 rounded-lg border border-gray-200/.test(js), true);
 ok("sin Lucide por CDN ni emojis: íconos en línea", !/unpkg\.com\/lucide/.test(html) && /<svg/.test(html), true);
+ok("varios alumnos: botones «Imprimir para las familias (una hoja por alumno)» e «Imprimir para mi expediente»",
+	[/id="incImprimirFamiliasBtn"[\s\S]*?Imprimir para las familias \(una hoja por alumno\)/.test(html), /id="incImprimirExpedienteBtn"[\s\S]*?Imprimir para mi expediente/.test(html),
+		/imprimirVersion\("familias"/.test(js) && /imprimirVersion\("expediente"/.test(js)], [true, true, true]);
+ok("impresión: cada hoja de familia empieza en su propia página carta",
+	/@media print \{[\s\S]*\.inc-hoja \+ \.inc-hoja \{[^}]*break-before: page; page-break-before: always;/.test(html), true);
+ok("el formulario pide no escribir nombres de otros alumnos en la descripción", /evita escribir aquí los nombres de los otros alumnos/.test(html), true);
 
 // ── Excel: hoja Incidencias ──────────────────────────────────────────────────
 const hoja = E.hojaIncidencias([
@@ -186,7 +224,12 @@ ok("guardar_incidencia: security invoker, search_path vacío, exige alumno, sin 
 	[/function public\.guardar_incidencia\([\s\S]*?security invoker\s+set search_path = ''/.test(codigo), /cardinality\(v_alumnos\) = 0/.test(codigo),
 		/revoke all on function public\.guardar_incidencia\([^)]*\) from public, anon/.test(codigo)], [true, true, true]);
 ok("delete_own_account borra las incidencias (y la puente) antes de la cuenta",
-	/delete from public\.incidencia_alumnos where maestro_id = v;\s*delete from public\.incidencias where maestro_id = v;\s*delete from auth\.users where id = v;/.test(codigo), true);
+	/delete from public\.incidencia_alumnos where maestro_id = v;\s*delete from public\.incidencias where maestro_id = v;[\s\S]*?delete from auth\.users where id = v;/.test(codigo), true);
+// b13 y b14 redefinen delete_own_account: la de b13 trae también el calendario y el aseo (con
+// guarda to_regclass), así la última que se aplique borra todo, sea cual sea el orden
+ok("delete_own_account de b13 también borra roles_aseo y calendario_ajustes si existen (orden b13 → b14 o al revés)",
+	[/if to_regclass\('public\.roles_aseo'\) is not null then\s*execute 'delete from public\.roles_aseo where maestro_id = \$1' using v;/.test(codigo),
+		/if to_regclass\('public\.calendario_ajustes'\) is not null then\s*execute 'delete from public\.calendario_ajustes where maestro_id = \$1' using v;/.test(codigo)], [true, true]);
 ok("aditiva: no borra tablas, columnas ni datos ajenos",
 	/\bdrop (table|column)\b|\btruncate\b|alter table [^;]* drop /i.test(codigo), false);
 

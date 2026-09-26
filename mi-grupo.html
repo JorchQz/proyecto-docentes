@@ -17,6 +17,21 @@
 	<title>Mi grupo — Jissez</title>
 	<script src="https://cdn.tailwindcss.com"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		/* Imprimir el aviso a las familias: una hoja carta solo con el aviso (js/aviso-familias.js) */
+		@media print {
+			@page { size: letter portrait; margin: 20mm; }
+			body.imprime-aviso { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+			body.imprime-aviso > *:not(#avisoFamiliasHoja) { display: none !important; }
+			body.imprime-aviso #avisoFamiliasHoja { display: block !important; color: #111827; font-size: 13pt; line-height: 1.6; }
+			.aviso-hoja-titulo { font-size: 18pt; font-weight: 700; color: #1e3a8a; margin-bottom: 14pt; }
+			.aviso-hoja-texto { text-align: justify; }
+			.aviso-hoja-atte { margin-top: 28pt; }
+			.aviso-hoja-firma { margin-top: 48pt; width: 60%; border-top: 1px solid #111827; padding-top: 4pt; }
+			.aviso-hoja-nombre { font-weight: 600; min-height: 1.4em; }
+			.aviso-hoja-rol { font-size: 10pt; color: #4b5563; }
+		}
+	</style>
 </head>
 <body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-8 text-gray-800">
 	<div class="max-w-4xl mx-auto flex flex-col gap-6">
@@ -103,6 +118,28 @@
 						<button id="trimestreSugerenciaBtn" type="button" class="hidden inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg border border-blue-300 bg-white text-sm font-medium text-blue-800 hover:bg-blue-100 transition-colors"></button>
 					</div>
 					<div id="trimestreMensaje" class="mt-3" role="status" aria-live="polite"></div>
+				</section>
+
+				<!-- Aviso para las familias: qué datos lleva la maestra en Mi Salón (js/aviso-familias.js) -->
+				<section id="avisoFamilias" class="mt-6 rounded-xl border border-gray-200 p-4 sm:p-5" aria-labelledby="avisoFamiliasTitulo">
+					<h3 id="avisoFamiliasTitulo" class="text-base font-semibold text-gray-800">Aviso para las familias</h3>
+					<p class="mt-1 text-sm text-gray-500">Un texto corto para contarles a las familias qué datos llevas en Mi Salón. Cópialo, compártelo por WhatsApp o imprímelo.</p>
+					<p id="avisoFamiliasTexto" class="mt-3 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm leading-relaxed text-gray-800"></p>
+					<div class="mt-3 flex flex-col sm:flex-row flex-wrap gap-2">
+						<button id="avisoFamiliasCopiar" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-800 hover:bg-gray-100 transition-colors">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+							Copiar
+						</button>
+						<a id="avisoFamiliasWhatsApp" href="https://wa.me/" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg border border-emerald-300 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+							Compartir por WhatsApp
+						</a>
+						<button id="avisoFamiliasImprimir" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-800 hover:bg-gray-100 transition-colors">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+							Imprimir
+						</button>
+					</div>
+					<p id="avisoFamiliasEstado" class="mt-2 text-sm text-emerald-800 min-h-[1.25rem]" role="status" aria-live="polite"></p>
 				</section>
 
 				<section id="editGroupForm" class="hidden mt-6 border-t pt-6">
@@ -282,6 +319,17 @@
 		</div>
 	</div>
 
+	<!-- Hoja para imprimir el aviso a las familias (solo al tocar Imprimir; js/aviso-familias.js) -->
+	<article id="avisoFamiliasHoja" class="hidden" aria-hidden="true">
+		<h1 class="aviso-hoja-titulo">Aviso para las familias</h1>
+		<p id="avisoFamiliasHojaTexto" class="aviso-hoja-texto"></p>
+		<p class="aviso-hoja-atte">Atentamente,</p>
+		<div class="aviso-hoja-firma">
+			<p id="avisoFamiliasHojaFirma" class="aviso-hoja-nombre"></p>
+			<p class="aviso-hoja-rol">Docente del grupo</p>
+		</div>
+	</article>
+
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
@@ -290,6 +338,7 @@
 	<script src="js/grupo-activo.js"></script>
 	<script src="js/calendario-escolar.js"></script>
 	<script src="js/ficha-alumno.js"></script>
+	<script src="js/aviso-familias.js"></script>
 	<script src="js/mi-grupo.js"></script>
 </body>
 </html>

@@ -45,7 +45,10 @@
 --    permisos y la RLS de la maestra) para que la incidencia y su lista de alumnos cambien en UNA
 --    transacción: si un alumno no es del grupo, no se guarda nada.
 --
--- 4. delete_own_account: además borra incidencia_alumnos e incidencias.
+-- 4. delete_own_account: además borra incidencia_alumnos e incidencias. Trae también las líneas
+--    del calendario y el rol de aseo de mi_salon_b14_calendario_2026-09.sql con guarda
+--    to_regclass (2026-09-25, constructor Y): así la versión que quede, corra b13 antes o después
+--    de b14 (o se vuelva a correr), borra todo lo que exista. El orden de producción es b13 → b14.
 --
 -- Revisado con las columnas nuevas: el alta de alumnos de onboarding y de Mi grupo insertan por
 -- nombre de columna; GrupoActivo y hoy.js leen grupos con select * (una columna más no estorba);
@@ -295,6 +298,13 @@ begin
   -- no dependan de ella
   delete from public.incidencia_alumnos where maestro_id = v;
   delete from public.incidencias where maestro_id = v;
+  -- Calendario del grupo y rol de aseo (b14): solo si ya existen en esta base
+  if to_regclass('public.roles_aseo') is not null then
+    execute 'delete from public.roles_aseo where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.calendario_ajustes') is not null then
+    execute 'delete from public.calendario_ajustes where maestro_id = $1' using v;
+  end if;
 
   delete from auth.users where id = v;
 end $$;

@@ -233,5 +233,25 @@ const N = require("../js/navbar.js");
 ok("menú: Calendario en el grupo Grupo, con título", [/<p class="jz-titulo" id="jzMenuG3">Grupo<\/p><ul aria-labelledby="jzMenuG3">[\s\S]*href="mi-grupo\.html"[\s\S]*href="calendario\.html"/.test(N.construir("salon", "calendario")), N.tituloDe("salon", "calendario"), N.activoDe("salon", "calendario")],
 	[true, "Calendario", "calendario"]);
 
+// ── Decisiones de Jorge (2026-09-25) ─────────────────────────────────────────
+ok("registro de calificaciones: sin clase, «Registro de calificaciones (descarga administrativa)»",
+	[C.TIPOS.registro.clase, C.tipoDeDia("2026-11-13").etiqueta, /registro: "Registro de calificaciones \(descarga administrativa\)"/.test(leer("js/calendario.js"))],
+	[false, "Registro de calificaciones (descarga administrativa)", true]);
+ok("registro de calificaciones: la maestra lo mueve con sus ajustes (con clase el oficial, sin clase otro día)",
+	[C.esDiaDeClase("2026-11-13", [{ fecha: "2026-11-13", tipo: "con_clase" }, { fecha: "2026-11-12", tipo: "otro", motivo: "Registro de calificaciones" }]),
+		C.esDiaDeClase("2026-11-12", [{ fecha: "2026-11-13", tipo: "con_clase" }, { fecha: "2026-11-12", tipo: "otro" }])], [true, false]);
+const sep = leer("js/calendario-sep.js");
+ok("la asistencia, las tareas y el trimestre NO se conectan (decisión tomada, ya no «pendiente»)",
+	[/decisión PENDIENTE/i.test(sep), /NO se conecta con la asistencia, las tareas ni el trimestre/.test(sep), /veces que la maestra pasó lista/.test(sep)], [false, true, true]);
+ok("ningún cálculo lee el calendario (motor, alcance, reportes, Hoy, Inicio)",
+	["js/motor-calificacion.js", "js/alcance-hoy.js", "js/reportes.js", "js/hoy.js", "js/dashboard.js", "js/reporte-datos.js"].filter((f) => /CalendarioSEP|calendario_ajustes/.test(leer(f))), []);
+ok("rol de aseo opcional: la pestaña lo dice y el panel lo aclara",
+	[/id="tabAseo"[^>]*>Rol de aseo \(opcional\)<\/button>/.test(html), /id="aseoOpcional"[^>]*>Opcional: úsalo solo si en tu escuela el aseo del salón se organiza por turnos/.test(html)], [true, true]);
+ok("rol de aseo: nada fuera del calendario lo empuja (Inicio, Hoy, barra, avisos)",
+	["dashboard.html", "js/dashboard.js", "hoy.html", "js/hoy.js", "js/navbar.js", "js/bandeja-salida.js", "js/section-shell.js"].filter((f) => /aseo/i.test(leer(f))), []);
+ok("las confirmaciones de ajustes mencionan el aseo solo si hay roles guardados",
+	/function notaAseo\(\) \{\s*return Object\.keys\(roles\)\.length \? " Los roles de aseo ya guardados no cambian solos\." : "";/.test(leer("js/calendario.js")) &&
+	(leer("js/calendario.js").match(/Los roles de aseo ya guardados no cambian solos/g) || []).length === 1, true);
+
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

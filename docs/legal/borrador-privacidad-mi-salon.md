@@ -1,7 +1,13 @@
 # Borrador: ampliación del Aviso de Privacidad para Mi Salón
 
-**Estado:** borrador para que Jorge lo revise (y, si lo decide, su abogado). **No está publicado.**
-`tienda/privacidad.html` no se modificó. Fecha del borrador: 25 de septiembre de 2026.
+**Estado (25 de septiembre de 2026):** aprobado por Jorge y **publicado** en
+`tienda/privacidad.html` (bloques A a K; sin la nota de K sobre avisar a las cuentas, que es
+decisión de Jorge). Preguntas abiertas resueltas por Jorge ese día: 1 sí (cláusula de encargo en
+`tienda/terminos.html`, punto 10); 2 sí (misma cláusula: herramienta personal, no sistema oficial
+de la escuela ni de la SEP); 3 sí (texto para las familias en Mi grupo, `js/aviso-familias.js`);
+4 una hoja por alumno para cada familia y otra completa para el expediente (el punto I del aviso
+publicado ya lo dice así). La 5 sigue abierta (hoy: aviso en la pantalla y en el texto).
+Fecha del borrador: 25 de septiembre de 2026.
 
 **Por qué:** Mi Salón ahora guarda más datos de los alumnos y de sus familias: la ficha del
 alumno (fecha de nacimiento, género, nombre y teléfono de la madre, padre o tutor) y el registro

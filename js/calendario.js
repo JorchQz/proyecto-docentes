@@ -24,8 +24,10 @@
 	    WhatsApp, Compartir (Web Share API con archivo, cuando el aparato lo permite), Copiar
 	    texto e Imprimir.
 
-	No cambia ningún cálculo de asistencia ni de calificaciones (ver js/calendario-sep.js: dónde
-	se conectaría).
+	No cambia ningún cálculo de asistencia, tareas ni calificaciones, ni el trimestre (decisión de
+	Jorge, 2026-09-25: no se conectan; ver js/calendario-sep.js). El rol de aseo es un extra
+	opcional: la pestaña lo dice y nada fuera de ella (Inicio, avisos, recordatorios) lo sugiere;
+	las confirmaciones de ajustes solo lo mencionan si el grupo ya tiene roles guardados.
 
 	La parte pura (colores, HTML del mes, del rol y de la impresión) se exporta a node para
 	pruebas/calendario-sep.test.js.
@@ -62,7 +64,7 @@
 		cte: "Consejo Técnico Escolar (sin clase)",
 		festivo: "Suspensión oficial de labores",
 		vacaciones: "Vacaciones y recesos",
-		registro: "Registro de calificaciones (sin clase)",
+		registro: "Registro de calificaciones (descarga administrativa)",
 		formacion: "Formación docente (sin clase)",
 		otro: "Otro día sin clase",
 		entrega: "Comunicación de resultados a las familias (con clase)",
@@ -490,16 +492,21 @@
 			var ok;
 			el.dlgDia.close();
 			if (accion === "quitar") {
-				ok = await confirmar("Quitar el ajuste", "El " + largo + " volverá a ser como dice el calendario oficial para " + nombreGrupo + ". Los roles de aseo ya guardados no cambian solos.", "Quitar ajuste", true);
+				ok = await confirmar("Quitar el ajuste", "El " + largo + " volverá a ser como dice el calendario oficial para " + nombreGrupo + "." + notaAseo(), "Quitar ajuste", true);
 				if (ok) await quitarAjuste(fecha);
 			} else if (tipo) {
 				var texto = tipo === "con_clase"
 					? "El " + largo + " contará como día de clase en " + nombreGrupo + ", aunque el calendario oficial diga que no."
 					: "El " + largo + " no habrá clase en " + nombreGrupo + " (" + C.AJUSTES[tipo].etiqueta.toLowerCase() + (motivo ? ": " + motivo : "") + ").";
-				ok = await confirmar(tipo === "con_clase" ? "Marcar con clase" : "Marcar sin clase", texto + " Los roles de aseo ya guardados no cambian solos.", "Guardar");
+				ok = await confirmar(tipo === "con_clase" ? "Marcar con clase" : "Marcar sin clase", texto + notaAseo(), "Guardar");
 				if (ok) await guardarAjuste(fecha, tipo, motivo);
 			}
 		});
+
+		// El rol de aseo es opcional: solo se menciona si el grupo ya tiene roles guardados
+		function notaAseo() {
+			return Object.keys(roles).length ? " Los roles de aseo ya guardados no cambian solos." : "";
+		}
 
 		async function guardarAjuste(fecha, tipo, motivo) {
 			if (!C.ajustePermitido(fecha, tipo).ok) { mensaje("error", C.ajustePermitido(fecha, tipo).razon); return; }

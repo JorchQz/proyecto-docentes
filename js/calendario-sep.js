@@ -10,9 +10,12 @@
 	registro de calificaciones) solo vienen en la imagen del DOF; se leyeron de ahí y se cotejaron
 	con el boletín SEP 235 (referencia local: docs/referencia/calendario-sep-2026-2027.md).
 
-	Deducciones (no las dice el calendario con palabras; ver PREGUNTAS en el reporte a Jorge):
-	  - "Registro de calificaciones" (13-nov, 5-mar, 2-jul) se trata como día SIN clase: solo así
-	    la cuenta da los 185 días del acuerdo (225 días hábiles - 40 sin clase).
+	Decisiones de Jorge (2026-09-25):
+	  - "Registro de calificaciones" (13-nov, 5-mar, 2-jul) es día SIN clase, con la etiqueta
+	    "Registro de calificaciones (descarga administrativa)". Así la cuenta da los 185 días del
+	    acuerdo (225 días hábiles - 40 sin clase). La fecha puede cambiar en cada entidad o
+	    escuela: la maestra la ajusta en su calendario (marca con clase el día oficial y sin clase
+	    el día nuevo, con los ajustes del grupo).
 	  - "Registro y comunicación de los resultados de la evaluación" sí es día CON clase.
 
 	Un ciclo nuevo se agrega como otro objeto en CICLOS (mismas claves); nada de la lógica cambia.
@@ -31,17 +34,18 @@
 	Las funciones reciben los ajustes como arreglo de filas [{fecha, tipo, motivo}] o como mapa
 	{ "AAAA-MM-DD": {tipo, motivo} }.
 
-	── Dónde se conectaría con la asistencia (decisión PENDIENTE de Jorge; hoy NO se usa) ──
-	El porcentaje de asistencia hoy divide entre los días con lista capturada, no entre los días
-	de clase. Si Jorge decide usar el calendario:
-	  - js/motor-calificacion.js, bloque "Asistencia: SOLO referencia" (porAlumno[a.id].asistencia):
-	    el total sería CalendarioSEP.diasDeClase(inicio, fin, ajustesDelGrupo).length del periodo
-	    (desde el alta del alumno, AlcanceHoy.fechaAlta) y los días sin lista contarían aparte.
-	  - js/reportes.js, pestaña Asistencia (rango de fechas): la misma cuenta como "días de clase
-	    del periodo" junto a Presentes/Faltas/Justificadas.
-	  - js/alcance-hoy.js, venceTarea: el "siguiente día hábil" saltaría también los días sin clase
-	    (hoy solo salta fines de semana).
-	En los tres casos los ajustes se leen de calendario_ajustes del grupo (una consulta por grupo).
+	── El calendario NO se conecta con la asistencia, las tareas ni el trimestre ──
+	Decisión de Jorge (2026-09-25), ya tomada:
+	  - Asistencia: el porcentaje se calcula por las veces que la maestra pasó lista (los días con
+	    lista capturada), no por los días de clase del calendario: la maestra también puede faltar,
+	    y un día sin lista no es falta de nadie. js/motor-calificacion.js, js/reportes.js y demás
+	    no leen el calendario.
+	  - Tareas: el vencimiento sigue siendo el de js/alcance-hoy.js (venceTarea: su fecha de
+	    entrega o el siguiente día hábil, lunes a viernes); no salta los días sin clase.
+	  - Trimestre: sigue siendo manual, en Mi grupo (grupos.trimestre_actual); el calendario no lo
+	    cambia ni lo sugiere.
+	El calendario sirve para ver el ciclo, marcar los ajustes del grupo y, si la maestra lo usa, el
+	rol de aseo (opcional).
 */
 
 (function () {
@@ -56,7 +60,7 @@
 		cte:              { etiqueta: "Consejo Técnico Escolar", clase: false },
 		festivo:          { etiqueta: "Suspensión oficial de labores", clase: false },
 		vacaciones:       { etiqueta: "Vacaciones", clase: false },
-		registro:         { etiqueta: "Registro de calificaciones", clase: false },
+		registro:         { etiqueta: "Registro de calificaciones (descarga administrativa)", clase: false },
 		formacion:        { etiqueta: "Formación docente", clase: false },
 		otro:             { etiqueta: "Sin clase", clase: false },
 		// Oficiales con clase (se marcan, pero hay clase)

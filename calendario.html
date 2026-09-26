@@ -50,9 +50,9 @@
 			<p id="calSubtitulo" class="text-blue-100 text-sm md:text-base mt-1">Cargando...</p>
 		</header>
 
-		<div role="tablist" aria-label="Calendario y rol de aseo" class="flex gap-1 p-1 rounded-xl bg-gray-200/70 self-start max-w-full overflow-x-auto">
+		<div role="tablist" aria-label="Calendario y rol de aseo (opcional)" class="flex gap-1 p-1 rounded-xl bg-gray-200/70 self-start max-w-full overflow-x-auto">
 			<button id="tabCalendario" type="button" role="tab" data-tab="calendario" aria-controls="panelCalendario" aria-selected="true" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-white text-blue-800 shadow-sm">Calendario</button>
-			<button id="tabAseo" type="button" role="tab" data-tab="aseo" aria-controls="panelAseo" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold text-gray-600">Rol de aseo</button>
+			<button id="tabAseo" type="button" role="tab" data-tab="aseo" aria-controls="panelAseo" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold text-gray-600 whitespace-nowrap">Rol de aseo (opcional)</button>
 		</div>
 
 		<div id="calMensaje" class="hidden" role="status" aria-live="polite"></div>
@@ -108,6 +108,8 @@
 
 		<!-- ═══ Rol de aseo ═══ -->
 		<section id="panelAseo" role="tabpanel" aria-labelledby="tabAseo" class="flex flex-col gap-4" hidden>
+			<!-- Extra opcional (decisión de Jorge, 2026-09-25): no todas las escuelas lo usan -->
+			<p id="aseoOpcional" class="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">Opcional: úsalo solo si en tu escuela el aseo del salón se organiza por turnos. Si no, puedes ignorar esta pestaña.</p>
 			<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 				<h2 class="font-bold text-gray-800 mb-3">Configuración</h2>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">

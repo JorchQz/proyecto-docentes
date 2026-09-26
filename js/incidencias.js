@@ -15,6 +15,13 @@
 	  - firmas: Docente (nombre de la maestra), Director(a) (el del grupo; si falta, la línea
 	    queda en blanco con "Director(a)") y Madre, padre o tutor (con el nombre del tutor
 	    cuando hay un solo alumno y su ficha lo tiene).
+	Con varios alumnos (decisión de Jorge, 2026-09-25) la maestra elige al imprimir:
+	  - "Para las familias": una hoja por alumno (hojasFamilias), cada una solo con el nombre de
+	    su hija o hijo y el tutor de ese alumno si su ficha lo tiene; ninguna familia ve los
+	    nombres de los otros alumnos. Cada hoja empieza en su propia página carta.
+	  - "Para mi expediente": la hoja completa con todos los alumnos (hojaExpediente).
+	La descripción y los acuerdos son los mismos en todas las hojas (el formulario pide no
+	escribir ahí nombres de otros alumnos).
 	Todo texto capturado se escapa (esc) antes de entrar al HTML.
 
 	Si un alumno se elimina del grupo, sale de sus incidencias (la incidencia se conserva).
@@ -108,7 +115,9 @@
 		  alumnos:    [{ nombre_completo, grado, tutor_nombre }] (los involucrados que siguen en el grupo),
 		  grupo:      { nombre, ciclo_escolar, escuela, director_nombre, multigrado },
 		  docente:    nombre de la maestra,
-		  sinAlumnos: true si la incidencia se quedó sin alumnos (se eliminaron del grupo)
+		  sinAlumnos: true si la incidencia se quedó sin alumnos (se eliminaron del grupo),
+		  copia:      "familia" | "expediente" | undefined: una leyenda bajo el título (solo
+		              cuando la incidencia tiene varios alumnos y hay dos versiones)
 		}
 	*/
 	function documento(d) {
@@ -122,6 +131,8 @@
 		var acuerdos = limpiar(inc.acuerdos);
 		// Nombre del tutor en su línea: solo con un alumno y si su ficha lo tiene
 		var tutor = alumnos.length === 1 ? limpiar(alumnos[0].tutor_nombre) : "";
+		var leyenda = d.copia === "familia" ? "Copia para la familia"
+			: d.copia === "expediente" ? "Copia para el expediente de la docente" : "";
 
 		function dato(etq, valor) {
 			return "<div><dt>" + esc(etq) + "</dt><dd>" + (valor ? esc(valor) : "&nbsp;") + "</dd></div>";
@@ -139,12 +150,13 @@
 			: "<p>" + esc(d.sinAlumnos ? "Sin alumnos registrados (se eliminaron del grupo)." : "Sin alumnos registrados.") + "</p>";
 
 		return (
-			"<article class='inc-hoja'>" +
+			"<article class='inc-hoja'" + (d.copia ? " data-copia='" + esc(d.copia) + "'" : "") + ">" +
 			"<header class='inc-enc'>" +
 			(escuela
 				? "<p class='inc-escuela'>" + esc(escuela) + "</p>"
 				: "<p class='inc-escuela inc-escuela-vacia'>Escuela: ______________________________</p>") +
 			"<h1>Registro de incidencia</h1>" +
+			(leyenda ? "<p class='inc-copia'>" + esc(leyenda) + "</p>" : "") +
 			"<dl class='inc-datos'>" +
 			dato("Grupo", g.nombre || "") +
 			dato("Ciclo escolar", g.ciclo_escolar || "") +
@@ -169,6 +181,42 @@
 			"<p class='inc-pie'>Registro interno del grupo elaborado en Mi Salón (Jissez). No es un documento oficial de la SEP.</p>" +
 			"</article>"
 		);
+	}
+
+	/*
+		hojasFamilias(d) → [HTML] una hoja por alumno involucrado (mismo d que documento): cada
+		una solo con ese alumno y el tutor de su ficha. Con un solo alumno, una hoja sin leyenda
+		(es la misma que la del expediente). Sin alumnos, [].
+		hojaExpediente(d) → la hoja completa, con la leyenda de expediente si hay varios alumnos.
+	*/
+	function hojasFamilias(d) {
+		d = d || {};
+		var alumnos = d.alumnos || [];
+		if (alumnos.length <= 1) return alumnos.length ? [documento(d)] : [];
+		return alumnos.map(function (al) {
+			return documento(Object.assign({}, d, { alumnos: [al], copia: "familia" }));
+		});
+	}
+	function hojaExpediente(d) {
+		d = d || {};
+		return documento((d.alumnos || []).length > 1 ? Object.assign({}, d, { copia: "expediente" }) : d);
+	}
+
+	/*
+		¿Cabe la hoja en UNA carta? Estimación por renglones de la descripción y los acuerdos
+		(cada párrafo ocupa sus renglones de ~95 caracteres a 11 pt) más los alumnos de la lista.
+		Medido con PDF (2026-09-25): con el encabezado, los datos y las firmas caben unos 20
+		renglones de texto; con más, la hoja sigue en una segunda página (no se corta a la mitad de
+		otra hoja: cada hoja empieza en su página). → true si cabe.
+	*/
+	var CARACTERES_RENGLON = 95, RENGLONES_CARTA = 20;
+	function renglones(texto) {
+		return limpiar(texto).split("\n").reduce(function (s, p) { return s + Math.max(1, Math.ceil(p.length / CARACTERES_RENGLON)); }, 0);
+	}
+	function cabeEnCarta(inc, nAlumnos) {
+		inc = inc || {};
+		var acuerdos = limpiar(inc.acuerdos) ? renglones(inc.acuerdos) : 3; // sin acuerdos: 3 renglones para escribir
+		return renglones(inc.descripcion) + acuerdos + Math.max(0, (nAlumnos || 1) - 1) <= RENGLONES_CARTA;
 	}
 
 	/*
@@ -215,6 +263,9 @@
 		ordenar: ordenar,
 		nombreAlumno: nombreAlumno,
 		documento: documento,
+		hojasFamilias: hojasFamilias,
+		hojaExpediente: hojaExpediente,
+		cabeEnCarta: cabeEnCarta,
 		tarjeta: tarjeta,
 	};
 	if (typeof window !== "undefined") window.Incidencias = api;
@@ -253,6 +304,9 @@
 			hoja: document.getElementById("incHoja"),
 			volver: document.getElementById("incVolverBtn"),
 			imprimir: document.getElementById("incImprimirBtn"),
+			imprimirFamilias: document.getElementById("incImprimirFamiliasBtn"),
+			imprimirExpediente: document.getElementById("incImprimirExpedienteBtn"),
+			docNota: document.getElementById("incDocNota"),
 			confirmar: document.getElementById("incConfirmar"),
 			confirmarFondo: document.getElementById("incConfirmarFondo"),
 			confirmarTexto: document.getElementById("incConfirmarTexto"),
@@ -481,9 +535,10 @@
 		}
 
 		// ── Documento ──
-		function verDocumento(inc) {
+		var docActual = null; // { inc, datos } de la incidencia abierta
+		function datosDocumento(inc) {
 			var invol = involucrados(inc);
-			el.hoja.innerHTML = documento({
+			return {
 				incidencia: inc,
 				alumnos: invol,
 				sinAlumnos: !invol.length && (inc.incidencia_alumnos || []).length === 0,
@@ -492,16 +547,60 @@
 					director_nombre: grupo.director_nombre, multigrado: multigrado(),
 				},
 				docente: docente,
-			});
+			};
+		}
+		// El nombre del PDF al guardar: "Incidencia 2026-09-25 Asunto" (+ la versión)
+		function tituloPdf(inc, version) {
+			return ("Incidencia " + inc.fecha + " " + limpiar(inc.asunto)).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80) + (version ? " - " + version : "");
+		}
+		/*
+			Pinta en pantalla la versión que se va a imprimir: "familias" (una hoja por alumno) o
+			"expediente" (la completa). Con un solo alumno (o ninguno) hay una sola hoja.
+		*/
+		function pintarVersion(version) {
+			if (!docActual) return;
+			var d = docActual.datos, n = d.alumnos.length;
+			if (n > 1 && version === "familias") {
+				el.hoja.innerHTML = hojasFamilias(d).join("");
+				el.docNota.textContent = "En pantalla: " + n + " hojas para las familias, una por alumno. Cada una lleva solo el nombre de su hija o hijo y sale en su propia hoja carta.";
+			} else if (n > 1) {
+				el.hoja.innerHTML = hojaExpediente(d);
+				el.docNota.textContent = "Esta incidencia tiene " + n + " alumnos. En pantalla: la hoja completa para tu expediente. Para las familias se imprime una hoja por alumno, solo con el nombre de su hija o hijo.";
+			} else {
+				el.hoja.innerHTML = documento(d);
+				el.docNota.textContent = "";
+			}
+			// Texto largo: la hoja no cabe en una carta y sigue en una segunda página
+			var cabe = cabeEnCarta(docActual.inc, n > 1 && version !== "familias" ? n : 1);
+			if (!cabe) {
+				el.docNota.textContent = (el.docNota.textContent ? el.docNota.textContent + " " : "") +
+					"La descripción y los acuerdos son largos: " + (n > 1 && version === "familias" ? "cada hoja" : "la hoja") +
+					" puede seguir en una segunda página. Si la quieres en una sola hoja carta, acórtalos con «Editar».";
+			}
+			el.docNota.classList.toggle("hidden", n <= 1 && cabe);
+			document.title = tituloPdf(docActual.inc, n > 1 ? (version === "familias" ? "familias" : "expediente") : "");
+		}
+		function verDocumento(inc) {
+			docActual = { inc: inc, datos: datosDocumento(inc) };
+			var varios = docActual.datos.alumnos.length > 1;
+			el.imprimir.classList.toggle("hidden", varios);
+			el.imprimirFamilias.classList.toggle("hidden", !varios);
+			el.imprimirExpediente.classList.toggle("hidden", !varios);
+			pintarVersion("expediente");
 			el.pantalla.classList.add("hidden");
 			el.doc.classList.remove("hidden");
 			el.doc.classList.add("flex");
-			// El nombre del PDF al guardar: "Incidencia 2026-09-25 Asunto"
-			document.title = ("Incidencia " + inc.fecha + " " + limpiar(inc.asunto)).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 90);
 			window.scrollTo(0, 0);
 			el.volver.focus();
 		}
+		function imprimirVersion(version, boton) {
+			pintarVersion(version);
+			ultimoBotonImprimir = boton;
+			window.print();
+		}
+		var ultimoBotonImprimir = null;
 		function cerrarDocumento() {
+			docActual = null;
 			el.doc.classList.add("hidden");
 			el.doc.classList.remove("flex");
 			el.pantalla.classList.remove("hidden");
@@ -532,9 +631,11 @@
 			else if (accion === "eliminar") eliminar(inc);
 		});
 		el.volver.addEventListener("click", cerrarDocumento);
-		el.imprimir.addEventListener("click", function () { window.print(); });
+		el.imprimir.addEventListener("click", function () { imprimirVersion("expediente", el.imprimir); });
+		el.imprimirFamilias.addEventListener("click", function () { imprimirVersion("familias", el.imprimirFamilias); });
+		el.imprimirExpediente.addEventListener("click", function () { imprimirVersion("expediente", el.imprimirExpediente); });
 		window.addEventListener("afterprint", function () {
-			if (!el.doc.classList.contains("hidden")) el.imprimir.focus();
+			if (!el.doc.classList.contains("hidden") && ultimoBotonImprimir) ultimoBotonImprimir.focus();
 		});
 
 		// ── Arranque ──
