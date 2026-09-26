@@ -1,787 +1,695 @@
 /*
-	Exámenes: lista de exámenes disponibles y captura de respuestas por alumno.
+	examen.js — "Exámenes" de Mi Salón (decisiones de Jorge, 2026-09-26).
 
-	Arranque común (js/lectura.js): si el grupo, el examen, sus preguntas, los alumnos o las
-	respuestas guardadas no se pudieron leer, la página se detiene con el aviso "No se pudo
-	cargar" (antes decía "Examen no encontrado" o mostraba los exámenes de todos los grupos).
+	Los exámenes del catálogo se venden en la tienda y ya NO son parte de Mi Salón: esta pantalla
+	no los lista ni los aplica (sus datos se conservan; lo que una maestra ya había aplicado se
+	abre en js/examen-anterior.js y el motor lo sigue leyendo).
+
+	La maestra elige, por examen, uno de dos caminos (supabase/mi_salon_b18_examenes_2026-09.sql):
+	  1. "Solo subir resultados": por campo formativo, cuántas preguntas tenía y cuántos aciertos
+	     sacó cada alumno. Sirve con cualquier examen (propio, de la tienda o revisado a mano).
+	     Captura rápida en tabla: alumnos por campos, un número por celda, validado (aciertos ≤
+	     preguntas). Aquí mismo.
+	  2. "Crear mi examen": preguntas de opción múltiple (sugerida), verdadero o falso, completar y
+	     abierta; imprimir el examen y la hoja de respuestas; revisar con la cámara, tocando o a
+	     mano (js/examen-propio.js y js/examen-camara.js).
+	Los dos alimentan el rubro "examen" del motor por campo formativo (js/motor-calificacion.js);
+	la conversión porcentaje → calificación sigue solo en SQL.
+
+	Lista: los exámenes del grupo activo con su estado (sin aplicar, en revisión, calificado).
+
+	Guardar necesita señal: estas capturas no pasan por la cola de Hoy (js/bandeja-salida.js
+	está hecha para asistencia, cierre del día y calificaciones de productos). Si no hay señal,
+	lo capturado se queda en pantalla marcado "sin guardar", se avisa y se reintenta con un toque
+	(o solo, al volver la señal). Salir con algo sin guardar pregunta antes (Lectura.antesDeSalir).
 */
 document.addEventListener("DOMContentLoaded", function () {
 	if (!window.sb) return;
-	window.Lectura.arrancar(iniciarExamen);
+	if (new URLSearchParams(window.location.search).get("examen_id")) {
+		// Examen del modelo anterior (catálogo ya aplicado)
+		document.getElementById("exPantalla").hidden = true;
+		window.Lectura.arrancar(window.ExamenAnterior.iniciar);
+		return;
+	}
+	window.Lectura.arrancar(iniciarExamenes);
 });
 
-async function iniciarExamen() {
-
-	// ── elementos del DOM ─────────────────────────────────────────────────────
-	var headerTituloEl = document.getElementById("headerTitulo");
-	var headerMetaEl   = document.getElementById("headerMeta");
-	var headerEstadoEl = document.getElementById("headerEstado");
-	var tabsEl         = document.getElementById("examenTabs");
-	var tabVerEl       = document.getElementById("tabVer");
-	var tabCalificarEl = document.getElementById("tabCalificar");
-	var contenidoEl    = document.getElementById("examenContenido");
-	var mainEl         = document.getElementById("examenMain");
-	var mensajeEl      = document.getElementById("examenMensaje");
-	var footerEl       = document.getElementById("examenFooter");
-	var footerCFEl     = document.getElementById("footerCF");
-	var footerProgEl   = document.getElementById("footerProgreso");
-	var footerBarraEl  = document.getElementById("footerBarra");
-	var btnSiguiente   = document.getElementById("btnSiguienteAlumno");
-
-	// ── estado ────────────────────────────────────────────────────────────────
-	var userId    = null;
-	var grupo     = null;
-	var examenId  = null;
-	var examen    = null;
-	var preguntas = [];          // ordenadas según examen.preguntas_ids
-	var alumnos   = [];
-	var alumnoActualId = null;
-	var respMap   = {};          // clave: alumnoId + "||" + preguntaId → fila de respuestas_examen
-	var pestana   = "ver";       // "ver" | "calificar"
-
-	// ── config de campos formativos ───────────────────────────────────────────
-	var CF = {
-		LEN: { nombre: "Lenguajes",                       badge: "bg-blue-100 text-blue-700",     dot: "bg-blue-500",   pill: "text-blue-700" },
-		SAB: { nombre: "Saberes y Pensamiento Científico", badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500", pill: "text-emerald-700" },
-		ETI: { nombre: "Ética, Naturaleza y Sociedades",   badge: "bg-orange-100 text-orange-700", dot: "bg-orange-500", pill: "text-orange-700" },
-		DHL: { nombre: "De lo Humano y lo Comunitario",    badge: "bg-violet-100 text-violet-700", dot: "bg-violet-500", pill: "text-violet-700" }
-	};
-	function cfInfo(cf) {
-		return CF[cf] || { nombre: cf || "—", badge: "bg-gray-100 text-gray-700", dot: "bg-gray-400", pill: "text-gray-600" };
-	}
-
-	var TIPO_LABEL = {
-		opcion_multiple:   "Opción múltiple",
-		verdadero_falso:   "Verdadero / Falso",
-		completar:         "Completar",
-		abierta:           "Respuesta abierta"
+async function iniciarExamenes() {
+	"use strict";
+	var X = window.ExamenModelo;
+	var sb = window.sb;
+	var el = {
+		subtitulo: document.getElementById("exSubtitulo"),
+		mensaje: document.getElementById("exMensaje"),
+		vista: document.getElementById("exVista"),
+		dlgExamen: document.getElementById("exDlgExamen"),
+		dlgConfirmar: document.getElementById("exDlgConfirmar"),
 	};
 
-	// ── helpers ───────────────────────────────────────────────────────────────
-	function getLocalDateISO() {
-		var now = new Date();
-		var local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-		return local.toISOString().slice(0, 10);
+	var ses = await sb.auth.getSession();
+	if (ses.error || !ses.data.session) { window.location.href = "index.html"; return; }
+	var userId = ses.data.session.user.id;
+	var grupo = (await window.GrupoActivo.cargar(sb, userId)).grupo;
+	if (!grupo) {
+		el.subtitulo.textContent = "Sin grupo";
+		el.vista.innerHTML = vacio("Primero crea tu grupo.", "Los exámenes son de un grupo y de sus alumnos.");
+		return;
 	}
-	function escapeHtml(v) {
-		return String(v == null ? "" : v)
+	var gradosGrupo = (grupo.grados || []).map(Number).filter(function (g) { return g >= 1 && g <= 6; }).sort();
+
+	// ── Estado ──────────────────────────────────────────────────────────────────
+	var examenes = [], anteriores = [], alumnos = [];
+	var datos = { preguntas: [], respuestas: [], resultados: [] };
+	var perfil = {};
+	var pendientes = {}; // clave → { hacer: fn, texto } capturas sin guardar
+
+	// ── Utilidades ──────────────────────────────────────────────────────────────
+	function esc(s) {
+		return String(s === null || s === undefined ? "" : s)
 			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 	}
-	function escAttr(v) {
-		return String(v == null ? "" : v).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-	}
-	function rkey(alumnoId, preguntaId) {
-		return alumnoId + "||" + preguntaId;
-	}
-	function mostrarError(msg) {
-		if (!mensajeEl) return;
-		mensajeEl.className = "rounded-lg px-4 py-3 text-sm font-medium bg-red-50 text-red-700 border border-red-200";
-		mensajeEl.textContent = msg;
-		mensajeEl.classList.remove("hidden");
-	}
-	function ocultarMensaje() {
-		if (mensajeEl) mensajeEl.classList.add("hidden");
-	}
-	function emptyState(texto, subtexto) {
+	function vacio(texto, sub) {
 		return '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">' +
-			'<p class="text-gray-600 text-base font-medium">' + escapeHtml(texto) + '</p>' +
-			(subtexto ? '<p class="text-gray-400 text-sm mt-1">' + escapeHtml(subtexto) + '</p>' : '') +
+			'<p class="text-gray-600 text-base font-medium">' + esc(texto) + '</p>' +
+			(sub ? '<p class="text-gray-400 text-sm mt-1">' + esc(sub) + '</p>' : '') +
 			'<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-3 mt-4 text-blue-600 underline text-sm font-medium">Volver a Inicio</a>' +
 			'</div>';
 	}
-	function puntosPorPregunta() {
-		var total = examen && examen.total_preguntas ? examen.total_preguntas : (preguntas.length || 1);
-		var valor = examen && examen.valor_total != null ? Number(examen.valor_total) : 0;
-		if (!total) return 0;
-		return Math.round((valor / total) * 100) / 100;
+	var ICONOS = {
+		mas: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+		atras: '<path d="m15 18-6-6 6-6"/>',
+		lapiz: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+		basura: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+		tabla: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+		hoja: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+		copiar: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+		alerta: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+	};
+	function icono(n, cls) {
+		return '<svg xmlns="http://www.w3.org/2000/svg" class="' + (cls || "h-5 w-5") + ' shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONOS[n] || "") + '</svg>';
 	}
-	function nombreCorto(nombre) {
-		var partes = String(nombre || "").trim().split(/\s+/);
-		if (partes.length <= 2) return partes.join(" ");
-		return partes[0] + " " + partes[1];
-	}
-	// Trimestre actual según fecha (ciclo escolar mexicano)
-	function trimestreActual() {
-		var m = new Date().getMonth() + 1; // 1-12
-		if (m >= 8 && m <= 11) return 1;    // ago-nov
-		if (m === 12 || m <= 3) return 2;   // dic-mar
-		return 3;                            // abr-jul
-	}
+	var BTN = "inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl text-sm font-semibold";
+	var BTN_PRI = BTN + " bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-60";
+	var BTN_SEC = BTN + " bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60";
+	var BTN_PELIGRO = BTN + " bg-white border border-red-200 text-red-700 hover:bg-red-50";
 
-	// ── auth ──────────────────────────────────────────────────────────────────
-	var authResult = await window.sb.auth.getUser();
-	if (authResult.error || !authResult.data.user) {
-		window.location.href = "index.html";
-		return;
-	}
-	userId = authResult.data.user.id;
-
-	// ── grupo del maestro ──────────────────────────────────────────────────────
-	// Sin grupo (aún no crea uno): la vista lista lo maneja. Si la lectura falla,
-	// GrupoActivo.cargar detiene la página él mismo (antes se seguía sin grupo y la lista
-	// mostraba los exámenes de todos los grados)
-	grupo = (await window.GrupoActivo.cargar(window.sb, userId)).grupo;
-
-	// ── enrutar ─────────────────────────────────────────────────────────────────
-	var params = new URLSearchParams(window.location.search);
-	examenId = params.get("examen_id");
-
-	if (!examenId) {
-		await renderListaExamenes();
-	} else {
-		await cargarExamen();
+	function mensaje(tipo, texto) {
+		if (!texto) { el.mensaje.className = "hidden"; el.mensaje.textContent = ""; return; }
+		var c = tipo === "error" ? "bg-red-50 border-red-200 text-red-800" : (tipo === "aviso" ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-emerald-50 border-emerald-200 text-emerald-800");
+		el.mensaje.className = "rounded-xl border px-4 py-3 text-sm font-medium " + c;
+		el.mensaje.textContent = texto;
 	}
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// VISTA 1 — Lista de exámenes disponibles
-	// ══════════════════════════════════════════════════════════════════════════
-	async function renderListaExamenes() {
-		if (headerTituloEl) headerTituloEl.textContent = "Exámenes disponibles";
-		if (headerMetaEl)   headerMetaEl.textContent = grupo ? (grupo.nombre || "") : "";
-		if (tabsEl) tabsEl.classList.add("hidden");
-		if (footerEl) footerEl.classList.add("hidden");
+	function textoGrados(gs) {
+		var l = (gs || []).map(Number).sort().map(function (g) { return g + "°"; });
+		if (l.length <= 1) return l.join("");
+		return l.slice(0, -1).join(", ") + " y " + l[l.length - 1];
+	}
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function textoFecha(iso) {
+		var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+		return m ? Number(m[3]) + " de " + MESES[Number(m[2]) - 1] + " de " + m[1] : "";
+	}
+	function hoyISO() { return window.CalendarioEscolar ? window.CalendarioEscolar.fechaLocalISO() : new Date().toISOString().slice(0, 10); }
 
-		// Si falla, lanza: no se dice "Aún no hay exámenes"
-		var lista = (await window.Lectura.uno(window.sb
-			.from("examenes")
-			.select("*")
-			.or("maestro_id.eq." + userId + ",maestro_id.is.null")
-			.in("estado", ["publicado", "cerrado"])
-			.order("trimestre", { ascending: true }))) || [];
-
-		// Filtrar por grados del grupo y trimestre vigente (cuando aplica)
-		var trimestre = trimestreActual();
-		var gradosGrupo = (grupo && Array.isArray(grupo.grados)) ? grupo.grados.map(String) : null;
-
-		// Plantillas del catálogo sin aplicar en este grupo y lo ya aplicado en este grupo
-		// (js/examen-plantilla.js: aplicar COPIA la plantilla, ya no la reclama)
-		var disponibles = window.ExamenPlantilla.visibles(lista, userId, grupo ? grupo.id : null).filter(function (ex) {
-			// Filtrar por grado del grupo si el examen indica grado
-			if (gradosGrupo && gradosGrupo.length && ex.grado != null) {
-				if (gradosGrupo.indexOf(String(ex.grado)) === -1) return false;
-			}
-			return true;
-		});
-
-		// Ordenar: trimestre vigente primero
-		disponibles.sort(function (a, b) {
-			var aT = a.trimestre === trimestre ? 0 : 1;
-			var bT = b.trimestre === trimestre ? 0 : 1;
-			if (aT !== bT) return aT - bT;
-			return (a.trimestre || 0) - (b.trimestre || 0);
-		});
-
-		if (!disponibles.length) {
-			mainEl.innerHTML = emptyState(
-				"Aún no hay exámenes disponibles para este trimestre.",
-				"Cuando el generador cree un examen, aparecerá aquí para que lo apliques a tu grupo."
-			);
-			return;
-		}
-
-		mainEl.innerHTML = disponibles.map(function (ex) {
-			var estadoBadge = ex.estado === "cerrado"
-				? '<span class="text-xs bg-gray-200 text-gray-600 rounded-full px-2 py-0.5 font-medium">Cerrado</span>'
-				: '<span class="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 font-medium">Publicado</span>';
-			var asignado = ex.maestro_id === userId && ex.grupo_id;
-			var btn = asignado
-				? '<a href="examen.html?examen_id=' + escAttr(ex.id) + '" ' +
-				  'class="inline-flex items-center justify-center w-full sm:w-auto px-5 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">Abrir examen</a>'
-				: '<button type="button" data-aplicar="' + escAttr(ex.id) + '" ' +
-				  'class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">Aplicar este examen</button>';
-
-			return '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-3">' +
-				'<div class="flex items-start justify-between gap-3">' +
-					'<h2 class="text-base font-bold text-gray-800 leading-snug">' + escapeHtml(ex.titulo || "Examen sin título") + '</h2>' +
-					estadoBadge +
-				'</div>' +
-				'<div class="flex flex-wrap items-center gap-2 text-xs">' +
-					'<span class="bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">Trimestre ' + escapeHtml(ex.trimestre || "?") + '</span>' +
-					(ex.grado != null ? '<span class="bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 font-medium">' + escapeHtml(ex.grado) + '° grado</span>' : '') +
-					(ex.fase != null ? '<span class="bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 font-medium">Fase ' + escapeHtml(ex.fase) + '</span>' : '') +
-					'<span class="bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 font-medium">' + escapeHtml(ex.total_preguntas || 0) + ' preguntas</span>' +
-					(ex.tiempo_minutos ? '<span class="bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 font-medium">' + escapeHtml(ex.tiempo_minutos) + ' min</span>' : '') +
-				'</div>' +
-				(ex.instrucciones ? '<p class="text-sm text-gray-500 leading-snug">' + escapeHtml(ex.instrucciones) + '</p>' : '') +
-				'<div class="pt-1">' + btn + '</div>' +
-			'</div>';
-		}).join("");
-
-		// Listener para aplicar
-		mainEl.addEventListener("click", async function (e) {
-			var btn = e.target.closest("button[data-aplicar]");
-			if (!btn) return;
-			var exId = btn.dataset.aplicar;
-			if (!grupo) {
-				mostrarError("Necesitas tener un grupo creado antes de aplicar un examen.");
-				return;
-			}
-			var plantilla = lista.find(function (x) { return x.id === exId; });
-			if (!plantilla) return;
-			btn.disabled = true;
-			btn.textContent = "Aplicando...";
-			try {
-				// Se aplica una COPIA para este grupo: la plantilla sigue en el catálogo para todas
-				// las cuentas (antes se le ponía maestro_id y grupo_id y dejaba de verse para las demás)
-				var ins = await window.sb
-					.from("examenes")
-					.insert(window.ExamenPlantilla.copiaDeExamen(plantilla, userId, grupo.id))
-					.select("id")
-					.single();
-				if (ins.error) throw ins.error;
-				window.location.href = "examen.html?examen_id=" + ins.data.id;
-			} catch (err) {
-				btn.disabled = false;
-				btn.textContent = "Aplicar este examen";
-				mostrarError("No se pudo aplicar el examen: " + (err.message || "Error desconocido"));
-			}
-		});
+	function esDeRed(e) {
+		var t = String((e && (e.message || e.details)) || e || "");
+		return !navigator.onLine || /Failed to fetch|NetworkError|network|Load failed|fetch/i.test(t) || (e && (e.status === 0 || e.code === "" || e.name === "TypeError"));
+	}
+	function textoError(e) {
+		if (esDeRed(e)) return "Sin señal: no se guardó. Lo capturado sigue en pantalla; se vuelve a intentar al tener señal.";
+		var t = String((e && e.message) || "");
+		if (/aciertos_rango|between 0 and preguntas/i.test(t)) return "Los aciertos no pueden pasar de las preguntas.";
+		if (/row-level security|42501|permission/i.test(t)) return "No se pudo guardar: ese dato no es de tu grupo.";
+		return "No se pudo guardar: " + (t || "error desconocido") + ".";
 	}
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// VISTA 2 — Aplicar / calificar un examen
-	// ══════════════════════════════════════════════════════════════════════════
-	async function cargarExamen() {
-		// Examen
-		// Si la lectura falla, lanza; "no encontrado" es solo cuando se leyó y no existe
-		examen = await window.Lectura.uno(window.sb.from("examenes").select("*").eq("id", examenId).maybeSingle());
-		if (!examen) {
-			mainEl.innerHTML = emptyState("Examen no encontrado o sin permiso.");
-			return;
-		}
-
-		// Header
-		if (headerTituloEl) headerTituloEl.textContent = examen.titulo || "Examen";
-		if (headerMetaEl) {
-			var meta = [];
-			if (examen.trimestre != null) meta.push("Trimestre " + examen.trimestre);
-			if (examen.grado != null) meta.push(examen.grado + "° grado");
-			meta.push((examen.total_preguntas || 0) + " preguntas");
-			if (examen.valor_total != null) meta.push(examen.valor_total + " pts");
-			headerMetaEl.textContent = meta.join(" · ");
-		}
-		if (headerEstadoEl) {
-			var est = examen.estado === "cerrado" ? "Cerrado" : (examen.estado === "publicado" ? "Publicado" : "Borrador");
-			headerEstadoEl.textContent = est;
-		}
-		if (tabsEl) tabsEl.classList.remove("hidden");
-
-		// Preguntas del banco
-		var idsPreg = Array.isArray(examen.preguntas_ids) ? examen.preguntas_ids : [];
-		if (!idsPreg.length) {
-			mainEl.innerHTML = emptyState(
-				"Este examen aún no tiene preguntas.",
-				"El generador todavía no ha agregado preguntas al banco para este examen."
-			);
-			return;
-		}
-		var crudas = (await window.Lectura.uno(window.sb.from("banco_preguntas").select("*").in("id", idsPreg))) || [];
-		preguntas = idsPreg.map(function (id) {
-			return crudas.find(function (p) { return p.id === id; });
-		}).filter(Boolean);
-
-		if (!preguntas.length) {
-			mainEl.innerHTML = emptyState("No se encontraron las preguntas de este examen en el banco.");
-			return;
-		}
-
-		// Alumnos del grupo asignado al examen (o del grupo del maestro)
-		var grupoIdExamen = examen.grupo_id || (grupo && grupo.id);
-		// Si falla, lanza (la página se detiene)
-		if (grupoIdExamen) {
-			alumnos = (await window.Lectura.uno(window.sb
-				.from("alumnos")
-				.select("id, nombre_completo, grado, num_lista")
-				.eq("grupo_id", grupoIdExamen)
-				.eq("maestro_id", userId)
-				.eq("estatus", "activo")
-				.order("num_lista", { ascending: true }))) || [];
-		}
-
-		// Respuestas existentes. Sin ellas la captura saldría vacía y se calificaría encima:
-		// si fallan, lanza. Alumnos × preguntas pasa de 1000 en un grupo grande (por páginas)
-		if (alumnos.length) {
-			var respuestas = await window.Lectura.todas(function () {
-				return window.sb.from("respuestas_examen").select("*").eq("examen_id", examenId).order("id");
-			});
-			respuestas.forEach(function (r) {
-				respMap[rkey(r.alumno_id, r.pregunta_id)] = r;
-			});
-		}
-
-		// Pestañas
-		tabVerEl.addEventListener("click", function () { setPestana("ver"); });
-		tabCalificarEl.addEventListener("click", function () { setPestana("calificar"); });
-		btnSiguiente.addEventListener("click", siguienteAlumno);
-
-		alumnoActualId = alumnos.length ? alumnos[0].id : null;
-		setPestana("ver");
-	}
-
-	// ── alternar pestaña ────────────────────────────────────────────────────────
-	function setPestana(p) {
-		pestana = p;
-		var activa = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] bg-blue-800 text-white";
-		var inactiva = "flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] bg-gray-100 text-gray-600 hover:bg-gray-200";
-		tabVerEl.className = p === "ver" ? activa : inactiva;
-		tabCalificarEl.className = p === "calificar" ? activa : inactiva;
-		// Ajustar padding-top por la barra de pestañas
-		ajustarPadding();
-		if (p === "ver") {
-			footerEl.classList.add("hidden");
-			renderVerExamen();
-		} else {
-			renderCalificar();
-		}
-	}
-
-	// ── Pestaña A: Ver examen ────────────────────────────────────────────────────
-	function renderVerExamen() {
-		ocultarMensaje();
-		var html = '<div class="flex items-center justify-between gap-3 no-print">' +
-			'<p class="text-sm text-gray-500">Vista para impresión del examen.</p>' +
-			'<button id="btnImprimir" type="button" class="px-5 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">Imprimir examen</button>' +
-			'</div>';
-
-		html += '<div class="print-area bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col gap-5">' +
-			'<div class="border-b border-gray-200 pb-3">' +
-				'<h2 class="text-lg font-bold text-gray-800">' + escapeHtml(examen.titulo || "Examen") + '</h2>' +
-				(examen.instrucciones ? '<p class="text-sm text-gray-600 mt-1">' + escapeHtml(examen.instrucciones) + '</p>' : '') +
-				'<div class="flex flex-wrap gap-4 text-sm text-gray-500 mt-2">' +
-					'<span>Nombre: _______________________________</span>' +
-					'<span>Grado: ______</span>' +
-					'<span>Fecha: __________</span>' +
-				'</div>' +
-			'</div>';
-
-		preguntas.forEach(function (p, i) {
-			html += renderPreguntaVer(p, i + 1);
-		});
-		html += '</div>';
-
-		mainEl.innerHTML = html;
-
-		var btnImp = document.getElementById("btnImprimir");
-		if (btnImp) btnImp.addEventListener("click", function () { window.print(); });
-	}
-
-	function renderPreguntaVer(p, num) {
-		var cf = cfInfo(p.campo_formativo);
-		var out = '<div class="flex flex-col gap-2">' +
-			'<div class="flex items-start gap-2">' +
-				'<span class="text-sm font-bold text-gray-700 shrink-0">' + num + '.</span>' +
-				'<div class="flex-1">' +
-					'<div class="flex flex-wrap items-center gap-2 mb-1">' +
-						'<span class="text-xs ' + cf.badge + ' rounded-full px-2 py-0.5 font-medium">' + escapeHtml(p.campo_formativo || "—") + '</span>' +
-						'<span class="text-xs text-gray-400">' + escapeHtml(TIPO_LABEL[p.tipo_pregunta] || p.tipo_pregunta || "") + '</span>' +
-					'</div>' +
-					'<p class="text-sm text-gray-800 leading-snug">' + escapeHtml(p.pregunta) + '</p>';
-
-	if (p.tipo_pregunta === "opcion_multiple" && Array.isArray(p.opciones)) {
-			out += '<ul class="mt-2 flex flex-col gap-1">';
-			p.opciones.forEach(function (op) {
-				out += '<li class="text-sm text-gray-700">' +
-					'<span class="font-semibold mr-1">' + escapeHtml((op.letra || "") + ")") + '</span>' +
-					escapeHtml(op.texto) + '</li>';
-			});
-			out += '</ul>';
-		} else if (p.tipo_pregunta === "verdadero_falso") {
-			out += '<div class="mt-2 flex gap-6 text-sm text-gray-700">' +
-				'<span>(  ) Verdadero</span><span>(  ) Falso</span></div>';
-		} else if (p.tipo_pregunta === "completar" || p.tipo_pregunta === "abierta") {
-			out += '<div class="mt-2 border-b border-gray-300 h-6"></div>' +
-				(p.tipo_pregunta === "abierta" ? '<div class="border-b border-gray-300 h-6 mt-3"></div>' : '');
-		}
-
-		out += '</div></div></div>';
-		return out;
-	}
-
-	// ── Pestaña B: Calificar ─────────────────────────────────────────────────────
-	function renderCalificar() {
-		ocultarMensaje();
-
-		if (!alumnos.length) {
-			footerEl.classList.add("hidden");
-			mainEl.innerHTML = emptyState(
-				"No hay alumnos activos en el grupo.",
-				"Agrega alumnos a tu grupo para poder calificar este examen."
-			);
-			return;
-		}
-
-		footerEl.classList.remove("hidden");
-
-		var alumno = alumnos.find(function (a) { return a.id === alumnoActualId; }) || alumnos[0];
-		alumnoActualId = alumno.id;
-
-		// Selector de alumnos (chips)
-		var chips = alumnos.map(function (a) {
-			var activo = a.id === alumnoActualId;
-			var calificado = alumnoCalificado(a.id);
-			var cls = "inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap min-h-[44px] transition-colors " +
-				(activo ? "bg-blue-800 text-white" : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50");
-			var marca = calificado ? '<span class="inline-block w-2 h-2 rounded-full ' + (activo ? "bg-emerald-300" : "bg-emerald-500") + '"></span>' : '';
-			return '<button type="button" data-alumno-chip="' + escAttr(a.id) + '" class="' + cls + '">' +
-				marca + escapeHtml(nombreCorto(a.nombre_completo)) +
-				(a.grado ? ' <span class="text-xs opacity-70">' + escapeHtml(a.grado) + '°</span>' : '') +
-				'</button>';
-		}).join("");
-
-		var html = '<div class="no-print">' +
-			'<label for="selectAlumno" class="block text-xs text-gray-500 mb-1 sm:hidden">Alumno</label>' +
-			'<select id="selectAlumno" class="sm:hidden w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none mb-3">' +
-				alumnos.map(function (a) {
-					return '<option value="' + escAttr(a.id) + '"' + (a.id === alumnoActualId ? " selected" : "") + '>' +
-						escapeHtml(a.nombre_completo) + (a.grado ? " (" + a.grado + "°)" : "") +
-						(alumnoCalificado(a.id) ? " (calificado)" : "") + '</option>';
-				}).join("") +
-			'</select>' +
-			'<div class="hidden sm:flex flex-wrap gap-2 mb-3">' + chips + '</div>' +
-		'</div>';
-
-		// Cabecera del alumno
-		html += '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center gap-2">' +
-			'<span class="text-base font-bold text-gray-800">' + escapeHtml(alumno.nombre_completo) + '</span>' +
-			(alumno.grado ? '<span class="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">' + escapeHtml(alumno.grado) + '° grado</span>' : '') +
-		'</div>';
-
-		// Preguntas
-		html += '<div id="listaCalificar" class="flex flex-col gap-4 mt-4">';
-		preguntas.forEach(function (p, i) {
-			html += renderPreguntaCalificar(p, i + 1, alumno.id);
-		});
-		html += '</div>';
-
-		mainEl.innerHTML = html;
-
-		// Eventos
-		var sel = document.getElementById("selectAlumno");
-		if (sel) sel.addEventListener("change", function () {
-			alumnoActualId = sel.value;
-			renderCalificar();
-			window.scrollTo({ top: 0, behavior: "smooth" });
-		});
-
-		mainEl.querySelectorAll("button[data-alumno-chip]").forEach(function (b) {
-			b.addEventListener("click", function () {
-				alumnoActualId = b.dataset.alumnoChip;
-				renderCalificar();
-				window.scrollTo({ top: 0, behavior: "smooth" });
-			});
-		});
-
-		bindCalificarEventos(alumno.id);
-		actualizarFooter();
-	}
-
-	function renderPreguntaCalificar(p, num, alumnoId) {
-		var cf = cfInfo(p.campo_formativo);
-		var r = respMap[rkey(alumnoId, p.id)] || {};
-		var ppp = puntosPorPregunta();
-
-		var out = '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-3" data-pregunta="' + escAttr(p.id) + '">' +
-			'<div class="flex items-start gap-2">' +
-				'<span class="text-sm font-bold text-gray-700 shrink-0">' + num + '.</span>' +
-				'<div class="flex-1">' +
-					'<div class="flex flex-wrap items-center gap-2 mb-1">' +
-						'<span class="text-xs ' + cf.badge + ' rounded-full px-2 py-0.5 font-medium">' + escapeHtml(p.campo_formativo || "—") + '</span>' +
-						'<span class="text-xs text-gray-400">' + escapeHtml(TIPO_LABEL[p.tipo_pregunta] || p.tipo_pregunta || "") + '</span>' +
-					'</div>' +
-					'<p class="text-sm text-gray-800 leading-snug">' + escapeHtml(p.pregunta) + '</p>' +
-				'</div>' +
-			'</div>';
-
-		if (p.tipo_pregunta === "opcion_multiple" && Array.isArray(p.opciones)) {
-			out += '<div class="flex flex-col gap-2">';
-			p.opciones.forEach(function (op) {
-				var sel = r.respuesta_alumno != null &&
-					String(r.respuesta_alumno).toLowerCase() === String(op.letra).toLowerCase();
-				var correcta = String(p.respuesta_correcta || "").toLowerCase() === String(op.letra).toLowerCase();
-				var cls = "w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium min-h-[44px] border transition-colors ";
-				if (sel && correcta) cls += "bg-emerald-500 text-white border-emerald-500";
-				else if (sel && !correcta) cls += "bg-red-500 text-white border-red-500";
-				else if (correcta) cls += "bg-emerald-50 text-emerald-700 border-emerald-300";
-				else cls += "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100";
-				out += '<button type="button" data-opcion="' + escAttr(op.letra) + '" class="' + cls + '">' +
-					'<span class="font-bold mr-2">' + escapeHtml((op.letra || "").toUpperCase()) + '</span>' +
-					escapeHtml(op.texto) + '</button>';
-			});
-			out += '</div>';
-		} else if (p.tipo_pregunta === "verdadero_falso") {
-			var rv = String(r.respuesta_alumno || "").toUpperCase();
-			out += '<div class="flex gap-2">';
-			["V", "F"].forEach(function (val) {
-				var sel = rv === val;
-				var correcta = String(p.respuesta_correcta || "").toUpperCase() === val;
-				var cls = "flex-1 px-3 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] border transition-colors ";
-				if (sel && correcta) cls += "bg-emerald-500 text-white border-emerald-500";
-				else if (sel && !correcta) cls += "bg-red-500 text-white border-red-500";
-				else cls += "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100";
-				out += '<button type="button" data-vf="' + val + '" class="' + cls + '">' +
-					(val === "V" ? "Verdadero" : "Falso") + '</button>';
-			});
-			out += '</div>';
-		} else {
-			// completar / abierta — manual
-			var modelo = p.respuesta_correcta ? escapeHtml(p.respuesta_correcta) : "";
-			out += '<textarea data-resp-abierta rows="2" placeholder="Respuesta del alumno..." ' +
-				'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
-				escapeHtml(r.respuesta_alumno || "") + '</textarea>';
-			if (modelo) {
-				out += '<p class="text-xs text-gray-400">Respuesta modelo: <span class="text-gray-500">' + modelo + '</span></p>';
-			}
-			out += '<div class="flex flex-wrap items-center gap-4">' +
-				'<label class="inline-flex items-center gap-2 text-sm text-gray-700">' +
-					'<input type="checkbox" data-correcta-chk class="h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"' +
-					(r.es_correcta ? " checked" : "") + '> ¿Correcto?</label>' +
-				'<label class="inline-flex items-center gap-2 text-sm text-gray-700">Puntos ' +
-					'<input type="number" data-puntos min="0" max="' + ppp + '" step="0.01" ' +
-					'value="' + (r.puntos_obtenidos != null ? r.puntos_obtenidos : "") + '" ' +
-					'placeholder="0–' + ppp + '" inputmode="decimal" ' +
-					'class="w-24 min-h-[44px] px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none"></label>' +
-			'</div>' +
-			'<textarea data-obs rows="1" placeholder="Observación del maestro (opcional)..." ' +
-				'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
-				escapeHtml(r.observacion || "") + '</textarea>';
-		}
-
-		// Indicador de puntos obtenidos
-		out += '<div class="text-xs text-gray-400" data-puntos-info>' +
-			(r.puntos_obtenidos != null ? "Puntos: " + r.puntos_obtenidos + " / " + ppp : "Sin calificar · " + ppp + " pts") +
-			'</div>';
-
-		out += '</div>';
-		return out;
-	}
-
-	// ── auto-calificación ─────────────────────────────────────────────────────
-	function autoCalificar(pregunta, respuestaAlumno) {
-		var ppp = puntosPorPregunta();
-		var esCorrecta = false;
-		if (pregunta.tipo_pregunta === "opcion_multiple" || pregunta.tipo_pregunta === "verdadero_falso") {
-			esCorrecta = respuestaAlumno != null &&
-				String(respuestaAlumno).toLowerCase() === String(pregunta.respuesta_correcta || "").toLowerCase();
-		}
-		return { es_correcta: esCorrecta, puntos_obtenidos: esCorrecta ? ppp : 0 };
-	}
-
-	// ── guardar respuesta (upsert) ──────────────────────────────────────────────
-	async function guardarRespuesta(alumnoId, pregunta, respuestaAlumno, esCorrecta, puntos, observacion, automatico) {
-		var fila = {
-			examen_id: examenId,
-			alumno_id: alumnoId,
-			pregunta_id: pregunta.id,
-			respuesta_alumno: respuestaAlumno != null ? String(respuestaAlumno) : null,
-			es_correcta: esCorrecta,
-			puntos_obtenidos: puntos != null ? puntos : null,
-			calificada_por: automatico ? "automatico" : "maestro",
-			observacion: observacion || null
-		};
-		var clave = rkey(alumnoId, pregunta.id);
-		var anterior = respMap[clave];
-		respMap[clave] = fila;
+	// Una escritura: { ok, error, red }
+	async function escribir(consulta) {
 		try {
-			var res = await window.sb
-				.from("respuestas_examen")
-				.upsert(fila, { onConflict: "examen_id,alumno_id,pregunta_id" });
-			if (res.error) throw res.error;
+			var r = await consulta;
+			if (r && r.error) return { ok: false, error: r.error, red: esDeRed(r.error) };
+			return { ok: true, data: r ? r.data : null };
 		} catch (e) {
-			// No se calla, y la tarjeta vuelve a lo que sí está guardado: esa respuesta no
-			// quedó guardada y la calificación saldría sin ella
-			if (respMap[clave] === fila) {
-				if (anterior) respMap[clave] = anterior; else delete respMap[clave];
-			}
-			console.error("Error guardando respuesta:", e);
-			mostrarError("No se pudo guardar una respuesta: " + ((e && e.message) || "error desconocido") +
-				". Revisa tu conexión y vuelve a capturarla.");
+			return { ok: false, error: e, red: true };
 		}
 	}
 
-	// ── eventos de la pestaña calificar ─────────────────────────────────────────
-	function bindCalificarEventos(alumnoId) {
-		var lista = document.getElementById("listaCalificar");
-		if (!lista) return;
+	// ── Pendientes sin guardar (sin señal) ───────────────────────────────────────
+	function hayPendientes() { return Object.keys(pendientes).length > 0; }
+	function avisoPendientes() {
+		var n = Object.keys(pendientes).length;
+		var caja = document.getElementById("exPendientes");
+		if (!caja) return;
+		if (!n) { caja.hidden = true; caja.innerHTML = ""; return; }
+		caja.hidden = false;
+		caja.innerHTML = '<div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">' +
+			icono("alerta") + '<p class="text-sm font-medium flex-1">Sin señal: ' + n + (n === 1 ? " captura sin guardar" : " capturas sin guardar") +
+			'. Siguen en pantalla y se guardan al volver la señal.</p>' +
+			'<button type="button" data-reintentar class="' + BTN_SEC + '">Reintentar ahora</button></div>';
+	}
+	async function reintentar() {
+		var claves = Object.keys(pendientes);
+		for (var i = 0; i < claves.length; i++) {
+			var p = pendientes[claves[i]];
+			if (!p) continue;
+			var r = await p.hacer();
+			if (r.ok) delete pendientes[claves[i]];
+			else if (!r.red) { delete pendientes[claves[i]]; mensaje("error", textoError(r.error)); }
+		}
+		avisoPendientes();
+		if (window.ExamenPropio && ctx.alReintentar) ctx.alReintentar();
+		if (vistaActual.tipo === "resultados") pintarEstadoCeldas();
+	}
+	window.addEventListener("online", function () { if (hayPendientes()) reintentar(); });
+	document.addEventListener("click", function (e) {
+		if (e.target.closest && e.target.closest("[data-reintentar]")) reintentar();
+	});
+	window.Lectura.antesDeSalir({
+		pendiente: hayPendientes,
+		guardar: function () { return reintentar().then(function () { return !hayPendientes(); }); },
+		mensaje: "Hay capturas del examen sin guardar (sin señal). ¿Salir de todos modos? Se perderán.",
+	});
 
-		// Botones (opción múltiple y V/F) → auto-calificar
-		lista.addEventListener("click", async function (e) {
-			var card = e.target.closest("[data-pregunta]");
-			if (!card) return;
-			var pregId = card.dataset.pregunta;
-			var pregunta = preguntas.find(function (p) { return p.id === pregId; });
-			if (!pregunta) return;
+	// ── Carga ────────────────────────────────────────────────────────────────────
+	async function cargar() {
+		var lect = await Promise.all([
+			window.Lectura.uno(sb.from("perfiles").select("nombre_completo, escuela").eq("id", userId).maybeSingle()),
+			window.Lectura.todas(function () {
+				return sb.from("alumnos").select("id, nombre_completo, num_lista, grado, estatus")
+					.eq("maestro_id", userId).eq("grupo_id", grupo.id).order("num_lista", { ascending: true }).order("id", { ascending: true });
+			}),
+			window.Lectura.todas(function () {
+				return sb.from("examenes_grupo").select("*").eq("maestro_id", userId).eq("grupo_id", grupo.id)
+					.order("trimestre", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: true });
+			}),
+			// Modelo anterior: lo que la maestra ya había aplicado de la tienda (solo para abrirlo)
+			window.Lectura.todas(function () {
+				return sb.from("examenes").select("id, titulo, trimestre, grado, total_preguntas, created_at")
+					.eq("maestro_id", userId).eq("grupo_id", grupo.id).order("created_at", { ascending: false }).order("id", { ascending: true });
+			}),
+		]);
+		perfil = lect[0] || {};
+		alumnos = lect[1] || [];
+		examenes = lect[2] || [];
+		anteriores = lect[3] || [];
+		var propios = examenes.filter(function (e) { return e.modo === "propio"; }).map(function (e) { return e.id; });
+		var deRes = examenes.filter(function (e) { return e.modo === "resultados"; }).map(function (e) { return e.id; });
+		var l2 = await Promise.all([
+			propios.length ? window.Lectura.porLotes(propios, function (lote) {
+				return sb.from("examen_preguntas").select("id, examen_id, orden, tipo, campo, enunciado, opciones, clave")
+					.eq("maestro_id", userId).in("examen_id", lote).order("orden", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true });
+			}) : [],
+			propios.length ? window.Lectura.porLotes(propios, function (lote) {
+				return sb.from("examen_respuestas").select("id, examen_id, pregunta_id, alumno_id, respuesta, resultado, origen")
+					.eq("maestro_id", userId).in("examen_id", lote).order("id", { ascending: true });
+			}) : [],
+			deRes.length ? window.Lectura.porLotes(deRes, function (lote) {
+				return sb.from("examen_resultados").select("id, examen_id, alumno_id, campo, preguntas, aciertos")
+					.eq("maestro_id", userId).in("examen_id", lote).order("id", { ascending: true });
+			}) : [],
+		]);
+		datos.preguntas = l2[0] || [];
+		datos.respuestas = l2[1] || [];
+		datos.resultados = l2[2] || [];
+		datos.preguntas.sort(function (a, b) { return (a.orden - b.orden); });
+	}
 
-			var btnOp = e.target.closest("button[data-opcion]");
-			var btnVf = e.target.closest("button[data-vf]");
-			if (!btnOp && !btnVf) return;
+	function examenPorId(id) { for (var i = 0; i < examenes.length; i++) if (examenes[i].id === id) return examenes[i]; return null; }
+	function alumnosDe(ex) { return X.alumnosDelExamen(alumnos, ex); }
 
-			var respuesta = btnOp ? btnOp.dataset.opcion : btnVf.dataset.vf;
-			var calc = autoCalificar(pregunta, respuesta);
-			await guardarRespuesta(alumnoId, pregunta, respuesta, calc.es_correcta, calc.puntos_obtenidos, null, true);
+	// ── Contexto compartido con js/examen-propio.js ──────────────────────────────
+	var ctx = {
+		sb: sb, userId: userId, grupo: grupo, datos: datos,
+		alumnos: function () { return alumnos; }, alumnosDe: alumnosDe,
+		esc: esc, icono: icono, mensaje: mensaje, escribir: escribir, textoError: textoError,
+		BTN: BTN, BTN_PRI: BTN_PRI, BTN_SEC: BTN_SEC, BTN_PELIGRO: BTN_PELIGRO,
+		textoGrados: textoGrados, textoFecha: textoFecha,
+		perfil: function () { return perfil; },
+		pendiente: function (clave, hacer) { pendientes[clave] = { hacer: hacer }; avisoPendientes(); },
+		resuelto: function (clave) { if (pendientes[clave]) { delete pendientes[clave]; avisoPendientes(); } },
+		confirmar: confirmar,
+		imprimir: imprimir,
+		ir: function (hash) { if (window.location.hash === hash) mostrar(); else window.location.hash = hash; },
+		editarExamen: function (ex) { abrirDialogoExamen(ex, null); },
+		duplicarExamen: function (ex) { abrirDialogoExamen(null, ex); },
+		eliminarExamen: eliminarExamen,
+		cabecera: cabeceraExamen,
+	};
 
-			// Re-render de esta tarjeta
-			refrescarTarjeta(card, pregunta, alumnoId);
-			actualizarFooter();
+	// ── Diálogo de confirmación ──────────────────────────────────────────────────
+	function confirmar(titulo, texto, boton, peligro) {
+		return new Promise(function (listo) {
+			var d = el.dlgConfirmar;
+			d.innerHTML = '<form method="dialog" class="p-5 flex flex-col gap-4">' +
+				'<h2 id="exDlgConfirmarTitulo" class="text-lg font-bold text-gray-900">' + esc(titulo) + '</h2>' +
+				'<p class="text-sm text-gray-600">' + esc(texto) + '</p>' +
+				'<div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">' +
+				'<button value="no" class="' + BTN_SEC + '">Cancelar</button>' +
+				'<button value="si" class="' + (peligro ? BTN + " bg-red-600 text-white hover:bg-red-700" : BTN_PRI) + '">' + esc(boton) + '</button></div></form>';
+			d.addEventListener("close", function f() { d.removeEventListener("close", f); listo(d.returnValue === "si"); });
+			d.returnValue = "";
+			d.showModal();
 		});
+	}
 
-		// completar / abierta: respuesta del alumno
-		lista.addEventListener("blur", async function (e) {
-			var card = e.target.closest("[data-pregunta]");
-			if (!card) return;
-			var pregId = card.dataset.pregunta;
-			var pregunta = preguntas.find(function (p) { return p.id === pregId; });
-			if (!pregunta) return;
+	// ── Imprimir ─────────────────────────────────────────────────────────────────
+	function imprimir(html) {
+		var zona = document.getElementById("zonaImpresion");
+		var turno = String(Date.now()) + Math.random();
+		zona.innerHTML = html;
+		zona.dataset.turno = turno;
+		// Solo limpia lo suyo: si ya se pidió otra impresión, no la borra
+		var limpiar = function () {
+			window.removeEventListener("afterprint", limpiar);
+			setTimeout(function () { if (zona.dataset.turno === turno) zona.innerHTML = ""; }, 300);
+		};
+		window.addEventListener("afterprint", limpiar);
+		setTimeout(function () { window.print(); }, 50);
+	}
 
-			if (e.target.matches("textarea[data-resp-abierta], textarea[data-obs]")) {
-				await guardarDesdeManual(card, pregunta, alumnoId);
-			}
-		}, true);
+	// ══════════════════════════════════════════════════════════════════════════════
+	// Lista
+	// ══════════════════════════════════════════════════════════════════════════════
+	var vistaActual = { tipo: "lista" };
 
-		// checkbox ¿correcto? e input de puntos
-		lista.addEventListener("change", async function (e) {
-			var card = e.target.closest("[data-pregunta]");
-			if (!card) return;
-			var pregId = card.dataset.pregunta;
-			var pregunta = preguntas.find(function (p) { return p.id === pregId; });
-			if (!pregunta) return;
+	function badgeEstado(est) {
+		var c = est.clave === "calificado" ? "bg-emerald-100 text-emerald-800" : (est.clave === "en_revision" ? "bg-amber-100 text-amber-900" : "bg-gray-100 text-gray-700");
+		var extra = est.clave === "en_revision" ? " · " + est.completos + " de " + est.total : "";
+		return '<span data-estado="' + est.clave + '" class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ' + c + '">' + esc(est.texto + extra) + '</span>';
+	}
 
-			if (e.target.matches("input[data-correcta-chk]")) {
-				// Al marcar correcto, autollenar puntos con el máximo si está vacío
-				var puntosInput = card.querySelector("input[data-puntos]");
-				if (e.target.checked && puntosInput && puntosInput.value === "") {
-					puntosInput.value = puntosPorPregunta();
+	function tarjeta(ex) {
+		var est = X.estadoExamen(ex, datos, alumnos);
+		var detalle;
+		if (ex.modo === "resultados") {
+			detalle = Object.keys(ex.campos_resultados || {}).map(function (c) {
+				return (X.campo(c) ? X.campo(c).corto : c) + " " + ex.campos_resultados[c];
+			}).join(" · ") + " preguntas";
+		} else {
+			var r = X.resumenPreguntas(datos.preguntas.filter(function (p) { return p.examen_id === ex.id; }));
+			detalle = r.total ? r.total + (r.total === 1 ? " pregunta" : " preguntas") + (r.aMano ? " (" + r.aMano + " a mano)" : "") : "Sin preguntas todavía";
+		}
+		var pend = est.pendientesMano ? '<p class="text-xs text-amber-800 mt-1">' + est.pendientesMano + (est.pendientesMano === 1 ? " respuesta por calificar a mano" : " respuestas por calificar a mano") + '</p>' : "";
+		return '<li><a href="#ex=' + esc(ex.id) + '" data-examen="' + esc(ex.id) + '" class="flex flex-col gap-2 h-full rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:border-blue-300 hover:shadow min-h-[44px]">' +
+			'<div class="flex items-start justify-between gap-3"><h3 class="font-bold text-gray-900 leading-snug break-words min-w-0">' + esc(ex.titulo) + '</h3>' + badgeEstado(est) + '</div>' +
+			'<div class="flex flex-wrap gap-1.5 text-xs">' +
+			'<span class="rounded-full bg-blue-50 text-blue-800 px-2 py-0.5 font-medium">' + (ex.modo === "resultados" ? "Solo resultados" : "Creado en Mi Salón") + '</span>' +
+			'<span class="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 font-medium">' + esc(textoGrados(ex.grados)) + '</span>' +
+			(ex.fecha_aplicacion ? '<span class="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 font-medium">' + esc(textoFecha(ex.fecha_aplicacion)) + '</span>' : '') +
+			'</div><p class="text-sm text-gray-600">' + esc(detalle) + '</p>' + pend + '</a></li>';
+	}
+
+	function pintarLista() {
+		vistaActual = { tipo: "lista" };
+		var html = '<div id="exPendientes" hidden></div>' +
+			'<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">' +
+			'<p class="text-sm text-gray-600">' + (examenes.length ? examenes.length + (examenes.length === 1 ? " examen" : " exámenes") + " del grupo" : "") + '</p>' +
+			'<button type="button" id="exNuevo" class="' + BTN_PRI + '">' + icono("mas", "h-4 w-4") + 'Nuevo examen</button></div>';
+		if (!examenes.length) {
+			html += '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-6 sm:p-8 flex flex-col gap-4">' +
+				'<p class="text-base font-semibold text-gray-800">Aún no hay exámenes en este grupo.</p>' +
+				'<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">' +
+				'<div class="rounded-xl bg-gray-50 p-4"><p class="font-semibold text-gray-800">Crear mi examen</p><p class="mt-1">Escribes las preguntas aquí, imprimes el examen y una hoja de respuestas con círculos, y la revisas con la cámara de la tablet o tocando la letra.</p></div>' +
+				'<div class="rounded-xl bg-gray-50 p-4"><p class="font-semibold text-gray-800">Solo subir resultados</p><p class="mt-1">Para un examen que ya tienes (tuyo, de la tienda o revisado a mano): capturas cuántos aciertos sacó cada alumno por campo formativo.</p></div>' +
+				'</div></div>';
+		} else {
+			var porTrim = {};
+			examenes.forEach(function (e) { (porTrim[e.trimestre] = porTrim[e.trimestre] || []).push(e); });
+			Object.keys(porTrim).sort().reverse().forEach(function (t) {
+				html += '<section class="flex flex-col gap-2"><h2 class="text-sm font-bold uppercase tracking-wide text-gray-500">Trimestre ' + esc(t) +
+					(Number(t) === Number(grupo.trimestre_actual) ? ' <span class="normal-case font-medium text-blue-700">(actual)</span>' : '') + '</h2>' +
+					'<ul class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">' + porTrim[t].map(tarjeta).join("") + '</ul></section>';
+			});
+		}
+		if (anteriores.length) {
+			html += '<section class="flex flex-col gap-2"><h2 class="text-sm font-bold uppercase tracking-wide text-gray-500">Exámenes anteriores del catálogo</h2>' +
+				'<p class="text-sm text-gray-500">Los aplicaste antes de este cambio. Se siguen contando en la boleta y puedes terminar de calificarlos.</p>' +
+				'<ul class="flex flex-col gap-2">' + anteriores.map(function (a) {
+					return '<li><a href="examen.html?examen_id=' + esc(a.id) + '" class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 min-h-[44px] hover:border-blue-300">' +
+						'<span class="font-medium text-gray-800">' + esc(a.titulo || "Examen") + '</span><span class="text-xs text-gray-500">Trimestre ' + esc(a.trimestre) + (a.grado ? " · " + esc(a.grado) + "°" : "") + '</span></a></li>';
+				}).join("") + '</ul></section>';
+		}
+		el.vista.innerHTML = html;
+		document.getElementById("exNuevo").addEventListener("click", function () { abrirDialogoExamen(null, null); });
+		avisoPendientes();
+	}
+
+	// ══════════════════════════════════════════════════════════════════════════════
+	// Nuevo examen / editar datos / duplicar
+	// ══════════════════════════════════════════════════════════════════════════════
+	function abrirDialogoExamen(ex, base) {
+		var nuevo = !ex;
+		var d = el.dlgExamen;
+		var modo = ex ? ex.modo : (base ? base.modo : null);
+		var fuente = ex || base || {};
+		var grados = (fuente.grados && fuente.grados.length ? fuente.grados : gradosGrupo).map(Number);
+		var trimestre = fuente.trimestre || grupo.trimestre_actual || 1;
+		var titulo = ex ? ex.titulo : (base ? String(base.titulo || "") + " (copia)" : "");
+
+		function camino(clave, tituloC, texto) {
+			return '<label class="flex gap-3 items-start rounded-xl border-2 p-4 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 border-gray-200 min-h-[44px]">' +
+				'<input type="radio" name="exModo" value="' + clave + '" class="mt-1 h-5 w-5 accent-blue-700"' + (modo === clave ? " checked" : "") + '>' +
+				'<span><span class="block font-semibold text-gray-900">' + tituloC + '</span><span class="block text-sm text-gray-600 mt-0.5">' + texto + '</span></span></label>';
+		}
+		var camposHtml = X.CAMPOS.map(function (c) {
+			var v = fuente.campos_resultados && fuente.campos_resultados[c.codigo] ? fuente.campos_resultados[c.codigo] : "";
+			return '<label class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-1.5"><span class="text-sm text-gray-700">' + esc(c.nombre) + '</span>' +
+				'<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" data-campo="' + c.codigo + '" value="' + esc(v) + '" placeholder="—" aria-label="Preguntas de ' + esc(c.nombre) + '" class="w-20 min-h-[44px] rounded-lg border border-gray-300 px-2 text-center text-base"></label>';
+		}).join("");
+		var gradosHtml = gradosGrupo.length > 1 ? '<fieldset class="flex flex-col gap-2"><legend class="text-sm font-semibold text-gray-800">¿Qué grados lo presentan?</legend>' +
+			'<div class="flex flex-wrap gap-2">' + gradosGrupo.map(function (g) {
+				return '<label class="inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 min-h-[44px] cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">' +
+					'<input type="checkbox" name="exGrado" value="' + g + '" class="h-5 w-5 accent-blue-700"' + (grados.indexOf(g) !== -1 ? " checked" : "") + '><span class="text-sm font-medium">' + g + '°</span></label>';
+			}).join("") + '</div><p class="text-xs text-gray-500">Todas las preguntas son para los grados que marques. Si quieres preguntas distintas para cada grado, haz un examen por grado (puedes duplicarlo).</p></fieldset>' : "";
+
+		d.innerHTML = '<form class="flex flex-col max-h-[calc(100dvh-24px)]" novalidate>' +
+			'<div class="px-5 pt-5 pb-3 border-b border-gray-100"><h2 id="exDlgExamenTitulo" class="text-lg font-bold text-gray-900">' +
+			(nuevo ? (base ? "Duplicar examen" : "Nuevo examen") : "Datos del examen") + '</h2>' +
+			(base ? '<p class="text-sm text-gray-500 mt-1">Se copian las preguntas; las respuestas no.</p>' : '') + '</div>' +
+			'<div class="px-5 py-4 flex flex-col gap-4 overflow-y-auto">' +
+			(nuevo && !base ? '<fieldset class="flex flex-col gap-2"><legend class="text-sm font-semibold text-gray-800 mb-1">¿Cómo lo quieres hacer?</legend>' +
+				camino("propio", "Crear mi examen", "Escribes las preguntas aquí (sugerimos opción múltiple: se revisa sola). Imprimes el examen y una hoja de respuestas que revisas con la cámara de la tablet o tocando la letra.") +
+				camino("resultados", "Solo subir resultados", "Para un examen que ya tienes (tuyo, de la tienda o revisado a mano): por campo formativo, cuántas preguntas tenía y cuántos aciertos sacó cada alumno.") +
+				'</fieldset>' : '') +
+			'<label class="flex flex-col gap-1"><span class="text-sm font-semibold text-gray-800">Nombre del examen</span>' +
+			'<input id="exTitulo" type="text" maxlength="' + X.LARGO.titulo + '" value="' + esc(titulo) + '" placeholder="Por ejemplo: Examen del primer trimestre" class="min-h-[44px] rounded-xl border border-gray-300 px-3 text-base"></label>' +
+			'<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+			'<label class="flex flex-col gap-1"><span class="text-sm font-semibold text-gray-800">Trimestre</span><select id="exTrimestre" class="min-h-[44px] rounded-xl border border-gray-300 px-3 text-base bg-white">' +
+			[1, 2, 3].map(function (t) { return '<option value="' + t + '"' + (Number(trimestre) === t ? " selected" : "") + '>Trimestre ' + t + '</option>'; }).join("") + '</select></label>' +
+			'<label class="flex flex-col gap-1"><span class="text-sm font-semibold text-gray-800">Fecha en que se aplica <span class="font-normal text-gray-500">(opcional)</span></span>' +
+			'<input id="exFecha" type="date" value="' + esc(fuente.fecha_aplicacion || (nuevo ? hoyISO() : "")) + '" class="min-h-[44px] rounded-xl border border-gray-300 px-3 text-base bg-white"></label></div>' +
+			gradosHtml +
+			'<div id="exBloqueResultados" class="flex flex-col gap-2"' + (modo === "resultados" ? "" : " hidden") + '>' +
+			'<p class="text-sm font-semibold text-gray-800">¿Cuántas preguntas tenía de cada campo formativo?</p>' +
+			'<p class="text-xs text-gray-500">Deja vacío el campo que el examen no evaluó.</p>' +
+			'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' + camposHtml + '</div></div>' +
+			'<div id="exBloquePropio"' + (modo === "propio" ? "" : " hidden") + '><label class="flex flex-col gap-1"><span class="text-sm font-semibold text-gray-800">Instrucciones para el alumno <span class="font-normal text-gray-500">(opcional)</span></span>' +
+			'<textarea id="exInstr" rows="2" maxlength="' + X.LARGO.instrucciones + '" class="rounded-xl border border-gray-300 px-3 py-2 text-base">' + esc(fuente.instrucciones || "") + '</textarea></label></div>' +
+			'<p id="exDlgError" class="hidden text-sm font-medium text-red-700" role="alert"></p>' +
+			'</div>' +
+			'<div class="px-5 py-3 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">' +
+			'<button type="button" data-cerrar class="' + BTN_SEC + '">Cancelar</button>' +
+			'<button type="submit" class="' + BTN_PRI + '">' + (nuevo ? (base ? "Duplicar" : "Crear examen") : "Guardar") + '</button></div></form>';
+
+		var form = d.querySelector("form");
+		var err = d.querySelector("#exDlgError");
+		function error(t) { err.textContent = t; err.classList.toggle("hidden", !t); }
+		d.querySelector("[data-cerrar]").addEventListener("click", function () { d.close(); });
+		d.querySelectorAll("input[name=exModo]").forEach(function (r) {
+			r.addEventListener("change", function () {
+				modo = r.value;
+				d.querySelector("#exBloqueResultados").hidden = modo !== "resultados";
+				d.querySelector("#exBloquePropio").hidden = modo !== "propio";
+				error("");
+			});
+		});
+		form.addEventListener("submit", async function (e) {
+			e.preventDefault();
+			error("");
+			if (!modo) { error("Elige cómo lo quieres hacer: crear tu examen o solo subir resultados."); return; }
+			var tit = String(d.querySelector("#exTitulo").value || "").replace(/\s+/g, " ").trim();
+			if (!tit) { error("Escribe el nombre del examen."); d.querySelector("#exTitulo").focus(); return; }
+			var gs = gradosGrupo.length > 1
+				? Array.prototype.map.call(d.querySelectorAll("input[name=exGrado]:checked"), function (c) { return Number(c.value); })
+				: gradosGrupo.slice();
+			if (!gs.length) { error("Marca al menos un grado."); return; }
+			var fila = {
+				titulo: tit, trimestre: Number(d.querySelector("#exTrimestre").value) || 1, grados: gs,
+				fecha_aplicacion: d.querySelector("#exFecha").value || null,
+			};
+			var cambios = null;
+			if (modo === "resultados") {
+				var entrada = {};
+				d.querySelectorAll("input[data-campo]").forEach(function (i) { entrada[i.dataset.campo] = i.value; });
+				var v = X.validarCampos(entrada);
+				if (!v.ok) { error(v.error); return; }
+				fila.campos_resultados = v.campos;
+				if (ex) {
+					cambios = X.cambioDeCampos(ex.campos_resultados, v.campos, datos.resultados.filter(function (r) { return r.examen_id === ex.id; }));
+					if (!cambios.ok) { error(cambios.error); return; }
+					if (cambios.quitar.length && !(await confirmar("Quitar campos con capturas",
+						"Quitaste " + cambios.quitar.map(function (c) { return X.campo(c).nombre; }).join(" y ") + ". Se borran los aciertos que ya capturaste de ese campo.", "Quitar y guardar", true))) return;
 				}
-				if (!e.target.checked && puntosInput) {
-					puntosInput.value = 0;
+			} else {
+				fila.instrucciones = String(d.querySelector("#exInstr").value || "").trim() || null;
+			}
+			var boton = form.querySelector("button[type=submit]");
+			boton.disabled = true;
+			var r, guardado = null;
+			if (ex) {
+				r = await escribir(sb.from("examenes_grupo").update(fila).eq("id", ex.id).eq("maestro_id", userId).select("*").single());
+				if (r.ok) guardado = r.data;
+				if (r.ok && cambios) {
+					for (var i = 0; i < cambios.ajustar.length && r.ok; i++) {
+						var c = cambios.ajustar[i];
+						r = await escribir(sb.from("examen_resultados").update({ preguntas: fila.campos_resultados[c] }).eq("examen_id", ex.id).eq("maestro_id", userId).eq("campo", c));
+					}
+					if (r.ok && cambios.quitar.length) {
+						r = await escribir(sb.from("examen_resultados").delete().eq("examen_id", ex.id).eq("maestro_id", userId).in("campo", cambios.quitar));
+					}
 				}
-				await guardarDesdeManual(card, pregunta, alumnoId);
-			} else if (e.target.matches("input[data-puntos]")) {
-				await guardarDesdeManual(card, pregunta, alumnoId);
+			} else {
+				fila.modo = modo;
+				fila.grupo_id = grupo.id;
+				fila.maestro_id = userId;
+				r = await escribir(sb.from("examenes_grupo").insert(fila).select("*").single());
+				if (r.ok && base && base.modo === "propio") {
+					var copia = datos.preguntas.filter(function (p) { return p.examen_id === base.id; }).map(function (p) {
+						return { examen_id: r.data.id, maestro_id: userId, orden: p.orden, tipo: p.tipo, campo: p.campo, enunciado: p.enunciado, opciones: p.opciones, clave: p.clave };
+					});
+					if (copia.length) {
+						var rc = await escribir(sb.from("examen_preguntas").insert(copia).select("id, examen_id, orden, tipo, campo, enunciado, opciones, clave"));
+						if (rc.ok) datos.preguntas = datos.preguntas.concat(rc.data || []);
+						else mensaje("error", "Se creó el examen pero no se copiaron las preguntas. " + textoError(rc.error));
+					}
+				}
+			}
+			boton.disabled = false;
+			if (!r.ok) { error(textoError(r.error)); return; }
+			// Refleja lo guardado
+			if (ex) {
+				Object.assign(ex, guardado || fila); // r puede ser ya la de las capturas
+				if (cambios) {
+					datos.resultados = datos.resultados.filter(function (x) { return !(x.examen_id === ex.id && cambios.quitar.indexOf(x.campo) !== -1); });
+					datos.resultados.forEach(function (x) { if (x.examen_id === ex.id && fila.campos_resultados[x.campo]) x.preguntas = fila.campos_resultados[x.campo]; });
+				}
+				d.close();
+				mensaje("ok", "Datos del examen guardados.");
+				mostrar();
+			} else {
+				examenes.unshift(r.data);
+				d.close();
+				mensaje(null);
+				ctx.ir("#ex=" + r.data.id + (r.data.modo === "propio" ? "&tab=preguntas" : ""));
 			}
 		});
+		d.showModal();
+		var primero = d.querySelector(nuevo && !base ? "input[name=exModo]" : "#exTitulo");
+		if (primero) primero.focus();
 	}
 
-	async function guardarDesdeManual(card, pregunta, alumnoId) {
-		var taResp = card.querySelector("textarea[data-resp-abierta]");
-		var chk = card.querySelector("input[data-correcta-chk]");
-		var puntosInput = card.querySelector("input[data-puntos]");
-		var taObs = card.querySelector("textarea[data-obs]");
+	async function eliminarExamen(ex) {
+		var n = ex.modo === "resultados"
+			? datos.resultados.filter(function (r) { return r.examen_id === ex.id; }).length
+			: datos.respuestas.filter(function (r) { return r.examen_id === ex.id; }).length;
+		var ok = await confirmar("Eliminar examen", "Se borra «" + ex.titulo + "»" + (n ? " con todo lo capturado (" + n + (n === 1 ? " dato" : " datos") + ")" : "") +
+			". Deja de contar en la boleta. No se puede deshacer.", "Eliminar", true);
+		if (!ok) return;
+		var r = await escribir(sb.from("examenes_grupo").delete().eq("id", ex.id).eq("maestro_id", userId));
+		if (!r.ok) { mensaje("error", textoError(r.error)); return; }
+		examenes = examenes.filter(function (e) { return e.id !== ex.id; });
+		datos.preguntas = datos.preguntas.filter(function (p) { return p.examen_id !== ex.id; });
+		datos.respuestas = datos.respuestas.filter(function (p) { return p.examen_id !== ex.id; });
+		datos.resultados = datos.resultados.filter(function (p) { return p.examen_id !== ex.id; });
+		mensaje("ok", "Examen eliminado.");
+		ctx.ir("#");
+	}
 
-		var respuesta = taResp ? taResp.value.trim() : null;
-		var esCorrecta = chk ? !!chk.checked : null;
-		var ppp = puntosPorPregunta();
-		var puntos = null;
-		if (puntosInput && puntosInput.value !== "") {
-			puntos = Math.max(0, Math.min(ppp, Number(puntosInput.value) || 0));
-			puntos = Math.round(puntos * 100) / 100;
-		} else if (esCorrecta != null) {
-			puntos = esCorrecta ? ppp : 0;
+	// Cabecera de un examen (título, datos, estado y acciones)
+	function cabeceraExamen(ex, extraAcciones) {
+		var est = X.estadoExamen(ex, datos, alumnos);
+		var meta = ["Trimestre " + ex.trimestre, textoGrados(ex.grados)];
+		if (ex.fecha_aplicacion) meta.push(textoFecha(ex.fecha_aplicacion));
+		return '<div id="exPendientes" hidden></div>' +
+			'<a href="#" class="inline-flex items-center gap-1 self-start min-h-[44px] pr-3 text-sm font-semibold text-blue-700 hover:underline">' + icono("atras", "h-4 w-4") + 'Todos los exámenes</a>' +
+			'<section class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm flex flex-col gap-3">' +
+			'<div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">' +
+			'<div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-bold text-gray-900 break-words">' + esc(ex.titulo) + '</h2>' + badgeEstado(est) + '</div>' +
+			'<p class="text-sm text-gray-600 mt-1">' + (ex.modo === "resultados" ? "Solo resultados" : "Creado en Mi Salón") + ' · ' + esc(meta.join(" · ")) + '</p></div>' +
+			'<div class="flex flex-wrap gap-2 shrink-0">' + (extraAcciones || "") +
+			'<button type="button" data-accion="editar" class="' + BTN_SEC + '">' + icono("lapiz", "h-4 w-4") + 'Datos</button>' +
+			'<button type="button" data-accion="eliminar" class="' + BTN_PELIGRO + '">' + icono("basura", "h-4 w-4") + 'Eliminar</button></div></div></section>';
+	}
+	// El estado de la cabecera cambia con cada captura
+	function refrescarEstado(ex) {
+		var b = el.vista.querySelector("section [data-estado]");
+		if (b) b.outerHTML = badgeEstado(X.estadoExamen(ex, datos, alumnos));
+	}
+	ctx.refrescarEstado = refrescarEstado;
+	function ligarCabecera(ex) {
+		var b1 = el.vista.querySelector("[data-accion=editar]"), b2 = el.vista.querySelector("[data-accion=eliminar]"), b3 = el.vista.querySelector("[data-accion=duplicar]");
+		if (b1) b1.addEventListener("click", function () { abrirDialogoExamen(ex, null); });
+		if (b2) b2.addEventListener("click", function () { eliminarExamen(ex); });
+		if (b3) b3.addEventListener("click", function () { abrirDialogoExamen(null, ex); });
+	}
+	ctx.ligarCabecera = ligarCabecera;
+
+	// ══════════════════════════════════════════════════════════════════════════════
+	// Solo subir resultados: tabla alumnos × campos
+	// ══════════════════════════════════════════════════════════════════════════════
+	var estadoCelda = {}; // "alumno|campo" → "guardando" | "error" | "pendiente"
+
+	function valorGuardado(ex, alumnoId, campo) {
+		for (var i = 0; i < datos.resultados.length; i++) {
+			var r = datos.resultados[i];
+			if (r.examen_id === ex.id && r.alumno_id === alumnoId && r.campo === campo) return r;
 		}
-		var obs = taObs ? taObs.value.trim() : null;
+		return null;
+	}
 
-		await guardarRespuesta(alumnoId, pregunta, respuesta, esCorrecta, puntos, obs, false);
+	function totalAlumno(ex, alumnoId) {
+		var res = X.resultadoAlumno(ex, datos, alumnoId);
+		if (!res.preguntas) return '<span class="text-gray-400">—</span>';
+		return '<span class="font-semibold text-gray-900">' + X.numeroAciertos(res.aciertos) + '</span><span class="text-gray-500"> / ' + res.preguntas + '</span>' +
+			'<span class="block text-xs text-gray-500">' + Math.floor(res.porcentaje * 10 + 1e-9) / 10 + ' %</span>';
+	}
 
-		var info = card.querySelector("[data-puntos-info]");
-		if (info) {
-			info.textContent = puntos != null ? "Puntos: " + puntos + " / " + ppp : "Sin calificar · " + ppp + " pts";
+	function pintarResultados(ex) {
+		vistaActual = { tipo: "resultados", ex: ex };
+		var campos = X.CODIGOS.filter(function (c) { return ex.campos_resultados && ex.campos_resultados[c]; });
+		var lista = alumnosDe(ex);
+		var html = cabeceraExamen(ex);
+		html += '<section class="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">' +
+			'<div class="p-4 sm:p-5 flex flex-col gap-1 border-b border-gray-100">' +
+			'<h3 class="font-bold text-gray-900 flex items-center gap-2">' + icono("tabla", "h-5 w-5 text-blue-700") + 'Aciertos de cada alumno</h3>' +
+			'<p class="text-sm text-gray-600">Escribe cuántos aciertos sacó en cada campo. Se guarda al pasar a otra casilla; con Enter bajas al siguiente alumno. Deja vacía la casilla de quien no presentó.</p></div>';
+		if (!lista.length) {
+			html += '<p class="p-5 text-sm text-gray-500">No hay alumnos activos de ' + esc(textoGrados(ex.grados)) + ' en el grupo.</p></section>';
+			el.vista.innerHTML = html;
+			ligarCabecera(ex);
+			return;
 		}
-		actualizarFooter();
-	}
-
-	function refrescarTarjeta(card, pregunta, alumnoId) {
-		var idx = preguntas.findIndex(function (p) { return p.id === pregunta.id; });
-		var nuevo = document.createElement("div");
-		nuevo.innerHTML = renderPreguntaCalificar(pregunta, idx + 1, alumnoId);
-		var nuevoCard = nuevo.firstChild;
-		card.parentNode.replaceChild(nuevoCard, card);
-	}
-
-	// ── cálculo por CF ──────────────────────────────────────────────────────────
-	function calcularPorCF(alumnoId) {
-		var ppp = puntosPorPregunta();
-		var porCF = {};
-		preguntas.forEach(function (p) {
-			var cf = p.campo_formativo || "—";
-			if (!porCF[cf]) porCF[cf] = { puntos: 0, total: 0 };
-			porCF[cf].total += ppp;
-			var r = respMap[rkey(alumnoId, p.id)];
-			if (r && r.puntos_obtenidos != null) porCF[cf].puntos += Number(r.puntos_obtenidos) || 0;
+		html += '<div class="overflow-x-auto"><table class="ex-tabla w-full text-sm" id="exTablaResultados"><thead><tr class="bg-gray-50 text-left">' +
+			'<th scope="col" class="ex-fija bg-gray-50 px-3 py-2 font-semibold text-gray-700 min-w-[10rem]">Alumno</th>' +
+			campos.map(function (c) {
+				return '<th scope="col" class="px-2 py-2 font-semibold text-gray-700 text-center whitespace-nowrap">' + esc(X.campo(c).corto) +
+					'<span class="block text-xs font-normal text-gray-500">de ' + ex.campos_resultados[c] + '</span></th>';
+			}).join("") + '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th></tr></thead><tbody>';
+		lista.forEach(function (a, fila) {
+			html += '<tr data-alumno="' + esc(a.id) + '"><th scope="row" class="ex-fija px-3 py-1.5 text-left font-medium text-gray-800">' +
+				'<span class="text-gray-400 text-xs mr-1">' + esc(a.num_lista || "") + '</span>' + esc(a.nombre_completo) +
+				(gradosGrupo.length > 1 ? ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span>' : '') + '</th>' +
+				campos.map(function (c, col) {
+					var g = valorGuardado(ex, a.id, c);
+					return '<td class="px-2 py-1.5 text-center"><input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" ' +
+						'class="ex-celda w-16 min-h-[44px] rounded-lg border border-gray-300 text-center text-base" data-campo="' + c + '" data-fila="' + fila + '" data-col="' + col + '" ' +
+						'aria-label="' + esc(X.campo(c).corto + ", " + a.nombre_completo) + '" value="' + (g ? esc(g.aciertos) : "") + '"></td>';
+				}).join("") + '<td class="px-3 py-1.5 text-center whitespace-nowrap" data-total>' + totalAlumno(ex, a.id) + '</td></tr>';
 		});
-		return porCF;
-	}
+		html += '</tbody></table></div><p id="exErrorCelda" class="hidden px-4 py-2 text-sm font-medium text-red-700" role="alert"></p></section>';
+		el.vista.innerHTML = html;
+		ligarCabecera(ex);
+		pintarEstadoCeldas();
+		avisoPendientes();
 
-	function alumnoCalificado(alumnoId) {
-		// Calificado si tiene al menos una respuesta registrada para cada pregunta
-		return preguntas.every(function (p) {
-			var r = respMap[rkey(alumnoId, p.id)];
-			return r && (r.puntos_obtenidos != null || r.es_correcta != null || r.respuesta_alumno);
+		var tabla = document.getElementById("exTablaResultados");
+		var errEl = document.getElementById("exErrorCelda");
+		tabla.addEventListener("input", function (e) {
+			var inp = e.target.closest("input[data-campo]");
+			if (!inp) return;
+			var v = X.leerNumero(inp.value, ex.campos_resultados[inp.dataset.campo]);
+			inp.classList.toggle("border-red-500", !v.ok);
+			inp.classList.toggle("bg-red-50", !v.ok);
+			errEl.textContent = v.ok ? "" : v.error;
+			errEl.classList.toggle("hidden", v.ok);
+		});
+		tabla.addEventListener("change", function (e) {
+			var inp = e.target.closest("input[data-campo]");
+			if (inp) guardarCelda(ex, inp);
+		});
+		tabla.addEventListener("keydown", function (e) {
+			if (e.key !== "Enter") return;
+			var inp = e.target.closest("input[data-campo]");
+			if (!inp) return;
+			e.preventDefault();
+			var sig = tabla.querySelector('input[data-fila="' + (Number(inp.dataset.fila) + 1) + '"][data-col="' + inp.dataset.col + '"]') ||
+				tabla.querySelector('input[data-fila="0"][data-col="' + (Number(inp.dataset.col) + 1) + '"]');
+			if (sig) { sig.focus(); sig.select(); } else inp.blur();
 		});
 	}
 
-	// ── footer ────────────────────────────────────────────────────────────────
-	function actualizarFooter() {
-		if (!alumnoActualId) return;
-		var porCF = calcularPorCF(alumnoActualId);
-		if (footerCFEl) {
-			footerCFEl.innerHTML = Object.keys(porCF).map(function (cf) {
-				var info = cfInfo(cf);
-				var d = porCF[cf];
-				return '<span class="inline-flex items-center gap-1">' +
-					'<span class="inline-block w-2.5 h-2.5 rounded-full ' + info.dot + '"></span>' +
-					'<span class="' + info.pill + '">' + escapeHtml(cf) + ': ' +
-					(Math.round(d.puntos * 100) / 100) + ' / ' + (Math.round(d.total * 100) / 100) + '</span>' +
-				'</span>';
-			}).join("");
+	function pintarEstadoCeldas() {
+		var tabla = document.getElementById("exTablaResultados");
+		if (!tabla) return;
+		tabla.querySelectorAll("input[data-campo]").forEach(function (inp) {
+			var tr = inp.closest("tr[data-alumno]");
+			var k = tr.dataset.alumno + "|" + inp.dataset.campo;
+			var e = estadoCelda[k];
+			inp.classList.toggle("bg-amber-50", e === "pendiente");
+			inp.classList.toggle("border-amber-500", e === "pendiente");
+			inp.title = e === "pendiente" ? "Sin guardar (sin señal)" : "";
+		});
+	}
+
+	async function guardarCelda(ex, inp) {
+		var tr = inp.closest("tr[data-alumno]");
+		var alumnoId = tr.dataset.alumno, campo = inp.dataset.campo, preguntas = ex.campos_resultados[campo];
+		var v = X.leerNumero(inp.value, preguntas);
+		if (!v.ok) return; // se queda en rojo, sin guardar
+		var k = alumnoId + "|" + campo;
+		var previo = valorGuardado(ex, alumnoId, campo);
+		if (v.vacio && !previo) { ctx.resuelto("res|" + ex.id + "|" + k); delete estadoCelda[k]; pintarEstadoCeldas(); return; }
+		if (!v.vacio && previo && Number(previo.aciertos) === v.valor && Number(previo.preguntas) === preguntas) return;
+		async function hacer() {
+			var r;
+			if (v.vacio) {
+				r = await escribir(sb.from("examen_resultados").delete().eq("examen_id", ex.id).eq("alumno_id", alumnoId).eq("campo", campo).eq("maestro_id", userId));
+				if (r.ok) datos.resultados = datos.resultados.filter(function (x) { return !(x.examen_id === ex.id && x.alumno_id === alumnoId && x.campo === campo); });
+			} else {
+				r = await escribir(sb.from("examen_resultados").upsert({ examen_id: ex.id, alumno_id: alumnoId, campo: campo, preguntas: preguntas, aciertos: v.valor, maestro_id: userId },
+					{ onConflict: "examen_id,alumno_id,campo" }).select("id, examen_id, alumno_id, campo, preguntas, aciertos").single());
+				if (r.ok) {
+					datos.resultados = datos.resultados.filter(function (x) { return !(x.examen_id === ex.id && x.alumno_id === alumnoId && x.campo === campo); });
+					datos.resultados.push(r.data);
+				}
+			}
+			if (r.ok) delete estadoCelda[k];
+			else if (r.red) estadoCelda[k] = "pendiente";
+			else delete estadoCelda[k];
+			var celdaTotal = tr.querySelector("[data-total]");
+			if (celdaTotal) celdaTotal.innerHTML = totalAlumno(ex, alumnoId);
+			pintarEstadoCeldas();
+			refrescarEstado(ex);
+			return r;
 		}
-
-		var calificados = alumnos.filter(function (a) { return alumnoCalificado(a.id); }).length;
-		var total = alumnos.length;
-		var pct = total ? Math.round((calificados / total) * 100) : 0;
-		if (footerProgEl) footerProgEl.textContent = calificados + " de " + total + " alumnos calificados";
-		if (footerBarraEl) footerBarraEl.style.width = pct + "%";
+		var r = await hacer();
+		if (r.ok) { ctx.resuelto("res|" + ex.id + "|" + k); mensaje(null); }
+		else if (r.red) { ctx.pendiente("res|" + ex.id + "|" + k, hacer); }
+		else { mensaje("error", textoError(r.error)); inp.value = previo ? previo.aciertos : ""; }
 	}
 
-	// ── siguiente alumno ────────────────────────────────────────────────────────
-	function siguienteAlumno() {
-		if (!alumnos.length) return;
-		var idx = alumnos.findIndex(function (a) { return a.id === alumnoActualId; });
-		var next = alumnos[(idx + 1) % alumnos.length];
-		alumnoActualId = next.id;
-		renderCalificar();
-		window.scrollTo({ top: 0, behavior: "smooth" });
+	// ══════════════════════════════════════════════════════════════════════════════
+	// Rutas (#ex=<id>&tab=...)
+	// ══════════════════════════════════════════════════════════════════════════════
+	function mostrar() {
+		var h = window.location.hash.replace(/^#/, "");
+		var p = new URLSearchParams(h);
+		var id = p.get("ex");
+		if (window.ExamenCamara && window.ExamenCamara.abierta()) window.ExamenCamara.cerrar();
+		if (!id) { pintarLista(); return; }
+		var ex = examenPorId(id);
+		if (!ex) { mensaje("aviso", "Ese examen ya no existe."); pintarLista(); return; }
+		if (ex.modo === "resultados") pintarResultados(ex);
+		else { vistaActual = { tipo: "propio", ex: ex }; window.ExamenPropio.pintar(ctx, ex, p.get("tab") || "preguntas", el.vista); avisoPendientes(); }
+		window.scrollTo(0, 0);
 	}
 
-	// ── ajustar padding por header + tabs ─────────────────────────────────────
-	function ajustarPadding() {
-		var navbar = document.getElementById("app-navbar");
-		var header = document.getElementById("examenHeader");
-		if (!navbar || !header || !contenidoEl) return;
-		var navH = navbar.offsetHeight;
-		var hdrH = header.offsetHeight;
-		var tabsH = (tabsEl && !tabsEl.classList.contains("hidden")) ? tabsEl.offsetHeight : 0;
-		// reposicionar barra de pestañas debajo del header (en PC la barra baja lo que mide la
-		// fila del selector de secciones: se toma su borde inferior real, no solo su alto)
-		if (tabsEl && !tabsEl.classList.contains("hidden")) {
-			tabsEl.style.top = (navbar.getBoundingClientRect().bottom + hdrH) + "px";
-		}
-		contenidoEl.style.paddingTop = (navH + hdrH + tabsH + 12) + "px";
-		ajustarPie();
-	}
-
-	// El pie fijo de Calificar (resumen por campo, progreso y "Siguiente alumno") mide más en
-	// celular, donde el resumen se parte en varias líneas: el final de la página deja lo que
-	// mide el pie (más un respiro) para que la última opción no quede debajo. El espacio de
-	// la barra de secciones del celular ya lo pone js/secciones.js (body::after).
-	function ajustarPie() {
-		if (!contenidoEl) return;
-		var visible = footerEl && !footerEl.classList.contains("hidden");
-		if (!visible) { contenidoEl.style.paddingBottom = ""; return; }
-		var yaHay = parseFloat(window.getComputedStyle(document.body).paddingBottom) || 0;
-		contenidoEl.style.paddingBottom = Math.max(0, Math.ceil(footerEl.offsetHeight + 16 - yaHay)) + "px";
-	}
-	// El pie cambia de alto con su contenido (se repinta en cada alumno) y al mostrarse u
-	// ocultarse
-	if (footerEl && window.ResizeObserver) new ResizeObserver(ajustarPie).observe(footerEl);
-	window.addEventListener("resize", ajustarPadding);
-	ajustarPadding();
+	await cargar();
+	var partes = [grupo.nombre || "Grupo"];
+	if (grupo.ciclo_escolar) partes.push("Ciclo " + grupo.ciclo_escolar);
+	if (gradosGrupo.length) partes.push(textoGrados(gradosGrupo));
+	el.subtitulo.textContent = partes.join(" · ");
+	mostrar();
+	window.addEventListener("hashchange", function () { mensaje(null); mostrar(); });
 }

@@ -113,7 +113,9 @@ ok("el titular ya no dice 'sin Excel' (la página ofrece exportar a Excel)", [/s
 ok("calendario: 'los ajustes de tu grupo', no 'de tu escuela'", [/ajustes de tu grupo/.test(textoMs), /ajustes de tu escuela/.test(textoMs)], [true, false]);
 ok("instalar: 'y sigue los pasos', no 'y acepta'", [/"Instalar la app" y sigue los pasos/.test(htmlMs), /y acepta\b/.test(textoMs)], [true, false]);
 ok("no afirma que el catálogo de planeaciones está incluido", [/usar planeaciones de Jissez/.test(textoMs), /import(a|as|ar) (uno|un proyecto) de las planeaciones/.test(textoMs), /(planeaciones|catálogo)[^.]*incluid/i.test(textoMs)], [true, false, false]);
-ok("exámenes: la maestra aplica los del catálogo (no los crea)", [/aplicas los exámenes del catálogo de Jissez/.test(textoMs), /matemáticas; y exámenes\./.test(textoMs)], [true, false]);
+// 2026-09-26 (Jorge): los exámenes del catálogo se venden en la tienda y no son parte de Mi Salón
+ok("exámenes: subir resultados o crear el suyo; ya no se aplican los del catálogo",
+	[/aplicas los exámenes del catálogo/.test(textoMs), /subes los resultados de cualquier examen o creas el tuyo/.test(textoMs), /matemáticas; y exámenes\./.test(textoMs)], [false, true, false]);
 ok("paso 'Crea tu grupo': estado, ciclo, trimestre y tipo de organización", ["tu estado", "ciclo escolar", "trimestre en curso", "tipo de organización"].every((t) => textoMs.split("Crea tu grupo")[1].split("Da de alta")[0].indexOf(t) !== -1), true);
 ok("privacidad: no dice que lo del grupo va sin nombres (el rol de aseo sí los lleva)", [/lo que es para todo el grupo no lleva nombres/.test(textoMs), /El rol de aseo sí lleva los nombres/.test(textoMs)], [false, true]);
 ok("con acceso: 'Ir a Mi Salón' lleva al panel", (htmlMs.match(/data-ms="acceso" href="\.\.\/dashboard\.html"[^>]*>\s*Ir a Mi Salón/g) || []).length, 2);
