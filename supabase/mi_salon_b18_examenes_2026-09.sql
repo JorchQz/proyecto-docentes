@@ -350,9 +350,10 @@ end $$;
 -- ── delete_own_account: también los exámenes de Mi Salón ─────────────────────
 -- La de jissez_interes_secciones (que ya cubre b13, b14, b15 e interes_secciones) con las líneas
 -- de b18. Todo lo de b13 en adelante con guarda to_regclass: esta versión sirve aunque alguna de
--- esas tablas no exista todavía en la base donde se corre. Si otra migración paralela (la de
--- asignación por alumno y sueltas) también reemplaza esta función, la que se aplique AL FINAL
--- debe llevar las líneas de ambas.
+-- esas tablas no exista todavía en la base donde se corre. La migración paralela b17 (asignación
+-- por alumno y sueltas, constructor AG) también reemplaza esta función: esta versión ya lleva su
+-- línea (producto_sesion_alumnos, con guarda). La que se aplique AL FINAL debe llevar las líneas
+-- de ambas: aplicar b18 después de b17, o agregar a b17 las cuatro líneas de exámenes.
 create or replace function public.delete_own_account()
 returns void
 language plpgsql
@@ -380,6 +381,10 @@ begin
   delete from public.boleta_trimestral where maestro_id = v;
   delete from public.evaluacion_diagnostica where maestro_id = v;
   delete from public.tareas where maestro_id = v;
+  -- Asignación por alumno (b17, constructor AG, en paralelo): antes que productos_sesion
+  if to_regclass('public.producto_sesion_alumnos') is not null then
+    execute 'delete from public.producto_sesion_alumnos where maestro_id = $1' using v;
+  end if;
   delete from public.productos_sesion where maestro_id = v;
   delete from public.dias_no_habiles_extra where maestro_id = v;
   delete from public.maestro_ajustes where maestro_id = v;

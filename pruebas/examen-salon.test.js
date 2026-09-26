@@ -188,6 +188,8 @@ const sb = { from: consulta, rpc(n, args) { return Promise.resolve({ data: args.
 	const faltan = borradas(previas).filter((t) => borradas(fn).indexOf(t) === -1);
 	ok("delete_own_account conserva todo lo que ya borraba (b13, b14, b15, interes_secciones)", faltan, []);
 	ok("delete_own_account borra las 4 tablas nuevas con guarda to_regclass", TABLAS.every((t) => new RegExp("to_regclass\\('public\\." + t + "'\\) is not null then\\s+execute 'delete from public\\." + t + " where maestro_id = \\$1'").test(fn)), true);
+	ok("delete_own_account lleva también la línea de b17 (producto_sesion_alumnos, con guarda y antes que productos_sesion)",
+		/to_regclass\('public\.producto_sesion_alumnos'\)[\s\S]*delete from public\.productos_sesion/.test(fn), true);
 	ok("delete_own_account: security definer y search_path vacío", [/security definer/.test(fn), /set search_path = ''/.test(fn)], [true, true]);
 
 	// b18a: una plantilla del catálogo (maestro_id null) ya no se puede reclamar
