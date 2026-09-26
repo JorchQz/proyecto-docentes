@@ -3,8 +3,10 @@
 -- Solo aditiva: una columna nueva en proyectos, tres en calificaciones, una tabla nueva con RLS
 -- (producto_sesion_alumnos), funciones nuevas y dos reemplazadas (marca_captura_calificaciones y
 -- delete_own_account, que conservan todo lo anterior). No borra filas existentes ni columnas. Se
--- puede correr dos veces ("if not exists" / "create or replace" / políticas con guarda). Va
--- después de b12, b13, b14, b15 y jissez_interes_secciones. Aplicada SOLO en PRUEBAS
+-- puede correr dos veces ("if not exists" / "create or replace" / políticas con guarda). Solo
+-- depende de b12 (las marcas de calificaciones, ya en producción); lo de b13 en adelante va con
+-- guarda to_regclass. Orden en producción: interes → b16 → b17 → b18 → b18a → b19 → b19a (b19a
+-- redefine mover_producto_a_sesion y delete_own_account). Aplicada SOLO en PRUEBAS
 -- (raoxdxwgsxbqlzdnndly). En producción, con la confirmación de Jorge y ANTES de publicar el
 -- frontend: Hoy, Inicio, Tareas, Proyectos y el motor leen las columnas nuevas (sin ellas la
 -- lectura falla y la pantalla dice "No se pudo cargar"; nada se escribe a medias).
@@ -54,9 +56,10 @@
 --    nivel que logró. Las tres columnas van en el MISMO grupo de marca que el semáforo
 --    (captura_semaforo) de la cola sin señal de Hoy (b12): se escriben y deciden juntas.
 --
--- 4. delete_own_account: la versión COMPLETA (b10, b13, b14, b15, interes_secciones,
---    producto_sesion_alumnos y los exámenes de b18/b19, todo lo de b13 en adelante con guarda
---    to_regclass), la misma letra por letra que dejan jissez_interes_secciones, b18 y b19.
+-- 4. delete_own_account: b10, b13, b14, b15, interes_secciones, producto_sesion_alumnos y los
+--    exámenes de b18/b19 (todo lo de b13 en adelante con guarda to_regclass), la misma letra por
+--    letra que dejan jissez_interes_secciones, b18 y b19. La vigente es la de mi_salon_b19a (esta
+--    más marketplace_busquedas_vacias y productos_finales), que va al final.
 
 -- ── 1. Columnas ──────────────────────────────────────────────────────────────
 alter table public.proyectos add column if not exists tipo text not null default 'proyecto';
@@ -568,7 +571,7 @@ grant execute on function public.agregar_actividad_suelta(uuid, date, jsonb, jso
 grant execute on function public.mover_producto_a_sesion(uuid, uuid, date) to authenticated;
 
 -- ── 4. delete_own_account ────────────────────────────────────────────────────
--- @@delete_own_account inicio (versión COMPLETA, idéntica en jissez_interes_secciones, b17, b18 y b19)
+-- @@delete_own_account inicio (idéntica en jissez_interes_secciones, b17, b18 y b19; la vigente es la de b19a, que va al final)
 create or replace function public.delete_own_account()
 returns void
 language plpgsql

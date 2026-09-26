@@ -1,12 +1,13 @@
 -- Mi salón B18 — Exámenes de Mi Salón (decisiones de Jorge, 2026-09-26)
 --
 -- Solo aditiva: cuatro tablas nuevas con RLS, una función de trigger nueva y delete_own_account
--- reemplazada (la de jissez_interes_secciones con las líneas de estas tablas; todo lo de b13 en
--- adelante con guarda to_regclass, para que el orden con otras migraciones paralelas no importe).
+-- reemplazada (con las líneas de estas tablas; todo lo de b13 en adelante con guarda to_regclass;
+-- la vigente es la de mi_salon_b19a, que va al final).
 -- No toca filas existentes ni las tablas viejas (examenes, respuestas_examen, banco_preguntas: el
 -- catálogo se vende en la tienda y ya no se muestra en Mi Salón, pero sus datos se conservan y el
 -- motor de calificación los sigue leyendo). Se puede correr dos veces ("if not exists" /
--- "create or replace" / políticas con guarda). Va después de jissez_interes_secciones_2026-09.sql.
+-- "create or replace" / políticas con guarda). No depende de otra migración nueva (sus tablas son
+-- nuevas); en el orden de producción va después de b17: interes → b16 → b17 → b18 → b18a → b19 → b19a.
 -- Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción, con la confirmación de Jorge y
 -- ANTES de publicar la pantalla nueva de examen.html (sin las tablas, la página avisa "No se pudo
 -- cargar").
@@ -45,8 +46,8 @@
 --   - Borrar un EXAMEN borra sus preguntas, respuestas y resultados.
 --   - Borrar una PREGUNTA borra sus respuestas.
 --   - Borrar un ALUMNO (Mi grupo, "Eliminar") borra SUS respuestas y resultados; dar de baja no.
---   - Borrar la CUENTA: delete_own_account borra las cuatro tablas (y la cascada de auth.users
---     también las alcanza).
+--   - Borrar la CUENTA: delete_own_account borra las cuatro tablas y examen_alumnos de b19 (y la
+--     cascada de auth.users también las alcanza).
 --
 -- RLS: cada maestra solo lo suyo (auth.uid() = maestro_id); al escribir, el examen debe ser de un
 -- grupo suyo; la pregunta, de un examen suyo 'propio'; el resultado, de un examen suyo
@@ -348,10 +349,11 @@ begin
 end $$;
 
 -- ── delete_own_account: también los exámenes de Mi Salón ─────────────────────
--- La versión COMPLETA, la misma letra por letra que dejan jissez_interes_secciones, b17 y b19 (con
+-- La misma letra por letra que dejan jissez_interes_secciones, b17 y b19 (con
 -- producto_sesion_alumnos de b17 y examen_alumnos de b19). Todo lo de b13 en adelante con guarda
--- to_regclass: cualquiera que se aplique al final deja la función completa, sea cual sea el orden.
--- @@delete_own_account inicio (versión COMPLETA, idéntica en jissez_interes_secciones, b17, b18 y b19)
+-- to_regclass. La vigente es la de mi_salon_b19a (esta más marketplace_busquedas_vacias y
+-- productos_finales), que va al final.
+-- @@delete_own_account inicio (idéntica en jissez_interes_secciones, b17, b18 y b19; la vigente es la de b19a, que va al final)
 create or replace function public.delete_own_account()
 returns void
 language plpgsql

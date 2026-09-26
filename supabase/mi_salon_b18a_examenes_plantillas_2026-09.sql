@@ -5,10 +5,16 @@
 --
 -- El problema: la política UPDATE "examenes reclamar/editar" tenía
 --   USING (maestro_id = auth.uid() OR maestro_id IS NULL)  WITH CHECK (maestro_id = auth.uid())
--- así que cualquier cuenta (o una pestaña con el código de antes de R23) podía hacer UPDATE de una
--- plantilla del catálogo (maestro_id null), ponerse como dueña y dejar de mostrarla a las demás.
--- Desde R23 "aplicar" inserta una COPIA y desde el 2026-09-26 el catálogo ya no se ofrece en Mi Salón
--- (se vende en la tienda; decisión de Jorge): ninguna pantalla necesita actualizar una plantilla.
+-- así que cualquier cuenta podía hacer UPDATE de una plantilla del catálogo (maestro_id null),
+-- ponerse como dueña y dejar de mostrarla a las demás.
+-- El frontend de esta rama ya no actualiza plantillas: el catálogo no se ofrece en Mi Salón (se
+-- vende en la tienda; decisión de Jorge del 2026-09-26). OJO (R26b): el frontend PUBLICADO en
+-- producción (b4c6958, js/examen.js) todavía "aplica" un examen con UPDATE de la plantilla
+-- (maestro_id, grupo_id, estado). Con b18a aplicada antes de publicar el frontend nuevo, ese botón
+-- fallaría con "No se pudo aplicar el examen" (sin pérdida de datos). Hoy no importa: las 63
+-- plantillas de producción están en 'borrador' y esa pantalla solo lista las 'publicado' o
+-- 'cerrado', así que nadie ve el botón. Lo conservador: aplicar b18a junto con el frontend nuevo o
+-- después (y no publicar plantillas antes).
 --
 -- Ahora: cada maestra solo actualiza SUS exámenes. Las plantillas (maestro_id null) siguen
 -- LEGIBLES para todas (política "examenes visibles (propios o plantilla)", sin cambios) y nadie con

@@ -1,9 +1,9 @@
 -- Jissez — "Avísame" de las secciones que aún no abren (decisión de Jorge, 2026-09-26)
 --
--- Solo aditiva: una tabla nueva con RLS y delete_own_account reemplazada (la versión completa,
--- idéntica en b17, b18 y b19; todo lo de b13 en adelante con guarda to_regclass). No toca filas existentes. Se puede
--- correr dos veces ("if not exists" / "create or replace" / políticas con guarda). Va después de
--- mi_salon_b15_listas_2026-09.sql. Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción,
+-- Solo aditiva: una tabla nueva con RLS y delete_own_account reemplazada (idéntica en b17, b18 y
+-- b19; todo lo de b13 en adelante con guarda to_regclass; la vigente es la de b19a, que va al
+-- final). No toca filas existentes. Se puede correr dos veces ("if not exists" / "create or
+-- replace" / políticas con guarda). No depende de otra migración nueva (va primera). Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción,
 -- con la confirmación de Jorge y ANTES de publicar las páginas de presentación
 -- (tienda/conoce-sala.html y tienda/conoce-mi-salon.html; sin la tabla, el botón dice que no se pudo
 -- guardar).
@@ -66,10 +66,11 @@ begin
 end $$;
 
 -- ── delete_own_account: también los avisos ──────────────────────────────────
--- La versión COMPLETA (b10, b13, b14, b15, interes_secciones, b17 y los exámenes de b18/b19), la
--- misma letra por letra que dejan b17, b18 y b19. Todo lo de b13 en adelante con guarda to_regclass:
--- sirve aunque alguna de esas tablas no exista todavía, y el orden de aplicación no importa.
--- @@delete_own_account inicio (versión COMPLETA, idéntica en jissez_interes_secciones, b17, b18 y b19)
+-- b10, b13, b14, b15, interes_secciones, b17 y los exámenes de b18/b19, la misma letra por letra
+-- que dejan b17, b18 y b19. Todo lo de b13 en adelante con guarda to_regclass: sirve aunque alguna
+-- de esas tablas no exista todavía. mi_salon_b19a la reemplaza con la versión completa (más
+-- marketplace_busquedas_vacias y productos_finales) y va al final.
+-- @@delete_own_account inicio (idéntica en jissez_interes_secciones, b17, b18 y b19; la vigente es la de b19a, que va al final)
 create or replace function public.delete_own_account()
 returns void
 language plpgsql

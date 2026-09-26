@@ -2,8 +2,8 @@
 --
 -- Solo aditiva: una tabla nueva con RLS (examen_alumnos), una columna nueva de marca (captura_id)
 -- en examen_respuestas y examen_resultados, tres funciones de trigger nuevas y delete_own_account
--- reemplazada por la versión COMPLETA (la misma, letra por letra, que dejan
--- jissez_interes_secciones, b17 y b18: ver abajo). No toca filas existentes. Se puede correr dos
+-- reemplazada (la misma, letra por letra, que dejan jissez_interes_secciones, b17 y b18; b19a la
+-- completa: ver abajo). No toca filas existentes. Se puede correr dos
 -- veces ("if not exists" / "create or replace" / políticas con guarda). Va DESPUÉS de b18 (usa sus
 -- tablas). Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción, con la confirmación de
 -- Jorge y ANTES de publicar el frontend de exámenes (examen.html lee examen_alumnos y las marcas;
@@ -34,11 +34,12 @@
 --    Los triggers no hacen DML y solo tocan captura_id. Los de updated_at (set_updated_at) no
 --    cambian esos campos: el orden entre triggers BEFORE no importa.
 --
--- 3. delete_own_account: una sola versión COMPLETA, idéntica en jissez_interes_secciones, b17, b18
---    y b19. Todo lo de b13 en adelante va con guarda to_regclass: cualquiera de esos archivos que se
---    aplique AL FINAL deja la función completa, sea cual sea el orden (pruebas/migraciones-orden
---    .test.js lo comprueba). Orden recomendado en producción: jissez_interes_secciones → b16 → b17 →
---    b18 → b18a → b19.
+-- 3. delete_own_account: la misma versión que dejan jissez_interes_secciones, b17 y b18; todo lo
+--    de b13 en adelante con guarda to_regclass. YA NO ES LA ÚLTIMA: mi_salon_b19a la reemplaza con
+--    la versión completa (esta más marketplace_busquedas_vacias y productos_finales, R26b) y va
+--    después de todas. pruebas/migraciones-orden.test.js comprueba que la de b19a borra todo lo
+--    que borran las anteriores. Orden en producción: jissez_interes_secciones → b16 → b17 → b18 →
+--    b18a → b19 → b19a (si se volviera a correr una anterior, hay que correr b19a otra vez).
 
 -- ── 1. examen_alumnos ────────────────────────────────────────────────────────
 create table if not exists public.examen_alumnos (
@@ -186,7 +187,7 @@ begin
   end if;
 end $$;
 
--- ── 3. delete_own_account (versión COMPLETA, idéntica en interes_secciones, b17, b18 y b19) ──
+-- ── 3. delete_own_account (idéntica en interes_secciones, b17, b18 y b19; la vigente es la de b19a) ──
 -- @@delete_own_account inicio
 create or replace function public.delete_own_account()
 returns void
