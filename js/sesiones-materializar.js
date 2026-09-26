@@ -36,7 +36,8 @@
 	    fecha ni calificaciones; las que se empezaron a trabajar no se tocan (carrera R24-r08).
 	  resumen: { insertados, borrados, conservados, omitidas: [sesiones no tocadas por
 	    trabajadas], carrera: [sesiones que se trabajaron a media escritura] }.
-	y, para las pruebas, SesionesMaterializar.planificar (la regla sin base de datos).
+	y, para las pruebas, SesionesMaterializar.planificar (la regla sin base de datos); para el
+	"¿Para quién?" de crear proyecto, SesionesMaterializar.huecosDeSesion y emparejarPlan.
 
 	Requiere js/campos-formativos.js cargado antes.
 */
@@ -471,10 +472,38 @@
 		return resumen;
 	}
 
+	/*
+		"¿Para quién?" al planear (js/para-quien.js y js/crear_proyecto.js, decisión de Jorge del
+		2026-09-26): la pantalla lista lo que la sesión VA a materializar y, al guardar, empareja
+		cada hueco con su producto. Es la MISMA regla de planificar (no una copia):
+		  huecosDeSesion(ses, gradosProyecto) → los huecos del plan ([] sin grados: no se crea nada)
+		  emparejarPlan(ses, gradosProyecto, productos) → [{ hueco, producto | null }]
+		    productos: los de la sesión (los de otra sesión se ignoran), en cualquier orden: se
+		    ordenan por creación como en materializarSesiones.
+	*/
+	function huecosDeSesion(ses, gradosProyecto) {
+		if (!ses) return [];
+		var grados = gradosDeSesion(ses, normalizarGrados(gradosProyecto));
+		if (!grados.length) return [];
+		return huecosDelPlan(ses, grados);
+	}
+
+	function emparejarPlan(ses, gradosProyecto, productos) {
+		var deSesion = (productos || []).filter(function (p) {
+			return p && (!ses || !ses.id || !p.sesion_id || p.sesion_id === ses.id);
+		}).slice().sort(function (a, b) {
+			var fa = String(a.created_at || ""), fb = String(b.created_at || "");
+			return fa < fb ? -1 : fa > fb ? 1 : 0;
+		});
+		return emparejar(huecosDeSesion(ses, gradosProyecto), deSesion);
+	}
+
 	var api = {
 		planificar: planificar,
 		gradosDeSesion: gradosDeSesion,
 		campoDeSesion: campoDeSesion,
+		huecosDeSesion: huecosDeSesion,
+		emparejarPlan: emparejarPlan,
 		materializar: materializarSesiones,
 	};
 	raiz.materializarSesiones = materializarSesiones;

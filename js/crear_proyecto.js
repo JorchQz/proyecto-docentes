@@ -52,6 +52,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   let gradosUsuario = [];
   let grupoId = null;
   let trimestreGrupo = null; // grupos.trimestre_actual del grupo destino: default del selector
+  let alumnosGrupo = [];     // alumnos activos del grupo destino ("¿Para quién?")
 
   // Cargar el grupo activo (js/grupo-activo.js): grados y trimestre salen del MISMO
   // grupo donde se inserta el proyecto. Si la lectura falla, GrupoActivo.cargar detiene la
@@ -71,6 +72,12 @@ document.addEventListener("DOMContentLoaded", async function () {
             gradosUsuario = rawGrados.split(',').map(g => parseInt(g.trim(), 10)).filter(Boolean);
           }
           gradosUsuario.sort((a, b) => a - b);
+          // Alumnos activos del grupo: el "¿Para quién?" de cada sesión (js/para-quien.js)
+          alumnosGrupo = (await window.Lectura.uno(window.sb
+            .from('alumnos')
+            .select('id, nombre_completo, num_lista, grado')
+            .eq('maestro_id', session.user.id).eq('grupo_id', grupo.id).eq('estatus', 'activo')
+            .order('grado').order('num_lista'))) || [];
         }
       }
     }
@@ -823,6 +830,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
       rebuildAllPdaBlocks();
       aplicarCandados();
+      pqRefrescarTodos(); // los grados del paso 1 pudieron cambiar
     }
 
     // Restaurar sesiones del borrador si hay pendientes
@@ -1540,6 +1548,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
     });
 
+    montarParaQuien(div);
     return div;
   }
 
@@ -1718,6 +1727,259 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   document.getElementById('btnAgregarSesion')?.addEventListener('click', agregarSesion);
 
+  // ============================================================
+  // ¿PARA QUIÉN? — por sesión (decisión de Jorge del 2026-09-26)
+  // ============================================================
+  /*
+    Cada sesión lista lo que va a materializar como producto calificable (el trabajo de cada
+    grado y cada tarea del cierre, con SesionesMaterializar.emparejarPlan: la MISMA regla del
+    materializador) y la maestra elige para quién es: los de su grado (por omisión), sin alguno,
+    o con alumnos de otro grado (js/para-quien.js, el mismo diálogo de Hoy).
+      - Los grados del producto NO cambian: los fija el plan (si cambiaran, el materializador ya
+        no lo emparejaría). "Para quién" se guarda solo como filas de producto_sesion_alumnos
+        (ProductosHoy.filasDeEdicion) con guardar_asignacion_producto, DESPUÉS de materializar.
+        Por eso, marcar a todos los de otro grado los incluye uno por uno (en Hoy, un producto
+        nuevo con todos los de un grado guarda el grado).
+      - La elección va con la clave del materializador (tipo, grados y nombre de la tarea): si la
+        maestra cambia el texto de una tarea o los grados después de elegir, ese renglón vuelve
+        al predeterminado (los alumnos de su grado).
+      - Edición: se muestra lo ya asignado; un alumno con calificación en ese producto sale
+        marcado y bloqueado (la base lo revisa otra vez al guardar). En una sesión trabajada se
+        cambia el "para quién" de sus productos existentes, con el mismo candado.
+      - Lo agregado en Hoy (no es del plan) no se lista: se maneja en Hoy (se dice en una línea).
+      - El borrador local guarda la elección (_paraQuien de cada sesión).
+    block._paraQuien = { clave: { quieren: { alumnoId: true } } }: solo lo que la maestra cambió.
+  */
+  let pqProductos = [];      // productos_sesion de las sesiones del proyecto (edición)
+  let pqAsignaciones = {};   // { productoId: { alumnoId: modo } }
+  let pqCalificaciones = {}; // { "alumnoId|productoId": fila }
+
+  // Lo que ya tienen los productos de estas sesiones (la lectura lanza: sin ella no se sabe
+  // quién tiene calificación y no se dibuja nada)
+  async function cargarEstadoParaQuien(sesionIds) {
+    if (!sesionIds.length) { pqProductos = []; pqAsignaciones = {}; pqCalificaciones = {}; return; }
+    const productos = await window.LeerTodo.porLotes(sesionIds, function (lote) {
+      return window.sb.from('productos_sesion').select('id, sesion_id, tipo, nombre, grados, activo, created_at')
+        .in('sesion_id', lote).order('created_at').order('id');
+    });
+    const ids = productos.map(function (p) { return p.id; });
+    const filas = ids.length ? await window.LeerTodo.porLotes(ids, function (lote) {
+      return window.sb.from('producto_sesion_alumnos').select('producto_sesion_id, alumno_id, modo')
+        .in('producto_sesion_id', lote).order('producto_sesion_id').order('alumno_id');
+    }) : [];
+    const cal = ids.length ? await window.LeerTodo.porLotes(ids, function (lote) {
+      return window.sb.from('calificaciones').select('id, alumno_id, producto_sesion_id, estado_entrega, nivel, puntaje, retroalimentacion')
+        .in('producto_sesion_id', lote).order('id');
+    }) : [];
+    pqProductos = productos;
+    pqAsignaciones = window.AlcanceHoy.indiceAsignaciones(filas);
+    pqCalificaciones = window.ParaQuien.indiceCalificaciones(cal);
+  }
+
+  // La sesión como la va a guardar el bloque (la trabajada, como está en la base: su plan no cambia)
+  function pqSesionDeBloque(block, sesionId) {
+    if (block.dataset.trabajada === '1' && sesionId && sesionesOriginales[sesionId]) return sesionesOriginales[sesionId];
+    const idx = Array.from(document.querySelectorAll('.session-block')).indexOf(block);
+    return Object.assign(payloadDeBloque(block, Math.max(idx, 0), null), { id: sesionId || null });
+  }
+
+  function pqRenglones(block, productos, sesionId) {
+    if (!paso1Data) return { renglones: [], deHoy: 0 };
+    const id = sesionId === undefined ? (block.dataset.sesionId || null) : sesionId;
+    const trabajada = block.dataset.trabajada === '1';
+    // Una sesión trabajada no se vuelve a materializar: sus productos se hicieron con los grados de antes
+    const grados = trabajada && proyectoOriginal ? proyectoOriginal.grados : paso1Data.grados;
+    const deSesion = id ? (productos || []).filter(function (p) { return p.sesion_id === id; }) : [];
+    return window.ParaQuien.renglonesDeSesion(pqSesionDeBloque(block, id), grados || [], deSesion, { soloConProducto: trabajada });
+  }
+
+  function pqEstado(block, r) {
+    const elegido = block._paraQuien && block._paraQuien[r.clave];
+    const base = r.producto ? (pqAsignaciones[r.producto.id] || {}) : {};
+    const asignacion = elegido ? window.ParaQuien.asignacionDe(r.grados, alumnosGrupo, elegido.quieren) : base;
+    return {
+      tocado: !!elegido,
+      base: base,
+      asignacion: asignacion,
+      marcados: window.ParaQuien.quierenPorOmision(r.grados, alumnosGrupo, asignacion),
+      bloqueados: r.producto ? window.ParaQuien.bloqueados(r.producto.id, alumnosGrupo, pqCalificaciones) : {},
+    };
+  }
+
+  function pqHtml(block) {
+    const { renglones, deHoy } = pqRenglones(block, pqProductos);
+    if (!alumnosGrupo.length) {
+      return '<p class="text-sm text-gray-600">Tu grupo aún no tiene alumnos. Cuando los agregues, en Hoy eliges para quién es cada trabajo o tarea.</p>';
+    }
+    if (!renglones.length && !deHoy) return '';
+    let html = '<p class="text-xs text-gray-500 mb-2">Por omisión, cada trabajo y cada tarea son para los alumnos de su grado. ' +
+      'Cámbialo si alguien no lo hace o si un alumno de otro grado trabaja con ese grado. Se guarda al guardar el proyecto.</p>';
+    if (renglones.length) {
+      html += '<ul class="flex flex-col divide-y divide-gray-200">' + renglones.map(function (r) {
+        const e = pqEstado(block, r);
+        return `<li class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-800 break-words">${escapeHtml(r.etiqueta)}</p>
+              <p class="pq-resumen text-xs text-gray-600 break-words">${escapeHtml(window.ParaQuien.resumen(r.grados, e.asignacion, alumnosGrupo))}${e.tocado ? ' <span class="ml-1 inline-flex items-center rounded-full bg-blue-100 text-blue-800 font-semibold px-2 py-0.5">Por guardar</span>' : ''}</p>
+            </div>
+            <button type="button" data-pq-clave="${escapeHtml(r.clave)}" aria-label="Cambiar para quién es ${escapeHtml(r.etiqueta)}"
+              class="pq-cambiar shrink-0 min-h-[44px] min-w-[44px] px-4 rounded-xl border border-gray-300 bg-white text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-600">Cambiar</button>
+          </li>`;
+      }).join('') + '</ul>';
+    }
+    if (deHoy) {
+      html += '<p class="text-xs text-gray-500 mt-2">' + (deHoy === 1 ? 'Esta sesión tiene 1 actividad o tarea agregada en Hoy' : 'Esta sesión tiene ' + deHoy + ' actividades o tareas agregadas en Hoy') +
+        ': su «para quién» se cambia en Hoy.</p>';
+    }
+    return html;
+  }
+
+  // Vuelve a dibujar la sección solo si cambió (así no se pierde el foco mientras se escribe)
+  function pqRefrescar(block) {
+    const sec = block._pqSeccion;
+    if (!sec) return;
+    let html = '';
+    try { html = pqHtml(block); } catch (err) { console.error('Para quién:', err); }
+    if (html === block._pqHtml) return;
+    block._pqHtml = html;
+    sec.querySelector('.pq-cuerpo').innerHTML = html;
+    sec.classList.toggle('hidden', !html);
+  }
+
+  function pqRefrescarTodos() {
+    document.querySelectorAll('.session-block').forEach(pqRefrescar);
+  }
+
+  function montarParaQuien(block) {
+    const sec = document.createElement('div');
+    sec.className = 'para-quien-block border border-gray-200 border-l-4 border-l-sky-500 rounded-xl p-4 bg-gray-50';
+    sec.innerHTML = '<span class="font-bold text-gray-700 text-sm uppercase tracking-wide block mb-2">¿Para quién?</span><div class="pq-cuerpo"></div>';
+    const cierre = block.querySelector('.didactic-section[data-section="cierre"]');
+    if (cierre) cierre.after(sec);
+    else block.querySelector('.session-body')?.appendChild(sec);
+    block._pqSeccion = sec;
+    sec.addEventListener('click', function (e) {
+      const btn = e.target.closest('.pq-cambiar');
+      if (btn) pqCambiar(block, btn.dataset.pqClave, btn);
+    });
+    // Se recalcula cuando cambian las tareas del cierre (texto, agregar, quitar, modo)
+    let espera = null;
+    const programar = function (e) {
+      if (e && e.target && sec.contains(e.target)) return;
+      clearTimeout(espera);
+      espera = setTimeout(function () { pqRefrescar(block); }, 250);
+    };
+    block.addEventListener('input', programar);
+    block.addEventListener('change', programar);
+    block.addEventListener('click', programar);
+    pqRefrescar(block);
+  }
+
+  function pqCambiar(block, clave, origen) {
+    const r = pqRenglones(block, pqProductos).renglones.find(function (x) { return x.clave === clave; });
+    if (!r || !alumnosGrupo.length) return;
+    const e = pqEstado(block, r);
+    const deGrados = window.ProductosHoy.etiquetaGrados(r.grados);
+    window.ParaQuien.elegir({
+      origen: origen,
+      titulo: '¿Para quién es «' + r.etiqueta + '»?',
+      subtitulo: 'Marca a los alumnos que lo hacen. Cada uno sigue en su grado para la boleta.' +
+        (deGrados ? (r.hueco.tipo === 'tarea' ? ' La tarea es de ' : ' El trabajo es de ') + deGrados + '.' : '') +
+        ' Se guarda al guardar el proyecto.',
+      aceptar: 'Listo',
+      alumnos: alumnosGrupo,
+      marcados: e.marcados,
+      bloqueados: e.bloqueados,
+      alGuardar: function (quieren) {
+        const nueva = window.ParaQuien.asignacionDe(r.grados, alumnosGrupo, quieren);
+        block._paraQuien = block._paraQuien || {};
+        if (window.ParaQuien.mismaAsignacion(r.grados, alumnosGrupo, nueva, e.base)) delete block._paraQuien[clave];
+        else block._paraQuien[clave] = { quieren: quieren };
+        // Se dibuja al cerrar el diálogo y el foco regresa al "Cambiar" de ese renglón
+        setTimeout(function () {
+          pqRefrescar(block);
+          const nuevo = Array.from(block.querySelectorAll('.pq-cambiar')).find(function (b) { return b.dataset.pqClave === clave; });
+          if (nuevo) nuevo.focus();
+        }, 0);
+      },
+    });
+  }
+
+  // Borrador local: { clave: [alumnoId, ...] }
+  function pqParaBorrador(block) {
+    const r = {};
+    Object.keys(block._paraQuien || {}).forEach(function (k) { r[k] = Object.keys(block._paraQuien[k].quieren || {}); });
+    return Object.keys(r).length ? r : null;
+  }
+  function pqDesdeBorrador(d) {
+    const r = {};
+    Object.keys(d || {}).forEach(function (k) {
+      if (!Array.isArray(d[k])) return;
+      const q = {};
+      d[k].forEach(function (id) { q[id] = true; });
+      r[k] = { quieren: q };
+    });
+    return r;
+  }
+
+  function errorParaQuien(err, que, nuevo) {
+    const sinRed = (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+      !!(window.Lectura && window.Lectura.errorDeRed && err && window.Lectura.errorDeRed(err));
+    const cola = nuevo
+      ? ' Lo que capturaste sigue aquí; vuelve a guardar' + (sinRed ? ' cuando haya señal.' : '.')
+      : ' Los demás cambios del proyecto sí quedaron; lo que capturaste sigue aquí: revísalo y vuelve a guardar' + (sinRed ? ' cuando haya señal.' : '.');
+    return errorHumano(sinRed
+      ? 'Sin señal: no se pudo guardar ' + que + '.' + cola
+      : 'No se pudo guardar ' + que + ': ' + String((err && err.message) || 'error desconocido').replace(/\.\s*$/, '') + '.' + cola);
+  }
+
+  /*
+    Después de materializar: lee los productos de esas sesiones, empareja cada hueco con su
+    producto y guarda el "para quién" que la maestra cambió. porSesion: [{ block, sesionId,
+    numero }]. nuevo: proyecto recién creado (quien llama revierte todo si esto falla).
+  */
+  async function guardarParaQuien(porSesion, nuevo) {
+    const pendientes = porSesion.filter(function (x) {
+      return x.block && x.sesionId && x.block._paraQuien && Object.keys(x.block._paraQuien).length;
+    });
+    if (!pendientes.length || !alumnosGrupo.length) return;
+    let productos;
+    try {
+      productos = await window.LeerTodo.porLotes(pendientes.map(function (x) { return x.sesionId; }), function (lote) {
+        return window.sb.from('productos_sesion').select('id, sesion_id, tipo, nombre, grados, activo, created_at')
+          .in('sesion_id', lote).order('created_at').order('id');
+      });
+    } catch (err) {
+      throw errorParaQuien(err, 'para quién es cada trabajo y tarea', nuevo);
+    }
+    for (const x of pendientes) {
+      const renglones = pqRenglones(x.block, productos, x.sesionId).renglones;
+      for (const r of renglones) {
+        const elegido = x.block._paraQuien[r.clave];
+        if (!elegido || !r.producto) continue;
+        const filas = window.ProductosHoy.filasDeEdicion(r.producto.grados, alumnosGrupo, elegido.quieren);
+        let res;
+        try {
+          res = await window.sb.rpc('guardar_asignacion_producto', { p_producto: r.producto.id, p_filas: filas });
+        } catch (err) {
+          res = { error: err };
+        }
+        if (res && res.error) throw errorParaQuien(res.error, 'para quién es «' + r.etiqueta + '» (sesión ' + x.numero + ')', nuevo);
+      }
+    }
+  }
+
+  // Tras un error al guardar "para quién" en la edición: se vuelve a leer lo guardado (quién ya
+  // tiene calificación sale bloqueado); si no se puede, se queda lo de antes y la base vuelve a
+  // revisar al guardar
+  async function pqRecargar() {
+    try {
+      await cargarEstadoParaQuien(Array.from(document.querySelectorAll('.session-block'))
+        .map(function (b) { return b.dataset.sesionId; }).filter(Boolean));
+    } catch (_) { /* se queda lo leído antes */ }
+    pqRefrescarTodos();
+  }
+
   document.getElementById('btnVolverPaso2')?.addEventListener('click', function () {
     step2.classList.add('hidden');
     step2contenidos.classList.remove('hidden');
@@ -1829,7 +2091,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         observaciones:          g('observaciones'),
         pda_sesion:             pdaSesion.length > 0 ? pdaSesion : null,
         _archivos:              block._archivos || [],
-        _links:                 block._links || []
+        _links:                 block._links || [],
+        _paraQuien:             pqParaBorrador(block)
       };
     });
   }
@@ -2052,6 +2315,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         if (window.ProyectoEdicion.sesionTrabajada(s, conCalificaciones)) trabajadasAlAbrir[s.id] = true;
       });
       hayTrabajo = Object.keys(trabajadasAlAbrir).length > 0;
+      // "¿Para quién?": productos de sus sesiones, lo ya asignado y quién tiene calificación
+      await cargarEstadoParaQuien(sesiones.map(function (s) { return s.id; }));
       if (hayTrabajo) {
         const aviso = document.getElementById('avisoEnCurso');
         if (aviso) {
@@ -2352,8 +2617,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       // Recursos: el borrador los trae como _archivos/_links; la sesión guardada, en recursos
       const recursos = data.recursos && typeof data.recursos === "object" && !Array.isArray(data.recursos) ? data.recursos : {};
       if (block._cargarRecursos) block._cargarRecursos(data._archivos || recursos.archivos || [], data._links || recursos.links || []);
+      // "¿Para quién?" elegido en el borrador
+      if (data._paraQuien) block._paraQuien = pqDesdeBorrador(data._paraQuien);
       if (block.dataset.trabajada === "1") bloquearSesionTrabajada(block);
     });
+    pqRefrescarTodos();
     // Llenar las listas enfoca su último renglón (y la página bajaba hasta ahí): se regresa arriba
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     window.scrollTo(0, 0);
@@ -2513,6 +2781,10 @@ document.addEventListener("DOMContentLoaded", async function () {
           origenTrabajo: 'maestro',
           origenTarea: 'maestro',
         });
+        // "¿Para quién?" que la maestra cambió (si falla, se revierte todo como lo demás)
+        await guardarParaQuien((sesionesInsertadas || []).map(function (s) {
+          return { block: blocks[Number(s.numero_sesion) - 1], sesionId: s.id, numero: Number(s.numero_sesion) };
+        }), true);
       }
     } catch (err) {
       const { error: revErr } = await window.sb.from('proyectos').delete().eq('id', idProyecto);
@@ -2677,12 +2949,26 @@ document.addEventListener("DOMContentLoaded", async function () {
         sinRegresar.map(numeroDe).sort(function (a, b) { return a - b; }).join(', ') +
         ' (en Hoy o en otro dispositivo). Su campo formativo, PDA o tareas sí cambiaron, pero sus productos y calificaciones siguieron como estaban. Recarga la página y revísala antes de seguir editando.');
     }
+
+    // "¿Para quién?" que la maestra cambió, ya con los productos materializados (antes de poner
+    // los grados nuevos en proyectoOriginal: con los de antes se emparejan las sesiones trabajadas)
+    let errorPQ = null;
+    try {
+      await guardarParaQuien(lista.map(function (block, i) {
+        return { block: block, sesionId: block.dataset.sesionId || null, numero: i + 1 };
+      }), false);
+    } catch (e) { errorPQ = e; }
     if (proyectoOriginal) proyectoOriginal = Object.assign({}, proyectoOriginal, { grados: proyectoPayload.grados });
+
+    // Un error del "para quién" no llega a "guardado": se vuelve a leer lo guardado (quien ya
+    // tiene calificación sale bloqueado) y se avisa
+    if (errorPQ) await pqRecargar();
 
     const enCarrera = Array.from(new Set([].concat(r.noBorradas || [], r.soloTexto || [], resumen.omitidas || [], resumen.carrera || [])));
     if (enCarrera.length) {
-      throw errorHumano(PE.avisoCarrera(enCarrera.map(numeroDe).sort(function (a, b) { return a - b; })));
+      throw errorHumano(PE.avisoCarrera(enCarrera.map(numeroDe).sort(function (a, b) { return a - b; })) + (errorPQ ? ' ' + errorPQ.message : ''));
     }
+    if (errorPQ) throw errorPQ;
     return proyectoId;
   }
 
