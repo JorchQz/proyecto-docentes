@@ -14,6 +14,9 @@
 	var groupTypeEl = document.getElementById("groupType");
 	var groupGradesEl = document.getElementById("groupGrades");
 	var groupStudentsCountEl = document.getElementById("groupStudentsCount");
+	var groupGenderCountEl = document.getElementById("groupGenderCount");
+	var groupSchoolEl = document.getElementById("groupSchool");
+	var groupDirectorEl = document.getElementById("groupDirector");
 	var groupActionsBtn = document.getElementById("groupActionsBtn");
 	var groupActionsMenu = document.getElementById("groupActionsMenu");
 	var editGroupBtn = document.getElementById("editGroupBtn");
@@ -29,6 +32,7 @@
 	var editGroupNameInput = document.getElementById("editGroupName");
 	var editGroupTypeInput = document.getElementById("editGroupType");
 	var editGroupSchoolInput = document.getElementById("editGroupSchool");
+	var editGroupDirectorInput = document.getElementById("editGroupDirector");
 	var editGroupDescriptionInput = document.getElementById("editGroupDescription");
 	var editGroupGradesHelp = document.getElementById("editGroupGradesHelp");
 	var studentsMessageEl = document.getElementById("studentsMessage");
@@ -40,6 +44,16 @@
 	var editStudentGradeWrapper = document.getElementById("editStudentGradeWrapper");
 	var editStudentGradeSelect = document.getElementById("editStudentGrade");
 	var addStudentBtn = document.getElementById("addStudentBtn");
+	var cancelStudentEditBtn = document.getElementById("cancelStudentEditBtn");
+	// Ficha del alumno (opcional; reglas en js/ficha-alumno.js)
+	var Ficha = window.FichaAlumno;
+	var editStudentBirthdateInput = document.getElementById("editStudentBirthdate");
+	var editStudentGenderSelect = document.getElementById("editStudentGender");
+	var editStudentTutorNameInput = document.getElementById("editStudentTutorName");
+	var editStudentTutorPhoneInput = document.getElementById("editStudentTutorPhone");
+	var editStudentWhatsAppLink = document.getElementById("editStudentWhatsApp");
+	// Columnas del alumno que lee y escribe esta pantalla (las de la ficha, desde B13)
+	var ALUMNO_COLS = "id, nombre_completo, num_lista, grado, fecha_nacimiento, genero, tutor_nombre, tutor_telefono";
 	var deleteConfirmModalEl = document.getElementById("deleteConfirmModal");
 	var deleteConfirmTextEl = document.getElementById("deleteConfirmText");
 	var deleteConfirmBackdropEl = document.getElementById("deleteConfirmBackdrop");
@@ -77,6 +91,7 @@
 
 	bindEditGradeRules();
 	bindStudentInputRules();
+	bindFichaInputs();
 	bindGroupActionsMenu();
 	bindMainMenu();
 	bindEditTabs();
@@ -165,6 +180,7 @@
 			var nombre = (editGroupNameInput.value || "").trim();
 			var tipo = (editGroupTypeInput.value || "").trim();
 			var escuela = (editGroupSchoolInput.value || "").trim();
+			var director = (editGroupDirectorInput ? editGroupDirectorInput.value : "").replace(/\s+/g, " ").trim();
 			var descripcion = (editGroupDescriptionInput.value || "").trim();
 
 			if (!nombre || !tipo) {
@@ -189,19 +205,21 @@
 						tipo_organizacion: tipo,
 						grados: gradeList.map(String),
 						escuela: escuela || null,
+						director_nombre: director || null,
 						descripcion: descripcion || null,
 						es_multigrado: gradeList.length > 1,
 					})
 					.eq("id", currentGroup.id)
 					.eq("maestro_id", userId)
-					.select("id, nombre, tipo_organizacion, grados, escuela, descripcion, trimestre_actual")
+					.select("id, nombre, tipo_organizacion, grados, escuela, director_nombre, descripcion, trimestre_actual")
 					.single();
 
 				if (updateResult.error) {
 					throw updateResult.error;
 				}
 
-				currentGroup = updateResult.data;
+				// Se conservan las demás columnas del grupo (ciclo escolar, etc.)
+				currentGroup = Object.assign({}, currentGroup, updateResult.data);
 				renderGroupInfo(currentGroup);
 				syncEditForm(currentGroup);
 				editGroupForm.classList.add("hidden");
@@ -240,7 +258,7 @@
 					(currentGroup.nombre || "Sin nombre") +
 					"\" y " +
 					countText +
-					" asociado(s). Esta accion no se puede deshacer."
+					" asociado(s), con sus incidencias. Esta accion no se puede deshacer."
 			);
 			if (!confirmation) {
 				return;
@@ -369,19 +387,27 @@
 				return;
 			}
 
+			// Ficha (opcional): validación suave, con el motivo y sin perder lo escrito
+			var ficha = leerFicha();
+			if (ficha.error) {
+				showStudentsMessage("error", ficha.error);
+				if (ficha.enfocar && ficha.enfocar.focus) ficha.enfocar.focus();
+				return;
+			}
+
 			setButtonLoading(addStudentBtn, true, editingStudentId ? "Actualizando..." : "Agregando...");
 			try {
 				if (editingStudentId) {
 					var updateResult = await window.sb
 						.from("alumnos")
-						.update({
+						.update(Object.assign({
 							nombre_completo: studentName,
 							grado: studentGrade,
-						})
+						}, ficha.datos))
 						.eq("id", editingStudentId)
 						.eq("maestro_id", userId)
 						.eq("grupo_id", currentGroup.id)
-						.select("id, nombre_completo, num_lista, grado")
+						.select(ALUMNO_COLS)
 						.single();
 
 					if (updateResult.error) {
@@ -397,16 +423,16 @@
 					var insertResult = await window.sb
 						.from("alumnos")
 						.insert([
-							{
+							Object.assign({
 								maestro_id: userId,
 								grupo_id: currentGroup.id,
 								nombre_completo: studentName,
 								grado: studentGrade,
 								num_lista: nextListNumber,
 								estatus: "activo",
-							},
+							}, ficha.datos),
 						])
-						.select("id, nombre_completo, num_lista, grado")
+						.select(ALUMNO_COLS)
 						.single();
 
 					if (insertResult.error) {
@@ -571,7 +597,7 @@
 
 		students = (await window.Lectura.uno(window.sb
 			.from("alumnos")
-			.select("id, nombre_completo, num_lista, grado")
+			.select(ALUMNO_COLS)
 			.eq("maestro_id", userId)
 			.eq("grupo_id", currentGroup.id)
 			.order("num_lista", { ascending: true })
@@ -612,6 +638,13 @@
 		}
 
 		groupStudentsCountEl.textContent = formatStudentCount(students.length);
+
+		// Cuántas niñas y cuántos niños: solo si alguna ficha tiene el dato
+		if (groupGenderCountEl) {
+			var conteo = Ficha ? Ficha.conteoGenero(students) : { texto: "" };
+			groupGenderCountEl.textContent = conteo.texto;
+			groupGenderCountEl.classList.toggle("hidden", !conteo.texto);
+		}
 	}
 
 	function formatStudentCount(total) {
@@ -641,6 +674,20 @@
 				? grades.map(function (g) { return g + "\u00b0"; }).join(", ")
 				: "N/A";
 		}
+
+		// Datos de la escuela de ESTE grupo (una maestra puede tener grupos en escuelas distintas)
+		pintarDato(groupSchoolEl, group.escuela);
+		pintarDato(groupDirectorEl, group.director_nombre);
+	}
+
+	// Un dato opcional del grupo: el valor, o "Sin registrar" en gris
+	function pintarDato(el, valor) {
+		if (!el) return;
+		var hay = Boolean(valor && String(valor).trim());
+		el.textContent = hay ? String(valor) : "Sin registrar";
+		el.classList.toggle("text-gray-800", hay);
+		el.classList.toggle("font-semibold", hay);
+		el.classList.toggle("text-gray-400", !hay);
 	}
 
 	function renderStudentsList() {
@@ -658,43 +705,95 @@
 		}
 
 		var table = document.createElement("div");
-		table.className = "overflow-x-auto rounded-xl border border-gray-200";
+		table.className = "rounded-xl border border-gray-200";
 
+		// Columnas en PC y tablet horizontal; en celular y tablet vertical cada alumno es una tarjeta (sin deslizar de lado)
+		var COLUMNAS = "lg:grid-cols-[4rem_minmax(0,1fr)_3.5rem_18.5rem]";
 		var header = document.createElement("div");
 		header.className =
-			"grid grid-cols-[90px_minmax(260px,1fr)_90px_120px] gap-3 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-600";
+			"hidden lg:grid " + COLUMNAS + " gap-3 bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-600 rounded-t-xl";
 		header.innerHTML =
-			"<span>No. lista</span><span>Nombre completo</span><span>Grado</span><span></span>";
+			"<span>No. lista</span><span>Nombre completo</span><span>Grado</span><span class='sr-only'>Acciones</span>";
 		table.appendChild(header);
 
-		students.forEach(function (student) {
+		students.forEach(function (student, indice) {
 			var row = document.createElement("div");
 			row.className =
-				"grid grid-cols-[90px_minmax(260px,1fr)_90px_120px] gap-3 border-t border-gray-200 px-4 py-3 text-sm text-gray-800 items-center";
+				"grid grid-cols-[2.5rem_minmax(0,1fr)] " + COLUMNAS + " gap-x-3 gap-y-2 px-4 py-3 text-sm text-gray-800 items-center" +
+				(indice > 0 ? " border-t border-gray-200" : " lg:border-t lg:border-gray-200");
 
 			var listNumber = document.createElement("span");
 			listNumber.className = "font-semibold";
 			listNumber.textContent =
 				typeof student.num_lista === "number" ? String(student.num_lista) : "-";
 
-			var fullName = document.createElement("span");
+			// Nombre y, debajo, lo de la ficha que haya (tutor y teléfono)
+			var nameCell = document.createElement("div");
+			nameCell.className = "min-w-0";
+			var fullName = document.createElement("p");
+			fullName.className = "font-medium break-words";
 			fullName.textContent = student.nombre_completo || "Alumno sin nombre";
+			nameCell.appendChild(fullName);
+			// En celular y tablet vertical el grado va aquí (su columna solo se ve desde 1024 px)
+			var detalle = [];
+			if (student.genero && Ficha) detalle.push(Ficha.etiquetaGenero(student.genero));
+			if (student.tutor_nombre) detalle.push("Tutor: " + student.tutor_nombre);
+			if (student.tutor_telefono && Ficha) detalle.push(Ficha.formatoTelefono(student.tutor_telefono));
+			var tieneGrado = typeof student.grado === "number";
+			if (detalle.length || tieneGrado) {
+				var sub = document.createElement("p");
+				sub.className = "text-xs text-gray-500 mt-0.5 break-words" + (detalle.length ? "" : " lg:hidden");
+				if (tieneGrado) {
+					var gradoCel = document.createElement("span");
+					gradoCel.className = "lg:hidden";
+					gradoCel.textContent = student.grado + "° grado" + (detalle.length ? " · " : "");
+					sub.appendChild(gradoCel);
+				}
+				if (detalle.length) sub.appendChild(document.createTextNode(detalle.join(" · ")));
+				nameCell.appendChild(sub);
+			}
 
 			var gradeCell = document.createElement("span");
+			gradeCell.className = "hidden lg:block";
 			gradeCell.textContent =
 				typeof student.grado === "number" ? String(student.grado) : "-";
+
+			var controls = document.createElement("div");
+			controls.className = "col-span-2 lg:col-span-1 flex flex-wrap items-center justify-end gap-2";
+
+			// WhatsApp al tutor (solo con teléfono válido): wa.me/52 + los 10 dígitos
+			var enlace = Ficha && student.tutor_telefono
+				? Ficha.enlaceWhatsApp(student.tutor_telefono, Ficha.saludoWhatsApp(nombreDocente(), student.nombre_completo))
+				: "";
+			if (enlace) {
+				var waLink = document.createElement("a");
+				waLink.href = enlace;
+				waLink.target = "_blank";
+				waLink.rel = "noopener noreferrer";
+				waLink.className =
+					"inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 text-sm font-medium hover:bg-emerald-100 transition-colors";
+				waLink.setAttribute("aria-label", "Escribir por WhatsApp al tutor de " + (student.nombre_completo || "este alumno"));
+				waLink.innerHTML =
+					"<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M7.9 20A9 9 0 1 0 4 16.1L2 22Z'/></svg>";
+				var waTxt = document.createElement("span");
+				waTxt.textContent = "WhatsApp";
+				waLink.appendChild(waTxt);
+				controls.appendChild(waLink);
+			}
 
 			var editBtn = document.createElement("button");
 			editBtn.type = "button";
 			editBtn.className =
-				"inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200 transition-colors";
+				"inline-flex items-center justify-center min-h-[44px] px-3 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200 transition-colors";
 			editBtn.textContent = "Editar";
+			editBtn.setAttribute("aria-label", "Editar a " + (student.nombre_completo || "este alumno"));
 
 			var deleteBtn = document.createElement("button");
 			deleteBtn.type = "button";
 			deleteBtn.className =
-				"inline-flex items-center justify-center px-3 py-2 rounded-lg bg-red-100 text-red-700 text-sm font-medium hover:bg-red-200 transition-colors ml-2";
+				"inline-flex items-center justify-center min-h-[44px] px-3 rounded-lg bg-red-100 text-red-700 text-sm font-medium hover:bg-red-200 transition-colors";
 			deleteBtn.textContent = "Eliminar";
+			deleteBtn.setAttribute("aria-label", "Eliminar a " + (student.nombre_completo || "este alumno"));
 
 			editBtn.addEventListener("click", function () {
 				beginEditStudent(student);
@@ -704,13 +803,11 @@
 				await deleteStudent(student);
 			});
 
-			var controls = document.createElement("div");
-			controls.className = "flex items-center justify-end";
 			controls.appendChild(editBtn);
 			controls.appendChild(deleteBtn);
 
 			row.appendChild(listNumber);
-			row.appendChild(fullName);
+			row.appendChild(nameCell);
 			row.appendChild(gradeCell);
 			row.appendChild(controls);
 			table.appendChild(row);
@@ -723,7 +820,7 @@
 		var confirmation = await showDeleteConfirmModal(
 			"Se eliminara el alumno \"" +
 				(student.nombre_completo || "Sin nombre") +
-				"\". Esta accion no se puede deshacer."
+				"\" con su ficha, y se quitara de las incidencias donde aparece (las incidencias se conservan). Esta accion no se puede deshacer."
 		);
 
 		if (!confirmation) {
@@ -815,8 +912,13 @@
 			editStudentGradeSelect.value = String(student.grado);
 		}
 
+		llenarFicha(student);
+
 		if (addStudentBtn) {
 			addStudentBtn.textContent = "Actualizar alumno";
+		}
+		if (cancelStudentEditBtn) {
+			cancelStudentEditBtn.classList.remove("hidden");
 		}
 
 		showStudentsMessage("success", "Editando alumno. Actualiza los datos y confirma.");
@@ -851,6 +953,118 @@
 		editingStudentId = null;
 		if (addStudentBtn) {
 			addStudentBtn.textContent = "+ Agregar Alumno";
+		}
+		if (cancelStudentEditBtn) {
+			cancelStudentEditBtn.classList.add("hidden");
+		}
+		llenarFicha(null);
+	}
+
+	// ── Ficha del alumno (opcional; reglas en js/ficha-alumno.js) ──────────────
+	function hoyLocalISO() {
+		var ahora = new Date();
+		return new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+	}
+
+	// Nombre de la maestra para el saludo de WhatsApp ("" si no lo registró)
+	function nombreDocente() {
+		var n = getTeacherNameFromUser(user);
+		return n === "Docente" ? "" : n;
+	}
+
+	function llenarFicha(student) {
+		if (editStudentBirthdateInput) editStudentBirthdateInput.value = (student && student.fecha_nacimiento) || "";
+		if (editStudentGenderSelect) editStudentGenderSelect.value = (student && student.genero) || "";
+		if (editStudentTutorNameInput) editStudentTutorNameInput.value = (student && student.tutor_nombre) || "";
+		if (editStudentTutorPhoneInput) {
+			editStudentTutorPhoneInput.value = student && student.tutor_telefono && Ficha
+				? Ficha.formatoTelefono(student.tutor_telefono)
+				: "";
+		}
+		actualizarWhatsApp();
+	}
+
+	/*
+		leerFicha() → { datos, error, enfocar }
+		datos: las cuatro columnas de la ficha (null si están vacías) para mandarlas junto con el
+		nombre. error: por qué no se puede guardar (teléfono sin 10 dígitos, fecha fuera de lo
+		razonable para primaria); lo escrito se queda en su lugar.
+	*/
+	function leerFicha() {
+		if (!Ficha) return { datos: {}, error: "" };
+		var tel = Ficha.normalizarTelefono(editStudentTutorPhoneInput ? editStudentTutorPhoneInput.value : "");
+		if (!tel.ok) return { datos: {}, error: tel.error, enfocar: editStudentTutorPhoneInput };
+		var fecha = editStudentBirthdateInput ? editStudentBirthdateInput.value : "";
+		// Un <input type="date"> a medio llenar devuelve "" pero marca badInput
+		if (!fecha && editStudentBirthdateInput && editStudentBirthdateInput.validity && editStudentBirthdateInput.validity.badInput) {
+			return { datos: {}, error: "La fecha de nacimiento está incompleta: complétala o bórrala.", enfocar: editStudentBirthdateInput };
+		}
+		var vf = Ficha.validarFechaNacimiento(fecha, hoyLocalISO());
+		if (!vf.ok) return { datos: {}, error: vf.error, enfocar: editStudentBirthdateInput };
+		var genero = editStudentGenderSelect ? editStudentGenderSelect.value : "";
+		if (!Ficha.generoValido(genero)) genero = "";
+		var tutor = Ficha.limpiarNombreTutor(editStudentTutorNameInput ? editStudentTutorNameInput.value : "");
+		return {
+			error: "",
+			datos: {
+				fecha_nacimiento: vf.vacio ? null : fecha,
+				genero: genero || null,
+				tutor_nombre: tutor || null,
+				tutor_telefono: tel.vacio ? null : tel.digitos,
+			},
+		};
+	}
+
+	// El botón de WhatsApp del editor aparece solo con un teléfono de 10 dígitos
+	function actualizarWhatsApp() {
+		if (!editStudentWhatsAppLink || !Ficha) return;
+		var nombreAlumno = buildFullName(
+			normalizeSpaces(editStudentLastName1Input ? editStudentLastName1Input.value : ""),
+			normalizeSpaces(editStudentLastName2Input ? editStudentLastName2Input.value : ""),
+			normalizeSpaces(editStudentFirstNamesInput ? editStudentFirstNamesInput.value : "")
+		);
+		var enlace = Ficha.enlaceWhatsApp(
+			editStudentTutorPhoneInput ? editStudentTutorPhoneInput.value : "",
+			Ficha.saludoWhatsApp(nombreDocente(), nombreAlumno)
+		);
+		if (enlace) {
+			editStudentWhatsAppLink.href = enlace;
+			editStudentWhatsAppLink.classList.remove("hidden");
+		} else {
+			editStudentWhatsAppLink.removeAttribute("href");
+			editStudentWhatsAppLink.classList.add("hidden");
+		}
+	}
+
+	function bindFichaInputs() {
+		if (editStudentBirthdateInput && Ficha) {
+			var lim = Ficha.limitesFecha(hoyLocalISO());
+			editStudentBirthdateInput.min = lim.min;
+			editStudentBirthdateInput.max = lim.max;
+		}
+		// El saludo de WhatsApp lleva el nombre del alumno que se está escribiendo
+		[editStudentLastName1Input, editStudentLastName2Input, editStudentFirstNamesInput].forEach(function (input) {
+			if (input) input.addEventListener("input", actualizarWhatsApp);
+		});
+		if (editStudentTutorPhoneInput) {
+			editStudentTutorPhoneInput.addEventListener("input", actualizarWhatsApp);
+			// Al salir del campo se deja con el formato de México ("33 1234 5678"), editable
+			editStudentTutorPhoneInput.addEventListener("blur", function () {
+				if (!Ficha) return;
+				var tel = Ficha.normalizarTelefono(editStudentTutorPhoneInput.value);
+				if (tel.ok && !tel.vacio) editStudentTutorPhoneInput.value = Ficha.formatoTelefono(tel.digitos);
+				actualizarWhatsApp();
+			});
+		}
+		if (cancelStudentEditBtn) {
+			cancelStudentEditBtn.addEventListener("click", function () {
+				resetStudentEditor();
+				[editStudentLastName1Input, editStudentLastName2Input, editStudentFirstNamesInput].forEach(function (input) {
+					if (input) input.value = "";
+				});
+				clearStudentsMessage();
+				if (editStudentLastName1Input) editStudentLastName1Input.focus();
+			});
 		}
 	}
 
@@ -1036,6 +1250,7 @@
 
 		setSelectedGrades(currentGroupGrades);
 		editGroupSchoolInput.value = group.escuela || "";
+		if (editGroupDirectorInput) editGroupDirectorInput.value = group.director_nombre || "";
 		editGroupDescriptionInput.value = group.descripcion || "";
 		updateGradesHelpText(editGroupTypeInput.value);
 		configureStudentGradeSelector();

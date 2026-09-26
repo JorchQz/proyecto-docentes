@@ -51,6 +51,8 @@ var Navegacion = (function () {
 		reportes: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
 		// El grupo (mochila): distinto del ícono de Sala de Maestros
 		grupo: '<path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 10h8"/><path d="M8 18h8"/><path d="M8 22v-6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>',
+		// Incidencias: libreta con lápiz (notebook-pen)
+		incidencias: '<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/>',
 		sala: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>',
 		cuenta: '<path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/>',
 		ajustes: '<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
@@ -84,6 +86,7 @@ var Navegacion = (function () {
 			] },
 			{ titulo: "Grupo", items: [
 				{ clave: "mi-grupo", href: "mi-grupo.html", etiqueta: "Mi grupo", icono: "grupo" },
+				{ clave: "incidencias", href: "incidencias.html", etiqueta: "Incidencias", icono: "incidencias" },
 			] },
 		],
 		sala: [
@@ -112,7 +115,7 @@ var Navegacion = (function () {
 		planeacion: "Proyectos", crear_proyecto: "Proyecto", marketplace: "Marketplace",
 		evaluacion_diagnostica: "Diagnóstico", evaluacion_formativa: "Evaluación formativa", examen: "Exámenes",
 		reportes: "Reportes", boleta: "Boleta", "reporte-alumno": "Reporte del alumno", junta: "Junta de padres",
-		exportar: "Exportar", "mi-grupo": "Mi grupo", "mi-cuenta": "Mi cuenta", ajustes: "Ajustes",
+		exportar: "Exportar", "mi-grupo": "Mi grupo", incidencias: "Incidencias", "mi-cuenta": "Mi cuenta", ajustes: "Ajustes",
 		"sala-maestros": "Sala de Maestros",
 	};
 

@@ -81,6 +81,9 @@ const EXCEPCIONES = {
 	materiales_sesion: "catálogo compartido (dosificación), solo lectura",
 	sesion_links_ltg: "catálogo compartido (dosificación), solo lectura",
 	dosificacion_sesion_pdas: "catálogo compartido (dosificación), solo lectura",
+	// B13 (supabase/mi_salon_b13_ficha_incidencias_2026-09.sql): nacen con la revisión en su política
+	incidencias: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	incidencia_alumnos: "su política de insert ya exige que la incidencia y el alumno sean del maestro y del mismo grupo; sin update",
 };
 
 // 1. Políticas por tabla

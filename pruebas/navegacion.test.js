@@ -110,10 +110,14 @@ ok("página actual", ["/salon/hoy", "/hoy.html", "/x/reportes", "/", "/salon/"].
 ok("marcado en el menú (las páginas hijas marcan a su sección)",
 	["hoy", "crear_proyecto", "boleta", "mi-cuenta", "evaluacion_formativa", "sala-maestros"].map((p) => N.activoDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["hoy", "planeacion", "reportes", "mi-cuenta", null, "sala-maestros"]);
-ok("los mismos destinos de antes (barra y menú), sin agregar ni quitar",
+ok("los mismos destinos de antes (barra y menú) más Incidencias (2026-09-25), sin quitar ninguno",
 	(htmlSalon.match(/href="[a-z_\-]+\.html"/g) || []).map((h) => h.slice(6, -1)).filter((v, i, t) => t.indexOf(v) === i).sort(),
 	["actividades.html", "ajustes.html", "asistencia.html", "dashboard.html", "evaluacion_diagnostica.html", "examen.html",
-		"hoy.html", "marketplace.html", "mi-cuenta.html", "mi-grupo.html", "planeacion.html", "reportes.html", "tareas.html"]);
+		"hoy.html", "incidencias.html", "marketplace.html", "mi-cuenta.html", "mi-grupo.html", "planeacion.html", "reportes.html", "tareas.html"]);
+ok("Incidencias va en el grupo «Grupo», después de Mi grupo, con su título y marcada en su página",
+	[/<p class="jz-titulo" id="jzMenuG3">Grupo<\/p><ul[^>]*><li><a class="jz-item" href="mi-grupo\.html"[\s\S]*?<\/li><li><a class="jz-item" href="incidencias\.html"/.test(htmlSalon),
+		N.tituloDe("salon", "incidencias"), N.activoDe("salon", "incidencias")],
+	[true, "Incidencias", "incidencias"]);
 ok("títulos del encabezado", ["hoy", "boleta", "reporte-alumno", "sala-maestros", "otra"].map((p) => N.tituloDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["Hoy", "Boleta", "Reporte del alumno", "Sala de Maestros", "Mi Salón"]);
 ok("cuenta: Mi cuenta, Ajustes, Instalar (oculto hasta que se pueda) y Cerrar sesión, en ese orden",
