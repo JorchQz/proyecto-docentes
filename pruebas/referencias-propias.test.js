@@ -84,6 +84,9 @@ const EXCEPCIONES = {
 	// B13 (supabase/mi_salon_b13_ficha_incidencias_2026-09.sql): nacen con la revisión en su política
 	incidencias: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
 	incidencia_alumnos: "su política de insert ya exige que la incidencia y el alumno sean del maestro y del mismo grupo; sin update",
+	// B14 (supabase/mi_salon_b14_calendario_2026-09.sql): nacen con la revisión en su política
+	calendario_ajustes: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	roles_aseo: "sus políticas de insert y update ya exigen que el grupo sea del maestro y que los alumnos de inicio y de continuación sean suyos y de ese grupo",
 };
 
 // 1. Políticas por tabla

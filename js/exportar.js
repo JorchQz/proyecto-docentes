@@ -93,6 +93,7 @@
 	var HOJA_PRINCIPAL = "Concentrado";
 	var HOJA_MAXIMOS = "Máximos";
 	var HOJA_LEEME = "Léeme";
+	var HOJA_CALENDARIO = "Calendario";
 
 	function encabezados() {
 		var h = ["Alumno", "Grado"];
@@ -371,6 +372,9 @@
 			["Examen", "El examen por campo es APROXIMADO: el banco de preguntas no guarda el valor de cada pregunta, así que el máximo de cada campo se estima como valor total del examen entre número de preguntas."],
 			["Documento", "Mi salón es un complemento de la boleta oficial (SIGED). Este archivo no es un documento oficial de la SEP."],
 			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación. «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero. El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
+		].concat(meta.ajustesCalendario && meta.ajustesCalendario.length ? [
+			["Calendario", "La hoja «" + HOJA_CALENDARIO + "» lista los días que el docente cambió del calendario escolar oficial de la SEP para este grupo (suspensiones propias o días con clase por un ajuste de la autoridad educativa local). Es solo dato: no cambia ningún cálculo de asistencia ni de calificaciones."],
+		] : []).concat([
 			[],
 			["COLUMNA", "DE DÓNDE SALE"],
 			["Alumno / Grado", "Alumnos activos del grupo, en orden de grado y número de lista."],
@@ -392,7 +396,25 @@
 			[COL_PROMEDIO_FINAL, "Promedio de las cuatro finales por campo ya redondeadas, siempre con un decimal («6.0»), redondeado igual (5.95 queda en 6.0). «pendiente» mientras falte alguna final. Es un cálculo de apoyo: el promedio oficial lo calcula la plataforma de control escolar."],
 			[COL_ACREDITACION, "Acuerdo 10/09/23, art. 9: 1° se acredita con haber cursado el grado. De 2° a 6°: «Acredita» si el promedio final de grado y las cuatro finales por campo llegan a 6; «Revisar» si el promedio llega a 6 pero algún campo tiene menos de 6 (algunas entidades exigen mínimo 6 en cada campo; confírmalo con tu control escolar; las columnas «<Campo>: Final» dicen cuál); «No acredita» si el promedio final de grado es menor que 6. Solo cuando están confirmados los tres trimestres de los cuatro campos; antes, «pendiente»."],
 			["Celda vacía", "Sin evidencias de ese rubro en el trimestre, o sin captura."],
-		];
+		]);
+	}
+
+	// ── Hoja Calendario (ajustes del grupo al calendario oficial, calendario.html) ──
+	var AJUSTE_CALENDARIO = {
+		suspension: "Sin clase: suspensión",
+		festividad_local: "Sin clase: festividad local",
+		otro: "Sin clase: otro motivo",
+		con_clase: "Con clase (ajuste al calendario oficial)",
+	};
+	var DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+	// ajustes: filas de calendario_ajustes [{fecha, tipo, motivo}]
+	function hojaCalendario(ajustes) {
+		return [["Fecha", "Día", "Qué es", "Motivo"]].concat((ajustes || []).map(function (a) {
+			var f = String(a.fecha || "").slice(0, 10);
+			var p = f.split("-");
+			var dia = p.length === 3 ? DIAS_SEMANA[new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2]))).getUTCDay()] : "";
+			return [f, dia || "", AJUSTE_CALENDARIO[a.tipo] || String(a.tipo || ""), unaLinea(a.motivo || "")];
+		}));
 	}
 
 	// ── Libro XLSX (SheetJS) ─────────────────────────────────────────────────
@@ -475,6 +497,13 @@
 			XLSX.utils.book_append_sheet(wb, hoja4, HOJA_INCIDENCIAS);
 		}
 
+		// Solo si el grupo tiene ajustes: sin ellos el libro queda como siempre (tres hojas)
+		if (meta && meta.ajustesCalendario && meta.ajustesCalendario.length) {
+			var hoja5 = XLSX.utils.aoa_to_sheet(hojaCalendario(meta.ajustesCalendario));
+			hoja5["!cols"] = [{ wch: 12 }, { wch: 11 }, { wch: 40 }, { wch: 60 }];
+			XLSX.utils.book_append_sheet(wb, hoja5, HOJA_CALENDARIO);
+		}
+
 		wb.Props = { Title: "Concentrado por alumno", Author: "Mi salón" };
 		return wb;
 	}
@@ -497,6 +526,8 @@
 		HOJA_LEEME: HOJA_LEEME,
 		HOJA_INCIDENCIAS: HOJA_INCIDENCIAS,
 		hojaIncidencias: hojaIncidencias,
+		HOJA_CALENDARIO: HOJA_CALENDARIO,
+		hojaCalendario: hojaCalendario,
 		encabezados: encabezados,
 		redondear1: redondear1,
 		construir: construir,
@@ -731,6 +762,21 @@
 			return { incidencias: filas, nombrePorId: nombrePorId };
 		}
 
+		/*
+			Ajustes del grupo al calendario oficial (calendario_ajustes), para la hoja "Calendario".
+			Si la tabla todavía no existe en la base (el sitio se publicó antes que la migración
+			b14), el Excel sale como siempre; cualquier otro error detiene la descarga.
+		*/
+		async function leerAjustesCalendario() {
+			var res = await window.sb.from("calendario_ajustes").select("fecha, tipo, motivo")
+				.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupo.id).order("fecha");
+			if (res.error) {
+				if (res.error.code === "42P01" || res.error.code === "PGRST205") return [];
+				throw res.error;
+			}
+			return res.data || [];
+		}
+
 		async function descargarXLSX() {
 			if (!tabla) return;
 			var original = el.xlsx.innerHTML;
@@ -739,7 +785,9 @@
 			try {
 				var XLSX = await cargarSheetJS();
 				var inc = await leerIncidencias();
+				var ajustesCalendario = await leerAjustesCalendario();
 				var wb = libroXLSX(XLSX, tabla, {
+					ajustesCalendario: ajustesCalendario,
 					grupo: ctx.grupo.nombre, ciclo: ctx.ciclo, trimestre: trimestre,
 					escuela: ctx.escuela, maestro: ctx.maestroNombre, fecha: hoyISO(),
 					alumnos: tabla.filas.length,
