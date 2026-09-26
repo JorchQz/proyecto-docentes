@@ -82,8 +82,8 @@ ok("resultado del alumno: total y porcentaje", X.resultadoAlumno(ex1, { resultad
 const alumnos = [{ id: "ana", grado: 3, estatus: "activo" }, { id: "beto", grado: 4, estatus: "activo" }, { id: "baja", grado: 3, estatus: "baja" }, { id: "quinto", grado: 5, estatus: "activo" }];
 ok("alumnos del examen: activos de sus grados", X.alumnosDelExamen(alumnos, ex2).map((a) => a.id), ["ana", "beto"]);
 ok("sin aplicar", X.estadoExamen(ex1, { resultados: [] }, alumnos).clave, "sin_aplicar");
-ok("solo resultados: calificado cuando todos tienen todos sus campos", X.estadoExamen(ex1, { resultados }, alumnos), { clave: "calificado", texto: "Calificado", capturados: 1, completos: 1, total: 1, pendientesMano: 0 });
-ok("examen propio: en revisión, con la abierta de Ana pendiente", X.estadoExamen(ex2, { preguntas, respuestas }, alumnos), { clave: "en_revision", texto: "En revisión", capturados: 2, completos: 0, total: 2, pendientesMano: 3 });
+ok("solo resultados: calificado cuando todos tienen todos sus campos", X.estadoExamen(ex1, { resultados }, alumnos), { clave: "calificado", texto: "Calificado", capturados: 1, completos: 1, total: 1, pendientesMano: 0, noPresentaron: 0 });
+ok("examen propio: en revisión, con la abierta de Ana pendiente", X.estadoExamen(ex2, { preguntas, respuestas }, alumnos), { clave: "en_revision", texto: "En revisión", capturados: 2, completos: 0, total: 2, pendientesMano: 3, noPresentaron: 0 });
 ok("filas de una hoja escaneada (doble, vacía y letra)", X.filasDeLectura(ex2, "ana", [{ id: "p1", letra: "B" }, { id: "p2", letra: "*" }, { id: "p6", letra: null }, { id: "p3", letra: "Z" }], "escaneo").map((f) => [f.pregunta_id, f.respuesta, f.origen]),
 	[["p1", "B", "escaneo"], ["p2", "*", "escaneo"], ["p6", null, "escaneo"], ["p3", null, "escaneo"]]);
 const html = X.examenHTML({ titulo: "Examen <T1>", instrucciones: "Lee" }, [{ tipo: "opcion_multiple", enunciado: "¿2+2?", opciones: ["3", "4"] }, { tipo: "abierta", enunciado: "Explica" }], { escuela: "Esc" });

@@ -42,12 +42,16 @@ function vacia(b, ms) { return Promise.race([b.vacia(), dormir(ms || 1500)]); }
 
 // ── Supabase falso ───────────────────────────────────────────────────────────
 function crearBD() {
-	return { asistencias: [], registro_diario: [], calificaciones: [], siguiente: 1 };
+	return { asistencias: [], registro_diario: [], calificaciones: [], examen_respuestas: [], examen_resultados: [], examen_alumnos: [], siguiente: 1 };
 }
 const UNICAS = {
 	asistencias: ["grupo_id", "alumno_id", "fecha"],
 	registro_diario: ["maestro_id", "alumno_id", "fecha"],
 	calificaciones: ["maestro_id", "alumno_id", "producto_sesion_id"],
+	// Exámenes (mi_salon_b18 y b19)
+	examen_respuestas: ["pregunta_id", "alumno_id"],
+	examen_resultados: ["examen_id", "alumno_id", "campo"],
+	examen_alumnos: ["examen_id", "alumno_id"],
 };
 /*
 	El esquema de la base con el que se prueba cada versión del código:
@@ -63,6 +67,10 @@ const GRUPOS_BD = {
 	registro_diario: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
 	// mi_salon_b17: la revisión de una actividad incompleta va con el semáforo
 	calificaciones: [["captura_semaforo", ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"]], ["captura_puntaje", ["puntaje"]], ["captura_retroalimentacion", ["retroalimentacion"]]],
+	// mi_salon_b19: una marca por fila en las tablas de exámenes
+	examen_respuestas: [["captura_id", ["respuesta", "resultado", "origen"]]],
+	examen_resultados: [["captura_id", ["aciertos", "preguntas"]]],
+	examen_alumnos: [["captura_id", ["no_presento"]]],
 };
 let marcasServidor = 0;
 const marcaServidor = () => "srv-" + ++marcasServidor;
@@ -1394,6 +1402,83 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 			ok("§10c conflicto avisado y se conservó lo de la base", [b2.eventos.conflictos.length, filaDe(bdI, "caro").estado_en_clase], [1, "incompleta"]);
 			ok("§10c el aviso dice lo que quedó (incompleta, por completar) y lo que no se aplicó (la completó)", /quedó: Incompleta, por completar\)[\s\S]*\(En proceso, la completó\)/.test(String((b2.eventos.conflictos[0] || [])[1] && b2.eventos.conflictos[0][1].texto || "")), true);
 		});
+	}
+
+	// ── §11 Exámenes por la misma cola (mi_salon_b19: sin señal, recargar y enviar solas) ──────
+	if (ESQUEMA === "campo" && B.esExamen) {
+		const resp = (alumno, pregunta, respuesta, origen) => ({ examen_id: "e1", pregunta_id: pregunta, alumno_id: alumno, respuesta, resultado: null, origen: origen || "escaneo" });
+		await caso("§11a hoja escaneada, aciertos y No presentó sin señal; recargar; se envían una vez", async () => {
+			const bdE = crearBD();
+			const tablet = B.almacenMemoria();
+			const b1 = bandeja(cliente(bdE, { red: true }), tablet);
+			b1.iniciar();
+			await b1.agregar("examen_respuesta", resp("ana", "q1", "A"), "Pregunta 1 de Ana");
+			await b1.agregar("examen_respuesta", resp("ana", "q2", "*"), "Pregunta 2 de Ana");
+			await b1.agregar("examen_respuesta", resp("ana", "q3", null), "Pregunta 3 de Ana");
+			await b1.agregar("examen_respuesta", resp("ana", "q1", "B"), "Pregunta 1 de Ana"); // corrigió la letra
+			await b1.agregar("examen_resultado", { examen_id: "e2", alumno_id: "beto", campo: "LEN", aciertos: 7, preguntas: 10 }, "LEN de Beto");
+			await b1.agregar("examen_alumno", { examen_id: "e1", alumno_id: "caro", no_presento: true }, "«No presentó» de Caro");
+			await dormir(20);
+			ok("§11a sin señal: 5 capturas en la tablet (una por llave) y nada en la base", [b1.pendientes(), bdE.examen_respuestas.length + bdE.examen_resultados.length + bdE.examen_alumnos.length], [5, 0]);
+			const b2 = bandeja(cliente(bdE, {}), tablet); // recargar con señal: otra bandeja, la misma tablet
+			ok("§11a al recargar siguen en la tablet", (await b2.lista()).length, 5);
+			b2.iniciar();
+			await vacia(b2);
+			ok("§11a con señal: la cola se vació, sin conflictos ni rechazos", [b2.pendientes(), b2.eventos.conflictos.length, b2.eventos.rechazos.length], [0, 0, 0]);
+			ok("§11a respuestas: la última letra, la doble marca y la vacía", bdE.examen_respuestas.map((r) => r.pregunta_id + ":" + r.respuesta + ":" + r.origen).sort(), ["q1:B:escaneo", "q2:*:escaneo", "q3:null:escaneo"]);
+			ok("§11a aciertos y No presentó", [bdE.examen_resultados.map((r) => r.aciertos + "/" + r.preguntas), bdE.examen_alumnos.map((r) => r.alumno_id + ":" + r.no_presento)], [["7/10"], ["caro:true"]]);
+			ok("§11a cada fila lleva la marca de su captura (no la del servidor)", bdE.examen_respuestas.concat(bdE.examen_resultados, bdE.examen_alumnos).every((r) => r.captura_id && !/^srv-/.test(r.captura_id)), true);
+		});
+		await caso("§11b quitar una respuesta (tocar otra vez) y quitar No presentó", async () => {
+			const bdE = crearBD();
+			const b = bandeja(cliente(bdE, {}), B.almacenMemoria());
+			b.iniciar();
+			await b.agregar("examen_respuesta", resp("ana", "q1", "C", "toque"), "Pregunta 1 de Ana");
+			await b.agregar("examen_alumno", { examen_id: "e1", alumno_id: "ana", no_presento: true }, "No presentó");
+			await vacia(b);
+			const vioR = B.baseDeFila("examen_respuesta", bdE.examen_respuestas[0]);
+			const vioA = B.baseDeFila("examen_alumno", bdE.examen_alumnos[0]);
+			await b.agregar("examen_respuesta_borrar", { examen_id: "e1", pregunta_id: "q1", alumno_id: "ana" }, "Pregunta 1 de Ana", vioR);
+			await b.agregar("examen_alumno", { examen_id: "e1", alumno_id: "ana", no_presento: false }, "No presentó", vioA);
+			await vacia(b);
+			ok("§11b la respuesta se retiró y No presentó quedó en false", [bdE.examen_respuestas.length, bdE.examen_alumnos[0].no_presento, b.eventos.conflictos.length], [0, false, 0]);
+		});
+		await caso("§11c otro aparato cambió la respuesta después de que la tablet la vio: no se pisa y se avisa", async () => {
+			const bdE = crearBD();
+			const b1 = bandeja(cliente(bdE, {}), B.almacenMemoria());
+			b1.iniciar();
+			await b1.agregar("examen_respuesta", resp("ana", "q1", "A", "toque"), "Pregunta 1 de Ana");
+			await vacia(b1);
+			const vio = B.baseDeFila("examen_respuesta", Object.assign({}, bdE.examen_respuestas[0]));
+			// Otro aparato (o SQL) cambia la letra: el trigger le pone una marca del servidor
+			await cliente(bdE, {}).from("examen_respuestas").update({ respuesta: "D" }).eq("maestro_id", "m1").eq("pregunta_id", "q1").eq("alumno_id", "ana");
+			const tablet = B.almacenMemoria();
+			const b2 = bandeja(cliente(bdE, { red: true }), tablet);
+			b2.iniciar();
+			await b2.agregar("examen_respuesta", resp("ana", "q1", "B", "toque"), "Pregunta 1 de Ana", vio, { campos: ["respuesta", "resultado", "origen"] });
+			const b3 = bandeja(cliente(bdE, {}), tablet);
+			b3.iniciar();
+			await vacia(b3);
+			ok("§11c se conservó lo del otro aparato (D) y hubo un aviso", [bdE.examen_respuestas[0].respuesta, b3.eventos.conflictos.length], ["D", 1]);
+			ok("§11c el aviso dice lo que quedó y lo que no se aplicó, en español", /quedó: marcó D\)[\s\S]*\(marcó B\)/.test(String((b3.eventos.conflictos[0] || [])[1] && b3.eventos.conflictos[0][1].texto || "")), true);
+		});
+		await caso("§11d lo propio más nuevo gana sin aviso (dos toques seguidos, uno ya enviado)", async () => {
+			const bdE = crearBD();
+			const b = bandeja(cliente(bdE, {}), B.almacenMemoria());
+			b.iniciar();
+			await b.agregar("examen_resultado", { examen_id: "e2", alumno_id: "beto", campo: "SAB", aciertos: 3, preguntas: 8 }, "SAB de Beto");
+			await vacia(b);
+			await b.agregar("examen_resultado", { examen_id: "e2", alumno_id: "beto", campo: "SAB", aciertos: 5, preguntas: 8 }, "SAB de Beto", null);
+			await vacia(b);
+			ok("§11d quedó el último (5 de 8), sin conflicto aunque la pantalla no tenía la versión", [bdE.examen_resultados.map((r) => r.aciertos), b.eventos.conflictos.length], [[5], 0]);
+		});
+		ok("§11 llaves de examen: por respuesta, por celda y por No presentó (retirar comparte llave)", [
+			B.clave("examen_respuesta", "m1", { alumno_id: "a", pregunta_id: "q" }) === B.clave("examen_respuesta_borrar", "m1", { alumno_id: "a", pregunta_id: "q" }),
+			B.clave("examen_resultado", "m1", { examen_id: "e", alumno_id: "a", campo: "LEN" }),
+			B.clave("examen_alumno", "m1", { examen_id: "e", alumno_id: "a" }),
+		], [true, "examen_resultado|m1|e|a|LEN", "examen_alumno|m1|e|a"]);
+		ok("§11 describir: en español", [B.describir("examen_respuesta", { respuesta: "*" }), B.describir("examen_resultado", { aciertos: 7, preguntas: 10 }), B.describir("examen_alumno", { no_presento: true })],
+			["doble marca", "7 de 10 aciertos", "no presentó"]);
 	}
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");

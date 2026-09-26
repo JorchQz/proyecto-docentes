@@ -15,7 +15,9 @@
 	     respuesta de esa pregunta (tocar la marcada la deja en blanco). "Guardar y seguir"
 	     guarda y regresa a la cámara sin cerrarla; no vuelve a capturar la misma hoja hasta que
 	     se retire o se ponga la de otro alumno.
-	  4. Sin cámara, sin permiso o en un navegador que no la deja usar: se explica y queda
+	  Guardar pone lo leído en la cola de la tablet (js/bandeja-salida.js, vía js/examen-propio.js):
+	   funciona sin señal y se envía solo al volver.
+	4. Sin cámara, sin permiso o en un navegador que no la deja usar: se explica y queda
 	     "Capturar tocando" (js/examen-propio.js).
 
 	ExamenCamara.abrir({ examen, preguntas, alumnos, esc, yaTiene(alumnoId), guardar(alumnoId,
@@ -452,8 +454,11 @@
 		alumnoGuardado = L.alumnoId;
 		lectura = null;
 		iniciarVivo("");
-		estado("Guardado: " + (a ? a.nombre_completo : "") + " (" + c.bien + " de " + c.total + "). Retira la hoja y pon la siguiente.");
+		estado((r.enTableta ? "Guardado en la tablet (sin señal; se envía solo al volver): " : "Guardado: ") + (a ? a.nombre_completo : "") + " (" + c.bien + " de " + c.total + "). Retira la hoja y pon la siguiente.");
 	}
 
-	window.ExamenCamara = { abrir: abrir, cerrar: cerrar, abierta: function () { return modo !== "cerrada"; } };
+	// precargar(): el lector del QR se baja al abrir «Revisar» (con señal); así, si después se va la
+	// señal, la cámara sigue reconociendo a cada alumno por su hoja
+	window.ExamenCamara = { abrir: abrir, cerrar: cerrar, abierta: function () { return modo !== "cerrada"; },
+		precargar: function () { cargarJsQR().catch(function () {}); } };
 })();

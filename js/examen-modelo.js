@@ -174,12 +174,25 @@
 	}
 
 	/*
+		"No presentó" (decisión de Jorge, 2026-09-26; mi_salon_b19, tabla examen_alumnos): el alumno
+		no cuenta en ese examen ni a favor ni en contra (el motor lo salta aunque tenga algo capturado)
+		y cuenta como listo para que el examen quede "Calificado". Si después lo presenta, se captura
+		normal: la pantalla quita la marca al capturar sus respuestas o sus aciertos.
+		datos.alumnosExamen: filas { examen_id, alumno_id, no_presento }.
+	*/
+	function noPresento(examen, datos, alumnoId) {
+		return Motor.noPresentoExamen(examen && examen.id, datos, alumnoId);
+	}
+
+	/*
 		avanceAlumno(examen, datos, alumnoId) → { capturado, completo, pendientesMano }
 		datos = { preguntas, respuestas, resultados } (las del examen)
 		resultados: completo si tiene todos los campos del examen.
 		propio: completo si tiene todas las automáticas y todas las de a mano calificadas.
 	*/
 	function avanceAlumno(examen, datos, alumnoId) {
+		// "No presentó" (mi_salon_b19): cuenta como listo para cerrar el examen, sin capturas
+		if (noPresento(examen, datos, alumnoId)) return { capturado: true, completo: true, pendientesMano: 0, noPresento: true };
 		if (examen.modo === "resultados") {
 			var campos = Object.keys(examen.campos_resultados || {});
 			var tiene = (datos.resultados || []).filter(function (r) { return r.examen_id === examen.id && r.alumno_id === alumnoId; })
@@ -207,16 +220,17 @@
 	*/
 	function estadoExamen(examen, datos, alumnos) {
 		var lista = alumnosDelExamen(alumnos, examen);
-		var capturados = 0, completos = 0, pendientes = 0;
+		var capturados = 0, completos = 0, pendientes = 0, noPresentaron = 0;
 		lista.forEach(function (a) {
 			var av = avanceAlumno(examen, datos, a.id);
 			if (av.capturado) capturados++;
 			if (av.completo) completos++;
+			if (av.noPresento) noPresentaron++;
 			pendientes += av.pendientesMano;
 		});
 		var clave = !capturados ? "sin_aplicar" : (completos === lista.length && lista.length ? "calificado" : "en_revision");
 		var texto = clave === "sin_aplicar" ? "Sin aplicar" : (clave === "calificado" ? "Calificado" : "En revisión");
-		return { clave: clave, texto: texto, capturados: capturados, completos: completos, total: lista.length, pendientesMano: pendientes };
+		return { clave: clave, texto: texto, capturados: capturados, completos: completos, total: lista.length, pendientesMano: pendientes, noPresentaron: noPresentaron };
 	}
 
 	/*
@@ -307,7 +321,7 @@
 		LETRAS: LETRAS, LARGO: LARGO, MAX_PREGUNTAS: MAX_PREGUNTAS, MAX_AUTOMATICAS: MAX_AUTOMATICAS,
 		leerNumero: leerNumero, validarCampos: validarCampos, cambioDeCampos: cambioDeCampos,
 		validarPregunta: validarPregunta, puedeAgregar: puedeAgregar, resumenPreguntas: resumenPreguntas,
-		alumnosDelExamen: alumnosDelExamen, avanceAlumno: avanceAlumno, estadoExamen: estadoExamen,
+		alumnosDelExamen: alumnosDelExamen, noPresento: noPresento, avanceAlumno: avanceAlumno, estadoExamen: estadoExamen,
 		resultadoAlumno: resultadoAlumno, numeroAciertos: numeroAciertos,
 		filasDeLectura: filasDeLectura, textoRespuesta: textoRespuesta, examenHTML: examenHTML,
 	};

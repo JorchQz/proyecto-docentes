@@ -556,6 +556,13 @@
 		return null;
 	}
 
+	// ¿El alumno está marcado "No presentó" en ese examen? datos.alumnosExamen: filas de examen_alumnos
+	function noPresentoExamen(examenId, datos, alumnoId) {
+		return ((datos && datos.alumnosExamen) || []).some(function (r) {
+			return r.examen_id === examenId && r.alumno_id === alumnoId && r.no_presento === true;
+		});
+	}
+
 	/*
 		aciertosExamenSalon(examen, datos, alumnoId) → { LEN: { aciertos, preguntas } } (solo los
 		campos con algo capturado). datos = { preguntas: [{id, examen_id, tipo, campo, clave}],
@@ -564,6 +571,8 @@
 	*/
 	function aciertosExamenSalon(examen, datos, alumnoId) {
 		var salida = {};
+		// "No presentó" (mi_salon_b19): ese examen no cuenta ni a favor ni en contra, aunque tenga algo capturado
+		if (noPresentoExamen(examen.id, datos, alumnoId)) return salida;
 		function sumar2(campo, a, p) {
 			if (!salida[campo]) salida[campo] = { aciertos: 0, preguntas: 0 };
 			salida[campo].aciertos += a;
@@ -597,7 +606,7 @@
 	}
 
 	async function leerExamenesSalon(sb, ctx, ids) {
-		var vacio = { examenes: [], preguntas: [], respuestas: [], resultados: [] };
+		var vacio = { examenes: [], preguntas: [], respuestas: [], resultados: [], alumnosExamen: [] };
 		var exRes = await sb.from("examenes_grupo").select("id, modo, grados, trimestre, created_at")
 			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre).order("id");
 		if (exRes.error) { if (faltaTabla(exRes.error)) return vacio; throw exRes.error; }
@@ -605,7 +614,18 @@
 		if (!examenes.length || !ids.length) return Object.assign(vacio, { examenes: examenes });
 		var propios = examenes.filter(function (e) { return e.modo === "propio"; }).map(function (e) { return e.id; });
 		var deResultados = examenes.filter(function (e) { return e.modo === "resultados"; }).map(function (e) { return e.id; });
-		var preguntas = [], respuestas = [], resultados = [];
+		var preguntas = [], respuestas = [], resultados = [], alumnosExamen = [];
+		// "No presentó" (mi_salon_b19; sin la tabla, nadie está marcado)
+		var todosIds = examenes.map(function (e) { return e.id; });
+		try {
+			alumnosExamen = await todas(function () {
+				return sb.from("examen_alumnos").select("examen_id, alumno_id, no_presento")
+					.in("examen_id", todosIds).in("alumno_id", ids).eq("no_presento", true).order("id");
+			});
+		} catch (e) {
+			if (!faltaTabla(e)) throw e;
+			alumnosExamen = [];
+		}
 		if (propios.length) {
 			preguntas = await todas(function () {
 				return sb.from("examen_preguntas").select("id, examen_id, tipo, campo, clave").in("examen_id", propios).order("id");
@@ -621,7 +641,7 @@
 					.in("examen_id", deResultados).in("alumno_id", ids).order("id");
 			});
 		}
-		return { examenes: examenes, preguntas: preguntas, respuestas: respuestas, resultados: resultados };
+		return { examenes: examenes, preguntas: preguntas, respuestas: respuestas, resultados: resultados, alumnosExamen: alumnosExamen };
 	}
 
 	/*
@@ -832,6 +852,7 @@
 		puntajeProducto: puntajeProducto,
 		puntosRespuestaExamen: puntosRespuestaExamen,
 		aciertosExamenSalon: aciertosExamenSalon,
+		noPresentoExamen: noPresentoExamen,
 		calcularPorcentajes: calcularPorcentajes,
 		cargarYCalcular: cargarYCalcular,
 		cargarYCalcularGrupo: cargarYCalcularGrupo,

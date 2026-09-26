@@ -18,10 +18,18 @@
 
 	Lista: los exámenes del grupo activo con su estado (sin aplicar, en revisión, calificado).
 
-	Guardar necesita señal: estas capturas no pasan por la cola de Hoy (js/bandeja-salida.js
-	está hecha para asistencia, cierre del día y calificaciones de productos). Si no hay señal,
-	lo capturado se queda en pantalla marcado "sin guardar", se avisa y se reintenta con un toque
-	(o solo, al volver la señal). Salir con algo sin guardar pregunta antes (Lectura.antesDeSalir).
+	Sin señal (decisión de Jorge del 2026-09-26; supabase/mi_salon_b19_examenes_cola_2026-09.sql):
+	las CAPTURAS de un examen (la letra tocada o escaneada, la calificación a mano, los aciertos de
+	cada campo y "No presentó") van por la MISMA cola de Hoy (js/bandeja-salida.js, tipos
+	examen_respuesta, examen_resultado y examen_alumno): se guardan primero en la tablet (IndexedDB,
+	por cuenta), se ven de inmediato y se envían solas al volver la señal, también después de
+	recargar o de cerrar la página (la envía Exámenes, Hoy o cualquier página de Mi Salón). No pisan
+	lo que otro aparato capturó: marca por fila (captura_id) con la misma regla de Hoy; si otro
+	aparato lo cambió, se conserva lo suyo y se avisa aquí. Crear o editar el examen y sus
+	preguntas sí necesita señal (se avisa y no se pierde lo escrito en el diálogo).
+
+	"No presentó" (por alumno y examen): no cuenta ni a favor ni en contra y deja cerrar el examen
+	como "Calificado". Si después lo presenta, se captura normal: capturar algo suyo quita la marca.
 */
 document.addEventListener("DOMContentLoaded", function () {
 	if (!window.sb) return;
@@ -59,9 +67,11 @@ async function iniciarExamenes() {
 
 	// ── Estado ──────────────────────────────────────────────────────────────────
 	var examenes = [], anteriores = [], alumnos = [];
-	var datos = { preguntas: [], respuestas: [], resultados: [] };
+	var datos = { preguntas: [], respuestas: [], resultados: [], alumnosExamen: [] };
 	var perfil = {};
-	var pendientes = {}; // clave → { hacer: fn, texto } capturas sin guardar
+	var enBase = {}; // llave de la cola → lo que la pantalla sabe de la base ({ marcas, valor } o null)
+	var bandeja = null; // la cola sin señal (js/bandeja-salida.js)
+	var avisosCola = []; // lo que no se aplicó (otro aparato lo cambió, o la base no lo aceptó)
 
 	// ── Utilidades ──────────────────────────────────────────────────────────────
 	function esc(s) {
@@ -135,41 +145,190 @@ async function iniciarExamenes() {
 		}
 	}
 
-	// ── Pendientes sin guardar (sin señal) ───────────────────────────────────────
-	function hayPendientes() { return Object.keys(pendientes).length > 0; }
-	function avisoPendientes() {
-		var n = Object.keys(pendientes).length;
+	// ── La cola sin señal (js/bandeja-salida.js; mi_salon_b19) ───────────────────
+	var B = window.BandejaSalida;
+	function claveCola(tipo, d) { return B.clave(tipo, userId, d); }
+	function baseCola(tipo, d) { var v = enBase[claveCola(tipo, d)]; return v === undefined ? null : v; }
+	function ponerBase(tipo, fila, d) { enBase[claveCola(tipo, d || fila)] = fila ? B.baseDeFila(tipo, fila) : null; }
+	function hayPendientes() { return !!(bandeja && bandeja.pendientes()); }
+
+	// Lo que la pantalla tiene de una llave (para aplicar lo que dice la base)
+	function filaLocal(tipo, d) {
+		var fam = tipo.replace(/_borrar$/, "");
+		var lista = fam === "examen_respuesta" ? datos.respuestas : fam === "examen_resultado" ? datos.resultados : datos.alumnosExamen;
+		for (var i = 0; i < lista.length; i++) {
+			var r = lista[i];
+			if (fam === "examen_respuesta" && r.alumno_id === d.alumno_id && r.pregunta_id === d.pregunta_id) return r;
+			if (fam === "examen_resultado" && r.examen_id === d.examen_id && r.alumno_id === d.alumno_id && r.campo === d.campo) return r;
+			if (fam === "examen_alumno" && r.examen_id === d.examen_id && r.alumno_id === d.alumno_id) return r;
+		}
+		return null;
+	}
+	/*
+		ponerLocal(tipo, d, v): deja en pantalla el valor v de esa llave ({ respuesta, resultado,
+		origen } · { aciertos, preguntas } · { no_presento }; null = sin fila).
+	*/
+	function ponerLocal(tipo, d, v) {
+		var fam = tipo.replace(/_borrar$/, "");
+		var prop = fam === "examen_respuesta" ? "respuestas" : fam === "examen_resultado" ? "resultados" : "alumnosExamen";
+		var actual = filaLocal(fam, d);
+		datos[prop] = datos[prop].filter(function (r) { return r !== actual; });
+		if (!v) return;
+		var fila = { examen_id: d.examen_id, alumno_id: d.alumno_id };
+		if (fam === "examen_respuesta") { fila.pregunta_id = d.pregunta_id; fila.respuesta = v.respuesta === undefined ? null : v.respuesta; fila.resultado = v.resultado || null; fila.origen = v.origen || "toque"; }
+		else if (fam === "examen_resultado") { fila.campo = d.campo; fila.aciertos = v.aciertos; fila.preguntas = v.preguntas; }
+		else fila.no_presento = v.no_presento === true;
+		datos[prop].push(fila);
+	}
+	function valorLocal(tipo, d) {
+		var r = filaLocal(tipo, d);
+		return r ? B.valorDeFila(tipo.replace(/_borrar$/, ""), r) : null;
+	}
+	function difiere(tipo, d, v) {
+		var a = valorLocal(tipo, d);
+		if (tipo.replace(/_borrar$/, "") === "examen_alumno") return !!(a && a.no_presento) !== !!(v && v.no_presento);
+		return !B.igual(a, v);
+	}
+
+	/*
+		capturar(tipo, d, descripcion, campos): se ve de inmediato y se encola (la tablet la guarda y
+		la envía sola). d: { examen_id, alumno_id, pregunta_id | campo, y los valores }.
+		tipo: examen_respuesta | examen_respuesta_borrar | examen_resultado | examen_resultado_borrar |
+		examen_alumno. Capturar algo de quien estaba como "No presentó" le quita la marca.
+	*/
+	function capturar(tipo, d, descripcion, campos) {
+		var fam = tipo.replace(/_borrar$/, "");
+		var borrar = /_borrar$/.test(tipo);
+		var v = null;
+		if (!borrar) {
+			v = {};
+			B.CAMPOS[fam].forEach(function (f) { if (d[f] !== undefined) v[f] = d[f]; });
+		}
+		if (fam !== "examen_alumno" && !borrar && X.noPresento({ id: d.examen_id }, datos, d.alumno_id)) {
+			var a = alumnoPorId(d.alumno_id);
+			capturar("examen_alumno", { examen_id: d.examen_id, alumno_id: d.alumno_id, no_presento: false },
+				"«No presentó» de " + (a ? a.nombre_completo : "un alumno"), ["no_presento"]);
+			mensaje("ok", "Se quitó «No presentó» de " + (a ? a.nombre_completo : "ese alumno") + ": lo capturado sí cuenta.");
+		}
+		ponerLocal(fam, d, v);
+		if (!bandeja) { mensaje("error", "Este navegador no puede guardar capturas. Recarga la página."); return; }
+		bandeja.agregar(tipo, d, descripcion, baseCola(fam, d), { campos: campos || B.CAMPOS[fam] })
+			.catch(function (e) { console.error("examen: no se pudo encolar", e); mensaje("error", "No se pudo guardar en la tablet. Recarga la página e inténtalo otra vez."); });
+	}
+
+	// Lo que no se aplicó (otro aparato lo cambió o la base no lo aceptó): se dice en el aviso
+	function avisarCola(clave, texto) {
+		avisosCola = avisosCola.filter(function (a) { return a.clave !== clave; }).concat([{ clave: clave, texto: texto }]);
+		pintarCola();
+	}
+	var ultimoCola = { pendientes: 0, estado: "ok", persistente: true };
+	function pintarCola() {
 		var caja = document.getElementById("exPendientes");
 		if (!caja) return;
-		if (!n) { caja.hidden = true; caja.innerHTML = ""; return; }
-		caja.hidden = false;
-		caja.innerHTML = '<div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">' +
-			icono("alerta") + '<p class="text-sm font-medium flex-1">Sin señal: ' + n + (n === 1 ? " captura sin guardar" : " capturas sin guardar") +
-			'. Siguen en pantalla y se guardan al volver la señal.</p>' +
-			'<button type="button" data-reintentar class="' + BTN_SEC + '">Reintentar ahora</button></div>';
-	}
-	async function reintentar() {
-		var claves = Object.keys(pendientes);
-		for (var i = 0; i < claves.length; i++) {
-			var p = pendientes[claves[i]];
-			if (!p) continue;
-			var r = await p.hacer();
-			if (r.ok) delete pendientes[claves[i]];
-			else if (!r.red) { delete pendientes[claves[i]]; mensaje("error", textoError(r.error)); }
+		var e = ultimoCola, n = e.pendientes || 0;
+		var partes = "";
+		if (n) {
+			var cuantas = n + (n === 1 ? " captura pendiente de enviar" : " capturas pendientes de enviar");
+			var donde = e.persistente ? (n === 1 ? ", guardada en esta tablet." : ", guardadas en esta tablet.") : ". No cierres esta página.";
+			var texto = e.estado === "red" ? "Sin señal: " + cuantas + donde + " Se envían solas al volver la señal."
+				: e.estado === "servidor" ? "No se pudo guardar por ahora; se reintentará. " + cuantas + donde
+				: e.estado === "sesion" ? "Tu sesión se cerró: " + cuantas + ". Siguen en esta tablet; vuelve a iniciar sesión para enviarlas."
+				: e.estado === "cuenta" ? "En esta tablet entró otra cuenta: las capturas pendientes de la anterior se enviarán cuando ella entre."
+				: "Enviando " + cuantas.replace(" pendientes de enviar", "").replace(" pendiente de enviar", "") + "...";
+			partes += '<div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border ' + (e.estado === "enviando" || e.estado === "ok" ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-300 bg-amber-50 text-amber-900") + ' px-4 py-3" data-cola-estado="' + esc(e.estado) + '">' +
+				icono("alerta") + '<p class="text-sm font-medium flex-1" data-cola-texto>' + esc(texto) + '</p>' +
+				(e.estado === "red" || e.estado === "servidor" ? '<button type="button" data-reintentar class="' + BTN_SEC + '">Reintentar ahora</button>' : '') + '</div>';
 		}
-		avisoPendientes();
-		if (window.ExamenPropio && ctx.alReintentar) ctx.alReintentar();
-		if (vistaActual.tipo === "resultados") pintarEstadoCeldas();
+		if (avisosCola.length) {
+			partes += '<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-900 flex flex-col gap-2" role="alert"><p class="text-sm font-semibold">No se aplicó:</p>' +
+				'<ul class="list-disc pl-5 text-sm flex flex-col gap-1">' + avisosCola.map(function (a) { return '<li>' + esc(a.texto) + '</li>'; }).join("") + '</ul>' +
+				'<button type="button" data-cerrar-avisos class="' + BTN_SEC + ' self-start">Entendido</button></div>';
+		}
+		caja.hidden = !partes;
+		caja.innerHTML = partes;
+		if (vistaActual && vistaActual.tipo === "resultados") pintarEstadoCeldas();
 	}
-	window.addEventListener("online", function () { if (hayPendientes()) reintentar(); });
+	function avisoPendientes() { pintarCola(); }
 	document.addEventListener("click", function (e) {
-		if (e.target.closest && e.target.closest("[data-reintentar]")) reintentar();
+		if (!e.target.closest) return;
+		if (e.target.closest("[data-reintentar]") && bandeja) bandeja.procesar();
+		if (e.target.closest("[data-cerrar-avisos]")) { avisosCola = []; pintarCola(); }
 	});
-	window.Lectura.antesDeSalir({
-		pendiente: hayPendientes,
-		guardar: function () { return reintentar().then(function () { return !hayPendientes(); }); },
-		mensaje: "Hay capturas del examen sin guardar (sin señal). ¿Salir de todos modos? Se perderán.",
+
+	// Lo que dijo la base (o otra ventana de esta tablet): se muestra si la pantalla tenía otra cosa
+	function aplicarDeBase(it, v) {
+		var fam = it.tipo.replace(/_borrar$/, "");
+		if (!difiere(fam, it.datos, v)) return;
+		ponerLocal(fam, it.datos, v);
+		repintar();
+	}
+	function repintar() {
+		if (!vistaActual) return;
+		if (vistaActual.tipo === "resultados") pintarResultados(vistaActual.ex);
+		else if (vistaActual.tipo === "propio" && ctx.alReintentar) ctx.alReintentar();
+		else if (vistaActual.tipo === "lista") pintarLista();
+	}
+
+	if (B) {
+		bandeja = B.crear({
+			sb: sb,
+			auth: window.Lectura && window.Lectura.authDirecto ? window.Lectura.authDirecto : null,
+			maestroId: userId,
+			alCambiar: function (e) { ultimoCola = e; pintarCola(); },
+			alGuardar: function (it, r) {
+				if (!B.esExamen(it.tipo)) return;
+				enBase[it.clave] = r ? r.base : null;
+				if (r && !r.sigue) aplicarDeBase(it, r.fila ? r.valor : null);
+			},
+			alConflicto: function (it, r) {
+				if (!B.esExamen(it.tipo)) return;
+				enBase[it.clave] = r.base;
+				if (!r.sigue) aplicarDeBase(it, r.actual);
+				avisarCola(it.clave, r.texto);
+			},
+			alRechazar: function (it, explicacion, r) {
+				if (!B.esExamen(it.tipo)) return;
+				if (r && r.base !== undefined) {
+					enBase[it.clave] = r.base;
+					if (!r.sigue) aplicarDeBase(it, r.actual === undefined ? null : r.actual);
+				}
+				avisarCola(it.clave, (it.descripcion || "Una captura") + ": " + explicacion + ".");
+			},
+			// Otra ventana de esta tablet envió algo: la versión nueva de la base
+			alSaber: function (m) {
+				if (!B.esExamen(m.tipoCaptura) || !m.datos) return;
+				if (m.base !== undefined) enBase[m.clave] = m.base;
+				var pendiente = m.sigue || (!bandeja.persistente() && bandeja.pendienteDe(m.clave));
+				if (m.base !== undefined && !pendiente) aplicarDeBase({ tipo: m.tipoCaptura, datos: m.datos }, m.base ? m.base.valor : null);
+				if (m.tipo === "aviso" && m.texto) avisarCola(m.clave, m.texto);
+			},
+		});
+		window.addEventListener("online", function () { bandeja.procesar(); });
+		document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") bandeja.procesar(); });
+		try {
+			if (window.AppInstalada && window.AppInstalada.modoApp() && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+		} catch (_) {}
+	}
+	// Sin almacenamiento en la tablet (sin IndexedDB) lo pendiente solo vive en esta página
+	window.addEventListener("beforeunload", function (e) {
+		if (!(bandeja && bandeja.pendientes() && !bandeja.persistente())) return;
+		e.preventDefault();
+		e.returnValue = "";
 	});
+
+	// Lo que sigue en la cola (por ejemplo, se recargó sin señal) va encima de lo leído de la base
+	async function aplicarPendientes() {
+		if (!bandeja) return;
+		var lista = await bandeja.lista();
+		lista.forEach(function (it) {
+			if (!B.esExamen(it.tipo)) return;
+			var fam = it.tipo.replace(/_borrar$/, "");
+			if (it.borrar) { ponerLocal(fam, it.datos, null); return; }
+			var v = B.valoresPendientes(it);
+			var antes = valorLocal(fam, it.datos) || {};
+			ponerLocal(fam, it.datos, Object.assign({}, antes, v));
+		});
+	}
 
 	// ── Carga ────────────────────────────────────────────────────────────────────
 	async function cargar() {
@@ -201,18 +360,40 @@ async function iniciarExamenes() {
 					.eq("maestro_id", userId).in("examen_id", lote).order("orden", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true });
 			}) : [],
 			propios.length ? window.Lectura.porLotes(propios, function (lote) {
-				return sb.from("examen_respuestas").select("id, examen_id, pregunta_id, alumno_id, respuesta, resultado, origen")
+				return sb.from("examen_respuestas").select("id, examen_id, pregunta_id, alumno_id, respuesta, resultado, origen, captura_id")
 					.eq("maestro_id", userId).in("examen_id", lote).order("id", { ascending: true });
 			}) : [],
 			deRes.length ? window.Lectura.porLotes(deRes, function (lote) {
-				return sb.from("examen_resultados").select("id, examen_id, alumno_id, campo, preguntas, aciertos")
+				return sb.from("examen_resultados").select("id, examen_id, alumno_id, campo, preguntas, aciertos, captura_id")
+					.eq("maestro_id", userId).in("examen_id", lote).order("id", { ascending: true });
+			}) : [],
+			// "No presentó" (mi_salon_b19), de todos los exámenes del grupo
+			examenes.length ? window.Lectura.porLotes(examenes.map(function (e) { return e.id; }), function (lote) {
+				return sb.from("examen_alumnos").select("id, examen_id, alumno_id, no_presento, captura_id")
 					.eq("maestro_id", userId).in("examen_id", lote).order("id", { ascending: true });
 			}) : [],
 		]);
 		datos.preguntas = l2[0] || [];
 		datos.respuestas = l2[1] || [];
 		datos.resultados = l2[2] || [];
+		datos.alumnosExamen = l2[3] || [];
+		// Lo que la pantalla vio de la base (con su marca): la cola decide con esto si otro aparato lo cambió
+		enBase = {};
+		datos.respuestas.forEach(function (r) { ponerBase("examen_respuesta", r); });
+		datos.resultados.forEach(function (r) { ponerBase("examen_resultado", r); });
+		datos.alumnosExamen.forEach(function (r) { ponerBase("examen_alumno", r); });
 		datos.preguntas.sort(function (a, b) { return (a.orden - b.orden); });
+	}
+
+	function alumnoPorId(id) { for (var i = 0; i < alumnos.length; i++) if (alumnos[i].id === id) return alumnos[i]; return null; }
+
+	// "No presentó" de un alumno en un examen (o quitarlo): por la cola, como cualquier captura
+	function marcarNoPresento(ex, alumnoId, si) {
+		var a = alumnoPorId(alumnoId);
+		capturar("examen_alumno", { examen_id: ex.id, alumno_id: alumnoId, no_presento: !!si },
+			(si ? "«No presentó» de " : "Quitar «No presentó» de ") + (a ? a.nombre_completo : "un alumno"), ["no_presento"]);
+		mensaje("ok", si ? (a ? a.nombre_completo : "El alumno") + ": no presentó. No cuenta ni a favor ni en contra en este examen; si lo presenta después, captúralo normal."
+			: "Se quitó «No presentó» de " + (a ? a.nombre_completo : "ese alumno") + ".");
 	}
 
 	function examenPorId(id) { for (var i = 0; i < examenes.length; i++) if (examenes[i].id === id) return examenes[i]; return null; }
@@ -226,8 +407,11 @@ async function iniciarExamenes() {
 		BTN: BTN, BTN_PRI: BTN_PRI, BTN_SEC: BTN_SEC, BTN_PELIGRO: BTN_PELIGRO,
 		textoGrados: textoGrados, textoFecha: textoFecha,
 		perfil: function () { return perfil; },
-		pendiente: function (clave, hacer) { pendientes[clave] = { hacer: hacer }; avisoPendientes(); },
-		resuelto: function (clave) { if (pendientes[clave]) { delete pendientes[clave]; avisoPendientes(); } },
+		capturar: capturar,
+		noPresento: function (ex, alumnoId) { return X.noPresento(ex, datos, alumnoId); },
+		marcarNoPresento: marcarNoPresento,
+		pendienteCola: function (tipo, d) { return !!(bandeja && bandeja.pendienteDe(claveCola(tipo, d))); },
+		avisoPendientes: avisoPendientes,
 		confirmar: confirmar,
 		imprimir: imprimir,
 		ir: function (hash) { if (window.location.hash === hash) mostrar(); else window.location.hash = hash; },
@@ -443,10 +627,16 @@ async function iniciarExamenes() {
 				if (r.ok && cambios) {
 					for (var i = 0; i < cambios.ajustar.length && r.ok; i++) {
 						var c = cambios.ajustar[i];
-						r = await escribir(sb.from("examen_resultados").update({ preguntas: fila.campos_resultados[c] }).eq("examen_id", ex.id).eq("maestro_id", userId).eq("campo", c));
+						// Ajuste del examen (necesita señal): el trigger les pone marca del servidor; la
+						// pantalla toma la nueva versión para que una captura siguiente no parezca de otro aparato
+						r = await escribir(sb.from("examen_resultados").update({ preguntas: fila.campos_resultados[c] }).eq("examen_id", ex.id).eq("maestro_id", userId).eq("campo", c)
+							.select("id, examen_id, alumno_id, campo, preguntas, aciertos, captura_id"));
+						if (r.ok) (r.data || []).forEach(function (x) { ponerBase("examen_resultado", x); });
 					}
 					if (r.ok && cambios.quitar.length) {
-						r = await escribir(sb.from("examen_resultados").delete().eq("examen_id", ex.id).eq("maestro_id", userId).in("campo", cambios.quitar));
+						r = await escribir(sb.from("examen_resultados").delete().eq("examen_id", ex.id).eq("maestro_id", userId).in("campo", cambios.quitar)
+							.select("id, examen_id, alumno_id, campo"));
+						if (r.ok) (r.data || []).forEach(function (x) { ponerBase("examen_resultado", null, x); });
 					}
 				}
 			} else {
@@ -502,6 +692,7 @@ async function iniciarExamenes() {
 		datos.preguntas = datos.preguntas.filter(function (p) { return p.examen_id !== ex.id; });
 		datos.respuestas = datos.respuestas.filter(function (p) { return p.examen_id !== ex.id; });
 		datos.resultados = datos.resultados.filter(function (p) { return p.examen_id !== ex.id; });
+		datos.alumnosExamen = datos.alumnosExamen.filter(function (p) { return p.examen_id !== ex.id; });
 		mensaje("ok", "Examen eliminado.");
 		ctx.ir("#");
 	}
@@ -538,8 +729,6 @@ async function iniciarExamenes() {
 	// ══════════════════════════════════════════════════════════════════════════════
 	// Solo subir resultados: tabla alumnos × campos
 	// ══════════════════════════════════════════════════════════════════════════════
-	var estadoCelda = {}; // "alumno|campo" → "guardando" | "error" | "pendiente"
-
 	function valorGuardado(ex, alumnoId, campo) {
 		for (var i = 0; i < datos.resultados.length; i++) {
 			var r = datos.resultados[i];
@@ -549,11 +738,21 @@ async function iniciarExamenes() {
 	}
 
 	function totalAlumno(ex, alumnoId) {
+		if (X.noPresento(ex, datos, alumnoId)) return '<span class="text-sm font-semibold text-gray-600">No presentó</span><span class="block text-xs text-gray-500">No cuenta</span>';
 		var res = X.resultadoAlumno(ex, datos, alumnoId);
 		if (!res.preguntas) return '<span class="text-gray-400">—</span>';
 		return '<span class="font-semibold text-gray-900">' + X.numeroAciertos(res.aciertos) + '</span><span class="text-gray-500"> / ' + res.preguntas + '</span>' +
 			'<span class="block text-xs text-gray-500">' + Math.floor(res.porcentaje * 10 + 1e-9) / 10 + ' %</span>';
 	}
+
+	// El botón "No presentó" de un alumno (se oprime otra vez para quitarlo)
+	function botonNoPresento(ex, a) {
+		var si = X.noPresento(ex, datos, a.id);
+		return '<button type="button" data-no-presento="' + esc(a.id) + '" aria-pressed="' + si + '" aria-label="No presentó: ' + esc(a.nombre_completo) + '" ' +
+			'class="min-h-[44px] px-3 rounded-xl text-xs font-semibold border-2 whitespace-nowrap ' +
+			(si ? "bg-gray-700 border-gray-700 text-white" : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50") + '">No presentó</button>';
+	}
+	ctx.botonNoPresento = botonNoPresento;
 
 	function pintarResultados(ex) {
 		vistaActual = { tipo: "resultados", ex: ex };
@@ -563,7 +762,8 @@ async function iniciarExamenes() {
 		html += '<section class="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">' +
 			'<div class="p-4 sm:p-5 flex flex-col gap-1 border-b border-gray-100">' +
 			'<h3 class="font-bold text-gray-900 flex items-center gap-2">' + icono("tabla", "h-5 w-5 text-blue-700") + 'Aciertos de cada alumno</h3>' +
-			'<p class="text-sm text-gray-600">Escribe cuántos aciertos sacó en cada campo. Se guarda al pasar a otra casilla; con Enter bajas al siguiente alumno. Deja vacía la casilla de quien no presentó.</p></div>';
+			'<p class="text-sm text-gray-600">Escribe cuántos aciertos sacó en cada campo. Se guarda en la tablet al pasar a otra casilla y se envía solo (también sin señal); con Enter bajas al siguiente alumno. ' +
+			'Si alguien no presentó, toca «No presentó»: no cuenta ni a favor ni en contra y el examen puede quedar Calificado. Si lo presenta después, escribe sus aciertos.</p></div>';
 		if (!lista.length) {
 			html += '<p class="p-5 text-sm text-gray-500">No hay alumnos activos de ' + esc(textoGrados(ex.grados)) + ' en el grupo.</p></section>';
 			el.vista.innerHTML = html;
@@ -575,17 +775,20 @@ async function iniciarExamenes() {
 			campos.map(function (c) {
 				return '<th scope="col" class="px-2 py-2 font-semibold text-gray-700 text-center whitespace-nowrap">' + esc(X.campo(c).corto) +
 					'<span class="block text-xs font-normal text-gray-500">de ' + ex.campos_resultados[c] + '</span></th>';
-			}).join("") + '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th></tr></thead><tbody>';
+			}).join("") + '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th>' +
+			'<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center"><span class="sr-only">No presentó</span></th></tr></thead><tbody>';
 		lista.forEach(function (a, fila) {
-			html += '<tr data-alumno="' + esc(a.id) + '"><th scope="row" class="ex-fija px-3 py-1.5 text-left font-medium text-gray-800">' +
+			var np = X.noPresento(ex, datos, a.id);
+			html += '<tr data-alumno="' + esc(a.id) + '"' + (np ? ' class="bg-gray-50"' : '') + '><th scope="row" class="ex-fija px-3 py-1.5 text-left font-medium text-gray-800' + (np ? " bg-gray-50" : "") + '">' +
 				'<span class="text-gray-400 text-xs mr-1">' + esc(a.num_lista || "") + '</span>' + esc(a.nombre_completo) +
 				(gradosGrupo.length > 1 ? ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span>' : '') + '</th>' +
 				campos.map(function (c, col) {
 					var g = valorGuardado(ex, a.id, c);
 					return '<td class="px-2 py-1.5 text-center"><input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" ' +
-						'class="ex-celda w-16 min-h-[44px] rounded-lg border border-gray-300 text-center text-base" data-campo="' + c + '" data-fila="' + fila + '" data-col="' + col + '" ' +
+						'class="ex-celda w-16 min-h-[44px] rounded-lg border border-gray-300 text-center text-base' + (np ? " text-gray-400" : "") + '" data-campo="' + c + '" data-fila="' + fila + '" data-col="' + col + '" ' +
 						'aria-label="' + esc(X.campo(c).corto + ", " + a.nombre_completo) + '" value="' + (g ? esc(g.aciertos) : "") + '"></td>';
-				}).join("") + '<td class="px-3 py-1.5 text-center whitespace-nowrap" data-total>' + totalAlumno(ex, a.id) + '</td></tr>';
+				}).join("") + '<td class="px-3 py-1.5 text-center whitespace-nowrap" data-total>' + totalAlumno(ex, a.id) + '</td>' +
+				'<td class="px-2 py-1.5 text-center">' + botonNoPresento(ex, a) + '</td></tr>';
 		});
 		html += '</tbody></table></div><p id="exErrorCelda" class="hidden px-4 py-2 text-sm font-medium text-red-700" role="alert"></p></section>';
 		el.vista.innerHTML = html;
@@ -608,6 +811,15 @@ async function iniciarExamenes() {
 			var inp = e.target.closest("input[data-campo]");
 			if (inp) guardarCelda(ex, inp);
 		});
+		tabla.addEventListener("click", function (e) {
+			var b = e.target.closest("[data-no-presento]");
+			if (!b) return;
+			var id = b.getAttribute("data-no-presento");
+			marcarNoPresento(ex, id, !X.noPresento(ex, datos, id));
+			pintarResultados(ex);
+			var otra = document.querySelector('[data-no-presento="' + id + '"]');
+			if (otra) otra.focus();
+		});
 		tabla.addEventListener("keydown", function (e) {
 			if (e.key !== "Enter") return;
 			var inp = e.target.closest("input[data-campo]");
@@ -619,54 +831,39 @@ async function iniciarExamenes() {
 		});
 	}
 
+	// Casillas que siguen en la cola (sin enviar): en ámbar
 	function pintarEstadoCeldas() {
 		var tabla = document.getElementById("exTablaResultados");
-		if (!tabla) return;
+		if (!tabla || !vistaActual || !vistaActual.ex) return;
+		var ex = vistaActual.ex;
 		tabla.querySelectorAll("input[data-campo]").forEach(function (inp) {
 			var tr = inp.closest("tr[data-alumno]");
-			var k = tr.dataset.alumno + "|" + inp.dataset.campo;
-			var e = estadoCelda[k];
-			inp.classList.toggle("bg-amber-50", e === "pendiente");
-			inp.classList.toggle("border-amber-500", e === "pendiente");
-			inp.title = e === "pendiente" ? "Sin guardar (sin señal)" : "";
+			var pend = ctx.pendienteCola("examen_resultado", { examen_id: ex.id, alumno_id: tr.dataset.alumno, campo: inp.dataset.campo });
+			inp.classList.toggle("bg-amber-50", pend);
+			inp.classList.toggle("border-amber-500", pend);
+			inp.title = pend ? "Guardado en la tablet; falta enviarlo" : "";
 		});
 	}
 
-	async function guardarCelda(ex, inp) {
+	function guardarCelda(ex, inp) {
 		var tr = inp.closest("tr[data-alumno]");
-		var alumnoId = tr.dataset.alumno, campo = inp.dataset.campo, preguntas = ex.campos_resultados[campo];
+		var alumnoId = tr.dataset.alumno, campo = inp.dataset.campo, preguntas = Number(ex.campos_resultados[campo]);
 		var v = X.leerNumero(inp.value, preguntas);
 		if (!v.ok) return; // se queda en rojo, sin guardar
-		var k = alumnoId + "|" + campo;
 		var previo = valorGuardado(ex, alumnoId, campo);
-		if (v.vacio && !previo) { ctx.resuelto("res|" + ex.id + "|" + k); delete estadoCelda[k]; pintarEstadoCeldas(); return; }
+		if (v.vacio && !previo) return;
 		if (!v.vacio && previo && Number(previo.aciertos) === v.valor && Number(previo.preguntas) === preguntas) return;
-		async function hacer() {
-			var r;
-			if (v.vacio) {
-				r = await escribir(sb.from("examen_resultados").delete().eq("examen_id", ex.id).eq("alumno_id", alumnoId).eq("campo", campo).eq("maestro_id", userId));
-				if (r.ok) datos.resultados = datos.resultados.filter(function (x) { return !(x.examen_id === ex.id && x.alumno_id === alumnoId && x.campo === campo); });
-			} else {
-				r = await escribir(sb.from("examen_resultados").upsert({ examen_id: ex.id, alumno_id: alumnoId, campo: campo, preguntas: preguntas, aciertos: v.valor, maestro_id: userId },
-					{ onConflict: "examen_id,alumno_id,campo" }).select("id, examen_id, alumno_id, campo, preguntas, aciertos").single());
-				if (r.ok) {
-					datos.resultados = datos.resultados.filter(function (x) { return !(x.examen_id === ex.id && x.alumno_id === alumnoId && x.campo === campo); });
-					datos.resultados.push(r.data);
-				}
-			}
-			if (r.ok) delete estadoCelda[k];
-			else if (r.red) estadoCelda[k] = "pendiente";
-			else delete estadoCelda[k];
-			var celdaTotal = tr.querySelector("[data-total]");
-			if (celdaTotal) celdaTotal.innerHTML = totalAlumno(ex, alumnoId);
-			pintarEstadoCeldas();
-			refrescarEstado(ex);
-			return r;
-		}
-		var r = await hacer();
-		if (r.ok) { ctx.resuelto("res|" + ex.id + "|" + k); mensaje(null); }
-		else if (r.red) { ctx.pendiente("res|" + ex.id + "|" + k, hacer); }
-		else { mensaje("error", textoError(r.error)); inp.value = previo ? previo.aciertos : ""; }
+		var a = alumnoPorId(alumnoId);
+		var d = { examen_id: ex.id, alumno_id: alumnoId, campo: campo };
+		var desc = X.campo(campo).corto + " de " + (a ? a.nombre_completo : "un alumno") + " en «" + ex.titulo + "»";
+		var np = X.noPresento(ex, datos, alumnoId);
+		if (v.vacio) capturar("examen_resultado_borrar", d, desc);
+		else capturar("examen_resultado", Object.assign({ aciertos: v.valor, preguntas: preguntas }, d), desc);
+		if (np && !v.vacio) { pintarResultados(ex); return; } // ya no dice "No presentó"
+		var celdaTotal = tr.querySelector("[data-total]");
+		if (celdaTotal) celdaTotal.innerHTML = totalAlumno(ex, alumnoId);
+		pintarEstadoCeldas();
+		refrescarEstado(ex);
 	}
 
 	// ══════════════════════════════════════════════════════════════════════════════
@@ -686,10 +883,13 @@ async function iniciarExamenes() {
 	}
 
 	await cargar();
+	await aplicarPendientes();
 	var partes = [grupo.nombre || "Grupo"];
 	if (grupo.ciclo_escolar) partes.push("Ciclo " + grupo.ciclo_escolar);
 	if (gradosGrupo.length) partes.push(textoGrados(gradosGrupo));
 	el.subtitulo.textContent = partes.join(" · ");
 	mostrar();
 	window.addEventListener("hashchange", function () { mensaje(null); mostrar(); });
+	// Lo pendiente de otra vez (o de otra ventana) se intenta enviar ya
+	if (bandeja) bandeja.iniciar();
 }

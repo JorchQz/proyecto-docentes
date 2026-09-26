@@ -451,16 +451,17 @@
 			'<div class="grid grid-cols-1 md:grid-cols-[18rem_1fr]">' +
 			'<div class="md:border-r border-gray-100 p-3">' +
 			'<label class="md:hidden flex flex-col gap-1 text-sm font-semibold text-gray-800">Alumno<select id="exSelAlumno" class="min-h-[44px] rounded-xl border border-gray-300 px-3 text-base bg-white font-normal">' +
-			alumnos.map(function (a) { var av = avanceToque(a); return '<option value="' + esc(a.id) + '"' + (a.id === alumnoToque ? " selected" : "") + '>' + esc(a.nombre_completo) + ' (' + av.n + ' de ' + av.total + ')</option>'; }).join("") + '</select></label>' +
+			alumnos.map(function (a) { var av = avanceToque(a); return '<option value="' + esc(a.id) + '"' + (a.id === alumnoToque ? " selected" : "") + '>' + esc(a.nombre_completo) + (ctx.noPresento(ex, a.id) ? ' (no presentó)' : ' (' + av.n + ' de ' + av.total + ')') + '</option>'; }).join("") + '</select></label>' +
 			'<ul class="hidden md:flex flex-col gap-1 max-h-[34rem] overflow-y-auto" aria-label="Alumnos">' + alumnos.map(function (a) {
 				var av = avanceToque(a), activo = a.id === alumnoToque;
 				return '<li><button type="button" data-alumno="' + esc(a.id) + '" class="w-full flex items-center justify-between gap-2 min-h-[44px] px-3 rounded-xl text-left text-sm ' +
 					(activo ? "bg-blue-700 text-white" : "hover:bg-gray-100 text-gray-800") + '"' + (activo ? ' aria-current="true"' : '') + '><span class="truncate">' + esc(a.nombre_completo) + '</span>' +
-					'<span class="text-xs shrink-0 ' + (activo ? "text-blue-100" : (av.n === av.total ? "text-emerald-700 font-semibold" : "text-gray-500")) + '">' + av.n + '/' + av.total + '</span></button></li>';
+					'<span class="text-xs shrink-0 ' + (activo ? "text-blue-100" : (av.n === av.total ? "text-emerald-700 font-semibold" : "text-gray-500")) + '">' + (ctx.noPresento(ex, a.id) ? "No presentó" : av.n + '/' + av.total) + '</span></button></li>';
 			}).join("") + '</ul></div>' +
 			'<div class="p-3 sm:p-4 flex flex-col gap-3"><div class="flex flex-wrap items-center justify-between gap-2">' +
 			'<p class="font-semibold text-gray-900">' + esc(actual.nombre_completo) + ' <span class="text-sm font-normal text-gray-500">' + esc(actual.grado) + '°</span></p>' +
-			'<button type="button" data-siguiente class="' + ctx.BTN_SEC + '">Siguiente alumno</button></div>' +
+			'<span class="flex flex-wrap gap-2">' + ctx.botonNoPresento(ex, actual) + '<button type="button" data-siguiente class="' + ctx.BTN_SEC + '">Siguiente alumno</button></span></div>' +
+			(ctx.noPresento(ex, actual.id) ? '<p class="text-sm text-gray-600 rounded-xl bg-gray-100 px-3 py-2">No presentó: no cuenta ni a favor ni en contra. Si lo presenta después, toca sus respuestas o escanea su hoja y se quita solo.</p>' : '') +
 			'<ol class="grid grid-cols-1 2xl:grid-cols-2 gap-x-6 gap-y-2">' + auto.map(function (p) {
 				var r = respuesta(actual.id, p.id), letras = Hoja.letrasDe(p);
 				return '<li class="flex items-center gap-2" data-toque="' + esc(p.id) + '"><span class="w-8 text-right text-sm font-bold text-gray-700 shrink-0">' + numeroDe(p) + '.</span>' +
@@ -476,9 +477,12 @@
 			}).join("") + '</ol></div></div></section>';
 		t.innerHTML = h;
 		t.querySelector("[data-escanear]").addEventListener("click", abrirCamara);
+		if (window.ExamenCamara && window.ExamenCamara.precargar && auto.length) window.ExamenCamara.precargar();
 		var sel = t.querySelector("#exSelAlumno");
 		if (sel) sel.addEventListener("change", function () { alumnoToque = sel.value; pintarTab(); });
 		t.querySelectorAll("[data-alumno]").forEach(function (b) { b.addEventListener("click", function () { alumnoToque = b.dataset.alumno; pintarTab(); }); });
+		var bnp = t.querySelector("[data-no-presento]");
+		if (bnp) bnp.addEventListener("click", function () { alternarNoPresento(bnp.getAttribute("data-no-presento")); });
 		t.querySelector("[data-siguiente]").addEventListener("click", function () {
 			var i = alumnos.map(function (a) { return a.id; }).indexOf(alumnoToque);
 			alumnoToque = alumnos[(i + 1) % alumnos.length].id;
@@ -504,36 +508,25 @@
 		guardarRespuesta(alumnoId, preguntaId, fila|null): null borra la captura. Se ve de
 		inmediato; sin señal queda pendiente (se reintenta), con otro error vuelve a lo guardado.
 	*/
-	async function guardarRespuesta(alumnoId, preguntaId, fila) {
-		var antes = respuesta(alumnoId, preguntaId);
-		var copiaAntes = antes ? Object.assign({}, antes) : null;
-		function aplicar(v) {
-			ctx.datos.respuestas = ctx.datos.respuestas.filter(function (x) { return !(x.alumno_id === alumnoId && x.pregunta_id === preguntaId); });
-			if (v) ctx.datos.respuestas.push(v);
-		}
-		aplicar(fila ? Object.assign({ examen_id: ex.id, pregunta_id: preguntaId, alumno_id: alumnoId }, fila) : null);
+	function guardarRespuesta(alumnoId, preguntaId, fila) {
+		var a = ctx.alumnos().filter(function (x) { return x.id === alumnoId; })[0];
+		var p = pregs().filter(function (x) { return x.id === preguntaId; })[0];
+		var desc = "Pregunta " + (p ? numeroDe(p) : "") + " de " + (a ? a.nombre_completo : "un alumno") + " en «" + ex.titulo + "»";
+		var d = { examen_id: ex.id, pregunta_id: preguntaId, alumno_id: alumnoId };
+		// Por la cola de la tablet (js/bandeja-salida.js): se ve ya y se envía sola, también sin señal
+		if (!fila) ctx.capturar("examen_respuesta_borrar", d, desc);
+		else ctx.capturar("examen_respuesta", Object.assign(d, {
+			respuesta: fila.respuesta === undefined ? null : fila.respuesta, resultado: fila.resultado || null, origen: fila.origen || "toque",
+		}), desc);
 		pintarTab();
-		var clave = "resp|" + alumnoId + "|" + preguntaId;
-		async function hacer() {
-			var actual = respuesta(alumnoId, preguntaId);
-			var r;
-			if (!actual) {
-				r = await ctx.escribir(ctx.sb.from("examen_respuestas").delete().eq("pregunta_id", preguntaId).eq("alumno_id", alumnoId).eq("maestro_id", ctx.userId));
-			} else {
-				r = await ctx.escribir(ctx.sb.from("examen_respuestas").upsert({
-					examen_id: ex.id, pregunta_id: preguntaId, alumno_id: alumnoId, maestro_id: ctx.userId,
-					respuesta: actual.respuesta === undefined ? null : actual.respuesta, resultado: actual.resultado || null, origen: actual.origen || "toque",
-				}, { onConflict: "pregunta_id,alumno_id" }).select("id, examen_id, pregunta_id, alumno_id, respuesta, resultado, origen").single());
-				if (r.ok) aplicar(r.data);
-			}
-			return r;
-		}
-		var r = await hacer();
-		if (r.ok) { ctx.resuelto(clave); return; }
-		if (r.red) { ctx.pendiente(clave, hacer); ctx.mensaje("aviso", ctx.textoError(r.error)); return; }
-		aplicar(copiaAntes);
-		ctx.mensaje("error", ctx.textoError(r.error));
+	}
+
+	// "No presentó" del alumno en este examen (se oprime otra vez para quitarlo)
+	function alternarNoPresento(alumnoId) {
+		ctx.marcarNoPresento(ex, alumnoId, !ctx.noPresento(ex, alumnoId));
 		pintarTab();
+		var b = document.querySelector('[data-no-presento="' + alumnoId + '"]');
+		if (b) b.focus();
 	}
 
 	function abrirCamara() {
@@ -543,15 +536,21 @@
 			alumnos: ctx.alumnosDe(ex),
 			esc: ctx.esc,
 			yaTiene: function (alumnoId) { return automaticas().filter(function (p) { return respuesta(alumnoId, p.id); }).length; },
+			/*
+				Una hoja leída: una captura por pregunta en la cola de la tablet (se envían solas, también
+				sin señal; la marca de cada fila evita pisar lo que otro aparato capturó). Solo cambia lo
+				que difiere de lo que ya había.
+			*/
 			guardar: async function (alumnoId, leidas) {
-				var filas = X.filasDeLectura(ex, alumnoId, leidas, "escaneo").map(function (f) { return Object.assign({ maestro_id: ctx.userId, resultado: null }, f); });
-				var r = await ctx.escribir(ctx.sb.from("examen_respuestas").upsert(filas, { onConflict: "pregunta_id,alumno_id" })
-					.select("id, examen_id, pregunta_id, alumno_id, respuesta, resultado, origen"));
-				if (r.ok) {
-					var ids = filas.map(function (f) { return f.pregunta_id; });
-					ctx.datos.respuestas = ctx.datos.respuestas.filter(function (x) { return !(x.alumno_id === alumnoId && ids.indexOf(x.pregunta_id) !== -1); }).concat(r.data || []);
-				}
-				return { ok: r.ok, red: r.red, texto: r.ok ? "" : ctx.textoError(r.error) };
+				var a = ctx.alumnos().filter(function (x) { return x.id === alumnoId; })[0];
+				X.filasDeLectura(ex, alumnoId, leidas, "escaneo").forEach(function (f) {
+					var antes = respuesta(alumnoId, f.pregunta_id);
+					if (antes && antes.respuesta === f.respuesta && !antes.resultado && antes.origen === "escaneo") return;
+					var p = pregs().filter(function (x) { return x.id === f.pregunta_id; })[0];
+					ctx.capturar("examen_respuesta", { examen_id: ex.id, pregunta_id: f.pregunta_id, alumno_id: alumnoId, respuesta: f.respuesta, resultado: null, origen: "escaneo" },
+						"Pregunta " + (p ? numeroDe(p) : "") + " de " + (a ? a.nombre_completo : "un alumno") + " (hoja escaneada)");
+				});
+				return { ok: true, enTableta: typeof navigator !== "undefined" && navigator.onLine === false };
 			},
 			alCerrar: function () {
 				pintar(ctx, ex, tabActual, cont);
@@ -621,10 +620,10 @@
 			'<div class="overflow-x-auto"><table class="ex-tabla w-full text-sm"><thead><tr class="bg-gray-50 text-left">' +
 			'<th scope="col" class="ex-fija bg-gray-50 px-3 py-2 font-semibold text-gray-700 min-w-[10rem]">Alumno</th>' +
 			campos.map(function (c) { return '<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center whitespace-nowrap">' + esc(c.corto) + '</th>'; }).join("") +
-			'<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th><th scope="col" class="px-3 py-2 font-semibold text-gray-700">Estado</th></tr></thead><tbody>';
+			'<th scope="col" class="px-3 py-2 font-semibold text-gray-700 text-center">Total</th><th scope="col" class="px-3 py-2 font-semibold text-gray-700">Estado</th><th scope="col" class="px-2 py-2"><span class="sr-only">No presentó</span></th></tr></thead><tbody>';
 		alumnos.forEach(function (a) {
 			var res = X.resultadoAlumno(ex, ctx.datos, a.id), av = X.avanceAlumno(ex, ctx.datos, a.id);
-			var estado = !av.capturado ? '<span class="text-gray-500">Sin capturar</span>' : (av.completo ? '<span class="text-emerald-700 font-semibold">Completo</span>'
+			var estado = av.noPresento ? '<span class="text-gray-600 font-semibold">No presentó</span>' : !av.capturado ? '<span class="text-gray-500">Sin capturar</span>' : (av.completo ? '<span class="text-emerald-700 font-semibold">Completo</span>'
 				: '<span class="text-amber-800">' + (av.pendientesMano ? av.pendientesMano + " a mano por calificar" : "Faltan respuestas") + '</span>');
 			h += '<tr><th scope="row" class="ex-fija px-3 py-2 text-left font-medium text-gray-800">' + esc(a.nombre_completo) + ' <span class="text-xs text-gray-500">' + esc(a.grado) + '°</span></th>' +
 				campos.map(function (c) {
@@ -633,10 +632,13 @@
 				}).join("") +
 				'<td class="px-3 py-2 text-center whitespace-nowrap">' + (res.preguntas ? '<span class="font-semibold">' + X.numeroAciertos(res.aciertos) + '</span> / ' + res.preguntas +
 					' <span class="text-xs text-gray-500">(' + Math.floor(res.porcentaje * 10 + 1e-9) / 10 + ' %)</span>' : '<span class="text-gray-400">—</span>') + '</td>' +
-				'<td class="px-3 py-2 whitespace-nowrap">' + estado + '</td></tr>';
+				'<td class="px-3 py-2 whitespace-nowrap">' + estado + '</td><td class="px-2 py-1.5">' + ctx.botonNoPresento(ex, a) + '</td></tr>';
 		});
 		h += '</tbody></table></div></section>';
 		t.innerHTML = h;
+		t.querySelectorAll("[data-no-presento]").forEach(function (b) {
+			b.addEventListener("click", function () { alternarNoPresento(b.getAttribute("data-no-presento")); });
+		});
 	}
 
 	window.ExamenPropio = { pintar: pintar };
