@@ -28,7 +28,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── Estado local ──────────────────────────────────────────────────────────
 	let todosLosProyectos = [];
 	let proyectoActivoId  = null;
+	let grupoActivo       = null; // para el trimestre de una copia
 	let toastEl           = null;
+	// Actividades del trimestre (sueltas, sin proyecto): antes del arranque (cargarProyectos las usa)
+	const sueltasListaEl = document.getElementById("sueltasLista");
+	const NOMBRE_CAMPO = { LEN: "Lenguajes", SAB: "Saberes y Pensamiento Científico", ETI: "Ética, Naturaleza y Sociedades", DHL: "De lo Humano y lo Comunitario" };
+	let sueltasProductos = []; // [{ producto, sesion, proyecto }]
+	let ajustesCal = [];
 
 	// ── Init ──────────────────────────────────────────────────────────────────
 	// Arranque común (js/lectura.js): si el grupo o la lista no se pudieron leer, la página
@@ -37,6 +43,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// detiene (el error sale marcado como de lectura).
 	bindFiltros();
 	bindModal();
+	bindSueltas();
 	await window.Lectura.arrancar(cargarProyectos);
 
 	// =========================================================================
@@ -50,27 +57,127 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// grupo falla, GrupoActivo.cargar detiene la página él mismo
 		const activo = await window.GrupoActivo.cargar(window.sb, user.id);
 		const grupoActivoId = activo.grupo ? activo.grupo.id : null;
+		grupoActivo = activo.grupo || null;
 
 		let consulta = window.sb
 			.from("proyectos")
-			.select("id, titulo, campos_formativos, metodologia, estado, created_at, grados, trimestre, fecha_inicial, sesiones(count)")
+			.select("id, titulo, campos_formativos, metodologia, estado, created_at, grados, trimestre, fecha_inicial, tipo, sesiones(count)")
 			.eq("maestro_id", user.id);
 		if (grupoActivoId) consulta = consulta.eq("grupo_id", grupoActivoId);
 		// proyectos no tiene updated_at: ordenar por él daba 400 y la lista nunca cargaba.
 		// Si falla, lanza: no se dice "Aún no tienes proyectos"
-		todosLosProyectos = (await window.Lectura.uno(consulta.order("created_at", { ascending: false }))) || [];
+		const todos = (await window.Lectura.uno(consulta.order("created_at", { ascending: false }))) || [];
+		// "Actividades del trimestre" (actividades sueltas, tipo 'sueltas') no es un proyecto: no se
+		// lista, no se inicia, no se duplica ni se edita; tiene su propia sección arriba
+		todosLosProyectos = todos.filter(function (p) { return !window.AlcanceHoy.esSueltas(p); });
 		actualizarBannerActivo();
 		aplicarFiltros();
+		await cargarSueltas(todos.filter(function (p) { return window.AlcanceHoy.esSueltas(p); }), grupoActivoId);
+	}
+
+	// =========================================================================
+	// ACTIVIDADES DEL TRIMESTRE (sueltas, sin proyecto)
+	// =========================================================================
+
+	function escHtml(s) {
+		return String(s === null || s === undefined ? "" : s)
+			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+	}
+	function fechaCortaTexto(iso) {
+		const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		return m ? Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1] : "";
+	}
+
+	/*
+		Las actividades y tareas sueltas del grupo (las de los contenedores de sus trimestres), con
+		"Pasar a un proyecto" (js/pasar-a-proyecto.js): van con sus calificaciones a una sesión de un
+		proyecto del mismo trimestre. Si la lectura falla, lanza (la página dice "No se pudo cargar").
+	*/
+	async function cargarSueltas(contenedores, grupoId) {
+		if (!sueltasListaEl) return;
+		sueltasProductos = [];
+		if (contenedores.length) {
+			const porId = {};
+			contenedores.forEach(function (p) { porId[p.id] = p; });
+			const sesiones = await window.AlcanceHoy.leerPorLotes(contenedores.map(function (p) { return p.id; }), function (lote) {
+				return window.sb.from("sesiones").select("id, proyecto_id, fecha, campo_formativo").in("proyecto_id", lote).order("id");
+			});
+			const sesPorId = {};
+			sesiones.forEach(function (s) { sesPorId[s.id] = s; });
+			const productos = sesiones.length ? await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
+				return window.sb.from("productos_sesion").select("id, sesion_id, tipo, nombre, campo, grados, fecha_entrega")
+					.in("sesion_id", lote).eq("activo", true).order("id");
+			}) : [];
+			sueltasProductos = productos.map(function (p) {
+				const s = sesPorId[p.sesion_id] || {};
+				return { producto: p, sesion: s, proyecto: porId[s.proyecto_id] || {} };
+			}).sort(function (a, b) {
+				return String(b.sesion.fecha || "").localeCompare(String(a.sesion.fecha || "")) ||
+					String(a.producto.nombre || "").localeCompare(String(b.producto.nombre || ""), "es");
+			});
+			// Días sin clase del grupo: una tarea movida conserva el día en que se revisaba
+			try {
+				ajustesCal = grupoId ? await window.AlcanceHoy.leerAjustesCalendario(window.sb, user.id, grupoId) : [];
+			} catch (e) {
+				// lectura-opcional: solo afina el día en que se revisa una tarea al pasarla a un proyecto (con el calendario oficial si falla); no se escribe nada aquí
+				console.error("proyectos: ajustes del calendario", e);
+				ajustesCal = [];
+			}
+		}
+		pintarSueltas();
+	}
+
+	function pintarSueltas() {
+		if (!sueltasListaEl) return;
+		if (!sueltasProductos.length) {
+			sueltasListaEl.innerHTML = "<p class='text-sm text-gray-400'>Todavía no hay actividades sueltas. Agrégalas desde Hoy en cualquier momento.</p>";
+			return;
+		}
+		const hoyLocal = window.CalendarioSEP ? window.CalendarioSEP.hoyLocal() : new Date().toISOString().slice(0, 10);
+		sueltasListaEl.innerHTML = sueltasProductos.map(function (x, i) {
+			const p = x.producto, s = x.sesion;
+			// Una actividad de hoy o de un día que ya pasó se califica en Hoy (hoy.html?calificar=);
+			// las tareas, en "Tareas por revisar" el día en que vencen
+			const calificar = p.tipo !== "tarea" && s.fecha && s.fecha <= hoyLocal
+				? "<a href='hoy.html?calificar=" + encodeURIComponent(p.id) + "' class='shrink-0 inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-violet-700 text-sm font-semibold text-white hover:bg-violet-800'>Calificar</a>"
+				: "";
+			return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-gray-200 px-3 py-2'>" +
+				"<div class='min-w-0'><p class='text-sm font-semibold text-gray-800 break-words'>" + escHtml(p.nombre) + "</p>" +
+				"<p class='text-xs text-gray-500'>" + (p.tipo === "tarea" ? "Tarea" : "Actividad en clase") + " · " + escHtml(NOMBRE_CAMPO[p.campo] || p.campo || "") +
+				(s.fecha ? " · " + fechaCortaTexto(s.fecha) : "") + (x.proyecto.trimestre ? " · Trimestre " + x.proyecto.trimestre : "") + "</p></div>" +
+				"<span class='flex flex-col sm:flex-row gap-2 shrink-0'>" + calificar +
+				"<button type='button' data-pasar-suelta='" + i + "' class='shrink-0 min-h-[44px] px-4 rounded-xl border border-violet-300 text-sm font-semibold text-violet-700 hover:bg-violet-50'>Pasar a un proyecto</button></span>" +
+				"</div>";
+		}).join("");
+	}
+
+	function bindSueltas() {
+		if (!sueltasListaEl) return;
+		sueltasListaEl.addEventListener("click", function (e) {
+			const btn = e.target.closest("button[data-pasar-suelta]");
+			if (!btn || !window.PasarAProyecto) return;
+			const x = sueltasProductos[Number(btn.dataset.pasarSuelta)];
+			if (!x) return;
+			window.PasarAProyecto.abrir({
+				sb: window.sb, maestroId: user.id, grupoId: grupoActivo ? grupoActivo.id : x.proyecto.grupo_id,
+				trimestre: x.proyecto.trimestre, producto: x.producto, origen: btn,
+				fechaEntrega: x.producto.tipo === "tarea" ? window.AlcanceHoy.venceTarea(x.producto.fecha_entrega, x.sesion.fecha, ajustesCal) : null,
+				alTerminar: function () { window.location.reload(); },
+			});
+		});
 	}
 
 	// =========================================================================
 	// BANNER PROYECTO ACTIVO
 	// =========================================================================
 
+	// Puede haber varios proyectos activos a la vez (uno por campo formativo, por ejemplo)
 	function actualizarBannerActivo() {
-		const activo = todosLosProyectos.find(function (p) { return p.estado === "activo"; });
-		if (activo && bannerEl && bannerTituloEl) {
-			bannerTituloEl.textContent = activo.titulo || "Proyecto sin título";
+		const activos = todosLosProyectos.filter(function (p) { return p.estado === "activo"; });
+		const etiqueta = bannerEl ? bannerEl.querySelector("[data-banner-etiqueta]") : null;
+		if (etiqueta) etiqueta.textContent = activos.length > 1 ? activos.length + " proyectos activos" : "Proyecto activo";
+		if (activos.length && bannerEl && bannerTituloEl) {
+			bannerTituloEl.textContent = activos.map(function (p) { return p.titulo || "Proyecto sin título"; }).join(" · ");
 			bannerEl.classList.remove("hidden");
 			bannerEl.classList.add("flex");
 		} else if (bannerEl) {
@@ -232,36 +339,42 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function renderAcciones(id, estado) {
 		const btnBase = "inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-xl transition min-h-[44px]";
 
+		// Duplicar (decisión de Jorge del 2026-09-26): en cualquier estado; la copia sale sin fechas ni calificaciones
+		const duplicar = '<button data-action="duplicar" data-id="' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Duplicar</button>';
+
 		if (estado === "borrador") {
 			return (
 				'<button data-action="iniciar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Iniciar</button>' +
 				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>Editar</a>' +
+				duplicar +
 				'<button data-action="eliminar" data-id="' + id + '" class="' + btnBase + ' border border-red-200 text-red-600 hover:bg-red-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Eliminar</button>'
 			);
 		}
 
 		if (estado === "activo") {
 			return (
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver sesiones</a>' +
-				'<button data-action="pausar" data-id="' + id + '" class="' + btnBase + ' border border-amber-300 text-amber-700 hover:bg-amber-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pausar</button>'
+				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver y editar sesiones</a>' +
+				'<button data-action="pausar" data-id="' + id + '" class="' + btnBase + ' border border-amber-300 text-amber-700 hover:bg-amber-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pausar</button>' +
+				duplicar
 			);
 		}
 
 		if (estado === "pausado") {
 			return (
 				'<button data-action="reanudar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Reanudar</button>' +
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver sesiones</a>'
+				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver y editar sesiones</a>' +
+				duplicar
 			);
 		}
 
 		if (estado === "completado") {
 			return (
 				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver sesiones</a>' +
-				'<button data-action="clonar" data-id="' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Clonar</button>'
+				duplicar
 			);
 		}
 
-		return '<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver proyecto</a>';
+		return '<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver proyecto</a>' + duplicar;
 	}
 
 	// =========================================================================
@@ -280,7 +393,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (action === "pausar")    { pausarProyecto(id);    return; }
 		if (action === "reanudar")  { reanudarProyecto(id);  return; }
 		if (action === "eliminar")  { eliminarProyecto(id);  return; }
-		if (action === "clonar")    { clonarProyecto(id);    return; }
+		if (action === "duplicar")  { duplicarProyecto(id);  return; }
 	}
 
 	// =========================================================================
@@ -337,15 +450,44 @@ document.addEventListener("DOMContentLoaded", async function () {
 		await cargarProyectos();
 	}
 
-	async function clonarProyecto(id) {
+	/*
+		Duplicar (antes "Clonar", solo en completados; decisión de Jorge del 2026-09-26: en
+		cualquier estado). La copia es un borrador con el plan completo y sus sesiones, SIN
+		fechas, estado de sesión ni calificaciones (ProyectoEdicion.copiaDeSesion).
+	*/
+	/*
+		Candado (R25a-r12): un doble toque en "Duplicar" (tablet) creaba dos copias. Mientras una
+		copia está en curso, otro toque no hace nada (y los botones Duplicar se deshabilitan).
+	*/
+	let duplicandoEnCurso = false;
+	function botonesDuplicar(deshabilitar) {
+		if (!gridEl || !gridEl.querySelectorAll) return;
+		Array.prototype.forEach.call(gridEl.querySelectorAll('[data-action="duplicar"]'), function (b) {
+			b.disabled = deshabilitar;
+			b.setAttribute("aria-busy", deshabilitar ? "true" : "false");
+		});
+	}
+	async function duplicarProyecto(id) {
+		if (duplicandoEnCurso) return;
+		duplicandoEnCurso = true;
+		botonesDuplicar(true);
+		try {
+			await duplicarProyectoUnaVez(id);
+		} finally {
+			duplicandoEnCurso = false;
+			botonesDuplicar(false);
+		}
+	}
+
+	async function duplicarProyectoUnaVez(id) {
 		// La lista trae solo lo que se muestra: el proyecto completo (grupo, escenario,
-		// contenidos) se lee aquí. Antes se clonaba sin grupo_id y la base lo rechazaba siempre
+		// contenidos) se lee aquí. Antes se copiaba sin grupo_id y la base lo rechazaba siempre
 		let original;
 		try {
 			original = await window.Lectura.uno(window.sb.from("proyectos").select("*").eq("id", id).maybeSingle());
 		} catch (e) {
-			console.error("clonar: lectura del proyecto", e);
-			mostrarToast("No se pudo leer el proyecto, así que no se clonó. Revisa tu conexión.", "error");
+			console.error("duplicar: lectura del proyecto", e);
+			mostrarToast("No se pudo leer el proyecto, así que no se duplicó. Revisa tu conexión.", "error");
 			return;
 		}
 		if (!original) {
@@ -353,9 +495,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
-		// Trimestre: si es 3 queda en 3, si no incrementa
-		const trimOrig = parseInt(original.trimestre, 10) || 1;
-		const trimNuevo = trimOrig < 3 ? trimOrig + 1 : 3;
+		// Trimestre de la copia: el que el grupo trabaja ahora (como un proyecto nuevo); se cambia en el paso 1
+		const trimNuevo = window.ProyectoEdicion.trimestreDeCopia(original, grupoActivo);
 
 		const nuevoProyecto = {
 			maestro_id:        user.id,
@@ -375,15 +516,59 @@ document.addEventListener("DOMContentLoaded", async function () {
 			es_multigrado:       original.es_multigrado || false,
 		};
 
-		const { error } = await window.sb
-			.from("proyectos")
-			.insert(nuevoProyecto);
-
-		if (error) {
-			mostrarToast("No se pudo clonar el proyecto.", "error");
+		/*
+			Las sesiones se copian también: el plan de cada una, sin fecha, sin estado y sin
+			calificaciones, y se materializan sus PDA y productos como al crear un proyecto. Se
+			leen ANTES de crear la copia; si algo falla después, la copia se borra (en cascada)
+			para no dejar un proyecto a medias.
+		*/
+		let sesiones;
+		try {
+			sesiones = await window.LeerTodo.paginas(function () {
+				return window.sb.from("sesiones").select("*").eq("proyecto_id", id)
+					.order("numero_sesion").order("id");
+			});
+		} catch (e) {
+			console.error("duplicar: lectura de sesiones", e);
+			mostrarToast("No se pudieron leer las sesiones del proyecto, así que no se duplicó. Revisa tu conexión.", "error");
 			return;
 		}
-		mostrarToast("Proyecto clonado correctamente.");
+
+		const { data: creado, error } = await window.sb
+			.from("proyectos")
+			.insert(nuevoProyecto)
+			.select("id")
+			.single();
+
+		if (error) {
+			mostrarToast("No se pudo duplicar el proyecto.", "error");
+			return;
+		}
+		try {
+			if (sesiones.length) {
+				const copias = sesiones.map(function (s) {
+					return window.ProyectoEdicion.copiaDeSesion(s, creado.id, user.id);
+				});
+				const ins = await window.sb.from("sesiones").insert(copias)
+					.select("id, numero_sesion, campo_formativo, pda_sesion, cierre_tareas");
+				if (ins.error) throw ins.error;
+				await window.materializarSesiones(ins.data || [], user.id, {
+					gradosProyecto: original.grados || [],
+					camposProyecto: original.campos_formativos || [],
+					origenTrabajo: "maestro",
+					origenTarea: "maestro",
+				});
+			}
+		} catch (e) {
+			console.error("duplicar: sesiones", e);
+			await window.sb.from("proyectos").delete().eq("id", creado.id);
+			mostrarToast("No se pudo duplicar el proyecto: " + (e && e.humano ? e.message : "revisa tu conexión e inténtalo de nuevo."), "error");
+			await cargarProyectos();
+			return;
+		}
+		mostrarToast(sesiones.length
+			? "Proyecto duplicado con sus " + sesiones.length + (sesiones.length === 1 ? " sesión" : " sesiones") + ", sin fechas ni calificaciones. La copia es un borrador."
+			: "Proyecto duplicado (no tenía sesiones). La copia es un borrador.");
 		await cargarProyectos();
 	}
 
@@ -474,7 +659,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 
 			cerrarModal();
-			mostrarToast("¡Proyecto iniciado! Ya aparece en tu dashboard.");
+			mostrarToast("Proyecto iniciado. Sus sesiones ya aparecen en Hoy para trabajarlas.");
 			await cargarProyectos();
 
 		} catch (err) {

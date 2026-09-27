@@ -82,7 +82,7 @@
 	var userId = user.id;
 
 	if (emailEl) {
-		emailEl.textContent = user && user.email ? user.email : "Usuario autenticado";
+		emailEl.textContent = user && user.email ? user.email : "Sesión iniciada";
 	}
 
 	if (userNameEl) {
@@ -362,13 +362,13 @@
 			if (!areValidWords(lastName1, true) || (lastName2 && !areValidWords(lastName2, true))) {
 				showStudentsMessage(
 					"error",
-					"Cada apellido solo puede contener letras, espacios, guiones y apóstrofos."
+					"Cada apellido solo puede contener letras (con acentos y Ñ), espacios y guiones."
 				);
 				return;
 			}
 
 			if (!areValidWords(firstNames, true)) {
-				showStudentsMessage("error", "Nombre(s) solo permite letras y espacios.");
+				showStudentsMessage("error", "Nombre(s) solo permite letras (con acentos y Ñ), espacios y guiones.");
 				return;
 			}
 
@@ -506,7 +506,15 @@
 		js/calendario-escolar.js): nunca se cambia sola.
 		El guardado pasa por la capa común (Lectura.uno lanza si la base devuelve error) y se
 		comprueba lo que la base guardó; si falla, se avisa y el selector vuelve a lo guardado.
+		En solo lectura (sin acceso vigente, js/mi-salon-acceso.js) el selector se ve deshabilitado
+		y dice por qué, sin "Intenta de nuevo": reintentar no sirve (R27a). Se vuelve a pintar
+		cuando llega el estado del acceso o cuando la base rechaza una escritura por solo lectura.
 	*/
+
+	var TEXTO_TRIMESTRE_SOLO_LECTURA = "Solo lectura: tu acceso a Mi Salón no está activo, así que el trimestre del grupo no se puede cambiar. Tus datos siguen guardados; al renovar lo cambias aquí.";
+	function trimestreSoloLectura() {
+		return !!(window.MiSalonAcceso && window.MiSalonAcceso.soloLectura());
+	}
 
 	function trimestreGuardado() {
 		var t = currentGroup ? Number(currentGroup.trimestre_actual) : NaN;
@@ -515,22 +523,28 @@
 
 	function mensajeTrimestre(tipo, texto) {
 		if (!trimestreMensajeEl) return;
+		trimestreMensajeEl.dataset.tipo = texto ? tipo : "";
 		if (!texto) { trimestreMensajeEl.textContent = ""; trimestreMensajeEl.className = "mt-3"; return; }
 		trimestreMensajeEl.textContent = texto;
 		trimestreMensajeEl.className = "mt-3 rounded-lg px-3 py-2 text-sm " +
-			(tipo === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200");
+			(tipo === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+				: tipo === "lectura" ? "bg-amber-50 text-amber-900 border border-amber-200"
+				: "bg-red-50 text-red-800 border border-red-200");
 	}
 
 	function renderTrimestreActual() {
 		if (!trimestreSelect || !currentGroup) return;
 		var t = trimestreGuardado();
 		trimestreSelect.value = t ? String(t) : "";
-		trimestreSelect.disabled = guardandoTrimestre;
+		var solo = trimestreSoloLectura();
+		trimestreSelect.disabled = guardandoTrimestre || solo;
+		if (solo) mensajeTrimestre("lectura", TEXTO_TRIMESTRE_SOLO_LECTURA);
+		else if (trimestreMensajeEl && trimestreMensajeEl.dataset.tipo === "lectura") mensajeTrimestre("", "");
 		var sug = window.CalendarioEscolar ? window.CalendarioEscolar.trimestreSugerido() : null;
 		if (!sug || !trimestreSugerenciaEl) return;
 		trimestreSugerenciaTexto.textContent = sug.texto + (t === sug.trimestre ? " Ya es el trimestre de tu grupo." : "");
 		trimestreSugerenciaEl.classList.remove("hidden");
-		if (t !== sug.trimestre) {
+		if (t !== sug.trimestre && !solo) {
 			trimestreSugerenciaBtn.textContent = "Cambiar al trimestre " + sug.trimestre;
 			trimestreSugerenciaBtn.dataset.trimestre = String(sug.trimestre);
 			trimestreSugerenciaBtn.classList.remove("hidden");
@@ -542,6 +556,7 @@
 
 	async function guardarTrimestre(nuevo) {
 		if (!currentGroup || guardandoTrimestre) return;
+		if (trimestreSoloLectura()) { renderTrimestreActual(); return; }
 		var anterior = trimestreGuardado();
 		if (nuevo === anterior) { renderTrimestreActual(); return; }
 		guardandoTrimestre = true;
@@ -564,6 +579,11 @@
 			// maestra lee qué pasó y qué hacer (revisor R6)
 			console.error("mi-grupo: trimestre actual", error);
 			var sinRed = window.Lectura && window.Lectura.errorDeRed ? window.Lectura.errorDeRed(error) : false;
+			// Solo lectura (el acceso venció con la página abierta): lo dice renderTrimestreActual, sin "Intenta de nuevo"
+			if (window.MiSalonAcceso && window.MiSalonAcceso.esErrorSoloLectura(error)) {
+				if (!window.MiSalonAcceso.soloLectura()) window.MiSalonAcceso.aplicar(Object.assign({}, window.MiSalonAcceso.estado() || {}, { vigente: false }));
+				return;
+			}
 			var sigue = " Tu grupo sigue en " + (anterior ? "el trimestre " + anterior : "el trimestre que tenía") + ".";
 			mensajeTrimestre("error", sinRed
 				? "No se pudo guardar el trimestre porque no hay conexión." + sigue + " Revisa tu internet e intenta de nuevo."
@@ -574,6 +594,9 @@
 		}
 	}
 
+	// El estado del acceso llega después de pintar (window.saasEstado) o cambia con la página abierta
+	if (window.saasEstado && typeof window.saasEstado.then === "function") window.saasEstado.then(function () { renderTrimestreActual(); }, function () {});
+	window.addEventListener("jissez:solo-lectura", function () { setTimeout(renderTrimestreActual, 0); });
 	if (trimestreSelect) {
 		trimestreSelect.addEventListener("change", function () {
 			var t = Number(trimestreSelect.value);
@@ -1152,16 +1175,14 @@
 		return areValidWords(text, false);
 	}
 
+	// Letras con acentos y Ñ, espacios y guiones (js/nombres-alumno.js)
 	function areValidWords(text, allowSpaces) {
 		if (!text) {
 			return false;
 		}
-
-		var pattern = allowSpaces
-			? /^[A-Za-zÑñ\-\s]+$/
-			: /^[A-Za-zÑñ\-]+$/;
-
-		return pattern.test(removeAccents(text));
+		// Un espacio (antes /s/: rechazaba cualquier palabra con la letra "s"; R25a)
+		if (!allowSpaces && /\s/.test(text)) return false;
+		return window.NombresAlumno.valido(text);
 	}
 
 	function bindNameInput(input, allowSpaces, extra) {
@@ -1218,22 +1239,13 @@
 		return !lastName1 && !lastName2 && !firstNames;
 	}
 
+	// MAYÚSCULAS con acentos y Ñ ("JOSÉ PEÑA"; decisión de Jorge del 2026-09-26). Antes se
+	// quitaban los acentos al teclear. Los nombres ya guardados no cambian si no se editan
 	function formatNameInput(rawValue, allowSpaces) {
-		var cleaned = removeAccents(rawValue || "")
-			.replace(/[^A-Za-zÑñ\-\s]/g, "")
-			.replace(/\s+/g, " ")
-			.trimStart();
-
-		if (!allowSpaces) {
-			cleaned = cleaned.replace(/\s+/g, "");
-		}
-
-		return cleaned.toUpperCase();
+		return window.NombresAlumno.formatear(rawValue, allowSpaces);
 	}
 
-	function removeAccents(text) {
-		return text.normalize("NFD").replace(/[\u0300-\u0302\u0304-\u036f]/g, "").normalize("NFC");
-	}
+
 
 	function showStudentsMessage(type, text) {
 		if (!studentsMessageEl) {
@@ -1399,12 +1411,12 @@
 		}
 
 		var messages = {
-			completa:     "En organización completa, cada maestro atiende un solo grado. Selecciona el grado que tú atiendes.",
-			bidocente:    "En escuelas bidocentes, generalmente cada maestro atiende 2 o 3 grados. Selecciona los grados que tú atiendes.",
-			tridocente:   "En escuelas tridocentes, generalmente cada maestro atiende 2 grados. Selecciona los grados que tú atiendes.",
-			tetradocente: "En escuelas tetradocentes, el maestro puede tener 1, 2 o más grados. Selecciona los grados que tú atiendes.",
-			pentadocente: "En escuelas pentadocentes, generalmente un maestro atiende 2 grados. Selecciona los grados que tú atiendes.",
-			unitaria:     "En escuelas unitarias, un solo maestro atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tú atiendes.",
+			completa:     "En organización completa, cada docente atiende un solo grado. Selecciona el grado que tú atiendes.",
+			bidocente:    "En escuelas bidocentes, generalmente cada docente atiende 2 o 3 grados. Selecciona los grados que tú atiendes.",
+			tridocente:   "En escuelas tridocentes, generalmente cada docente atiende 2 grados. Selecciona los grados que tú atiendes.",
+			tetradocente: "En escuelas tetradocentes, cada docente puede tener 1, 2 o más grados. Selecciona los grados que tú atiendes.",
+			pentadocente: "En escuelas pentadocentes, generalmente cada docente atiende 2 grados. Selecciona los grados que tú atiendes.",
+			unitaria:     "En escuelas unitarias, una sola persona docente atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tú atiendes.",
 		};
 
 		editGroupGradesHelp.textContent = messages[type] || "Selecciona los grados que atiendes.";

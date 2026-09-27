@@ -123,7 +123,8 @@ ok("nadie hace upsert de perfiles con id (authenticated no puede actualizar perf
 ok("dashboard.js: lee estado y muestra el aviso solo si la lectura respondió", /select\("nombre_completo, estado"\)/.test(dashJs) && /!errorPerfil && perfil && !String\(perfil\.estado/.test(dashJs), true);
 // Toda página que carga reporte-datos.js carga antes reglas-entidad.js
 const paginas = fs.readdirSync(RAIZ).filter((f) => f.endsWith(".html") && leer(f).includes('src="js/reporte-datos.js"'));
-ok("páginas con reporte-datos.js (5)", paginas.length, 5);
+// b20: ponte-al-dia.html (paso 4, revisar la boleta) también la carga
+ok("páginas con reporte-datos.js (6)", paginas.length, 6);
 ok("todas cargan reglas-entidad.js antes", paginas.filter((p) => !antes(leer(p), "js/reglas-entidad.js", "js/reporte-datos.js")), []);
 
 // ── 3. Sección 3 en 2° ──────────────────────────────────────────────────────

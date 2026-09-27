@@ -66,12 +66,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 			.eq("user_id", session.user.id)
 			.order("otorgado_en", { ascending: false });
 
+		// Las compras de Mi Salón (b22) también son órdenes, pero su pago pendiente se ve en Mi Salón
+		// (tienda/mi-salon-compra.html y el aviso de Inicio): aquí solo las de la tienda. Si la base
+		// aún no tiene mi_salon_ordenes, la consulta de siempre.
 		var ordRes = await window.sb
 			.from("marketplace_ordenes")
-			.select("id, estado, monto_total, metodo_pago, created_at, marketplace_orden_items(tipo, marketplace_productos(titulo), marketplace_pedidos(numero_pedido, nivel))")
+			.select("id, estado, monto_total, metodo_pago, created_at, marketplace_orden_items(tipo, marketplace_productos(titulo), marketplace_pedidos(numero_pedido, nivel)), mi_salon_ordenes(orden_id)")
 			.eq("user_id", session.user.id)
 			.eq("estado", "pendiente")
 			.order("created_at", { ascending: false });
+		if (ordRes.error) {
+			ordRes = await window.sb
+				.from("marketplace_ordenes")
+				.select("id, estado, monto_total, metodo_pago, created_at, marketplace_orden_items(tipo, marketplace_productos(titulo), marketplace_pedidos(numero_pedido, nivel))")
+				.eq("user_id", session.user.id)
+				.eq("estado", "pendiente")
+				.order("created_at", { ascending: false });
+		}
+		if (ordRes.data) {
+			ordRes.data = ordRes.data.filter(function (o) { return !o.mi_salon_ordenes; });
+		}
 
 		// Pedidos personalizados ya pagados (los que aún no se pagan salen como
 		// órdenes pendientes arriba). Columnas explícitas: el ID de la carpeta

@@ -25,6 +25,7 @@
 /salon/mi-grupo.html /salon/mi-grupo 301
 /salon/onboarding.html /salon/onboarding 301
 /salon/planeacion.html /salon/planeacion 301
+/salon/ponte-al-dia.html /salon/ponte-al-dia 301
 /salon/portal.html /salon/portal 301
 /salon/reporte-alumno.html /salon/reporte-alumno 301
 /salon/reportes.html /salon/reportes 301
@@ -32,5 +33,13 @@
 /salon/sala-maestros.html /salon/sala-maestros 301
 /salon/tareas.html /salon/tareas 301
 /salon/tienda/login.html /salon/tienda/login 301
+# Las páginas de presentación no son parte de la app instalable: fuera de /salon/
+/salon/tienda/conoce-mi-salon.html /tienda/conoce-mi-salon 301
+/salon/tienda/conoce-mi-salon /tienda/conoce-mi-salon 301
+/salon/tienda/conoce-sala.html /tienda/conoce-sala 301
+/salon/tienda/conoce-sala /tienda/conoce-sala 301
+# La compra de Mi Salón (b22) tampoco: el pago es de la tienda
+/salon/tienda/mi-salon-compra.html /tienda/mi-salon-compra 301
+/salon/tienda/mi-salon-compra /tienda/mi-salon-compra 301
 /salon/index.html /salon/ 301
 /salon/* /:splat 200

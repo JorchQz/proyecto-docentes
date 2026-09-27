@@ -327,7 +327,9 @@
 				if (rubros[r].fraccion === undefined) rubros[r].fraccion = null;
 			});
 			var pct = truncar2(pc.porcentaje);
-			salida[c] = { porcentaje: pct, nivel: pc.nivel || null, sin_evidencias: pct === null, rubros: rubros };
+			salida[c] = { porcentaje: pct, nivel: pc.nivel || null, sin_evidencias: pct === null && !esDirecta(pc), rubros: rubros };
+			// Calificación capturada directamente (registro histórico, b20): la foto lo recuerda
+			if (esDirecta(pc)) salida[c].directa = { calificacion: Number(pc.directa.calificacion) };
 		});
 		return salida;
 	}
@@ -377,6 +379,7 @@
 				calificacionPropuesta: null, // cerrada: la calificación es la confirmada
 				sinEvidencias: !!x.sin_evidencias,
 			};
+			if (x.directa && typeof x.directa === "object") salida[c].directa = x.directa;
 		});
 		return salida;
 	}
@@ -424,11 +427,24 @@
 		if (!calificacionOficial(fila).confirmada) return false;
 		if (boletaCerrada(boletaT)) {
 			var foto = fotoCierre(boletaT.GEN);
-			if (foto && foto.campos && foto.campos[campo]) return !!foto.campos[campo].sin_evidencias;
+			if (foto && foto.campos && foto.campos[campo]) return !!foto.campos[campo].sin_evidencias && !foto.campos[campo].directa;
 			return vacio(fila.porcentaje);
 		}
-		if (pcVivo && typeof pcVivo === "object") return vacio(pcVivo.porcentaje);
+		// Capturada directamente: no es "sin evidencias", se rotula aparte (esDirecta)
+		if (pcVivo && typeof pcVivo === "object") return vacio(pcVivo.porcentaje) && !esDirecta(pcVivo);
 		return vacio(fila.porcentaje);
+	}
+
+	/*
+		Calificación del trimestre capturada directamente (registro histórico, spec §4.2;
+		MotorCalificacion.aplicarDirectas, mi_salon_b20): la propuesta es esa calificación, sin
+		porcentaje. Las pantallas internas la rotulan "Capturada directamente" (Reportes, reporte
+		detallado en pantalla, Qué le falta, Recrea y Concentrado); la boleta imprimible NO.
+		pc: el de un campo del motor (o de la foto del cierre).
+	*/
+	var ETIQUETA_DIRECTA = "Capturada directamente";
+	function esDirecta(pc) {
+		return !!(pc && pc.directa && pc.directa.calificacion !== null && pc.directa.calificacion !== undefined);
 	}
 
 	/*
@@ -753,14 +769,20 @@
 			var of = calificacionOficial((boletaT || {})[c], alumno.grado);
 			var prop = m.porCampo && m.porCampo[c] ? m.porCampo[c].calificacionPropuesta : null;
 			calificacion[c] = of.confirmada ? { valor: of.valor, origen: "confirmada" }
-				: (vacio(prop) ? null : { valor: Number(prop), origen: "propuesta" });
+				: (vacio(prop) ? null : { valor: Number(prop), origen: esDirecta(m.porCampo[c]) ? "directa" : "propuesta" });
 		});
+		// Día de alta del grupo (registro histórico: los días anteriores sin captura no son pendientes)
+		var A = typeof window !== "undefined" ? window.AlcanceHoy : null;
+		var grupoAlta = ctx.grupo && ctx.grupo.created_at && A && A.diaMexico ? A.diaMexico(ctx.grupo.created_at) : null;
 		return Q.calcular({
+			grupoAlta: grupoAlta,
 			alumno: alumno, cerrada: boletaCerrada(boletaT), porCampo: m.porCampo || {},
 			detalle: Object.assign({ sesiones: sesiones || [] }, m.detalle || {}),
 			avancePda: (avancePda || []).filter(function (f) { return !f.alumno_id || f.alumno_id === alumno.id; }),
 			calificacion: calificacion, asistencia: m.asistencia || null,
 			hoy: hoy || fechaLocal(), regla: window.ReglasEntidad ? window.ReglasEntidad.regla(ctx.estado || null) : null,
+			// Los días sin clase del grupo (los lee la pantalla): una tarea vence el siguiente día de clase
+			calendario: ctx.calendario || [],
 		});
 	}
 
@@ -1022,6 +1044,8 @@
 		porCampoFilas: porCampoFilas,
 		avancePdaCierre: avancePdaCierre,
 		juicioSinEvidencias: juicioSinEvidencias,
+		esDirecta: esDirecta,
+		ETIQUETA_DIRECTA: ETIQUETA_DIRECTA,
 		congelarCerradas: congelarCerradas,
 		textoSeccion: textoSeccion,
 		trabajoDiario: trabajoDiario,

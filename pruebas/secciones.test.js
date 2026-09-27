@@ -41,8 +41,11 @@ const rompe = { getItem: () => { throw new Error("bloqueado"); }, setItem: () =>
 ok("clave compartida", S.CLAVE, "jissez.seccion");
 ok("sin nada guardado → null (primera vez)", S.leerUltima(almacen()), null);
 let a = almacen();
+// Sala de Maestros oculta hasta que exista (Jorge, 2026-09-26): "sala" no se guarda y una guardada
+// de antes se lee como nada (Mi Salón)
 S.guardarUltima("sala", a);
-ok("guarda y lee Sala", [a.d["jissez.seccion"], S.leerUltima(a)], ["sala", "sala"]);
+ok("Sala oculta: no se guarda", a.d["jissez.seccion"], undefined);
+ok("Sala oculta: una 'sala' guardada de antes se ignora", S.leerUltima(almacen({ "jissez.seccion": "sala" })), null);
 S.guardarUltima("tienda", a);
 ok("la última gana", S.leerUltima(a), "tienda");
 S.guardarUltima("admin", a);
@@ -57,15 +60,31 @@ ok("almacenamiento bloqueado: guardar no truena", trono, false);
 const conGrupo = { data: [{ id: "g" }], error: null };
 const sinGrupo = { data: [], error: null };
 const falla = { data: null, error: { message: "x" } };
-ok("ruta de cada sección", ["tienda", "salon", "sala", null].map(S.ruta), ["tienda/index.html", "dashboard.html", "sala-maestros.html", "dashboard.html"]);
+ok("ruta de cada sección (Sala oculta → Mi Salón)", ["tienda", "salon", "sala", null].map(S.ruta), ["tienda/index.html", "dashboard.html", "dashboard.html", "dashboard.html"]);
 ok("login primera vez con grupo → panel", S.destinoLogin(null, conGrupo), "dashboard.html");
 ok("login primera vez sin grupo → alta", S.destinoLogin(null, sinGrupo), "onboarding.html");
 ok("login Mi Salón, lectura fallida → panel (no afirma que no hay grupo)", S.destinoLogin("salon", falla), "dashboard.html");
 ok("login Mi Salón sin respuesta → panel", S.destinoLogin("salon", null), "dashboard.html");
 ok("login Tienda → portada, no catálogo", S.destinoLogin("tienda", sinGrupo), "tienda/index.html");
-ok("login Sala → Sala de Maestros", S.destinoLogin("sala", sinGrupo), "sala-maestros.html");
-ok("solo Mi Salón necesita leer grupos", [null, "salon", "tienda", "sala"].map(S.necesitaGrupos), [true, true, false, false]);
-ok("raíz: Mi Salón y Sala desvían; Tienda y nada, no", [null, "tienda", "salon", "sala", "otro"].map(S.destinoRaiz), [null, null, "dashboard.html", "sala-maestros.html", null]);
+ok("login con 'sala' guardada (Sala oculta) → Mi Salón (alta sin grupo)", [S.destinoLogin("sala", sinGrupo), S.destinoLogin("sala", conGrupo)], ["onboarding.html", "dashboard.html"]);
+ok("Mi Salón (y una 'sala' guardada, con la Sala oculta) necesita leer grupos", [null, "salon", "tienda", "sala"].map(S.necesitaGrupos), [true, true, false, true]);
+ok("raíz: Mi Salón y una 'sala' guardada van a Mi Salón; Tienda y nada, no", [null, "tienda", "salon", "sala", "otro"].map(S.destinoRaiz), [null, null, "dashboard.html", "dashboard.html", null]);
+// ── Sala oculta hasta que exista: el interruptor SALA_ABIERTA ─────────────────
+ok("Sala oculta: SALA_ABIERTA en false y solo Tienda y Mi Salón en el selector", [S.SALA_ABIERTA, S.pestanas().map((s) => s.clave)], [false, ["tienda", "salon"]]);
+{
+	// El día que exista: con el interruptor en true vuelven la pestaña y sus destinos
+	const fuente = leer("js/secciones.js");
+	ok("el interruptor es una sola línea en js/secciones.js", (fuente.match(/var SALA_ABIERTA = false;/g) || []).length, 1);
+	const ctx = { module: { exports: {} } };
+	vm.createContext(ctx);
+	vm.runInContext(fuente.replace("var SALA_ABIERTA = false;", "var SALA_ABIERTA = true;"), ctx);
+	const S2 = ctx.module.exports;
+	const a2 = almacen();
+	S2.guardarUltima("sala", a2);
+	ok("con SALA_ABIERTA = true: tres pestañas, ruta, login, raíz y última sección de la Sala",
+		[S2.pestanas().length, S2.ruta("sala"), S2.destinoLogin("sala", sinGrupo), S2.necesitaGrupos("sala"), S2.destinoRaiz("sala"), S2.leerUltima(a2), (S2.selectorNav("salon").match(/class="jz-sel-op"/g) || []).length],
+		[3, "sala-maestros.html", "sala-maestros.html", false, "sala-maestros.html", "sala", 3]);
+}
 
 // ── index.html (la raíz), ejecutando su script ───────────────────────────────
 function raiz(opciones) {
@@ -115,7 +134,7 @@ function raiz(opciones) {
 	r = await raiz({ guardado: "salon", sesion: true, perfil: { data: { activo_saas: true }, error: null } });
 	ok("raíz con acceso y última Mi Salón → Mi Salón", r.destino, "dashboard.html");
 	r = await raiz({ guardado: "sala", sesion: true, perfil: { data: { activo_saas: true }, error: null } });
-	ok("raíz con acceso y última Sala → Sala de Maestros", r.destino, "sala-maestros.html");
+	ok("raíz con acceso y 'sala' guardada (Sala oculta) → Mi Salón", r.destino, "dashboard.html");
 	r = await raiz({ guardado: "salon", sesion: false });
 	ok("raíz sin sesión (dispositivo con Mi Salón guardado) → tienda, sin leer perfiles", [r.destino, r.lecturas], ["tienda/index.html", 0]);
 	r = await raiz({ guardado: "salon", sesion: true, perfil: { data: { activo_saas: false }, error: null } });
@@ -244,7 +263,7 @@ function raiz(opciones) {
 	const comun = leer("tienda/js/tienda-common.js");
 	ok("Tienda: guarda la última sección al poner el selector", /guardarUltima\("tienda"\)/.test(comun), true);
 	const guard = leer("js/saas-guard.js");
-	ok("candado: saasAcceso se cumple solo al permitir", /function permitir\(\) \{[\s\S]{0,120}resolverAcceso\(true\)/.test(guard) && (guard.match(/resolverAcceso\(/g) || []).length === 1, true);
+	ok("candado: saasAcceso se cumple solo al permitir", /function permitir\((estado)?\) \{[\s\S]{0,300}resolverAcceso\(true\)/.test(guard) && (guard.match(/resolverAcceso\(/g) || []).length === 1, true);
 
 	// ── Estilos del selector ─────────────────────────────────────────────────────
 	const js = leer("js/secciones.js");
@@ -270,7 +289,7 @@ function raiz(opciones) {
 	ok("Mi Salón: cerrar sesión lleva a la tienda", /signOut\(\)[\s\S]{0,400}window\.location\.href = "tienda\/index\.html"/.test(navbar), true);
 	const formativa = leer("js/evaluacion_formativa.js");
 	ok("formativa: el ajuste toma el contenido por id, no la barra", /getElementById\("evalContenido"\)/.test(formativa) && !/querySelector\("\.max-w-4xl/.test(formativa) && /id="evalContenido"/.test(leer("evaluacion_formativa.html")), true);
-	const examen = leer("js/examen.js");
+	const examen = leer("js/examen-anterior.js"); // la vista del examen del modelo anterior (catálogo ya aplicado)
 	ok("examen: el final deja lo que mide el pie de Calificar", /function ajustarPie\(\)[\s\S]{0,600}footerEl\.offsetHeight/.test(examen) && /new ResizeObserver\(ajustarPie\)/.test(examen), true);
 	ok("junta: el alto disponible se mide (--j-sobre)", /--j-sobre/.test(leer("junta.html")) && /setProperty\("--j-sobre"/.test(leer("js/junta.js")), true);
 	const onboarding = leer("onboarding.html");

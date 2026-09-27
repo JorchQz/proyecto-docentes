@@ -17,7 +17,8 @@
 	    rotulada "propuesta, sin confirmar" (vista interna). Nunca se convierte un
 	    porcentaje a calificación aquí: eso lo hace la función SQL (Acuerdo 10/09/23).
 	  - La asistencia es dato de referencia: no pondera (art. 7).
-	  - El examen por campo es aproximado (valor_total / total_preguntas) y así se dice.
+	  - El examen por campo es exacto (aciertos / preguntas) en los exámenes de Mi Salón; solo el del
+	    catálogo anterior es aproximado (valor_total / total_preguntas) y así se dice.
 	  - Es un reporte interno para el docente y la familia, complemento de la boleta
 	    oficial (SIGED); no es un documento oficial de la SEP.
 
@@ -185,13 +186,15 @@
 	*/
 	function calificacionCampo(datos, campo) {
 		var oficial = RD().calificacionOficial(filaBoleta(datos, campo));
+		var pc = datos.motor && datos.motor.porCampo ? datos.motor.porCampo[campo] : null;
+		// Calificación capturada directamente (registro histórico, b20): se rotula solo en pantalla
+		var directa = !!(RD().esDirecta && RD().esDirecta(pc));
 		if (oficial.confirmada) {
 			// juicio: el docente la eligió sin evidencias registradas (ReporteDatos.juicioSinEvidencias)
-			return { tipo: "confirmada", valor: oficial.valor, cerrada: oficial.cerrada, juicio: !!(datos.juicio && datos.juicio[campo]) };
+			return { tipo: "confirmada", valor: oficial.valor, cerrada: oficial.cerrada, juicio: !!(datos.juicio && datos.juicio[campo]), directa: directa };
 		}
-		var pc = datos.motor && datos.motor.porCampo ? datos.motor.porCampo[campo] : null;
 		var propuesta = pc ? pc.calificacionPropuesta : null;
-		if (!vacio(propuesta)) return { tipo: "propuesta", valor: Number(propuesta) };
+		if (!vacio(propuesta)) return { tipo: "propuesta", valor: Number(propuesta), directa: directa };
 		return { tipo: "sin_datos", valor: null };
 	}
 
@@ -276,12 +279,15 @@
 
 	function cajaCalificacion(cal, grande) {
 		var tam = grande ? "text-3xl" : "text-2xl";
+		// "Capturada directamente": solo en pantalla (el impreso no lleva la marca del registro histórico)
+		var marcaDirecta = cal.directa
+			? "<p class='mt-0.5 text-[11px] font-semibold text-violet-700 print:hidden' data-directa>" + esc(RD().ETIQUETA_DIRECTA) + "</p>" : "";
 		if (cal.tipo === "confirmada") {
 			return "<div><p class='" + tam + " font-bold text-gray-900 leading-none'>" + esc(cal.valor) + "</p>" +
 				"<p class='mt-1 text-[11px] font-semibold text-emerald-700'>Confirmada por el docente" +
 				(cal.cerrada ? " · boleta cerrada" : "") + "</p>" +
 				(cal.juicio ? "<p class='mt-0.5 text-[11px] font-semibold text-amber-800' data-juicio>Por juicio docente, sin evidencias registradas</p>" : "") +
-				"</div>";
+				marcaDirecta + "</div>";
 		}
 		if (cal.tipo === "propuesta") {
 			// En pantalla el docente ve la propuesta rotulada; impreso (puede llegar a la
@@ -289,7 +295,7 @@
 			// nunca se entrega como calificación (Acuerdo 10/09/23, art. 4 XI).
 			return "<div><div class='print:hidden'><p class='" + tam + " font-bold text-amber-700 leading-none'>" + esc(cal.valor) + "</p>" +
 				"<p class='mt-1 inline-block rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800'>" +
-				"Propuesta, sin confirmar</p></div>" +
+				"Propuesta, sin confirmar</p>" + marcaDirecta + "</div>" +
 				"<div class='hidden print:block'><p class='" + tam + " font-bold text-gray-400 leading-none'>pendiente</p>" +
 				"<p class='mt-1 text-[11px] text-gray-500'>Sin confirmar por el docente</p></div></div>";
 		}
@@ -359,15 +365,7 @@
 
 	// ── Render: 3. Desempeño por campo ────────────────────────────────────────
 
-	function hayExamen(datos) {
-		var porCampo = (datos.motor && datos.motor.porCampo) || {};
-		return CAMPOS.some(function (c) {
-			var x = porCampo[c] && porCampo[c].rubros ? porCampo[c].rubros.examen : null;
-			return x && Number(x.maximo) > 0;
-		});
-	}
-
-	function tablaRubros(pc) {
+	function tablaRubros(pc, aproximado) {
 		/*
 			Columna "Peso": lo que valió cada rubro en ESTE cálculo (peso efectivo, suma 100 %
 			entre los rubros con datos; MotorCalificacion.pesosEfectivos). Los pesos de Ajustes
@@ -385,7 +383,7 @@
 			// antes del cambio, que conserva el peso con que se entregó)
 			var referencia = r === "conducta" && !(peso > 0);
 			var nombre = "<span class='font-medium text-gray-800'>" + ETIQUETA_RUBRO[r] + "</span>" +
-				(r === "examen" ? " <span class='ml-1 rounded border border-amber-300 bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-800'>aproximado</span>" : "") +
+				(r === "examen" && aproximado ? " <span class='ml-1 rounded border border-amber-300 bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-800'>aproximado</span>" : "") +
 				(r === "participacion" || r === "conducta" ? "<span class='hidden sm:block text-[11px] text-gray-400 print:hidden'>registro diario repartido</span>" : "");
 			var celdaPeso = peso > 0
 				? (efectivo && efectivo[r] !== undefined
@@ -461,7 +459,8 @@
 				"(logrado " + escala.logrado + ", en proceso " + escala.en_proceso + ", requiere apoyo " + escala.requiere_apoyo +
 				") o del puntaje capturado. Lo justificado no cuenta.";
 		}
-		if (hayExamen(datos) || m.examenAproximado) {
+		// Solo el examen del modelo anterior (catálogo) es aproximado; los de Mi Salón cuentan aciertos exactos
+		if (m.examenAproximado) {
 			notas.push("<span class='font-semibold text-amber-800'>Examen aproximado:</span> el banco de preguntas no guarda el valor " +
 				"de cada pregunta, así que el puntaje por campo se estima como valor total del examen entre número de preguntas. " +
 				"Tómalo como referencia, no como un resultado exacto.");
@@ -491,7 +490,7 @@
 				"<p class='flex items-center gap-2 min-w-0'>" + chipCampo(c) +
 				"<span class='font-semibold text-gray-800 leading-tight'>" + esc(nombreCampo(c)) + "</span></p>" +
 				"<div class='text-right shrink-0'>" + cajaCalificacion(cal, false) + "</div></div>" +
-				"<div class='p-2 sm:p-3'>" + tablaRubros(pc) + "</div></div>";
+				"<div class='p-2 sm:p-3'>" + tablaRubros(pc, !!m.examenAproximado) + "</div></div>";
 		}).join("");
 
 		var pesos = m.pesos || {};
@@ -511,7 +510,8 @@
 	// ── Render: 3. Cuaderno ───────────────────────────────────────────────────
 
 	function enlaceDiagnostica() {
-		return " <a href='evaluacion_diagnostica.html' class='no-print text-blue-700 underline'>Registrar en Evaluación diagnóstica</a>";
+		// Zona táctil de 44 px (en el celular también se toca), sin cambiar cómo se lee la nota
+		return " <a href='evaluacion_diagnostica.html' class='no-print inline-flex items-center min-h-[44px] align-middle text-blue-700 underline'>Registrar en Evaluación diagnóstica</a>";
 	}
 
 	function renderCuaderno(datos) {
@@ -687,8 +687,12 @@
 				"<div>PDA</div><div class='text-center'>Evidencias</div><div>Por nivel</div><div>Nivel predominante</div><div>Tendencia</div></div>" +
 				cuerpo + "</div>";
 		}).join("");
-		return "<section class='mb-7' data-seccion='pda'>" + titulo(6, "Avance por PDA", "Procesos de desarrollo de aprendizaje de su grado") +
-			"<div class='bloque mb-3'>" + nota("Cada evidencia es un producto calificado que trabajó ese PDA. La tendencia compara las primeras " +
+		// "PDA trabajados" (R30, 2026-09-27). El alumno se evalúa siempre con los PDA de su grado
+		// (decisión de Jorge del 2026-09-27): aunque trabaje las actividades de otro nivel, su evidencia
+		// cae en los PDA de su grado
+		return "<section class='mb-7' data-seccion='pda'>" + titulo(6, "Avance por PDA", "Procesos de desarrollo de aprendizaje trabajados") +
+			"<div class='bloque mb-3'>" + nota("Cada evidencia es un producto calificado que trabajó ese PDA. Se evalúa con los PDA " +
+				"de su grado, aunque haya trabajado las actividades de otro nivel. La tendencia compara las primeras " +
 				"evidencias con las últimas; con una sola evidencia todavía no hay tendencia (falta evidencia).") + "</div>" +
 			"<div class='space-y-3'>" + bloques + "</div></section>";
 	}
@@ -847,6 +851,17 @@
 
 		// Estado (todo declarado antes del arranque, que va al final)
 		var ctx = null;
+		// Días sin clase del grupo, para "Qué le falta" (una tarea vence el siguiente día de clase)
+		async function ajustesCalendario(c) {
+			if (!window.AlcanceHoy || !window.AlcanceHoy.leerAjustesCalendario || !c || !c.grupo) return [];
+			try {
+				return await window.AlcanceHoy.leerAjustesCalendario(window.sb, c.maestroId, c.grupo.id);
+			} catch (e) {
+				// lectura-opcional: sin los ajustes del grupo, "Qué le falta" usa el calendario oficial SEP (solo cambia qué tarea ya venció); no se escribe nada
+				console.error("reporte-alumno: ajustes del calendario", e);
+				return [];
+			}
+		}
 		var turno = 0;              // descarta respuestas viejas si el maestro cambia rápido de alumno
 		var extraAlumno = null;     // alumno de la URL que no está en la lista (p. ej. dado de baja)
 		var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -982,6 +997,7 @@
 		// ── Arranque ──────────────────────────────────────────────────────────
 		try {
 			ctx = await window.ReporteDatos.contexto(window.sb);
+			ctx.calendario = await ajustesCalendario(ctx);
 		} catch (e) {
 			console.error("reporte-alumno: contexto", e);
 			subtitulo.textContent = "";

@@ -14,7 +14,9 @@
 	  tipo "registro_borrar" datos { alumno_id, fecha }                                      (se retira el cierre)
 	  tipo "calificacion"    datos { id?, fecha, fila }  (fila: la de calificaciones)
 	  campos  { campo: valor } solo lo que la maestra tocó (estado; participacion, conducta;
-	          estado_entrega, nivel, puntaje, retroalimentacion)
+	          estado_entrega, nivel, puntaje, retroalimentacion; y la revisión de una actividad
+	          que quedó incompleta en clase: revisar_en, estado_en_clase, completado_en, que van con
+	          el semáforo en captura_semaforo, mi_salon_b17)
 	  vistos  { campo: { fila, id, valor } } la versión de la base que la pantalla tenía al tocarlo
 	          (id: la marca del grupo de ese campo; null = fila sin marca o sin fila; undefined =
 	          no se sabe: se compara por contenido)
@@ -75,7 +77,9 @@
 		b.iniciar();            // habilita el envío (después de pintar lo pendiente)
 		b.lista() → Promise<[capturas propias pendientes]>
 		b.pendientes(), b.persistente(), b.vacia(), b.esperarEnvio() → Promise
-	Otras páginas: BandejaSalida.vigilarFuera() (aviso "N capturas de Hoy sin enviar" y envío).
+	Otras páginas: BandejaSalida.vigilarFuera() (aviso "N capturas sin enviar" de Hoy o de Exámenes, y envío).
+	Exámenes (js/examen.js, mi_salon_b19) usa la misma cola con sus tipos: examen_respuesta(_borrar),
+	examen_resultado(_borrar) y examen_alumno ("No presentó"), con su marca captura_id.
 	Cerrar sesión (js/navbar.js, js/sala-maestros.js):
 		BandejaSalida.confirmarSalida(sb) → Promise<boolean>
 		BandejaSalida.limpiarAlSalir(sb)  → borra las marcas propias de la cuenta que ya no
@@ -108,19 +112,32 @@ var BandejaSalida = (function () {
 
 	// ¿La base tiene las columnas de marca? null: aún no se sabe (se intenta con ellas)
 	var marca = { disponible: null };
+	// La de Exámenes va aparte (mi_salon_b19): si esa migración faltara, Hoy no deja de usar sus marcas
+	var marcaExamen = { disponible: null };
+	function marcaDe(tipo) { return /^examen_/.test(String(tipo || "")) ? marcaExamen : marca; }
 
 	// ── Reglas puras ─────────────────────────────────────────────────────────────
 	function clave(tipo, maestroId, d) {
 		if (tipo === "asistencia") return "asistencia|" + d.grupo_id + "|" + d.alumno_id + "|" + d.fecha;
 		if (tipo === "registro" || tipo === "registro_borrar") return "registro|" + maestroId + "|" + d.alumno_id + "|" + d.fecha;
 		if (tipo === "calificacion") return "calificacion|" + maestroId + "|" + d.fila.alumno_id + "|" + d.fila.producto_sesion_id;
+		// Exámenes de Mi Salón (mi_salon_b19): una llave por respuesta, por celda de aciertos y por "No presentó"
+		var fam = familia(tipo);
+		if (fam === "examen_respuesta") return "examen_respuesta|" + maestroId + "|" + d.alumno_id + "|" + d.pregunta_id;
+		if (fam === "examen_resultado") return "examen_resultado|" + maestroId + "|" + d.examen_id + "|" + d.alumno_id + "|" + d.campo;
+		if (fam === "examen_alumno") return "examen_alumno|" + maestroId + "|" + d.examen_id + "|" + d.alumno_id;
 		throw new Error("bandeja: tipo desconocido " + tipo);
 	}
 
 	var CAMPOS = {
 		asistencia: ["estado"],
 		registro: ["participacion", "conducta"],
-		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion"],
+		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion", "revisar_en", "estado_en_clase", "completado_en"],
+		// Exámenes (mi_salon_b19): la respuesta tocada o escaneada (o la calificación a mano), los
+		// aciertos de un campo y "No presentó"
+		examen_respuesta: ["respuesta", "resultado", "origen"],
+		examen_resultado: ["aciertos", "preguntas"],
+		examen_alumno: ["no_presento"],
 	};
 	/*
 		Grupos de campos que Hoy escribe y decide juntos, cada uno con su marca (la columna de la
@@ -129,10 +146,18 @@ var BandejaSalida = (function () {
 	var MARCAS = {
 		asistencia: [["captura_id", ["estado"]]],
 		registro: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
-		calificacion: [["captura_semaforo", ["estado_entrega", "nivel"]], ["captura_puntaje", ["puntaje"]],
+		// La revisión de una actividad incompleta (mi_salon_b17) va con el semáforo: se decide junta
+		calificacion: [["captura_semaforo", ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"]], ["captura_puntaje", ["puntaje"]],
 			["captura_retroalimentacion", ["retroalimentacion"]]],
+		// Exámenes: una marca por fila (mi_salon_b19, columna captura_id)
+		examen_respuesta: [["captura_id", ["respuesta", "resultado", "origen"]]],
+		examen_resultado: [["captura_id", ["aciertos", "preguntas"]]],
+		examen_alumno: [["captura_id", ["no_presento"]]],
 	};
-	function familia(tipo) { return tipo === "registro_borrar" ? "registro" : tipo; }
+	// "registro_borrar" → "registro", "examen_respuesta_borrar" → "examen_respuesta" (retirar la fila)
+	function familia(tipo) { return String(tipo || "").replace(/_borrar$/, ""); }
+	// ¿Es de Exámenes? (su marca y su aviso van aparte de los de Hoy)
+	function esExamen(tipo) { return /^examen_/.test(String(tipo || "")); }
 	function columna(f) { return f === "estado" ? "asistencia_estado" : f; }
 	// Las columnas de marca de un tipo, en el orden de MARCAS
 	function columnasMarca(tipo) { return (MARCAS[familia(tipo)] || []).map(function (g) { return g[0]; }); }
@@ -151,7 +176,69 @@ var BandejaSalida = (function () {
 	var MENSAJE_RED = /failed to fetch|fetch failed|networkerror|network request failed|load failed|timeout|timed out|aborted|network/i;
 
 	/*
-		tipoDeFallo(error) → "red" | "sesion" | "rechazo"
+		Modo solo lectura de Mi Salón (supabase/mi_salon_b21_acceso_2026-09.sql). Cada envío lleva
+		la hora en que se capturó en el aparato (captura.capturado_en) en la cabecera
+		x-capturado-en: sin acceso vigente, la base todavía acepta una captura hecha ANTES de que
+		venciera el acceso si llega dentro de las 48 horas siguientes al vencimiento. Si la base la
+		rechaza por solo lectura (42501 con la pista "mi_salon_solo_lectura"), la captura NO sale
+		de la cola: se queda guardada en el aparato, la cola pasa al estado "acceso" (la página lo
+		dice) y se vuelve a intentar al abrir la página, al volver la red o a primer plano (por
+		ejemplo, después de renovar). Nunca se descarta en silencio.
+	*/
+	var CABECERA_CAPTURA = "x-capturado-en";
+	var PISTA_SOLO_LECTURA = "mi_salon_solo_lectura";
+	function esSoloLectura(e) {
+		if (!e) return false;
+		if (e.hint === PISTA_SOLO_LECTURA) return true;
+		return String(e.message || "").indexOf(PISTA_SOLO_LECTURA) !== -1 || String(e.details || "").indexOf(PISTA_SOLO_LECTURA) !== -1;
+	}
+	var TEXTO_ACCESO = "tu acceso a Mi Salón terminó y la base ya no la acepta (se capturó después del vencimiento o pasaron más de 48 horas); sigue guardada en este dispositivo";
+	// Para el aviso de la cola en pantalla (Hoy, Exámenes y el aviso de las demás páginas)
+	var TEXTO_ACCESO_PANTALLA = "Tu acceso a Mi Salón terminó: lo capturado sigue guardado en este dispositivo, pero la base ya no lo acepta. Si renuevas tu acceso, se envía solo.";
+
+	// Pone la cabecera en una consulta de supabase-js (setHeader, o sus cabeceras si es más vieja)
+	function conCabecera(q, valor) {
+		if (!q || !valor) return q;
+		try {
+			if (typeof q.setHeader === "function") return q.setHeader(CABECERA_CAPTURA, valor) || q;
+			if (q.headers && typeof q.headers.set === "function") q.headers.set(CABECERA_CAPTURA, valor);
+			else if (q.headers && typeof q.headers === "object") q.headers[CABECERA_CAPTURA] = valor;
+		} catch (_) {}
+		return q;
+	}
+
+	/*
+		conCaptura(sb, capturadoEn) → un cliente que pone la cabecera x-capturado-en en cada
+		consulta de sb.from(tabla) (select, insert, upsert, update, delete). Sin hora, el mismo sb.
+	*/
+	function conCaptura(sb, capturadoEn) {
+		if (!sb || typeof sb.from !== "function" || !capturadoEn) return sb;
+		return {
+			auth: sb.auth,
+			from: function (tabla) {
+				var qb = sb.from(tabla);
+				var envuelto = {};
+				["select", "insert", "upsert", "update", "delete"].forEach(function (m) {
+					if (typeof qb[m] !== "function") return;
+					envuelto[m] = function () { return conCabecera(qb[m].apply(qb, arguments), capturadoEn); };
+				});
+				return envuelto;
+			},
+		};
+	}
+
+	// La hora de captura más reciente de un lote (con ella, si la más nueva entra, entran todas)
+	function capturaDeLote(lote) {
+		var mx = null;
+		(lote || []).forEach(function (it) {
+			var t = Date.parse(it && it.capturado_en);
+			if (!isNaN(t) && (mx === null || t > mx)) mx = t;
+		});
+		return mx === null ? null : new Date(mx).toISOString();
+	}
+
+	/*
+		tipoDeFallo(error) → "red" | "sesion" | "rechazo" | "acceso" (solo lectura de Mi Salón)
 		"rechazo" exige una respuesta del servidor que diga que no: sin respuesta, o una
 		excepción que no se entiende, se trata como de red (se reintenta; nunca se descarta una
 		captura por algo que no es un "no" de la base).
@@ -160,6 +247,8 @@ var BandejaSalida = (function () {
 		var status = e && typeof e.status === "number" ? e.status : null;
 		var code = e && e.code ? String(e.code) : "";
 		var msg = String((e && e.message) || "");
+		// Solo lectura de Mi Salón (b21): el acceso terminó. NO es un "no" a la captura: se conserva
+		if (esSoloLectura(e)) return "acceso";
 		if (status === 401 || code === "PGRST301" || code === "PGRST303" || /\bjwt\b/i.test(msg)) return "sesion";
 		if (status === 0 || status === 408 || status === 429 || (status !== null && status >= 500)) return "red";
 		if (status !== null && status >= 400) return "rechazo";
@@ -187,12 +276,21 @@ var BandejaSalida = (function () {
 	function explicar(e) {
 		var code = e && e.code ? String(e.code) : "";
 		var status = e && e.status;
+		// La actividad se quitó (activo = false) en otra pantalla o aparato: la base no guarda la
+		// calificación en un producto quitado (trigger calificaciones_desde_producto, mi_salon_b19a)
+		if (motivoDe(e) === "producto_inactivo") return "Esta actividad se quitó en otra pantalla; tu captura no se aplicó";
 		if (code === "42501" || status === 403) return "la base no lo permitió (el alumno, el grupo o el producto ya no es de esta cuenta)";
 		if (code === "23503") return "el alumno, la sesión o el producto ya no existe";
 		if (code === "23505" || status === 409) return "ya había un registro de ese dato guardado desde otro dispositivo o pantalla; se conservó ese";
 		if (code === "23514" || code === "22P02" || code === "22003" || code === "23502") return "un valor capturado no es válido";
 		if (code === "P0001" && e.message) return e.message; // los triggers propios hablan en español
 		return "la base no lo aceptó";
+	}
+
+	// La clave del rechazo que dan los triggers propios en el hint (p. ej. 'producto_inactivo'); "" si no hay
+	function motivoDe(e) {
+		var h = e && e.hint ? String(e.hint) : "";
+		return /^[a-z_]+$/.test(h) ? h : "";
 	}
 
 	// La respuesta de supabase-js trae status y error: se vuelve un Error con ambos (para lanzarlo)
@@ -229,9 +327,22 @@ var BandejaSalida = (function () {
 	// ── Valores ──────────────────────────────────────────────────────────────────
 	function num(v) { return v === null || v === undefined || v === "" ? null : Number(v); }
 	function txt(v) { return v === null || v === undefined || v === "" ? null : String(v); }
-	function normal(f, v) { return f === "participacion" || f === "conducta" || f === "puntaje" ? num(v) : txt(v); }
-	// Lo que la pantalla muestra cuando no hay fila (el cierre del día empieza en 1 y 1)
-	function predeterminado(tipo, f) { return familia(tipo) === "registro" ? 1 : null; }
+	function fecha(v) { var t = txt(v); return t === null ? null : t.slice(0, 10); }
+	var FECHAS = ["revisar_en", "completado_en"];
+	var NUMEROS = ["participacion", "conducta", "puntaje", "aciertos", "preguntas"];
+	function bool(v) { return v === null || v === undefined || v === "" ? null : (v === true || v === "true"); }
+	function normal(f, v) {
+		if (f === "no_presento") return bool(v);
+		return NUMEROS.indexOf(f) !== -1 ? num(v) : FECHAS.indexOf(f) !== -1 ? fecha(v) : txt(v);
+	}
+	// Lo que la pantalla muestra cuando no hay fila (el cierre del día empieza en 1 y 1; sin fila en
+	// examen_alumnos, el alumno sí presentó)
+	function predeterminado(tipo, f) {
+		var fam = familia(tipo);
+		if (fam === "registro") return 1;
+		if (fam === "examen_alumno" && f === "no_presento") return false;
+		return null;
+	}
 	function igual1(a, b) {
 		var na = a === undefined ? null : a, nb = b === undefined ? null : b;
 		return na === nb;
@@ -243,8 +354,15 @@ var BandejaSalida = (function () {
 		if (fam === "asistencia") return { estado: txt(f.asistencia_estado !== undefined ? f.asistencia_estado : f.estado) };
 		if (fam === "registro") return { participacion: num(f.participacion), conducta: num(f.conducta) };
 		if (fam === "calificacion") {
-			return { estado_entrega: txt(f.estado_entrega), nivel: txt(f.nivel), puntaje: num(f.puntaje), retroalimentacion: txt(f.retroalimentacion) };
+			var v = { estado_entrega: txt(f.estado_entrega), nivel: txt(f.nivel), puntaje: num(f.puntaje), retroalimentacion: txt(f.retroalimentacion) };
+			// La revisión de la incompleta (mi_salon_b17), si la fila la trae (una fila sin esas llaves:
+			// sin revisión; vistoDeCampo las lee como null)
+			["revisar_en", "estado_en_clase", "completado_en"].forEach(function (k) { if (f[k] !== undefined) v[k] = normal(k, f[k]); });
+			return v;
 		}
+		if (fam === "examen_respuesta") return { respuesta: txt(f.respuesta), resultado: txt(f.resultado), origen: txt(f.origen) };
+		if (fam === "examen_resultado") return { aciertos: num(f.aciertos), preguntas: num(f.preguntas) };
+		if (fam === "examen_alumno") return { no_presento: bool(f.no_presento) === true };
 		return null;
 	}
 
@@ -304,6 +422,12 @@ var BandejaSalida = (function () {
 	var ETIQ_ASISTENCIA = { presente: "Presente", ausente: "Falta", justificada: "Justificada" };
 	var ETIQ_NIVEL = { logrado: "Logrado", en_proceso: "En proceso", requiere_apoyo: "Requiere apoyo" };
 	var ETIQ_ENTREGA = { entregado: "Entregó", incompleto: "Incompleta", no_entregado: "No entregó", justificado: "Justificada", no_aplica: "No aplica" };
+	// "2026-09-29" → "29 sep"
+	function fechaTexto(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		if (!m) return String(iso || "");
+		return Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1];
+	}
 	function describir(tipo, v) {
 		var fam = familia(tipo);
 		function g(k) { return v && v[k] !== undefined ? v[k] : null; }
@@ -315,12 +439,30 @@ var BandejaSalida = (function () {
 			if ("conducta" in v) pr.push("conducta " + (g("conducta") === null ? "-" : g("conducta")));
 			return pr.length ? pr.join(", ") : "sin cierre del día";
 		}
+		if (fam === "examen_respuesta") {
+			if (!v) return "sin capturar";
+			var res = g("resultado"), resp = g("respuesta");
+			if (res) return { correcta: "correcta", parcial: "parcial", incorrecta: "incorrecta" }[res] || res;
+			if (resp === "*") return "doble marca";
+			if (resp === null) return g("origen") === "manual" ? "sin calificar" : "en blanco";
+			return "marcó " + (resp === "V" ? "Verdadero" : resp === "F" ? "Falso" : resp);
+		}
+		if (fam === "examen_resultado") {
+			if (!v || g("aciertos") === null) return "sin capturar";
+			return g("aciertos") + (g("preguntas") !== null ? " de " + g("preguntas") : "") + " aciertos";
+		}
+		if (fam === "examen_alumno") return v && g("no_presento") ? "no presentó" : "sí lo presentó";
 		if (fam === "calificacion") {
 			if (!v) return "sin calificar";
 			var partes = [];
 			var nivel = g("nivel"), entrega = g("estado_entrega"), puntaje = g("puntaje"), retro = g("retroalimentacion");
 			if (nivel) partes.push(ETIQ_NIVEL[nivel] || nivel);
 			if (entrega && !(nivel && entrega === "entregado")) partes.push(ETIQ_ENTREGA[entrega] || entrega);
+			// La revisión de una actividad que quedó incompleta en clase
+			var enClase = g("estado_en_clase");
+			if (enClase === "incompleta") partes.push(g("revisar_en") ? "se revisa el " + fechaTexto(g("revisar_en")) : "por completar");
+			if (enClase === "completada") partes.push("la completó");
+			if (enClase === "sigue_incompleta") partes.push("sigue incompleta");
 			if (puntaje !== null) partes.push("puntaje " + puntaje);
 			if (retro) partes.push("retroalimentación “" + (retro.length > 60 ? retro.slice(0, 57) + "..." : retro) + "”");
 			if (partes.length) return partes.join(", ");
@@ -341,7 +483,7 @@ var BandejaSalida = (function () {
 		(r.conflictos || []).forEach(function (g) { campos = campos.concat(g); });
 		if (!it.v) campos = CAMPOS[familia(it.tipo)];
 		var quedo = r.fila === false || r.valor === null || r.valor === undefined ? null : elegir(r.valor, campos);
-		var tuya = it.borrar || it.tipo === "registro_borrar" ? null : elegir(valorDeseado(it), campos);
+		var tuya = it.borrar || /_borrar$/.test(it.tipo) ? null : elegir(valorDeseado(it), campos);
 		return (it.descripcion || "Una captura") + ": se cambió desde otro dispositivo o pantalla (quedó: " +
 			describir(it.tipo, quedo) + "). Se conservó eso; tu captura (" + describir(it.tipo, tuya) + ") no se aplicó." +
 			(r.aplicado ? " Lo demás que capturaste sí se guardó." : "");
@@ -381,7 +523,7 @@ var BandejaSalida = (function () {
 			captura_id: nuevoId(), campos: {}, vistos: {}, propiasValor: {}, intentado: false,
 		};
 		if (tipo === "registro" && opciones.relleno) it.relleno = true;
-		if (tipo === "registro_borrar") it.borrar = true;
+		if (/_borrar$/.test(tipo)) it.borrar = true;
 		var todos = CAMPOS[fam];
 		var tocados = it.relleno ? [] : it.borrar ? todos
 			: (opciones.campos || todos).filter(function (f) { return todos.indexOf(f) !== -1; });
@@ -615,9 +757,17 @@ var BandejaSalida = (function () {
 				var d = it.datos;
 				return [["maestro_id", it.maestro_id], ["grupo_id", d.grupo_id], ["alumno_id", d.alumno_id], ["fecha", d.fecha]];
 			},
+			/*
+				capturado_en = la hora del aparato (mi_salon_b20): la asistencia de Hoy que sale de la
+				cola al día siguiente (sin señal) NO es histórica, porque se capturó el mismo día que su
+				fecha. Solo va en la fila nueva: al editar una fila ya existente la base conserva su
+				capturado_en (el trigger lo decide al crearla), y no toca las marcas por campo.
+			*/
 			nueva: function (it, v) {
 				var d = it.datos;
-				return { maestro_id: it.maestro_id, grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha, asistencia_estado: v.estado };
+				var fila = { maestro_id: it.maestro_id, grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha, asistencia_estado: v.estado };
+				if (it.capturado_en) fila.capturado_en = it.capturado_en;
+				return fila;
 			},
 		},
 		registro: {
@@ -630,7 +780,7 @@ var BandejaSalida = (function () {
 		calificacion: {
 			// Una calificación por (maestro, alumno, producto): el índice único es parcial, así que
 			// no hay ON CONFLICT; el insert que choca responde 23505 y se trata como "ya existía"
-			tabla: "calificaciones", columnas: "id, estado_entrega, nivel, puntaje, retroalimentacion", conflicto: null,
+			tabla: "calificaciones", columnas: "id, estado_entrega, nivel, puntaje, retroalimentacion, revisar_en, estado_en_clase, completado_en", conflicto: null,
 			llave: function (it) {
 				var f = it.datos.fila;
 				return [["maestro_id", it.maestro_id], ["alumno_id", f.alumno_id], ["producto_sesion_id", f.producto_sesion_id]];
@@ -640,9 +790,36 @@ var BandejaSalida = (function () {
 			nueva: function (it, v) {
 				return Object.assign({ fecha: it.datos.fecha }, it.datos.fila, {
 					estado_entrega: v.estado_entrega, nivel: v.nivel, puntaje: v.puntaje, retroalimentacion: v.retroalimentacion,
+					revisar_en: v.revisar_en, estado_en_clase: v.estado_en_clase, completado_en: v.completado_en,
 					entrego: v.estado_entrega === "entregado" || v.estado_entrega === "incompleto",
 					maestro_id: it.maestro_id, evaluado_en: it.capturado_en,
 				});
+			},
+		},
+		// Exámenes de Mi Salón (mi_salon_b18 y b19): índices únicos no parciales, con ON CONFLICT
+		examen_respuesta: {
+			tabla: "examen_respuestas", columnas: "id, respuesta, resultado, origen", conflicto: "pregunta_id,alumno_id",
+			llave: function (it) { var d = it.datos; return [["maestro_id", it.maestro_id], ["pregunta_id", d.pregunta_id], ["alumno_id", d.alumno_id]]; },
+			nueva: function (it, v) {
+				var d = it.datos;
+				return { maestro_id: it.maestro_id, examen_id: d.examen_id, pregunta_id: d.pregunta_id, alumno_id: d.alumno_id,
+					respuesta: v.respuesta, resultado: v.resultado, origen: v.origen || "toque" };
+			},
+		},
+		examen_resultado: {
+			tabla: "examen_resultados", columnas: "id, aciertos, preguntas", conflicto: "examen_id,alumno_id,campo",
+			llave: function (it) { var d = it.datos; return [["maestro_id", it.maestro_id], ["examen_id", d.examen_id], ["alumno_id", d.alumno_id], ["campo", d.campo]]; },
+			nueva: function (it, v) {
+				var d = it.datos;
+				return { maestro_id: it.maestro_id, examen_id: d.examen_id, alumno_id: d.alumno_id, campo: d.campo, aciertos: v.aciertos, preguntas: v.preguntas };
+			},
+		},
+		examen_alumno: {
+			tabla: "examen_alumnos", columnas: "id, no_presento", conflicto: "examen_id,alumno_id",
+			llave: function (it) { var d = it.datos; return [["maestro_id", it.maestro_id], ["examen_id", d.examen_id], ["alumno_id", d.alumno_id]]; },
+			nueva: function (it, v) {
+				var d = it.datos;
+				return { maestro_id: it.maestro_id, examen_id: d.examen_id, alumno_id: d.alumno_id, no_presento: v.no_presento === true };
 			},
 		},
 	};
@@ -745,7 +922,7 @@ var BandejaSalida = (function () {
 				if (res.error && String(res.error.code || "") === "23505") return { ok: false };
 			}
 		} else if (it.borrar) {
-			res = await condicion(filtrar(sb.from(op.tabla).delete(), op.llave(it)), estado, it.tipo, CAMPOS.registro, contenido, conMarca).select("id");
+			res = await condicion(filtrar(sb.from(op.tabla).delete(), op.llave(it)), estado, it.tipo, CAMPOS[familia(it.tipo)], contenido, conMarca).select("id");
 			if (res.error) throw fallo(res);
 			return res.data && res.data.length ? { ok: true, fila: false, valor: null, marcas: {}, rowId: null } : { ok: false };
 		} else {
@@ -1207,7 +1384,8 @@ var BandejaSalida = (function () {
 	}
 
 	// ── La bandeja ───────────────────────────────────────────────────────────────
-	var FALLAS = ["red", "servidor", "sesion", "cuenta"];
+	// "acceso": solo quedan capturas que la base no acepta por solo lectura (se conservan)
+	var FALLAS = ["red", "servidor", "sesion", "cuenta", "acceso"];
 
 	// La promesa, o un error "sin señal" si tarda más de ms (la marca hace inofensivo que llegue tarde)
 	function conLimite(promesa, ms) {
@@ -1227,7 +1405,9 @@ var BandejaSalida = (function () {
 		  o.auth        auth para leer y refrescar la sesión (Lectura.authDirecto: sin detener la página)
 		  o.maestroId   la cuenta con sesión (la dueña de lo que se capture aquí)
 		  o.almacen     (pruebas) un almacén ya abierto; si no, IndexedDB o memoria
-		  o.alCambiar({ pendientes, estado: "ok"|"enviando"|"red"|"servidor"|"sesion"|"cuenta", persistente })
+		  o.alCambiar({ pendientes, estado: "ok"|"enviando"|"red"|"servidor"|"sesion"|"cuenta"|"acceso", persistente })
+		     "acceso": lo que queda en la cola la base no lo acepta por solo lectura de Mi Salón (b21):
+		     sigue guardado en el aparato y se reintenta al abrir, al volver la red o a primer plano
 		  o.alGuardar(captura, { valor, id, fila, base, sigue })    se confirmó
 		  o.alConflicto(captura, { actual, texto, sigue, base })   otro aparato lo cambió: se conservó lo de la base
 		  o.alRechazar(captura, explicacion, { actual?, sigue, base? })    la base no la aceptó: ya salió de la cola
@@ -1246,6 +1426,7 @@ var BandejaSalida = (function () {
 			espera: null, intentos: 0, estado: "ok", n: 0, claves: {}, unoPorUno: false,
 			esperandoVacia: [], esperandoEnvio: [], cadena: Promise.resolve(), enVuelo: {},
 			huboFalla: false, // la cola se atoró (red, servidor, sesión) desde la última vez que se vació
+			bloqueadas: {}, // clave → seq de las capturas que la base no aceptó por solo lectura (se conservan)
 		};
 		var listo = (o.almacen ? Promise.resolve(o.almacen) : abrirAlmacen()).then(function (a) { st.almacen = a; return a; });
 		var esperaMax = o.esperaMax || 30000;
@@ -1418,14 +1599,15 @@ var BandejaSalida = (function () {
 
 		// Envía con las marcas; si la base no tiene las columnas, con la regla anterior (por contenido)
 		async function enviarUno(it, revisarFalta) {
+			var marca = marcaDe(it.tipo);
 			var conMarca = marca.disponible !== false;
 			try {
-				return await conLimite(enviar(o.sb, it, ctxDe(it, conMarca, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
+				return await conLimite(enviar(conCaptura(o.sb, it.capturado_en), it, ctxDe(it, conMarca, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
 			} catch (e) {
 				if (conMarca && faltaMarca(e)) {
 					marca.disponible = false;
 					if (typeof console !== "undefined") console.warn("bandeja: la base aún no tiene las columnas de marca; se compara por contenido");
-					return await conLimite(enviar(o.sb, it, ctxDe(it, false, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
+					return await conLimite(enviar(conCaptura(o.sb, it.capturado_en), it, ctxDe(it, false, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
 				}
 				throw e;
 			}
@@ -1450,11 +1632,11 @@ var BandejaSalida = (function () {
 		async function enviarLote(lote) {
 			var conMarca = marca.disponible !== false;
 			try {
-				return await conLimite(enviarLoteRelleno(o.sb, lote, conMarca), o.limiteMs || LIMITE_ENVIO);
+				return await conLimite(enviarLoteRelleno(conCaptura(o.sb, capturaDeLote(lote)), lote, conMarca), o.limiteMs || LIMITE_ENVIO);
 			} catch (e) {
 				if (conMarca && faltaMarca(e)) {
 					marca.disponible = false;
-					return await conLimite(enviarLoteRelleno(o.sb, lote, false), o.limiteMs || LIMITE_ENVIO);
+					return await conLimite(enviarLoteRelleno(conCaptura(o.sb, capturaDeLote(lote)), lote, false), o.limiteMs || LIMITE_ENVIO);
 				}
 				throw e;
 			}
@@ -1521,8 +1703,12 @@ var BandejaSalida = (function () {
 				return false;
 			}
 			for (;;) {
-				var lista = await propios();
-				if (!lista.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; break; }
+				var todas = await propios();
+				if (!todas.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; st.bloqueadas = {}; break; }
+				// Las que la base no aceptó por solo lectura se quedan en la cola, pero en esta vuelta
+				// ya no se reintentan (una captura NUEVA de la misma llave sí: su seq es otro)
+				var lista = todas.filter(function (x) { return st.bloqueadas[x.clave] !== x.seq; });
+				if (!lista.length) { st.estado = "acceso"; st.huboFalla = true; break; }
 				if (!(await duenaPresente())) break;
 				if (st.estado === "ok") { st.estado = "enviando"; avisar(); }
 				// Lo que se envía es lo que está guardado AHORA (un toque que llegó mientras tanto ya se combinó)
@@ -1562,6 +1748,17 @@ var BandejaSalida = (function () {
 					st.estado = "enviando";
 				} catch (e) {
 					var tipo = tipoDeFallo(e);
+					if (tipo === "acceso") {
+						// Solo lectura de Mi Salón: cada captura lleva su hora; de una en una se sabe cuál entra
+						if (lote.length > 1) { st.unoPorUno = true; continue; }
+						if (!(await duenaPresente())) break;
+						// NO sale de la cola: se conserva y se avisa (estado "acceso"); se sigue con las demás
+						st.bloqueadas[it.clave] = it.seq;
+						st.huboFalla = true;
+						if (typeof console !== "undefined") console.warn("bandeja: solo lectura de Mi Salón, la captura se conserva", it.descripcion);
+						if (o.alBloquear) { try { o.alBloquear(it, TEXTO_ACCESO); } catch (_) {} }
+						continue;
+					}
 					if (tipo === "rechazo") {
 						if (lote.length > 1) { st.unoPorUno = true; continue; } // ¿cuál fue? de uno en uno
 						// Un "no" con la sesión de otra cuenta no es de la captura: se espera a su dueña
@@ -1570,15 +1767,16 @@ var BandejaSalida = (function () {
 						algo = true;
 						if (typeof console !== "undefined") console.warn("bandeja: la base rechazó una captura", it.descripcion, e);
 						var leida;
-						try { leida = await leerActual(o.sb, it, marca.disponible !== false); } catch (_) { leida = undefined; }
+						try { leida = await leerActual(o.sb, it, marcaDe(it.tipo).disponible !== false); } catch (_) { leida = undefined; }
 						var sigue = await hayMasNueva(it);
 						var base = leida ? (leida.fila ? { marcas: leida.marcas, valor: leida.valor } : null) : undefined;
 						var explicacion = explicar(e);
+						var motivo = motivoDe(e);
 						if (o.alRechazar) {
-							try { o.alRechazar(it, explicacion, { actual: leida ? leida.valor : undefined, sigue: sigue, base: base }); } catch (_) {}
+							try { o.alRechazar(it, explicacion, { actual: leida ? leida.valor : undefined, sigue: sigue, base: base, motivo: motivo }); } catch (_) {}
 						}
 						difundir({ tipo: "aviso", clave: it.clave, tipoCaptura: it.tipo, datos: it.datos, base: base, valor: leida ? leida.valor : undefined,
-							sigue: sigue, texto: (it.descripcion || "Una captura") + ": " + explicacion + "." });
+							sigue: sigue, motivo: motivo, texto: (it.descripcion || "Una captura") + ": " + explicacion + "." });
 						continue;
 					}
 					if (tipo === "sesion" && !sesionIntentada) {
@@ -1607,6 +1805,7 @@ var BandejaSalida = (function () {
 		function reintentarYa() {
 			if (FALLAS.indexOf(st.estado) !== -1) st.estado = "ok";
 			st.intentos = 0;
+			st.bloqueadas = {}; // las de solo lectura se vuelven a intentar (quizá ya se renovó)
 			return procesar();
 		}
 
@@ -1701,8 +1900,8 @@ var BandejaSalida = (function () {
 		var n = await contarDe(id);
 		if (!n) return true;
 		return window.confirm((n === 1
-			? "Tienes 1 captura de Hoy sin enviar. Se queda guardada en este dispositivo y se enviará"
-			: "Tienes " + n + " capturas de Hoy sin enviar. Se quedan guardadas en este dispositivo y se enviarán") +
+			? "Tienes 1 captura sin enviar (de Hoy o de Exámenes). Se queda guardada en este dispositivo y se enviará"
+			: "Tienes " + n + " capturas sin enviar (de Hoy o de Exámenes). Se quedan guardadas en este dispositivo y se enviarán") +
 			" cuando vuelvas a entrar en él y abras Mi Salón.\n\n¿Cerrar sesión de todos modos?");
 	}
 
@@ -1839,20 +2038,21 @@ var BandejaSalida = (function () {
 		function pintar() {
 			var n = ultimo.pendientes;
 			if (n) {
-				var cuantas = n === 1 ? "Tienes 1 captura de Hoy sin enviar." : "Tienes " + n + " capturas de Hoy sin enviar.";
+				var cuantas = n === 1 ? "Tienes 1 captura sin enviar." : "Tienes " + n + " capturas sin enviar.";
 				var detalle = ultimo.estado === "red" ? " Sin señal: están guardadas en este dispositivo y se enviarán solas al volver la señal."
 					: ultimo.estado === "servidor" ? " El servidor no respondió bien; se reintentará."
 					: ultimo.estado === "sesion" ? " Tu sesión se cerró: vuelve a iniciar sesión para enviarlas."
 					: ultimo.estado === "cuenta" ? " Son de otra cuenta: se enviarán cuando ella entre en este dispositivo."
+					: ultimo.estado === "acceso" ? " " + TEXTO_ACCESO_PANTALLA
 					: " Enviando...";
 				mostrar(cuantas + detalle + (problemas.length ? " Estas no se aplicaron:" : ""), problemas.length > 0);
 				return;
 			}
 			if (problemas.length) {
-				mostrar("Se enviaron las capturas de Hoy que faltaban, salvo estas (se conservó lo que había en la base):", true);
+				mostrar("Se enviaron las capturas que faltaban, salvo estas (se conservó lo que había en la base):", true);
 				return;
 			}
-			mostrar("Se enviaron las capturas de Hoy que faltaban.", false);
+			mostrar("Se enviaron las capturas que faltaban.", false);
 			ocultarEn = setTimeout(function () { caja.style.display = "none"; }, 4000);
 		}
 		ocultar.addEventListener("click", function () {
@@ -1862,6 +2062,8 @@ var BandejaSalida = (function () {
 		});
 		return {
 			estado: function (e) { ultimo = e; pintar(); },
+			// Si todo lo pendiente es de Exámenes, el botón lleva a Exámenes
+			destino: function (soloExamen) { ir.href = soloExamen ? "examen.html" : "hoy.html"; ir.textContent = soloExamen ? "Ir a Exámenes" : "Ir a Hoy"; },
 			problema: function (clave, t) {
 				oculto = false; // algo que no se aplicó siempre se muestra
 				problemas = problemas.filter(function (p) { return p.clave !== clave; }).concat([{ clave: clave, texto: t }]);
@@ -1873,7 +2075,7 @@ var BandejaSalida = (function () {
 	function vigilarFuera() {
 		try {
 			if (!window.sb || typeof window.sb.from !== "function" || typeof indexedDB === "undefined" || !indexedDB || !document.body) return;
-			if (document.querySelector('script[src$="/hoy.js"], script[src="js/hoy.js"], script[src="hoy.js"]')) return; // Hoy tiene su propia bandeja
+			if (document.querySelector('script[src$="/hoy.js"], script[src="js/hoy.js"], script[src="hoy.js"], script[src$="/examen.js"], script[src="js/examen.js"]')) return; // Hoy y Exámenes tienen su propia bandeja
 		} catch (_) {
 			return;
 		}
@@ -1895,6 +2097,9 @@ var BandejaSalida = (function () {
 			document.addEventListener("visibilitychange", function () {
 				if (document.visibilityState === "visible") b.procesar();
 			});
+			b.lista().then(function (l) {
+				aviso.destino(l.length > 0 && l.every(function (it) { return esExamen(it.tipo); }));
+			}).catch(function () {});
 			b.iniciar();
 		}).catch(function (e) {
 			if (typeof console !== "undefined") console.warn("bandeja: no se pudo revisar lo pendiente", e);
@@ -1909,6 +2114,12 @@ var BandejaSalida = (function () {
 		clave: clave,
 		CAMPOS: CAMPOS,
 		tipoDeFallo: tipoDeFallo,
+		esSoloLectura: esSoloLectura,
+		conCaptura: conCaptura,
+		capturaDeLote: capturaDeLote,
+		CABECERA_CAPTURA: CABECERA_CAPTURA,
+		TEXTO_ACCESO: TEXTO_ACCESO,
+		TEXTO_ACCESO_PANTALLA: TEXTO_ACCESO_PANTALLA,
 		explicar: explicar,
 		faltaMarca: faltaMarca,
 		valorDeFila: valorDeFila,
@@ -1924,6 +2135,9 @@ var BandejaSalida = (function () {
 		columnasMarca: columnasMarca,
 		// La pantalla que leyó la base dice si existen las columnas de marca (true/false)
 		marcaDisponible: function (v) { if (v === true || v === false) marca.disponible = v; return marca.disponible; },
+		// Lo mismo para Exámenes (mi_salon_b19: captura_id en sus tablas)
+		marcaExamenDisponible: function (v) { if (v === true || v === false) marcaExamen.disponible = v; return marcaExamen.disponible; },
+		esExamen: esExamen,
 		almacenMemoria: almacenMemoria,
 		abrirAlmacen: abrirAlmacen,
 		crear: crear,

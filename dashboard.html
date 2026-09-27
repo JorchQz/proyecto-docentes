@@ -34,6 +34,10 @@
 				<div id="avisoCumples" class="hidden mt-3 sm:mt-4 pt-2 border-t border-blue-700 text-sm text-blue-50"></div>
 			</header>
 
+			<!-- Acceso a Mi Salón (js/mi-salon-acceso.js): banner fijo solo en modo solo lectura
+			     ("Tu acceso terminó el [fecha]..." con el botón para renovar; spec 2026-09-26 §5.4) -->
+			<div id="avisoAcceso" class="hidden"></div>
+
 			<!-- Entidad (decisión 21): solo si la maestra todavía no eligió su estado -->
 			<div id="avisoEntidad" class="hidden rounded-xl border border-gray-200 bg-white px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
 				<p class="text-sm text-gray-600">Todavía no has elegido el estado donde das clases. Hoy las reglas de evaluación son las mismas en todo el país; con tu estado, Mi salón podrá aplicar las de tu control escolar cuando difieran.</p>
@@ -50,11 +54,15 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>
+	<script src="js/calendario-sep.js"></script>
 	<script src="js/alcance-hoy.js"></script>
 	<script src="js/cumpleanos.js"></script>
+	<script src="js/alta-borrador.js"></script>
+	<script src="js/texto-sesion.js"></script>
 	<script src="js/dashboard.js"></script>
 </body>
 </html>

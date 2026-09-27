@@ -70,10 +70,27 @@
 	var userId = sessionResult.data.session.user.id;
 
 	/*
-		Entidad de la maestra (decisión 21): se guarda en perfiles.estado. Si ya la había
+		Modo "grupo nuevo" (onboarding.html?nuevo=1, desde Mi grupo → Crear otro grupo): una
+		docente puede tener grupos en escuelas distintas (Jorge, 2026-09-26). Es la misma alta:
+		inserta un grupo NUEVO (nunca toca los que ya tiene), lo deja como grupo activo
+		(GrupoActivo.elegir) y al terminar abre Ponte al día (si el trimestre ya empezó) o Inicio. Solo cambian los textos y hay un
+		enlace para volver sin crear nada.
+	*/
+	if (/[?&]nuevo=1\b/.test(window.location.search)) {
+		var tituloEl = document.getElementById("onboardingTitulo");
+		var subtituloEl = document.getElementById("onboardingSubtitulo");
+		var volverEl = document.getElementById("onboardingVolver");
+		if (tituloEl) tituloEl.textContent = "Crear otro grupo";
+		if (subtituloEl) subtituloEl.textContent = "Tus grupos actuales no cambian: este se agrega y queda como tu grupo activo. Después cambias de grupo con el selector de grupo del menú.";
+		if (volverEl) volverEl.classList.remove("hidden");
+		document.title = "Crear otro grupo — Jissez";
+	}
+
+	/*
+		Entidad del docente (decisión 21): se guarda en perfiles.estado. Si ya la había
 		elegido (un segundo grupo), queda propuesta.
 		lectura-opcional: solo propone lo que ya guardó; si falla, el selector queda en
-		"Elige tu estado", la maestra lo elige y se guarda lo que elija. No se afirma nada.
+		"Elige tu estado", el docente lo elige y se guarda lo que elija. No se afirma nada.
 	*/
 	var perfilEntidad = await window.sb.from("perfiles").select("estado").eq("id", userId).maybeSingle();
 	var entidadGuardada = perfilEntidad && !perfilEntidad.error && perfilEntidad.data ? (perfilEntidad.data.estado || "") : "";
@@ -83,7 +100,7 @@
 
 	var gradeMaxByType = { unitaria: 6, bidocente: 3, tridocente: 2, tetradocente: 3, pentadocente: 2, completa: 1 };
 	var gradeHelpByType = {
-		unitaria:     "Unitaria: un maestro atiende todos los grados, selecciona los que atiendes.",
+		unitaria:     "Unitaria: atiendes todos los grados; selecciona los que tienes.",
 		bidocente:    "Bidocente: selecciona hasta 3 grados.",
 		tridocente:   "Tridocente: selecciona hasta 2 grados.",
 		tetradocente: "Tetradocente: selecciona hasta 3 grados.",
@@ -121,6 +138,82 @@
 			});
 		});
 	}
+
+	/*
+		Registro histórico (spec de Jorge del 2026-09-26, §4.1): dos formas de agregar alumnos,
+		"Pegar la lista" (Excel, Word o WhatsApp; js/lista-pegada.js con las reglas de
+		js/historico.js) y "Uno por uno" (el formulario de siempre). Las dos llenan la misma lista
+		`students` (y su borrador en el aparato); "Completar configuración" la guarda igual.
+		Si el trimestre del grupo ya empezó, el alta es el paso 1 de "Ponte al día" y al terminar se
+		abre el asistente (ponte-al-dia.html) en vez de Inicio; se puede saltar desde ahí.
+	*/
+	var modoPegarBtn = document.getElementById("modoPegar");
+	var modoUnoBtn = document.getElementById("modoUno");
+	var panelPegar = document.getElementById("panelPegar");
+	var panelUno = document.getElementById("panelUno");
+	function modoAlta(pegar) {
+		if (!panelPegar || !panelUno) return;
+		panelPegar.classList.toggle("hidden", !pegar);
+		panelUno.classList.toggle("hidden", pegar);
+		[[modoPegarBtn, pegar], [modoUnoBtn, !pegar]].forEach(function (x) {
+			if (!x[0]) return;
+			x[0].setAttribute("aria-selected", x[1] ? "true" : "false");
+			x[0].className = "min-h-[44px] px-4 rounded-xl text-sm font-semibold " + (x[1] ? "bg-blue-700 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200");
+		});
+	}
+	if (modoPegarBtn) modoPegarBtn.addEventListener("click", function () { modoAlta(true); });
+	if (modoUnoBtn) modoUnoBtn.addEventListener("click", function () { modoAlta(false); document.getElementById("studentLastName1").focus(); });
+
+	function montarListaPegada() {
+		var cont = document.getElementById("pegarListaCont");
+		if (!cont || !window.ListaPegada || !window.Historico) {
+			// Sin el componente, solo "Uno por uno"
+			modoAlta(false);
+			if (modoPegarBtn) modoPegarBtn.classList.add("hidden");
+			return;
+		}
+		var lista = window.ListaPegada.montar(cont, {
+			grados: shouldCaptureStudentGrade() ? currentGroupGrades : currentGroupGrades.slice(0, 1),
+			existentes: function () { return students.map(function (s) { return s.nombre_completo; }); },
+			textoBoton: function (n) { return "Agregar " + n + (n === 1 ? " alumno" : " alumnos") + " a la lista"; },
+			alConfirmar: async function (filas) {
+				var nuevos = 0;
+				filas.forEach(function (f) {
+					var grado = shouldCaptureStudentGrade() ? f.grado : (currentGroupGrades[0] || null);
+					var key = normalizeName(f.nombre_completo) + "|" + String(grado || "");
+					if (students.some(function (s) { return s.key === key; })) return;
+					students.push({ nombre_completo: f.nombre_completo, grado: grado, key: key });
+					nuevos++;
+				});
+				updateStudentsList();
+				lista.limpiar();
+				showMessage("studentsMessage", "success", nuevos + (nuevos === 1 ? " alumno agregado" : " alumnos agregados") +
+					" a la lista. Revísala abajo y presiona «Completar configuración».");
+				var destinoLista = document.getElementById("studentsList");
+				if (destinoLista && destinoLista.scrollIntoView) destinoLista.scrollIntoView({ behavior: "smooth", block: "start" });
+			},
+		});
+	}
+
+	// ¿El trimestre del grupo ya empezó? Entonces el alta es el paso 1 de "Ponte al día"
+	function hoyLocal() {
+		var d = new Date();
+		return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+	}
+	function ofrecePonteAlDia() {
+		if (!window.Historico) return false;
+		var t = parseInt(trimestreActualSelect.value, 10) || 1;
+		var hoy = hoyLocal();
+		return window.Historico.ofrecerPonteAlDia(hoy, { inicio: window.Historico.inicioDelTrimestre(t, hoy) });
+	}
+	function pintarAvisoPonte() {
+		var aviso = document.getElementById("ponteAviso");
+		if (aviso) aviso.classList.toggle("hidden", !ofrecePonteAlDia());
+	}
+
+	// ¿Quedó un alta a medias en este aparato? Se ofrece continuarla (después de conectar el
+	// tipo de organización: llenar el formulario lo usa)
+	ofrecerBorrador();
 
 	groupForm.addEventListener("submit", async function (event) {
 		event.preventDefault();
@@ -213,13 +306,22 @@
 			}
 			currentGroupType = groupType;
 			currentGroupGrades = gradeList.slice();
+			// Alumnos de un borrador recuperado: en un grupo de un solo grado, van a ese grado
+			if (!shouldCaptureStudentGrade()) {
+				students.forEach(function (s) { s.grado = currentGroupGrades[0] || null; s.key = normalizeName(s.nombre_completo) + "|" + String(s.grado || ""); });
+			}
 			configureStudentGradeSelector();
+			updateStudentsList();
+			guardarBorrador();
+			montarListaPegada();
+			pintarAvisoPonte();
 			showMessage("groupMessage", "success", isEditing ? "Grupo actualizado exitosamente." : "Grupo creado exitosamente.");
 
 			setTimeout(function () {
 				stepGroup.classList.add("hidden");
 				stepStudents.classList.remove("hidden");
-				document.getElementById("studentLastName1").focus();
+				var pegar = panelPegar && !panelPegar.classList.contains("hidden") ? panelPegar.querySelector("textarea") : null;
+				(pegar || document.getElementById("studentLastName1")).focus();
 			}, 800);
 		} catch (error) {
 			showMessage(
@@ -235,9 +337,10 @@
 	studentForm.addEventListener("submit", async function (event) {
 		event.preventDefault();
 
-		var lastName1 = normalizeSpaces(document.getElementById("studentLastName1").value);
-		var lastName2 = normalizeSpaces(document.getElementById("studentLastName2").value);
-		var firstNames = normalizeSpaces(document.getElementById("studentFirstNames").value);
+		// MAYÚSCULAS con acentos y Ñ (js/nombres-alumno.js)
+		var lastName1 = normalizeSpaces(document.getElementById("studentLastName1").value).toUpperCase();
+		var lastName2 = normalizeSpaces(document.getElementById("studentLastName2").value).toUpperCase();
+		var firstNames = normalizeSpaces(document.getElementById("studentFirstNames").value).toUpperCase();
 		var selectedGrade = studentGradeSelect ? parseInt(studentGradeSelect.value, 10) : null;
 
 		if (!lastName1 || !firstNames) {
@@ -253,7 +356,7 @@
 			showMessage(
 				"studentsMessage",
 				"error",
-				"Cada apellido solo puede contener letras, espacios, guiones y apostrofes."
+				"Cada apellido solo puede contener letras (con acentos y Ñ), espacios y guiones."
 			);
 			return;
 		}
@@ -262,7 +365,7 @@
 			showMessage(
 				"studentsMessage",
 				"error",
-				"Nombre(s) solo permite letras y espacios."
+				"Nombre(s) solo permite letras (con acentos y Ñ), espacios y guiones."
 			);
 			return;
 		}
@@ -272,7 +375,7 @@
 				showMessage(
 					"studentsMessage",
 					"error",
-					"Selecciona un grado valido para el alumno."
+					"Selecciona un grado válido para el alumno."
 				);
 				return;
 			}
@@ -370,9 +473,22 @@
 			// Terminó el alta: la raíz y el login la regresan a Mi Salón (el candado ya
 			// confirmó el acceso para llegar aquí)
 			if (window.Secciones) window.Secciones.guardarUltima("salon");
+			// La lista ya está en la base: el borrador de este aparato ya no hace falta
+			if (window.AltaBorrador) window.AltaBorrador.borrar(userId);
 
+			// Trimestre ya empezado: sigue "Ponte al día" (paso 2, asistencia pasada); se puede saltar.
+			// Su avance queda desde ya (ponte_al_dia, mi_salon_b20): si se cierra la pestaña, Inicio lo
+			// ofrece para retomarlo. Si no se pudo guardar, el asistente lo crea al abrirse.
+			var ofrece = ofrecePonteAlDia();
+			var destino = ofrece ? "ponte-al-dia.html?desde=alta" : "dashboard.html";
+			if (ofrece) {
+				var avance = await window.sb.from("ponte_al_dia").upsert({
+					maestro_id: userId, grupo_id: currentGroupId, estado: "en_curso", paso: 2, pasos_hechos: [1],
+				}, { onConflict: "grupo_id" });
+				if (avance.error) console.error("onboarding: avance de Ponte al día", avance.error);
+			}
 			setTimeout(function () {
-				window.location.href = "dashboard.html";
+				window.location.href = destino;
 			}, 1500);
 		} catch (error) {
 			var msg = error.message || "Error desconocido";
@@ -412,7 +528,7 @@
 
 		students.forEach(function (student, index) {
 			var div = document.createElement("div");
-			div.className = "flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl shadow-sm";
+			div.className = "flex items-center justify-between gap-3 p-4 bg-white border border-gray-200 rounded-2xl shadow-sm";
 			var gradeText =
 				typeof student.grado === "number"
 					? "<span class='inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 mr-2'>" +
@@ -427,7 +543,7 @@
 			nombreSpan.appendChild(document.createTextNode(student.nombre_completo || ""));
 			var eliminarBtn = document.createElement("button");
 			eliminarBtn.type = "button";
-			eliminarBtn.className = "text-red-600 hover:text-red-700 font-medium";
+			eliminarBtn.className = "shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 -my-2 rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 font-medium";
 			eliminarBtn.setAttribute("data-index", index);
 			eliminarBtn.textContent = "Eliminar";
 			div.appendChild(nombreSpan);
@@ -449,6 +565,112 @@
 		} else {
 			completeBtn.classList.remove("opacity-50", "cursor-not-allowed");
 		}
+		guardarBorrador();
+	}
+
+	// ── Borrador en este aparato (js/alta-borrador.js) ───────────────────────────
+	// Lo capturado del grupo (el formulario) y la lista de alumnos, por si se cierra la pestaña
+	function datosFormularioGrupo() {
+		return {
+			nombre: document.getElementById("groupName").value,
+			tipo: groupTypeSelect ? groupTypeSelect.value : "",
+			grados: Array.from(groupGradeCheckboxes).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; }),
+			escuela: document.getElementById("groupSchool").value,
+			cicloInicio: cicloInicioSelect.value,
+			cicloFin: cicloFinSelect.value,
+			trimestre: trimestreActualSelect.value,
+		};
+	}
+
+	function guardarBorrador() {
+		if (!window.AltaBorrador) return;
+		window.AltaBorrador.guardar(userId, { grupoId: currentGroupId, grupo: datosFormularioGrupo(), alumnos: students });
+	}
+
+	function llenarFormularioGrupo(g) {
+		if (!g) return;
+		if (g.nombre) document.getElementById("groupName").value = g.nombre;
+		if (g.escuela) document.getElementById("groupSchool").value = g.escuela;
+		if (g.cicloInicio) cicloInicioSelect.value = String(g.cicloInicio);
+		if (g.cicloFin) cicloFinSelect.value = String(g.cicloFin);
+		if (g.trimestre) trimestreActualSelect.value = String(g.trimestre);
+		if (g.tipo && groupTypeSelect) {
+			groupTypeSelect.value = g.tipo;
+			groupTypeSelect.dispatchEvent(new Event("change")); // habilita las casillas de grado
+		}
+		var grados = (g.grados || []).map(String);
+		groupGradeCheckboxes.forEach(function (cb) { cb.checked = grados.indexOf(cb.value) !== -1; });
+	}
+
+	// Al volver: se ofrece la lista que quedó a medias
+	function ofrecerBorrador() {
+		if (!window.AltaBorrador) return;
+		var b = window.AltaBorrador.leer(userId);
+		var banner = document.getElementById("borradorAlta");
+		if (!b || !banner) return;
+		var n = (b.alumnos || []).length;
+		var cuando = new Date(b.guardado);
+		document.getElementById("borradorAltaTexto").textContent =
+			(n ? "Quedó en este aparato la lista que estabas capturando: " + n + (n === 1 ? " alumno" : " alumnos") : "Quedaron en este aparato los datos de tu grupo") +
+			", guardada el " + cuando.toLocaleDateString("es-MX", { day: "numeric", month: "long" }) +
+			(" a las " + cuando.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + ".").replace(/\.\.$/, "."); // "a.m." ya trae punto
+		banner.classList.remove("hidden");
+		document.getElementById("borradorAltaContinuar").onclick = function () { continuarBorrador(b); };
+		document.getElementById("borradorAltaDescartar").onclick = function () {
+			window.AltaBorrador.borrar(userId);
+			banner.classList.add("hidden");
+		};
+	}
+
+	async function continuarBorrador(b) {
+		var banner = document.getElementById("borradorAlta");
+		llenarFormularioGrupo(b.grupo);
+		students = (b.alumnos || []).map(function (a) {
+			return { nombre_completo: a.nombre_completo, grado: a.grado, key: normalizeName(a.nombre_completo) + "|" + String(a.grado || "") };
+		});
+		if (b.grupoId) {
+			// El grupo ya se había creado: se revisa que siga ahí y que aún no tenga alumnos
+			var g = await window.sb.from("grupos").select("id, tipo_organizacion, grados")
+				.eq("id", b.grupoId).eq("maestro_id", userId).maybeSingle();
+			if (g.error) {
+				showMessage("groupMessage", "error", "No se pudo revisar tu grupo guardado. Revisa tu conexión e inténtalo de nuevo; tu lista sigue guardada en este aparato.");
+				return;
+			}
+			if (g.data) {
+				var cuenta = await window.sb.from("alumnos").select("id", { count: "exact", head: true }).eq("grupo_id", b.grupoId);
+				if (cuenta.error) {
+					showMessage("groupMessage", "error", "No se pudo revisar tu grupo guardado. Revisa tu conexión e inténtalo de nuevo; tu lista sigue guardada en este aparato.");
+					return;
+				}
+				if ((cuenta.count || 0) > 0) {
+					// La lista ya se había guardado: no se duplica
+					window.AltaBorrador.borrar(userId);
+					banner.classList.add("hidden");
+					showMessage("groupMessage", "success", "Tu grupo ya tiene sus alumnos guardados. Te llevamos a Inicio...");
+					setTimeout(function () { window.location.href = "dashboard.html"; }, 1200);
+					return;
+				}
+				currentGroupId = g.data.id;
+				currentGroupType = g.data.tipo_organizacion || (b.grupo && b.grupo.tipo) || "";
+				currentGroupGrades = (g.data.grados || []).map(function (x) { return parseInt(x, 10); }).filter(Boolean).sort(function (x, y) { return x - y; });
+				if (window.GrupoActivo) window.GrupoActivo.elegir(currentGroupId);
+				configureStudentGradeSelector();
+				updateStudentsList();
+				montarListaPegada();
+				pintarAvisoPonte();
+				banner.classList.add("hidden");
+				stepGroup.classList.add("hidden");
+				stepStudents.classList.remove("hidden");
+				showMessage("studentsMessage", "success", "Recuperamos tu lista. Revisa que esté completa y presiona \"Completar configuración\".");
+				return;
+			}
+		}
+		// El grupo aún no existe (o ya no): se crea con los datos recuperados
+		updateStudentsList();
+		banner.classList.add("hidden");
+		showMessage("groupMessage", "success", students.length
+			? "Recuperamos tus datos y tu lista de alumnos. Revisa el grupo y presiona \"Crear grupo\" para seguir."
+			: "Recuperamos los datos de tu grupo. Revísalos y presiona \"Crear grupo\".");
 	}
 
 	function configureStudentGradeSelector() {
@@ -580,11 +802,10 @@
 		return areValidWords(text, false);
 	}
 
+	// Letras con acentos y Ñ, espacios y guiones (js/nombres-alumno.js)
 	function areValidWords(text, allowSpaces) {
-		var pattern = allowSpaces
-			? /^[A-Za-zÑñ\-\s]+$/
-			: /^[A-Za-zÑñ\-]+$/;
-		return pattern.test(removeAccents(text || ""));
+		if (!allowSpaces && /\s/.test(text || "")) return false;
+		return window.NombresAlumno.valido(text);
 	}
 
 	function bindNameInput(input, allowSpaces) {
@@ -603,19 +824,9 @@
 		if (studentFirstNamesInput) bindNameInput(studentFirstNamesInput, true);
 	}
 
+	// MAYÚSCULAS con acentos y Ñ ("JOSÉ PEÑA"; decisión de Jorge del 2026-09-26). Antes se
+	// quitaban los acentos al teclear
 	function formatNameInput(value, allowSpaces) {
-		var clean = removeAccents(value || "").replace(/[^A-Za-zÑñ\-\s]/g, "");
-
-		if (allowSpaces) {
-			clean = clean.replace(/\s+/g, " ").replace(/^\s+/, "");
-		} else {
-			clean = clean.replace(/\s+/g, "");
-		}
-
-		return clean.toUpperCase();
-	}
-
-	function removeAccents(text) {
-		return text.normalize("NFD").replace(/[\u0300-\u0302\u0304-\u036f]/g, "").normalize("NFC");
+		return window.NombresAlumno.formatear(value, allowSpaces);
 	}
 });

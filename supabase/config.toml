@@ -34,3 +34,12 @@ verify_jwt = false   # la llama pg_cron con el secreto CRON_SECRET, no un usuari
 
 [functions.redactar-boleta]
 verify_jwt = false   # valida el JWT manualmente (Mi salón, B.7 Capa 2: redacción con IA)
+
+[functions.bienvenida-mi-salon]
+verify_jwt = false   # valida el JWT manualmente (correo de bienvenida de Mi Salón, b21; idempotente)
+
+[functions.comprar-mi-salon]
+verify_jwt = false   # valida el JWT manualmente (compra de Mi Salón, b22)
+
+[functions.avisos-mi-salon]
+verify_jwt = false   # la llama pg_cron con CRON_SECRET, o el panel con la sesión del admin (b22)

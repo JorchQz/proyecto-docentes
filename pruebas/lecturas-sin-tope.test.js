@@ -28,7 +28,7 @@ const CRECEN = [
 	"asistencias", "calificaciones", "registro_diario", "evaluacion_formativa", "v_avance_pda",
 	"sesiones", "productos_sesion", "producto_sesion_pda", "sesiones_pda", "respuestas_examen",
 	"catalogo_pda", "catalogo_contenidos", "boleta_trimestral", "evaluacion_diagnostica",
-	"banco_preguntas", "banco_criterios_pda", "dosificacion_sesiones", "dosificacion_proyectos",
+	"banco_preguntas", "banco_criterios_pda", "examen_respuestas", "examen_resultados", "examen_preguntas", "dosificacion_sesiones", "dosificacion_proyectos",
 ];
 
 /*
@@ -41,12 +41,14 @@ const ACOTADAS = [
 	["hoy.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
 	["dashboard.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
 	["dashboard.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
-	["dashboard.js", "sesiones", ".eq(\"proyecto_id\", proyectoActivo.id)", "las sesiones de un proyecto"],
+	["hoy.js", "sesiones_pda", ".eq(\"sesion_id\", sesion.id)", "los PDA de una sesión (ligar lo que se agrega en clase)"],
+	["hoy.js", "catalogo_pda", ".eq(\"contenido_id\", c.id)", "los PDA de un contenido del catálogo (unos cuantos por grado)"],
+	["ponte-al-dia.js", "catalogo_pda", ".eq(\"contenido_id\", contenido.id)", "los PDA de un contenido del catálogo (unos cuantos por grado): la actividad histórica, como en Hoy"],
 	["crear_proyecto.js", "sesiones", ".eq('proyecto_id', id)", "las sesiones de un proyecto"],
 	["evaluacion_diagnostica.js", "evaluacion_diagnostica", ".eq(\"momento\", momentoActual)", "un grupo en un momento: uno por alumno"],
 	["evaluacion_formativa.js", "evaluacion_formativa", ".eq(\"sesion_id\", sesionId)", "una sesión"],
 	["evaluacion_formativa.js", "sesiones_pda", ".eq(\"sesion_id\", sesionId)", "una sesión"],
-	["examen.js", "banco_preguntas", ".in(\"id\"", "las preguntas de un examen"],
+	["examen-anterior.js", "banco_preguntas", ".in(\"id\"", "las preguntas de un examen (modelo anterior)"],
 	["importador.js", "dosificacion_sesiones", ".eq(\"proyecto_dos_id\", dosProyectoId)", "las sesiones de un proyecto del bot"],
 	["marketplace.js", "dosificacion_sesiones", ".eq(\"proyecto_dos_id\"", "las sesiones de un proyecto del bot (vista previa)"],
 	["reporte-datos.js", "v_avance_pda", ".eq(\"alumno_id\", alumno.id)", "un alumno en un trimestre"],
@@ -54,7 +56,7 @@ const ACOTADAS = [
 	["reportes.js", "v_avance_pda", ".eq(\"alumno_id\", alumnoId)", "un alumno en un trimestre"],
 ];
 
-const PAGINADORES = /(LeerTodo\.paginas|LeerTodo\.porLotes|leerPorLotes|\btodas|\bleer)\(/;
+const PAGINADORES = /(LeerTodo\.paginas|LeerTodo\.porLotes|Lectura\.porLotes|leerPorLotes|\btodas|\bleer)\(/;
 const DIR = path.join(__dirname, "..", "js");
 const hallazgos = [];
 let revisadas = 0;

@@ -6,11 +6,13 @@
 	toca, con lo necesario para trabajarla y terminarla.
 
 	  1. Tu día: lo pendiente de hoy, con el botón a "Hoy".
-	  2. Sesión de hoy: el plan (inicio, desarrollo, cierre, recursos, PDA por grado).
-	     Si ninguna sesión tiene fecha de hoy, propone la siguiente pendiente del proyecto
-	     activo con "Trabajar hoy" (le pone la fecha de hoy, igual que en "Hoy").
-	  3. Terminar sesión: la marca como completada con notas opcionales. Ya no escribe la
-	     tabla vieja `tareas`: las tareas son productos de la sesión y se revisan en "Hoy".
+	  2. Proyectos activos (puede haber varios: 2026-09-26), una tarjeta compacta por cada
+	     uno con su sesión de hoy o, si ninguna tiene fecha de hoy, su siguiente pendiente con
+	     "Trabajar hoy" (le pone la fecha de hoy, igual que en "Hoy"). El plan (inicio,
+	     desarrollo, cierre, recursos, PDA por grado) se abre con "Ver el plan".
+	  3. Terminar sesión: la marca como completada con notas opcionales; si a SU proyecto ya
+	     no le quedan sesiones, ese proyecto pasa a completado. Ya no escribe la tabla vieja
+	     `tareas`: las tareas son productos de la sesión y se revisan en "Hoy".
 
 	Próximos cumpleaños (decisión de Jorge, 2026-09-26): una línea discreta en el encabezado,
 	el mismo día y hasta 7 días antes (Cumpleanos.DIAS_AVISO_INICIO), con enlace a Calendario →
@@ -22,10 +24,10 @@ let user = null;
 let grupo = null;
 let grupoId = null;
 let alumnos = [];
-let proyectoActivo = null;
+let proyectosActivos = []; // puede haber varios a la vez (uno por campo formativo, por ejemplo)
 let sesionActiva = null; // la que se está mostrando (los ayudantes de render la leen)
 
-// Arranque común (js/lectura.js): si la lista de alumnos o el proyecto activo no se
+// Arranque común (js/lectura.js): si la lista de alumnos o los proyectos activos no se
 // pudieron leer, la página se detiene con el aviso "No se pudo cargar". Antes, con el
 // proyecto en error, Inicio decía "No tienes ningún proyecto activo".
 document.addEventListener("DOMContentLoaded", function () {
@@ -40,29 +42,95 @@ document.addEventListener("DOMContentLoaded", function () {
 		await cargarGrupoYAlumnos();
 		if (!grupoId) return;
 
-		const proyectos = await window.Lectura.uno(window.sb
+		// TODOS los proyectos activos del grupo (antes solo el más reciente: con un proyecto
+		// por campo formativo, los demás no se veían en Inicio)
+		proyectosActivos = (await window.Lectura.uno(window.sb
 			.from("proyectos")
 			.select("id, titulo, campos_formativos, metodologia, estado")
 			.eq("maestro_id", user.id)
 			.eq("grupo_id", grupoId)
 			.eq("estado", "activo")
-			.order("created_at", { ascending: false })
-			.limit(1));
-		proyectoActivo = proyectos && proyectos.length ? proyectos[0] : null;
+			.order("created_at", { ascending: true }))) || [];
 
-		// Las sesiones del proyecto se leen ANTES de dibujar: si fallan, no queda media pantalla
-		const sesiones = proyectoActivo ? await leerSesiones() : null;
+		// Las sesiones se leen ANTES de dibujar: si fallan, no queda media pantalla
+		const sesiones = proyectosActivos.length ? await leerSesiones() : [];
 
 		const container = document.getElementById("flowContainer");
 		container.innerHTML = "";
+		const altaPendiente = crearCardAltaPendiente();
+		if (altaPendiente) container.appendChild(altaPendiente);
+		const ponte = await crearCardPonteAlDia();
+		if (ponte) container.appendChild(ponte);
 		container.appendChild(await crearCardHoy());
-		if (!proyectoActivo) {
+		if (!proyectosActivos.length) {
 			container.appendChild(crearCardSinProyecto());
 			return;
 		}
-		renderSesiones(container, sesiones);
+		renderProyectos(container, sesiones);
 	});
 });
+
+/*
+	Alta sin terminar: el onboarding guarda en este aparato la lista de alumnos que se va
+	capturando (js/alta-borrador.js). Si la maestra cerró la pestaña después de crear el grupo,
+	al volver entra aquí (ya tiene grupo): se le ofrece continuar. Sin alumnos y sin borrador,
+	se le lleva a Mi grupo.
+*/
+function crearCardAltaPendiente() {
+	if (alumnos.length) return null;
+	const borrador = window.AltaBorrador ? window.AltaBorrador.leer(user.id) : null;
+	const n = borrador && borrador.grupoId === grupoId ? (borrador.alumnos || []).length : 0;
+	const card = document.createElement("section");
+	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6 border-l-4 border-l-amber-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3";
+	card.innerHTML = n
+		? "<div><h2 class='text-lg font-bold text-gray-800'>Tu lista de alumnos quedó a medias</h2>" +
+			"<p class='text-sm text-gray-600'>En este aparato quedó la lista que estabas capturando (" + n + (n === 1 ? " alumno" : " alumnos") + "). Continúa para guardarla.</p></div>" +
+			"<a href='onboarding.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 shrink-0'>Continuar la lista</a>"
+		: "<div><h2 class='text-lg font-bold text-gray-800'>Tu grupo aún no tiene alumnos</h2>" +
+			"<p class='text-sm text-gray-600'>Agrégalos para pasar lista y calificar.</p></div>" +
+			"<a href='mi-grupo.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 shrink-0'>Agregar alumnos</a>";
+	return card;
+}
+
+/*
+	"Ponte al día" (registro histórico, spec de Jorge del 2026-09-26, §4.1): el asistente se puede
+	saltar y retomar desde aquí. Se ofrece al crear el grupo (el alta deja su avance en
+	ponte_al_dia, mi_salon_b20, si el trimestre ya había empezado); la tarjeta sale mientras ese
+	avance esté "en curso". A los grupos de antes (sin avance) no se les ofrece: ya capturan en
+	Hoy. "Ya no mostrar" lo marca como saltado.
+*/
+async function crearCardPonteAlDia() {
+	if (!alumnos.length) return null;
+	// lectura-opcional: solo decide si se muestra la tarjeta; si falla no se muestra y no se guarda nada
+	const { data: fila, error } = await window.sb.from("ponte_al_dia").select("estado, paso, pasos_hechos")
+		.eq("maestro_id", user.id).eq("grupo_id", grupoId).maybeSingle();
+	if (error) { console.error("inicio: ponte al día", error); return null; }
+	if (!fila || fila.estado !== "en_curso") return null;
+	const enCurso = true;
+	const hechos = Array.isArray(fila.pasos_hechos) ? fila.pasos_hechos.length : 0;
+	const card = document.createElement("section");
+	card.id = "cardPonteAlDia";
+	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6 border-l-4 border-l-emerald-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3";
+	card.innerHTML =
+		"<div><h2 class='text-lg font-bold text-gray-800'>" + (enCurso ? "Sigue con Ponte al día" : "Ponte al día") + "</h2>" +
+		"<p class='text-sm text-gray-600'>" + (enCurso
+			? "Llevas " + hechos + " de 4 pasos. Captura lo que ya llevas del trimestre: asistencia, trabajos, exámenes y calificaciones."
+			: "El trimestre ya empezó: captura en una tarde lo que ya llevas (asistencia, trabajos, exámenes y calificaciones) para que tu boleta salga completa.") + "</p></div>" +
+		"<div class='flex flex-col sm:flex-row gap-2 shrink-0'>" +
+		"<a href='ponte-al-dia.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700'>" + (enCurso ? "Continuar" : "Empezar") + "</a>" +
+		"<button type='button' data-ponte-ocultar class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50'>Ya no mostrar</button></div>";
+	card.querySelector("[data-ponte-ocultar]").addEventListener("click", async function () {
+		this.disabled = true;
+		const { error: e } = await window.sb.from("ponte_al_dia").upsert({ maestro_id: user.id, grupo_id: grupoId, estado: "saltado" }, { onConflict: "grupo_id" });
+		if (e) {
+			this.disabled = false;
+			window.alert("No se pudo guardar: " + (e.message || "error desconocido") + ". Revisa tu conexión e inténtalo de nuevo.");
+			return;
+		}
+		card.remove();
+	});
+	return card;
+}
 
 async function inicializarEncabezado() {
 	// lectura-opcional: solo el nombre del saludo y el aviso de la entidad; si falla, saluda sin nombre, no muestra el aviso y no se guarda nada
@@ -168,9 +236,13 @@ async function crearCardHoy() {
 	let sinCalificar = 0;
 	let sesionesHoy = 0;
 	let tareasPorRevisar = 0;
+	// Actividades en clase que quedaron incompletas y hoy (o antes) toca revisar (una por alumno)
+	let porCompletar = 0;
 	// Si una lectura falla, Inicio sigue en pie: esos conteos dicen que no se pudieron leer
 	let sinLeer = false;
 	try {
+		// Días sin clase del grupo: las tareas vencen el siguiente día de clase (como en "Hoy")
+		const ajustes = await window.AlcanceHoy.leerAjustesCalendario(window.sb, user.id, grupoId);
 		const proys = await window.Lectura.uno(window.sb.from("proyectos").select("id")
 			.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy)));
 		const proyIds = (proys || []).map((p) => p.id);
@@ -187,14 +259,27 @@ async function crearCardHoy() {
 			const idsSesiones = ses.map((s) => s.id);
 			if (idsSesiones.length) {
 				const prods = await leer(idsSesiones, (lote) => window.sb.from("productos_sesion")
-					.select("id, tipo, grados, sesion_id, fecha_entrega").in("sesion_id", lote).eq("activo", true).order("id"));
+					.select("id, tipo, grados, sesion_id, fecha_entrega, created_at, es_historico").in("sesion_id", lote).eq("activo", true).order("id"));
 				const trabajos = prods.filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
+				// Las tareas del registro histórico no se piden (misma regla que "Hoy": AlcanceHoy.tareaPorRevisar)
 				const tareas = prods.filter((p) => {
-					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id]) : null;
-					return vence && vence <= hoy;
+					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id], ajustes) : null;
+					return window.AlcanceHoy.tareaPorRevisar(p, vence, hoy, fechaSesion[p.sesion_id]);
 				});
 				const revisar = trabajos.concat(tareas);
+				// Lo incompleta en clase que ya toca revisar (Pendientes de la clase anterior de "Hoy"),
+				// de los mismos productos que mira Hoy, de alumnos activos
+				const activosIds = new Set(alumnos.map((a) => a.id));
+				const incompletas = await leer(prods.map((p) => p.id), (lote) => window.sb.from("calificaciones")
+					.select("alumno_id, producto_sesion_id, revisar_en")
+					.eq("maestro_id", user.id).eq("estado_en_clase", "incompleta").in("producto_sesion_id", lote).order("id"));
+				porCompletar = incompletas.filter((c) => activosIds.has(c.alumno_id) &&
+					window.AlcanceHoy.tocaRevisar(Object.assign({ estado_en_clase: "incompleta" }, c), hoy)).length;
 				if (revisar.length) {
+					// Para quién es cada producto además de sus grados (regla única: js/alcance-hoy.js)
+					const asignaciones = window.AlcanceHoy.indiceAsignaciones(await leer(revisar.map((p) => p.id), (lote) => window.sb
+						.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+						.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id")));
 					const cals = await leer(revisar.map((p) => p.id), (lote) => window.sb.from("calificaciones")
 						.select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje, fecha")
 						.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id"));
@@ -205,12 +290,9 @@ async function crearCardHoy() {
 						.map((c) => c.alumno_id + "|" + c.producto_sesion_id));
 					const calPorClave = new Map(cals.map((c) => [c.alumno_id + "|" + c.producto_sesion_id, c]));
 					// A un alumno dado de alta tarde no se le cuenta lo anterior a su alta (misma regla que "Hoy")
-					const alumnosDe = (p) => {
-						const grados = (p.grados || []).map(Number);
-						const f = window.AlcanceHoy.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega);
-						return alumnos.filter((a) => grados.indexOf(Number(a.grado)) !== -1 &&
-							window.AlcanceHoy.cuentaDesdeAlta(a.alta, f, calPorClave.get(a.id + "|" + p.id)));
-					};
+					// y a quien se excluyó; sí a los incluidos (REGLA ÚNICA: AlcanceHoy.recibeProducto)
+					const alumnosDe = (p) => alumnos.filter((a) =>
+						window.AlcanceHoy.recibeProducto(a, p, asignaciones, fechaSesion[p.sesion_id], calPorClave.get(a.id + "|" + p.id)));
 					trabajos.forEach((p) => {
 						alumnosDe(p).forEach((a) => { if (!hechas.has(a.id + "|" + p.id)) sinCalificar++; });
 					});
@@ -232,14 +314,18 @@ async function crearCardHoy() {
 		"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3'>" +
 		"<div><h2 class='text-lg font-bold text-gray-800'>Tu día</h2>" +
 		"<p class='text-sm text-gray-500'>La captura se hace en Hoy: asistencia, tareas, productos y cierre.</p></div>" +
+		"<span class='flex flex-wrap gap-2'>" +
+		// Guiar sin obligar: una actividad o tarea suelta, sin proyecto (se abre en Hoy)
+		"<a href='hoy.html?nueva=suelta' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl border border-violet-300 text-violet-700 font-semibold hover:bg-violet-50'>Actividad suelta</a>" +
 		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
-		"</div>" +
+		"</span></div>" +
 		(sinLeerDia
 			? fila("Asistencia y cierre del día", "no se pudieron leer; ábrelos en Hoy", false)
 			: fila("Asistencia", conAsistencia + " de " + alumnos.length, alumnos.length > 0 && conAsistencia >= alumnos.length)) +
 		(sinLeer
 			? fila("Tareas y productos", "no se pudieron leer; ábrelos en Hoy", false)
 			: fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
+			(porCompletar ? fila("Por completar de la clase anterior", String(porCompletar), false) : "") +
 			fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 			fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0)) +
 		(sinLeerDia ? "" : fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo));
@@ -256,85 +342,85 @@ function crearCardSinProyecto() {
 	return card;
 }
 
-// ── 2. Sesión de hoy (o la siguiente pendiente) ─────────────────────────────
-// Las sesiones del proyecto activo; si fallan, lanza (Inicio no dice "ya se trabajaron")
+// ── 2. Proyectos activos: la sesión de hoy (o la siguiente pendiente) de cada uno ──
+// Las sesiones de todos los proyectos activos, sin el tope de 1000 filas (js/alcance-hoy.js);
+// si fallan, lanza (Inicio no dice "ya se trabajaron")
 function leerSesiones() {
-	return window.Lectura.uno(window.sb
+	return window.AlcanceHoy.leerPorLotes(proyectosActivos.map((p) => p.id), (lote) => window.sb
 		.from("sesiones")
 		.select("*")
-		.eq("proyecto_id", proyectoActivo.id)
-		.order("numero_sesion"));
+		.in("proyecto_id", lote)
+		.order("proyecto_id")
+		.order("numero_sesion")
+		.order("id"));
 }
 
-function renderSesiones(container, sesiones) {
+/*
+	Una tarjeta compacta por proyecto activo (decisión de Jorge del 2026-09-26: hay maestros
+	con un proyecto por campo formativo). Cada una dice qué sesión toca hoy o cuál sigue, con
+	sus acciones; el plan completo se abre con "Ver el plan" (abierto de entrada si hay un
+	solo proyecto). "Terminar sesión" es de cada proyecto.
+*/
+function renderProyectos(container, sesiones) {
 	const hoy = getLocalDateISO();
-	const deHoy = (sesiones || []).filter((s) => s.fecha === hoy);
-	if (deHoy.length) {
-		deHoy.forEach((s) => container.appendChild(crearCardSesion(s, true)));
-		return;
+	const varios = proyectosActivos.length > 1;
+	if (varios) {
+		const titulo = document.createElement("h2");
+		titulo.className = "text-sm font-semibold uppercase tracking-wide text-gray-500 mt-2";
+		titulo.textContent = "Tus " + proyectosActivos.length + " proyectos activos";
+		container.appendChild(titulo);
 	}
-	const siguiente = (sesiones || []).find((s) => !s.fecha && s.estado_sesion !== "completada");
-	if (siguiente) {
-		container.appendChild(crearCardSesion(siguiente, false));
-		return;
-	}
-	const card = document.createElement("section");
-	card.className = "bg-white rounded-2xl shadow-md p-6";
-	card.innerHTML = "<p class='text-gray-600'>Todas las sesiones de <span class='font-semibold'>" +
-		escapeHtml(proyectoActivo.titulo || "este proyecto") + "</span> ya se trabajaron.</p>";
-	container.appendChild(card);
+	proyectosActivos.forEach((proyecto) => {
+		const suyas = (sesiones || []).filter((s) => s.proyecto_id === proyecto.id)
+			.sort((a, b) => (a.numero_sesion || 0) - (b.numero_sesion || 0));
+		container.appendChild(crearCardProyecto(proyecto, suyas, hoy, !varios));
+	});
 }
 
-function crearCardSesion(sesion, esDeHoy) {
-	sesionActiva = sesion; // los ayudantes de render leen esta variable
+function crearCardProyecto(proyecto, sesiones, hoy, planAbierto) {
 	const card = document.createElement("section");
-	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6 border-l-4 " + (esDeHoy ? "border-l-violet-500" : "border-l-gray-300");
+	card.className = "bg-white rounded-2xl shadow-md p-5 sm:p-6 flex flex-col gap-3";
+	card.setAttribute("aria-label", "Proyecto " + (proyecto.titulo || ""));
+	const campos = Array.isArray(proyecto.campos_formativos) ? proyecto.campos_formativos : [];
+	const cabecera = document.createElement("div");
+	cabecera.innerHTML =
+		"<p class='text-xs font-semibold uppercase tracking-wide text-emerald-700'>Proyecto activo</p>" +
+		"<h2 class='text-lg font-bold text-gray-800'>" + escapeHtml(proyecto.titulo || "Proyecto sin título") + "</h2>" +
+		(campos.length ? "<p class='text-sm text-gray-500'>" + escapeHtml(campos.join(" · ")) + "</p>" : "");
+	card.appendChild(cabecera);
+
+	const deHoy = sesiones.filter((s) => s.fecha === hoy);
+	const siguiente = sesiones.find((s) => !s.fecha && s.estado_sesion !== "completada");
+	if (deHoy.length) {
+		deHoy.forEach((s) => card.appendChild(crearCardSesion(s, true, proyecto, planAbierto)));
+	} else if (siguiente) {
+		card.appendChild(crearCardSesion(siguiente, false, proyecto, planAbierto));
+	} else {
+		const p = document.createElement("p");
+		p.className = "text-sm text-gray-600";
+		p.textContent = "Todas las sesiones de este proyecto ya se trabajaron.";
+		card.appendChild(p);
+	}
+	return card;
+}
+
+function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto) {
+	sesionActiva = sesion; // los ayudantes de render leen esta variable
+	const card = document.createElement("div");
+	card.className = "rounded-xl border border-gray-200 border-l-4 p-4 " + (esDeHoy ? "border-l-violet-500" : "border-l-gray-300");
 
 	const titulo = "Sesión " + (sesion.numero_sesion || "-") + (sesion.campo_formativo ? " · " + sesion.campo_formativo : "");
 	const cabecera = document.createElement("div");
-	cabecera.className = "flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4";
+	cabecera.className = "mb-3";
 	cabecera.innerHTML =
-		"<div><p class='text-xs font-semibold uppercase tracking-wide " + (esDeHoy ? "text-violet-600" : "text-gray-400") + "'>" +
+		"<p class='text-xs font-semibold uppercase tracking-wide " + (esDeHoy ? "text-violet-600" : "text-gray-400") + "'>" +
 		(esDeHoy ? (sesion.estado_sesion === "completada" ? "Hoy · terminada" : "Hoy") : "Siguiente sesión") + "</p>" +
-		"<h2 class='text-lg font-bold text-gray-800'>" + escapeHtml(titulo) + "</h2>" +
-		"<p class='text-sm text-gray-500'>" + escapeHtml(proyectoActivo.titulo || "") + (sesion.momento ? " · " + escapeHtml(sesion.momento) : "") + "</p></div>";
+		"<h3 class='text-base font-bold text-gray-800'>" + escapeHtml(titulo) + "</h3>" +
+		(sesion.momento ? "<p class='text-sm text-gray-500'>" + escapeHtml(sesion.momento) + "</p>" : "");
 	card.appendChild(cabecera);
 
-	card.appendChild(renderBloqueSesion("Inicio", "border-l-blue-500", getTextoFase("inicio"), getActividadesFase("inicio")));
-	card.appendChild(renderBloqueSesion("Desarrollo", "border-l-violet-500", getTextoFase("desarrollo"), getActividadesFase("desarrollo")));
-	card.appendChild(renderBloqueSesion("Cierre", "border-l-emerald-500", getTextoFase("cierre"), getActividadesFase("cierre"), getTareasCierreTexto()));
-
-	const recursos = normalizarRecursos(sesion.recursos);
-	if (recursos.length) {
-		const bloque = document.createElement("section");
-		bloque.className = "border-l-4 border-l-amber-500 pl-4 py-2 mb-3";
-		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>Recursos</h4>";
-		const wrap = document.createElement("div");
-		wrap.className = "flex flex-wrap gap-2";
-		recursos.forEach((r) => {
-			if (!/^https?:\/\//i.test(String(r.url || ""))) return; // solo http(s)
-			const a = document.createElement("a");
-			a.target = "_blank";
-			a.rel = "noopener noreferrer";
-			a.href = r.url;
-			a.className = "text-sm border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50";
-			a.textContent = r.titulo;
-			wrap.appendChild(a);
-		});
-		bloque.appendChild(wrap);
-		card.appendChild(bloque);
-	}
-
-	const pdaHtml = renderPdaSesion(sesion.pda_sesion);
-	if (pdaHtml) {
-		const bloque = document.createElement("section");
-		bloque.className = "border-l-4 border-l-rose-500 pl-4 py-2 mb-3";
-		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>PDA por grado</h4>" + pdaHtml;
-		card.appendChild(bloque);
-	}
-
 	const acciones = document.createElement("div");
-	acciones.className = "mt-4 flex flex-wrap gap-2";
+	acciones.className = "flex flex-wrap gap-2";
 	const idSesion = sesion.id;
 
 	if (!esDeHoy) {
@@ -342,6 +428,7 @@ function crearCardSesion(sesion, esDeHoy) {
 		btnHoy.type = "button";
 		btnHoy.className = "min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700";
 		btnHoy.textContent = "Trabajar hoy";
+		btnHoy.setAttribute("aria-label", "Trabajar hoy la sesión " + (sesion.numero_sesion || "") + " de " + (proyecto.titulo || "este proyecto"));
 		btnHoy.addEventListener("click", async function () {
 			btnHoy.disabled = true;
 			btnHoy.textContent = "Agregando...";
@@ -375,20 +462,66 @@ function crearCardSesion(sesion, esDeHoy) {
 			btnTerminar.type = "button";
 			btnTerminar.className = "min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
 			btnTerminar.textContent = "Marcar sesión como terminada";
+			btnTerminar.setAttribute("aria-label", "Marcar como terminada la sesión " + (sesion.numero_sesion || "") + " de " + (proyecto.titulo || "este proyecto"));
 			btnTerminar.addEventListener("click", function () {
 				abrirModalCierre(async function (notas) {
-					await terminarSesion(idSesion, notas);
+					await terminarSesion(idSesion, notas, proyecto);
 				});
 			});
 			acciones.appendChild(btnTerminar);
 		}
 	}
 	card.appendChild(acciones);
+
+	// El plan de la sesión: se abre a pedido (abierto de entrada con un solo proyecto)
+	const plan = document.createElement("details");
+	plan.className = "mt-3 group";
+	if (planAbierto) plan.open = true;
+	const resumen = document.createElement("summary");
+	resumen.className = "min-h-[44px] flex items-center cursor-pointer text-sm font-semibold text-blue-700";
+	resumen.textContent = "Ver el plan de la sesión";
+	plan.appendChild(resumen);
+	const cuerpo = document.createElement("div");
+	cuerpo.className = "pt-2";
+	cuerpo.appendChild(renderBloqueSesion("Inicio", "border-l-blue-500", getTextoFase("inicio"), getActividadesFase("inicio")));
+	cuerpo.appendChild(renderBloqueSesion("Desarrollo", "border-l-violet-500", getTextoFase("desarrollo"), getActividadesFase("desarrollo")));
+	cuerpo.appendChild(renderBloqueSesion("Cierre", "border-l-emerald-500", getTextoFase("cierre"), getActividadesFase("cierre"), getTareasCierreTexto()));
+
+	const recursos = normalizarRecursos(sesion.recursos);
+	if (recursos.length) {
+		const bloque = document.createElement("section");
+		bloque.className = "border-l-4 border-l-amber-500 pl-4 py-2 mb-3";
+		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>Recursos</h4>";
+		const wrap = document.createElement("div");
+		wrap.className = "flex flex-wrap gap-2";
+		recursos.forEach((r) => {
+			if (!/^https?:\/\//i.test(String(r.url || ""))) return; // solo http(s)
+			const a = document.createElement("a");
+			a.target = "_blank";
+			a.rel = "noopener noreferrer";
+			a.href = r.url;
+			a.className = "inline-flex items-center min-h-[44px] text-sm border border-amber-300 text-amber-700 px-3 rounded-lg hover:bg-amber-50";
+			a.textContent = r.titulo;
+			wrap.appendChild(a);
+		});
+		bloque.appendChild(wrap);
+		cuerpo.appendChild(bloque);
+	}
+
+	const pdaHtml = renderPdaSesion(sesion.pda_sesion);
+	if (pdaHtml) {
+		const bloque = document.createElement("section");
+		bloque.className = "border-l-4 border-l-rose-500 pl-4 py-2 mb-3";
+		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>PDA por grado</h4>" + pdaHtml;
+		cuerpo.appendChild(bloque);
+	}
+	plan.appendChild(cuerpo);
+	card.appendChild(plan);
 	return card;
 }
 
-// ── 3. Terminar la sesión ───────────────────────────────────────────────────
-async function terminarSesion(sesionId, notasCierre) {
+// ── 3. Terminar la sesión (de SU proyecto) ──────────────────────────────────
+async function terminarSesion(sesionId, notasCierre, proyecto) {
 	clearError();
 	try {
 		const { error: updateError } = await window.sb
@@ -398,17 +531,18 @@ async function terminarSesion(sesionId, notasCierre) {
 			.eq("maestro_id", user.id);
 		if (updateError) throw updateError;
 
-		// Si ya no queda ninguna por trabajar, el proyecto se da por completado
+		// Si a ESE proyecto ya no le queda ninguna por trabajar, se da por completado (los
+		// demás proyectos activos no se tocan)
 		const count = await window.Lectura.contar(window.sb
 			.from("sesiones")
 			.select("id", { count: "exact", head: true })
-			.eq("proyecto_id", proyectoActivo.id)
+			.eq("proyecto_id", proyecto.id)
 			.neq("estado_sesion", "completada"));
 		if (count === 0) {
 			const { error: proyectoError } = await window.sb
 				.from("proyectos")
 				.update({ estado: "completado", fecha_final: getLocalDateISO() })
-				.eq("id", proyectoActivo.id);
+				.eq("id", proyecto.id);
 			if (proyectoError) throw proyectoError;
 		}
 		cerrarModalCierre();
@@ -425,10 +559,8 @@ function getTextoFase(fase) {
 	if (typeof todos === "string" && todos.trim()) return todos;
 	if (typeof diferenciado === "string" && diferenciado.trim()) return diferenciado;
 	if (typeof diferenciado === "object" && diferenciado !== null) {
-		const lineas = Object.keys(diferenciado)
-			.map((g) => ({ g: g, t: textoActividad(diferenciado[g]) }))
-			.filter((x) => x.t)
-			.map((x) => "Grado " + x.g + ": " + x.t);
+		// Llave de grado → "Grado 1:"; de grupo de trabajo ("Morado") → tal cual (js/texto-sesion.js)
+		const lineas = window.TextoSesion.lineas(diferenciado, null, "texto", textoActividad);
 		if (lineas.length) return lineas.join("\n");
 	}
 	return "Sin información registrada.";
@@ -446,32 +578,16 @@ function textoActividad(x) {
 /*
 	Las actividades llegan en varias formas: lista, texto, o el objeto de "Crear
 	proyecto" { mode, todos: [...], diferenciado: { "1": [...] } }. Antes ese objeto se
-	pintaba tal cual y salía "• todos • null".
+	pintaba tal cual y salía "• todos • null". Las llaves de grupo de trabajo ("Morado",
+	"Círculos") se rotulan tal cual, después de los pasos de todo el grupo (js/texto-sesion.js).
 */
 function getActividadesFase(fase) {
 	const raw = sesionActiva ? sesionActiva[fase + "_actividades"] : null;
-	if (!raw) return [];
-	if (typeof raw === "string") return raw.trim() ? [raw.trim()] : [];
-	if (Array.isArray(raw)) return raw.map(textoActividad).filter(Boolean);
-	if (typeof raw === "object") {
-		if ("mode" in raw || "todos" in raw || "diferenciado" in raw || "por_grado" in raw) {
-			const out = (Array.isArray(raw.todos) ? raw.todos : raw.todos ? [raw.todos] : []).map(textoActividad).filter(Boolean);
-			const porGrado = raw.diferenciado || raw.por_grado;
-			if (porGrado && typeof porGrado === "object") {
-				Object.keys(porGrado).forEach((g) => {
-					(Array.isArray(porGrado[g]) ? porGrado[g] : [porGrado[g]]).map(textoActividad).filter(Boolean)
-						.forEach((t) => out.push(g + "°: " + t));
-				});
-			}
-			return out;
-		}
-		return Object.values(raw).map(textoActividad).filter(Boolean);
-	}
-	return [];
+	return window.TextoSesion.lineasActividades(raw, textoActividad);
 }
 
 function getTareasCierreTexto() {
-	return extraerTareasCierre().map((t) => (t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion));
+	return extraerTareasCierre().map((t) => (t.grado != null ? window.TextoSesion.rotulo(t.grado, "corto") + ": " + t.descripcion : t.descripcion));
 }
 
 function extraerTareasCierre() {
@@ -485,10 +601,12 @@ function extraerTareasCierre() {
 		// Modo diferenciado: { diferenciado: { "4": [...] } }; "por_grado" es alias antiguo
 		const porGrado = raw.diferenciado || raw.por_grado;
 		if (mode === "diferenciado" && porGrado && typeof porGrado === "object") {
+			// El bot guarda cada grado como texto ("1": "Platica en casa…"), Crear proyecto como lista
 			const out = [];
-			Object.keys(porGrado).forEach((grado) => {
-				(porGrado[grado] || []).forEach((t) => {
-					out.push({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: Number(grado) });
+			window.TextoSesion.llavesEnOrden(porGrado, raw.orden_grupos).forEach((grado) => {
+				const lista = porGrado[grado];
+				(Array.isArray(lista) ? lista : lista ? [lista] : []).forEach((t) => {
+					out.push({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: grado });
 				});
 			});
 			return out;

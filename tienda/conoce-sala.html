@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sala de Maestros: próximamente en Jissez</title>
+	<meta name="description" content="Sala de Maestros será un espacio de Jissez para compartir material entre docentes de primaria. Todavía no abre: pide que te avisemos.">
+	<!--
+		PÁGINA OCULTA (decisión de Jorge, 2026-09-26): publicada, pero sin enlaces desde la tienda ni
+		desde ningún menú, y sin indexar (este meta robots y la regla de /_headers). Jorge y marketing
+		la ven con el enlace directo: jissez.com/tienda/conoce-sala
+
+		Cuando se lance, para encenderla:
+		  1. Quitar el meta robots de abajo y la regla "/tienda/conoce-*" de /_headers.
+		  2. Agregar los enlaces (NO están puestos todavía):
+		     - Tienda, portada (tienda/index.html): en el pie, columna de enlaces ("Sala de Maestros").
+		     - Menú de la tienda (tienda/js/tienda-common.js, montarNav → navLinks).
+		     - Selector de secciones (js/secciones.js): para una cuenta SIN acceso a Mi Salón, si se
+		       decide mostrarle el selector, la pestaña Sala llevaría aquí (sala-maestros.html es la
+		       página protegida para las cuentas con acceso).
+		  3. Si se quiere medir anuncios, agregar el Pixel de Meta como en tienda/index.html.
+		El botón "Avísame cuando abra" guarda en la tabla interes_secciones
+		(supabase/jissez_interes_secciones_2026-09.sql) solo con sesión: sin escritura anónima.
+	-->
+	<meta name="robots" content="noindex, nofollow">
+	<meta property="og:type" content="website">
+	<meta property="og:locale" content="es_MX">
+	<meta property="og:site_name" content="Jissez">
+	<meta property="og:title" content="Sala de Maestros — próximamente en Jissez">
+	<meta property="og:description" content="Un espacio para compartir material entre docentes. Pide que te avisemos cuando abra.">
+	<meta property="og:url" content="https://jissez.com/tienda/conoce-sala">
+	<meta property="og:image" content="https://jissez.com/presentacion/img/sala-og.jpg">
+	<meta property="og:image:width" content="1200">
+	<meta property="og:image:height" content="630">
+	<meta property="og:image:alt" content="Sala de Maestros de Jissez: próximamente">
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="theme-color" content="#1e3a8a">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<link rel="stylesheet" href="css/tienda.css">
+	<style>
+		/* El tablero de la sala (el mismo dibujo de sala-maestros.html): hojas prendidas con
+		   chinchetas de gis, dibujadas en el pizarrón */
+		.sala-tablero { position: relative; width: 320px; height: 280px; }
+		.sala-hoja {
+			position: absolute; width: 164px; height: 128px; padding: 30px 18px 0;
+			border: 1.5px solid rgba(255, 255, 255, .5); border-radius: 12px;
+			background: rgba(255, 255, 255, .04);
+		}
+		.sala-hoja::before {
+			content: ""; position: absolute; top: -7px; left: 50%; width: 14px; height: 14px; margin-left: -7px;
+			border-radius: 50%; background: var(--pin); box-shadow: 0 2px 0 rgba(0, 0, 0, .18);
+		}
+		.sala-hoja i { display: block; height: 2px; margin-bottom: 12px; border-radius: 2px; background: rgba(255, 255, 255, .32); }
+	</style>
+</head>
+<body class="antialiased">
+
+<main>
+<!-- HERO -->
+<section class="bg-paper px-4 sm:px-6 pt-8 pb-12 lg:pt-12 lg:pb-16">
+	<div class="board-tex relative overflow-hidden rounded-3xl text-white max-w-content mx-auto px-6 py-10 sm:px-12 sm:py-14 lg:px-16 lg:py-20">
+		<div class="relative max-w-[34rem]">
+			<p class="inline-flex items-center gap-2 h-8 px-3 rounded-full text-[13px] font-bold" style="background:#f2cf6b;color:#16276b">
+				<i data-lucide="clock" class="w-4 h-4"></i>
+				Próximamente
+			</p>
+			<h1 class="mt-6 font-black tracking-tight leading-[1.04] text-[clamp(2.25rem,6vw,3.75rem)]">
+				<span class="chalk-u" style="--accent:#79c8a6">Sala de Maestros</span>
+			</h1>
+			<p class="mt-5 text-white/80 text-lg sm:text-xl leading-relaxed">Un espacio de Jissez para compartir material entre docentes de primaria. Todavía no abre; si te interesa, te avisamos.</p>
+			<div class="mt-8" data-interes-caja data-fondo="oscuro"></div>
+		</div>
+
+		<div class="hidden xl:block absolute right-14 top-1/2 -translate-y-1/2" aria-hidden="true">
+			<div class="sala-tablero">
+				<div class="sala-hoja" style="left:0;top:38px;transform:rotate(-6deg);--pin:#f2cf6b"><i style="width:82%"></i><i style="width:64%"></i><i style="width:74%"></i></div>
+				<div class="sala-hoja" style="left:146px;top:4px;transform:rotate(4deg);--pin:#ef9277"><i style="width:70%"></i><i style="width:86%"></i><i style="width:52%"></i></div>
+				<div class="sala-hoja" style="left:92px;top:140px;transform:rotate(-2deg);--pin:#79c8a6"><i style="width:78%"></i><i style="width:58%"></i><i style="width:68%"></i></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<!-- LA IDEA -->
+<section id="idea" class="bg-white border-y border-line">
+	<div class="max-w-content mx-auto px-4 sm:px-6 py-16 lg:py-20">
+		<div class="reveal max-w-2xl">
+			<span class="text-sm font-bold uppercase tracking-[0.14em] text-action">La idea</span>
+			<h2 class="mt-3 font-black tracking-tight text-ink text-[clamp(1.9rem,3.6vw,2.9rem)] leading-tight">Lo que a ti te funcionó,<br>le puede servir a <span class="chalk-u thin" style="--accent:#ef9277">otro grupo</span>.</h2>
+			<p class="mt-4 text-lg text-mute">En cada escuela hay fichas, juegos, rúbricas y ideas que salieron bien en el salón. La Sala de Maestros quiere juntarlas en un solo lugar, entre docentes.</p>
+		</div>
+		<div class="reveal mt-10 grid md:grid-cols-3 gap-4">
+			<div class="bg-paper border border-line rounded-2xl p-6">
+				<span class="w-11 h-11 rounded-xl bg-gisAmarillo/25 text-board flex items-center justify-center"><i data-lucide="share-2" class="w-5 h-5"></i></span>
+				<h3 class="mt-4 font-bold text-lg text-ink">Compartir</h3>
+				<p class="mt-1.5 text-sm text-mute">Subir el material que ya usaste con tu grupo para que más docentes lo aprovechen.</p>
+			</div>
+			<div class="bg-paper border border-line rounded-2xl p-6">
+				<span class="w-11 h-11 rounded-xl bg-gisMenta/25 text-action-dark flex items-center justify-center"><i data-lucide="search" class="w-5 h-5"></i></span>
+				<h3 class="mt-4 font-bold text-lg text-ink">Encontrar</h3>
+				<p class="mt-1.5 text-sm text-mute">Buscar material de otras escuelas para tu grado, sin empezar de cero.</p>
+			</div>
+			<div class="bg-paper border border-line rounded-2xl p-6">
+				<span class="w-11 h-11 rounded-xl bg-gisCielo/25 text-board flex items-center justify-center"><i data-lucide="users" class="w-5 h-5"></i></span>
+				<h3 class="mt-4 font-bold text-lg text-ink">Entre docentes</h3>
+				<p class="mt-1.5 text-sm text-mute">Un espacio para docentes, con su cuenta de Jissez.</p>
+			</div>
+		</div>
+		<p class="reveal mt-8 text-mute text-[15px] max-w-2xl">Todavía estamos definiendo cómo va a funcionar. Lo que ves aquí es la idea, no una lista de funciones.</p>
+	</div>
+</section>
+
+<!-- AVÍSAME -->
+<section id="avisame" class="bg-paper">
+	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-16 lg:py-20">
+		<div class="reveal bg-white border border-line rounded-3xl p-7 sm:p-10 text-center">
+			<span class="mx-auto w-12 h-12 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="bell" class="w-6 h-6"></i></span>
+			<h2 class="mt-4 font-black text-ink tracking-tight text-[clamp(1.6rem,3vw,2.2rem)] leading-tight">¿Quieres saber cuando abra?</h2>
+			<p class="mt-3 text-mute text-lg">Te escribimos al correo de tu cuenta de Jissez. Nada más.</p>
+			<div class="mt-6 flex flex-col items-center" data-interes-caja></div>
+		</div>
+	</div>
+</section>
+
+<!-- PREGUNTAS -->
+<section id="preguntas" class="bg-white border-t border-line">
+	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-16 lg:py-20">
+		<div class="reveal text-center">
+			<span class="text-sm font-bold uppercase tracking-[0.14em] text-action">Preguntas</span>
+			<h2 class="mt-3 font-black text-ink tracking-tight text-[clamp(1.9rem,3.6vw,2.6rem)] leading-tight">Antes de que abra.</h2>
+		</div>
+		<div class="mt-10 space-y-3">
+			<details class="reveal bg-paper border border-line rounded-2xl px-5">
+				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Cuándo abre? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+				<p class="pb-5 text-mute leading-relaxed">Todavía no tiene fecha. Si pides el aviso, te escribimos en cuanto abra.</p>
+			</details>
+			<details class="reveal bg-paper border border-line rounded-2xl px-5">
+				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Necesito una cuenta? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+				<p class="pb-5 text-mute leading-relaxed">Para pedir el aviso, sí: es la misma cuenta de la tienda de Jissez. Si no tienes, la creas con tu nombre, tu correo y una contraseña.</p>
+			</details>
+			<details class="reveal bg-paper border border-line rounded-2xl px-5">
+				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿Qué guardan cuando pido el aviso? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
+				<p class="pb-5 text-mute leading-relaxed">Solo que tu cuenta quiere el aviso de la Sala de Maestros y la fecha en que lo pediste. Puedes quitarlo cuando quieras desde esta página. Más detalles en el <a href="privacidad.html" class="font-semibold text-board underline underline-offset-4">aviso de privacidad</a>.</p>
+			</details>
+		</div>
+	</div>
+</section>
+</main>
+
+<!-- PIE (el de la portada de la tienda) -->
+<footer class="bg-ink text-white/60">
+	<div class="max-w-content mx-auto px-4 sm:px-6 py-12 flex flex-col sm:flex-row justify-between gap-8 text-sm">
+		<div>
+			<img src="assets/jissez-wordmark-white.png" alt="Jissez" width="96" height="24" loading="lazy" style="height:24px;width:auto;opacity:.9;margin-bottom:.75rem" onerror="this.style.display='none'">
+			<p class="max-w-xs text-white/50">Planeaciones y herramientas para docentes de primaria de la Nueva Escuela Mexicana.</p>
+		</div>
+		<div class="flex flex-col gap-1">
+			<a href="index.html" class="inline-flex items-center min-h-[44px] hover:text-white transition">Tienda</a>
+			<a href="catalogo.html" class="inline-flex items-center min-h-[44px] hover:text-white transition">Catálogo</a>
+			<a href="login.html" class="inline-flex items-center min-h-[44px] hover:text-white transition">Iniciar sesión</a>
+			<a href="mailto:soporte@jissez.com" class="inline-flex items-center min-h-[44px] hover:text-white transition">Contacto y soporte</a>
+		</div>
+		<div class="flex flex-col gap-1">
+			<a href="terminos.html" class="inline-flex items-center min-h-[44px] hover:text-white transition">Términos y Condiciones</a>
+			<a href="privacidad.html" class="inline-flex items-center min-h-[44px] hover:text-white transition">Aviso de Privacidad</a>
+		</div>
+	</div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script src="js/interes-seccion.js"></script>
+<script>
+	document.addEventListener("DOMContentLoaded", function () {
+		Tienda.montarNav("", {
+			anchors: [
+				{ href: "#idea", label: "La idea" },
+				{ href: "#avisame", label: "Avísame" },
+				{ href: "#preguntas", label: "Preguntas" },
+			],
+			seccion: "sala",
+		}).then(function () {
+			Tienda.iconos();
+			return InteresSeccion.montar({
+				seccion: "sala",
+				pagina: "conoce-sala.html",
+				cajas: document.querySelectorAll("[data-interes-caja]"),
+			});
+		}).catch(function () {});
+		Tienda.revelar();
+	});
+</script>
+</body>
+</html>

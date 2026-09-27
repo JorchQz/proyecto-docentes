@@ -3,9 +3,9 @@
 -- Solo aditiva: tres tablas nuevas con RLS, dos funciones de trigger nuevas y delete_own_account
 -- reemplazada (la de b14 con las líneas de las listas; todo con guarda to_regclass). No toca filas
 -- existentes. Se puede correr dos veces ("if not exists" / "create or replace" / políticas y
--- constraints con guarda). Va después de b13 y b14 (y de b13a). Aplicada SOLO en PRUEBAS
--- (raoxdxwgsxbqlzdnndly). En producción, con la confirmación de Jorge y ANTES de publicar
--- listas.html (sin las tablas, la página avisa "No se pudo cargar").
+-- constraints con guarda). Va después de b13 y b14 (y de b13a). Aplicada en PRUEBAS
+-- (raoxdxwgsxbqlzdnndly) y en PRODUCCIÓN el 26 de septiembre de 2026 (con la confirmación de
+-- Jorge, antes de publicar listas.html: sin las tablas, la página avisa "No se pudo cargar").
 --
 -- Qué es: una tabla libre por grupo para registrar cuotas, materiales, permisos firmados o tallas.
 --

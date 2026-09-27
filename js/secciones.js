@@ -25,10 +25,18 @@
 
 	Rutas: se resuelven desde la ubicación de este archivo (js/), así funcionan igual desde la
 	raíz que desde tienda/.
+
+	Sala de Maestros oculta hasta que exista (decisión de Jorge, 2026-09-26): con SALA_ABIERTA en
+	false (abajo) la pestaña Sala no se muestra a NADIE (ni con Mi Salón abierto ni al piloto): la
+	barra lleva solo Tienda y Mi Salón. Una "sala" guardada como última sección cuenta como Mi
+	Salón (login y raíz llevan a Mi Salón) y ya no se guarda. sala-maestros.html sigue existiendo,
+	sin acceso desde la navegación. El día que la Sala exista: SALA_ABIERTA = true, en un commit
+	aparte, y ajustar pruebas/secciones.test.js ("Sala oculta") y pruebas/navegacion.test.js.
 */
 
 var Secciones = (function () {
 	var CLAVE = "jissez.seccion";
+	var SALA_ABIERTA = false; // interruptor de la Sala de Maestros (ver arriba)
 
 	var LISTA = [
 		{ clave: "tienda", etiqueta: "Tienda", ruta: "tienda/index.html", icono: '<path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"/><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"/><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"/>' },
@@ -36,15 +44,20 @@ var Secciones = (function () {
 		{ clave: "sala", etiqueta: "Sala de Maestros", ruta: "sala-maestros.html", icono: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>' },
 	];
 
+	// Las secciones que se muestran en el selector (sin la Sala mientras no exista)
+	function pestanas() {
+		return LISTA.filter(function (s) { return s.clave !== "sala" || SALA_ABIERTA; });
+	}
+
 	// ── Reglas (puras; probadas en pruebas/secciones.test.js) ────────────────────
 	function valida(clave) {
-		return clave === "tienda" || clave === "salon" || clave === "sala";
+		return clave === "tienda" || clave === "salon" || (clave === "sala" && SALA_ABIERTA);
 	}
 
 	// Ruta desde la raíz de la portada de cada sección. Sin sección válida: Mi Salón.
 	function ruta(clave) {
 		if (clave === "tienda") return "tienda/index.html";
-		if (clave === "sala") return "sala-maestros.html";
+		if (clave === "sala" && SALA_ABIERTA) return "sala-maestros.html";
 		return "dashboard.html";
 	}
 
@@ -58,17 +71,17 @@ var Secciones = (function () {
 
 	// ¿Hace falta leer los grupos para decidir el destino del login? Solo si va a Mi Salón.
 	function necesitaGrupos(ultima) {
-		return ultima !== "tienda" && ultima !== "sala";
+		return ultima !== "tienda" && !(ultima === "sala" && SALA_ABIERTA);
 	}
 
 	// Destino (desde la raíz) de una cuenta con acceso al iniciar sesión.
 	function destinoLogin(ultima, gruposRes) {
-		if (ultima === "tienda" || ultima === "sala") return ruta(ultima);
+		if (ultima === "tienda" || (ultima === "sala" && SALA_ABIERTA)) return ruta(ultima);
 		return destinoMiSalon(gruposRes);
 	}
 
 	// Entrada por la raíz (index.html): solo Mi Salón y Sala desvían; null = la tienda,
-	// como siempre.
+	// como siempre. Con la Sala oculta, una "sala" guardada va a Mi Salón (ruta).
 	function destinoRaiz(ultima) {
 		return ultima === "salon" || ultima === "sala" ? ruta(ultima) : null;
 	}
@@ -179,7 +192,7 @@ var Secciones = (function () {
 		".jz-sec-barra:not(.jz-sec-barra--movil){display:none}" +
 		".jz-sec-barra--movil .jz-sec-fila{grid-template-columns:1fr auto}" +
 		".jz-sec-barra--movil nav{display:none}" +
-		".jz-sec-abajo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:35;background:#fff;padding:0 0 env(safe-area-inset-bottom,0px);margin:0;list-style:none;box-shadow:inset 0 1px 0 #e3e5ea,0 -8px 24px -18px rgba(28,36,52,.45)}" +
+		".jz-sec-abajo{display:grid;grid-template-columns:repeat(" + pestanas().length + ",minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:35;background:#fff;padding:0 0 env(safe-area-inset-bottom,0px);margin:0;list-style:none;box-shadow:inset 0 1px 0 #e3e5ea,0 -8px 24px -18px rgba(28,36,52,.45)}" +
 		".jz-sec-abajo li{display:flex}" +
 		".jz-sec-abajo a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:" + ALTO_ABAJO + "px;color:#5b6473;font-size:11.5px;font-weight:600;line-height:1.1;text-decoration:none;white-space:nowrap;-webkit-tap-highlight-color:transparent}" +
 		".jz-sec-abajo a .jz-sec-ico{width:22px;height:22px}" +
@@ -209,7 +222,7 @@ var Secciones = (function () {
 
 	function enlaces(actual, claseA, claseIco) {
 		var modoApp = enModoApp();
-		return LISTA.map(function (s) {
+		return pestanas().map(function (s) {
 			var es = s.clave === actual;
 			var d = destinoPestana(s.clave, RAIZ, modoApp);
 			return '<li><a class="' + claseA + '" href="' + d.href + '"' + (d.fuera ? ' target="_blank" rel="noopener"' : "") + (es ? ' aria-current="true"' : "") + ">" +
@@ -232,7 +245,7 @@ var Secciones = (function () {
 	*/
 	function montar(opts) {
 		opts = opts || {};
-		var actual = valida(opts.actual) ? opts.actual : "salon";
+		var actual = valida(opts.actual) || opts.actual === "sala" ? opts.actual : "salon";
 		estilos();
 		var raiz = document.documentElement;
 		raiz.classList.add("jz-secciones");
@@ -263,7 +276,7 @@ var Secciones = (function () {
 	/*
 		selectorNav(actual) → HTML del selector para la navegación de Mi Salón y Sala de
 		Maestros (js/navbar.js): arriba de la barra lateral en PC y al principio del panel del
-		menú en celular. Las mismas tres secciones y los mismos destinos que las pestañas de la
+		menú en celular. Las mismas secciones (pestanas(): sin la Sala mientras no exista) y los mismos destinos que las pestañas de la
 		tienda (bajo /salon/, Tienda sale de la app y, en la app instalada, se abre en el
 		navegador). Los estilos van con la barra (js/navbar.js, .jz-sel). La etiqueta visible de
 		Sala es corta; el nombre completo va en aria-label y en el tooltip.
@@ -271,9 +284,11 @@ var Secciones = (function () {
 	*/
 	var CORTAS = { tienda: "Tienda", salon: "Mi Salón", sala: "Sala" };
 	function selectorNav(actual) {
-		actual = valida(actual) ? actual : "salon";
+		// En sala-maestros.html (se abre solo con su dirección) ninguna pestaña queda marcada
+		actual = valida(actual) || actual === "sala" ? actual : "salon";
 		var modoApp = enModoApp();
-		return '<nav aria-label="Secciones de Jissez"><ul class="jz-sel">' + LISTA.map(function (s) {
+		var lista = pestanas();
+		return '<nav aria-label="Secciones de Jissez"><ul class="jz-sel" style="--jz-sel-n:' + lista.length + '">' + lista.map(function (s) {
 			var es = s.clave === actual;
 			var d = destinoPestana(s.clave, RAIZ, modoApp);
 			var nombre = s.etiqueta + (d.fuera ? " (se abre en el navegador)" : "");
@@ -290,6 +305,8 @@ var Secciones = (function () {
 
 	return {
 		CLAVE: CLAVE,
+		SALA_ABIERTA: SALA_ABIERTA,
+		pestanas: pestanas,
 		ALTO_BARRA: ALTO_BARRA,
 		valida: valida,
 		ruta: ruta,

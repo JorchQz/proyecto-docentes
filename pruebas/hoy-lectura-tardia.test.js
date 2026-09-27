@@ -67,6 +67,7 @@ global.Event = function () {};
 require("../js/campos-formativos.js");
 require("../js/grupo-activo.js");
 require("../js/alcance-hoy.js");
+require("../js/productos-hoy.js");
 require(process.argv[3] ? path.resolve(process.argv[3]) : "../js/bandeja-salida.js");
 
 // ── Supabase falso ───────────────────────────────────────────────────────────

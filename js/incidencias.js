@@ -30,6 +30,12 @@
 
 	Si un alumno se elimina del grupo, sale de sus incidencias (la incidencia se conserva).
 
+	Folio (decisión de Jorge, 2026-09-26; b23): "RDI-2026-2027-0001" (Reporte De Incidencia, ciclo
+	del grupo y consecutivo por grupo y ciclo). Lo asigna el servidor al crear la incidencia (trigger
+	de incidencias; un folio borrado no se reutiliza) y no se edita: aquí solo se muestra, en la
+	lista, en cada hoja (resumen, ejemplar para el expediente y copia para la familia), en el pie de
+	impresión y en el nombre del PDF. El Excel lo lleva en su hoja «Incidencias» (js/exportar.js).
+
 	La parte pura (formatos, validación, lista y documento) se exporta a node para
 	pruebas/incidencias.test.js.
 */
@@ -115,7 +121,7 @@
 	/*
 		documento(d) → HTML de la hoja (todo escapado).
 		d = {
-		  incidencia: { asunto, fecha, hora, descripcion, acuerdos },
+		  incidencia: { folio, asunto, fecha, hora, descripcion, acuerdos },
 		  alumnos:    [{ nombre_completo, grado, tutor_nombre }] (los involucrados que siguen en el grupo),
 		  grupo:      { nombre, ciclo_escolar, escuela, director_nombre, multigrado },
 		  docente:    nombre de la maestra,
@@ -143,6 +149,7 @@
 		var tutor = alumnos.length === 1 ? limpiar(alumnos[0].tutor_nombre) : "";
 		var copia = COPIAS[d.copia] || null;
 		var resumen = d.copia === "resumen";
+		var folio = limpiar(inc.folio);
 
 		function dato(etq, valor) {
 			return "<div><dt>" + esc(etq) + "</dt><dd>" + (valor ? esc(valor) : "&nbsp;") + "</dd></div>";
@@ -166,6 +173,7 @@
 				? "<p class='inc-escuela'>" + esc(escuela) + "</p>"
 				: "<p class='inc-escuela inc-escuela-vacia'>Escuela: ______________________________</p>") +
 			"<h1>Registro de incidencia</h1>" +
+			(folio ? "<p class='inc-folio'>Folio <strong>" + esc(folio) + "</strong></p>" : "") +
 			(copia ? "<p class='inc-copia'><span class='inc-copia-titulo'>" + esc(copia.titulo) + "</span> <span class='inc-copia-nota'>" + esc(copia.nota) + "</span></p>" : "") +
 			"<dl class='inc-datos'>" +
 			dato("Grupo", g.nombre || "") +
@@ -245,7 +253,8 @@
 	function piesDeImpresion(d, version) {
 		d = d || {};
 		var alumnos = d.alumnos || [];
-		var base = "Registro de incidencia";
+		var folio = limpiar((d.incidencia || {}).folio);
+		var base = "Registro de incidencia" + (folio ? " " + folio : "");
 		if (!alumnos.length) return [{ texto: base + " · " + limpiar((d.incidencia || {}).asunto).slice(0, 60), conTotal: true }];
 		if (version === "resumen" && alumnos.length > 1) return [{ texto: base + " · " + COPIAS.resumen.titulo, conTotal: true }];
 		var pies = [];
@@ -291,7 +300,7 @@
 		var boton = "inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-lg text-sm font-medium transition-colors";
 		return (
 			"<li class='rounded-xl border border-gray-200 p-4' data-incidencia='" + id + "'>" +
-			"<p class='text-xs font-medium text-gray-500'>" + esc(fechaYHora(inc)) + "</p>" +
+			"<p class='text-xs font-medium text-gray-500'>" + (limpiar(inc.folio) ? "<span class='font-semibold text-gray-700' data-folio>Folio " + esc(limpiar(inc.folio)) + "</span> · " : "") + esc(fechaYHora(inc)) + "</p>" +
 			"<h3 class='mt-0.5 font-semibold text-gray-900 break-words'>" + esc(asunto) + "</h3>" +
 			"<p class='mt-1 text-sm text-gray-700 break-words'><span class='text-gray-500'>" + (nombres && nombres.length === 1 ? "Alumno:" : "Alumnos:") + "</span> " + esc(alumnosTxt) + "</p>" +
 			"<p class='mt-1 text-sm text-gray-600 break-words line-clamp-2'>" + esc(descripcion) + "</p>" +
@@ -437,7 +446,7 @@
 		async function leerIncidencias() {
 			incidencias = await window.Lectura.todas(function () {
 				return window.sb.from("incidencias")
-					.select("id, asunto, fecha, hora, descripcion, acuerdos, created_at, updated_at, incidencia_alumnos(alumno_id)")
+					.select("id, folio, asunto, fecha, hora, descripcion, acuerdos, created_at, updated_at, incidencia_alumnos(alumno_id)")
 					.eq("maestro_id", maestroId)
 					.eq("grupo_id", grupo.id)
 					.order("fecha", { ascending: false })
@@ -604,9 +613,9 @@
 				docente: docente,
 			};
 		}
-		// El nombre del PDF al guardar: "Incidencia 2026-09-25 Asunto" (+ la versión)
+		// El nombre del PDF al guardar: "Incidencia RDI-2026-2027-0001 2026-09-25 Asunto" (+ la versión)
 		function tituloPdf(inc, version) {
-			return ("Incidencia " + inc.fecha + " " + limpiar(inc.asunto)).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80) + (version ? " - " + version : "");
+			return ("Incidencia " + (limpiar(inc.folio) ? limpiar(inc.folio) + " " : "") + inc.fecha + " " + limpiar(inc.asunto)).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 100) + (version ? " - " + version : "");
 		}
 		/*
 			Pinta en pantalla lo que se va a imprimir: "familias" (dos hojas por alumno: ejemplar

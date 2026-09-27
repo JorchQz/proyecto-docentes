@@ -13,10 +13,14 @@
 		<script src="js/saas-guard.js"></script>
 		<script src="js/dashboard.js"></script>
 
-	Reglas:
+	Reglas (lee perfiles.activo_saas y la columna calculada perfiles.mi_salon en UNA consulta):
 	  - Sin sesión            → tienda/login.html
-	  - Sesión sin activo_saas → tienda/catalogo.html
-	  - Sesión con activo_saas → pasa
+	  - Sesión que no ve Mi Salón → tienda/catalogo.html
+	  - Sesión que ve Mi Salón → pasa. La ve con activo_saas (el piloto, como siempre) o, desde
+	    b21 (spec 2026-09-26), con acceso piloto o con Mi Salón abierto (interruptor de
+	    lanzamiento jissez_config.mi_salon_abierto). Sin acceso vigente pasa igual, en SOLO
+	    LECTURA: clase "ms-solo-lectura" en <html> y el estado en window.saasEstado
+	    (js/mi-salon-acceso.js pinta el banner y deshabilita la captura; el servidor la rechaza)
 	  - No se pudo leer        → aviso "No se pudo comprobar tu acceso" y la página se detiene
 	  - Sin red o error 5xx al comprobar la sesión → aviso común de js/lectura.js (no es
 	    "sin sesión": la maestra no sale); cualquier otra excepción → el mismo aviso de acceso
@@ -44,6 +48,12 @@
 	// de secciones guarda con ella la última sección y portal.html redirige sin adelantarse.
 	var resolverAcceso = null;
 	window.saasAcceso = new Promise(function (resolver) { resolverAcceso = resolver; });
+	// El estado del acceso (perfiles.mi_salon, supabase/mi_salon_b21_acceso_2026-09.sql): vigente,
+	// vence, solo lectura... o null si la base aún no lo tiene. Se cumple junto con saasAcceso;
+	// lo usa js/mi-salon-acceso.js (banner, solo lectura, Mi cuenta).
+	var resolverEstado = null;
+	window.saasEstado = new Promise(function (resolver) { resolverEstado = resolver; });
+	window.MiSalonEstado = null;
 
 	// Oculta la página hasta validar, para no mostrar el SaaS ni un instante a
 	// quien no debe verlo. Se restaura solo si el acceso es válido.
@@ -55,9 +65,35 @@
 		window.location.replace(url);
 	}
 
-	function permitir() {
+	function permitir(estado) {
+		window.MiSalonEstado = estado || null;
+		// Sin acceso vigente: la clase va antes de mostrar la página (sin parpadeo de botones)
+		if (estado && estado.vigente === false) rootEl.classList.add("ms-solo-lectura");
 		rootEl.style.visibility = prevVisibility || "";
 		resolverAcceso(true);
+		resolverEstado(estado || null);
+	}
+
+	/*
+		¿Ve Mi Salón? (decisión de Jorge, 2026-09-26: interruptor de lanzamiento)
+		  - activo_saas = true: sí, como siempre (el piloto y las cuentas QA);
+		  - si no, el estado del servidor (perfiles.mi_salon.visible): acceso piloto, o Mi Salón
+		    abierto (jissez_config.mi_salon_abierto). Con Mi Salón abierto toda cuenta entra; sin
+		    acceso vigente, en solo lectura.
+		Probado en pruebas/mi-salon-acceso.test.js.
+	*/
+	function veMiSalon(fila) {
+		if (!fila) return false;
+		if (fila.activo_saas === true) return true;
+		return !!(fila.mi_salon && typeof fila.mi_salon === "object" && fila.mi_salon.visible === true);
+	}
+	window.saasVeMiSalon = veMiSalon;
+
+	// La base aún no tiene la columna calculada perfiles.mi_salon (el frontend se publicó antes que
+	// la migración b21): se vuelve a leer solo activo_saas, como antes
+	function faltaColumnaEstado(error) {
+		var t = String((error && error.message) || "") + " " + String((error && error.details) || "") + " " + String((error && error.hint) || "");
+		return !!error && /mi_salon/.test(t) && (error.code === "42703" || error.code === "PGRST200" || error.code === "PGRST204" || /column|columna|schema cache/i.test(t));
 	}
 
 	// Lo que se supo del acceso, con la misma clave que la tienda (Tienda.recordarSaas en
@@ -130,18 +166,24 @@
 			// quedar colgada (la página seguiría oculta)
 			// error-revisado-en: perf.error
 			uid = user.id;
-			return (window.Lectura ? window.Lectura.fromDirecto("perfiles") : window.sb.from("perfiles"))
-				.select("activo_saas")
-				.eq("id", user.id)
-				.maybeSingle();
+			function leer(columnas) {
+				return (window.Lectura ? window.Lectura.fromDirecto("perfiles") : window.sb.from("perfiles"))
+					.select(columnas)
+					.eq("id", user.id)
+					.maybeSingle();
+			}
+			return leer("activo_saas, mi_salon").then(function (perf) {
+				if (perf && perf.error && faltaColumnaEstado(perf.error)) return leer("activo_saas");
+				return perf;
+			});
 		})
 		.then(function (perf) {
 			if (!perf) { return; } // ya redirigido (sin sesión)
 			if (perf.error) { sinComprobar(perf.error); return; }
-			var activo = perf.data && perf.data.activo_saas === true;
+			var activo = veMiSalon(perf.data);
 			if (uid) recordarAcceso(uid, activo);
 			if (activo) {
-				permitir();
+				permitir(perf.data && perf.data.mi_salon && typeof perf.data.mi_salon === "object" ? perf.data.mi_salon : null);
 			} else {
 				expulsar(TIENDA_URL);
 			}

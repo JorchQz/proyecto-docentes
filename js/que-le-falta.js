@@ -90,8 +90,17 @@
 		return cp && texto(cp.pda) ? texto(cp.pda) : "";
 	}
 
+	// Campo formativo (nombre largo) del contenido del PDA en el catálogo, si se leyó
+	function campoCatalogo(sp) {
+		var cp = sp.catalogo_pda;
+		if (Array.isArray(cp)) cp = cp[0];
+		var cc = cp && cp.catalogo_contenidos;
+		if (Array.isArray(cc)) cc = cc[0];
+		return cc && texto(cc.campo_formativo) ? texto(cc.campo_formativo) : "";
+	}
+
 	function campoVacio() {
-		return { productos: [], porRevisar: [], pda: [], sinEvidencias: false, revisar: null, pendientes: 0 };
+		return { productos: [], porRevisar: [], pda: [], sinEvidencias: false, revisar: null, directa: null, pendientes: 0 };
 	}
 
 	/*
@@ -127,6 +136,30 @@
 
 		var sesionPorId = {};
 		(det.sesiones || []).forEach(function (s) { sesionPorId[s.id] = s; });
+
+		/*
+			Registro histórico (spec de Jorge del 2026-09-26, §4.3): solo cuenta lo que el docente SÍ
+			registró. Un producto histórico (de un día anterior al de su creación: Ponte al día o una
+			actividad suelta de un día pasado) o de una sesión anterior al alta del grupo (e.grupoAlta)
+			sin captura de este alumno no es pendiente de nadie (ni "Docente · Por revisar"); y un PDA
+			trabajado solo en sesiones así, sin evidencia, tampoco.
+		*/
+		var grupoAlta = e.grupoAlta ? String(e.grupoAlta).slice(0, 10) : null;
+		function productoHistorico(p) {
+			var s = sesionPorId[p.sesion_id] || {};
+			if (grupoAlta && s.fecha && s.fecha < grupoAlta) return true;
+			return !!(A && A.esHistorico && A.esHistorico(p, s.fecha || null));
+		}
+		var historicoPorSesion = {};
+		(det.productos || []).forEach(function (p) {
+			var h = productoHistorico(p);
+			historicoPorSesion[p.sesion_id] = historicoPorSesion[p.sesion_id] === undefined ? h : (historicoPorSesion[p.sesion_id] && h);
+		});
+		function sesionHistorica(s) {
+			if (!s) return false;
+			if (grupoAlta && s.fecha && s.fecha < grupoAlta) return true;
+			return historicoPorSesion[s.id] === true;
+		}
 		// Sesión ya trabajada: con fecha, esa fecha ya llegó y es desde el alta del alumno
 		function trabajada(s) {
 			if (!s || !s.fecha || s.fecha > hoy) return false;
@@ -157,15 +190,29 @@
 			var s = sesionPorId[p.sesion_id] || {};
 			var item = {
 				id: p.id, nombre: texto(p.nombre) || "Producto", tarea: rubro === "tareas",
-				sesion: vacio(s.numero_sesion) ? null : Number(s.numero_sesion), fecha: s.fecha || null,
+				// Una actividad suelta (sin proyecto) no es "sesión N": se nombra por su fecha
+				sesion: s.suelta || vacio(s.numero_sesion) ? null : Number(s.numero_sesion), fecha: s.fecha || null,
+				suelta: !!s.suelta,
 			};
 			if (estado === "justificado" || estado === "no_aplica") return; // fuera del máximo, como en el motor
 			if (estado === "no_entregado") { campos[c].productos.push(Object.assign(item, { estado: "no_entregado" })); return; }
-			if (estado === "incompleto") { campos[c].productos.push(Object.assign(item, { estado: "incompleto" })); return; }
+			if (estado === "incompleto") {
+				// Actividad en clase que quedó incompleta y se revisa el siguiente día de clase: aún
+				// puede completarla ("Por completar: se revisa el {fecha}"); revisada y sigue
+				// incompleta, o una tarea incompleta: "Completar"
+				var pendiente = cal && cal.estado_en_clase === "incompleta";
+				campos[c].productos.push(Object.assign(item, pendiente
+					? { estado: "por_completar", revisarEn: cal.revisar_en ? String(cal.revisar_en).slice(0, 10) : null }
+					: { estado: "incompleto" }));
+				return;
+			}
 			if (valorP !== null) return; // ya revisado
-			// Sin revisar: solo si ya le tocaba (sesión dada; la tarea, ya vencida)
+			// Registro histórico sin captura de este alumno: no se pide (solo cuenta lo registrado)
+			if (!cal && productoHistorico(p)) { situacion[p.id] = "fuera"; return; }
+			// Sin revisar: solo si ya le tocaba (sesión dada; la tarea, ya vencida: el siguiente día
+			// de clase del calendario SEP y los ajustes del grupo, e.calendario)
 			var cuando = item.tarea
-				? (A ? A.venceTarea(p.fecha_entrega, s.fecha || null) : (p.fecha_entrega || s.fecha || null))
+				? (A ? A.venceTarea(p.fecha_entrega, s.fecha || null, e.calendario || []) : (p.fecha_entrega || s.fecha || null))
 				: (s.fecha || null);
 			if (!cuando || cuando > hoy) return;
 			campos[c].porRevisar.push(Object.assign(item, { estado: "sin_revisar" }));
@@ -180,12 +227,17 @@
 		var trabajados = {}; // clave → {campo, texto, criterio, sesiones: [], fecha}
 		(det.sesiones || []).forEach(function (s) {
 			if (!trabajada(s)) return;
-			var c = codigoCampo(s.campo_formativo);
-			if (!campos[c]) return;
+			var cSesion = codigoCampo(s.campo_formativo);
 			(s.sesiones_pda || []).forEach(function (sp) {
 				if (Number(sp.grado) !== grado) return;
+				// El campo del PDA es el de su contenido en el catálogo (una actividad de otro campo
+				// agregada en Hoy trae sus propios PDA, decisión de Jorge del 2026-09-26); sin PDA de
+				// catálogo, el de la sesión. Igual que v_avance_pda (mi_salon_b16).
+				var c = codigoCampo(campoCatalogo(sp)) || cSesion;
+				if (!campos[c]) return;
 				var k = clavePda(sp);
-				var t = trabajados[k] || (trabajados[k] = { clave: k, campo: c, texto: "", criterio: "", sesiones: [], fecha: "", productos: [] });
+				var t = trabajados[k] || (trabajados[k] = { clave: k, campo: c, texto: "", criterio: "", sesiones: [], fecha: "", productos: [], soloHistorico: true });
+				if (!sesionHistorica(s)) t.soloHistorico = false;
 				(sp.producto_sesion_pda || []).forEach(function (l) {
 					if (l && l.producto_sesion_id && t.productos.indexOf(l.producto_sesion_id) === -1) t.productos.push(l.producto_sesion_id);
 				});
@@ -206,6 +258,8 @@
 				// no es pendiente del alumno (lo sin revisar ya sale como "Docente · Por revisar").
 				var suyos = t.productos.filter(function (id) { return situacion[id]; });
 				if (suyos.length && suyos.every(function (id) { return situacion[id] === "fuera" || situacion[id] === "sin_revisar"; })) return;
+				// Trabajado solo en el registro histórico y sin evidencia: no se pide (solo lo registrado)
+				if (t.soloHistorico) return;
 				campos[t.campo].pda.push({ clave: k, texto: t.texto, criterio: t.criterio, nivel: null, evidencias: 0, sesiones: t.sesiones });
 				return;
 			}
@@ -236,13 +290,16 @@
 		var ac = R && R.acreditacion ? R.acreditacion : null;
 		CAMPOS.forEach(function (c) {
 			var pc = (e.porCampo || {})[c];
-			campos[c].sinEvidencias = !pc || vacio(pc.porcentaje);
+			// Calificación capturada directamente (registro histórico): no es "sin evidencias"
+			var directa = pc && pc.directa && !vacio(pc.directa.calificacion) ? Number(pc.directa.calificacion) : null;
+			campos[c].directa = directa;
+			campos[c].sinEvidencias = (!pc || vacio(pc.porcentaje)) && directa === null;
 			var cal = (e.calificacion || {})[c];
 			if (!ac || !cal || vacio(cal.valor) || !(grado >= 1 && grado <= 6)) return;
 			if (grado === 1 && ac.primeroConCursar) return; // 1° se acredita con haber cursado el grado
 			if (Number(cal.valor) < Number(ac.campoMinimo)) {
 				campos[c].revisar = {
-					valor: Number(cal.valor), origen: cal.origen === "confirmada" ? "confirmada" : "propuesta",
+					valor: Number(cal.valor), origen: cal.origen === "confirmada" ? "confirmada" : (cal.origen === "directa" ? "directa" : "propuesta"),
 					minimo: Number(ac.campoMinimo), grado: grado, escala: R.escalaDeGrado ? R.escalaDeGrado(grado) : "",
 				};
 			}
@@ -253,7 +310,7 @@
 		var sinTrabajo = !(det.sesiones || []).some(trabajada) && !Object.keys(evidencia).length &&
 			CAMPOS.every(function (c) {
 				var x = campos[c], pc = (e.porCampo || {})[c];
-				return !x.productos.length && !x.porRevisar.length && !x.pda.length && (!pc || vacio(pc.porcentaje));
+				return !x.productos.length && !x.porRevisar.length && !x.pda.length && (!pc || vacio(pc.porcentaje)) && x.directa === null;
 			});
 		if (sinTrabajo) CAMPOS.forEach(function (c) { campos[c].sinEvidencias = false; });
 
@@ -278,7 +335,14 @@
 
 	function sesionTexto(item) {
 		if (item.sesion !== null && item.sesion !== undefined) return " (sesión " + item.sesion + ")";
+		if (item.suelta && item.fecha) return " (actividad del " + fechaTexto(item.fecha) + ")";
 		return "";
+	}
+	// "2026-09-29" → "29 de septiembre"
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function fechaTexto(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		return m ? Number(m[3]) + " de " + MESES[Number(m[2]) - 1] : "";
 	}
 	function sesionesTexto(lista) {
 		if (!lista || !lista.length) return "";
@@ -303,11 +367,17 @@
 				número (art. 4 XI; el reporte imprime "pendiente"), así que esa frase no se imprime;
 				una confirmada, con palabras para la familia y sin "Revisar".
 			*/
-			salida.push({ tipo: "revisar", docente: false, texto: "Revisar la calificación: la " + (r.origen === "confirmada" ? "confirmada" : "propuesta") +
+			salida.push({ tipo: "revisar", docente: false, texto: "Revisar la calificación: la " +
+				(r.origen === "confirmada" ? "confirmada" : (r.origen === "directa" ? "capturada directamente" : "propuesta")) +
 				" es " + r.valor + " y el mínimo aprobatorio es " + r.minimo + (r.escala ? " (escala de " + r.grado + "°: " + r.escala + ")" : "") + ".",
 				impreso: r.origen === "confirmada"
 					? "La calificación de este campo (" + r.valor + ") está debajo del mínimo aprobatorio de su grado (" + r.minimo + "); la escuela la revisará."
 					: null });
+		}
+		// Calificación capturada directamente (registro histórico): lo sabe el docente; no se imprime
+		if (x.directa !== null && x.directa !== undefined) {
+			salida.push({ tipo: "directa", docente: true,
+				texto: "Calificación capturada directamente: " + x.directa + " (registro histórico). Ya cuenta como la confirmada de la boleta, en lugar del cálculo con las actividades." });
 		}
 		if (x.sinEvidencias) {
 			salida.push({ tipo: "sin_evidencias", docente: false,
@@ -315,7 +385,10 @@
 		}
 		x.productos.forEach(function (p) {
 			var que = (p.tarea ? "la tarea " : "") + "«" + p.nombre + "»";
-			salida.push(p.estado === "incompleto"
+			salida.push(p.estado === "por_completar"
+				? { tipo: "por_completar", docente: false, texto: "Completar " + que + sesionTexto(p) + ": quedó incompleta en clase" +
+					(p.revisarEn ? "; se revisa el " + fechaTexto(p.revisarEn) : "") + "." }
+				: p.estado === "incompleto"
 				? { tipo: "completar", docente: false, texto: "Completar " + que + sesionTexto(p) + ": la entrega quedó incompleta." }
 				: { tipo: "entregar", docente: false, texto: "Entregar " + que + sesionTexto(p) + "." });
 		});
@@ -455,7 +528,8 @@
 				: CAMPOS.map(function (c) {
 					var x = res.campos[c] || campoVacio();
 					var n = x.pendientes;
-					var marca = x.revisar ? " · Revisar" : (x.sinEvidencias ? " · sin evidencias" : "");
+					var marca = x.revisar ? " · Revisar" : (x.sinEvidencias ? " · sin evidencias"
+						: (x.directa !== null && x.directa !== undefined ? " · directa" : ""));
 					return "<span class='inline-flex items-center gap-1 rounded-lg border px-1.5 sm:px-2 py-1 text-xs whitespace-nowrap " +
 						(n ? "border-gray-300 bg-white text-gray-800" : "border-gray-100 bg-gray-50 text-gray-400") + "' data-qlf-chip='" + c + "' title='" +
 						esc(NOMBRE_CAMPO[c]) + "'>" + "<span class='inline-block w-2 h-2 rounded-full' style='background:" + COLOR_CAMPO[c] + "'></span>" +

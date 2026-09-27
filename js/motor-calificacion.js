@@ -6,7 +6,9 @@
 	  productos_sesion (qué es calificable, de qué grados, de qué campo)
 	  calificaciones   (nivel / puntaje / estado_entrega por alumno y producto)
 	  registro_diario  (participación y conducta, una vez al día, global)
-	  examenes + respuestas_examen + banco_preguntas (examen por campo, del grado del alumno)
+	  examenes_grupo + examen_resultados / examen_preguntas + examen_respuestas (exámenes de
+	  Mi Salón, b18: aciertos / preguntas por campo, del grado del alumno) y, si existen,
+	  examenes + respuestas_examen + banco_preguntas (modelo anterior del catálogo, aproximado)
 
 	Reglas (docs/CONTEXTO.md §3 y docs/PRODUCTO-MI-SALON.md §B.2-B.5):
 	  - La ASISTENCIA no pondera nunca (Acuerdo 10/09/23, art. 7 I d). Se calcula solo
@@ -259,6 +261,13 @@
 		return A ? A.cuentaDesdeAlta(alta, fecha, cal) : true;
 	}
 
+	// ¿El alumno recibe el producto? (AlcanceHoy.recibeProducto; sin el script, sus grados y el alta)
+	function recibe(alumno, p, asignaciones, fechaSesion, cal, alta) {
+		var A = alcance();
+		if (A && A.recibeProducto) return A.recibeProducto(alumno, p, asignaciones, fechaSesion || null, cal, alta || null);
+		return (p.grados || []).map(Number).indexOf(Number(alumno.grado)) !== -1;
+	}
+
 	function fechaProductoDe(p, fechaSesion) {
 		var A = alcance();
 		return A ? A.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega) : null;
@@ -343,7 +352,7 @@
 		var alta = await fechasDeAlta(sb, alumnos, ctx.grupoId, altaInstante);
 
 		// Proyectos del trimestre (proyectos.trimestre es la fuente única) y sus sesiones
-		var proyRes = await sb.from("proyectos").select("id")
+		var proyRes = await sb.from("proyectos").select("id, tipo")
 			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre);
 		if (proyRes.error) throw proyRes.error;
 		var proyIds = (proyRes.data || []).map(function (p) { return p.id; });
@@ -359,7 +368,7 @@
 		if (proyIds.length) {
 			sesiones = await todas(function () {
 				return sb.from("sesiones").select(detalle
-					? "id, fecha, campo_formativo, numero_sesion, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda), producto_sesion_pda(producto_sesion_id))"
+					? "id, fecha, campo_formativo, numero_sesion, proyecto_id, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo)), producto_sesion_pda(producto_sesion_id))"
 					: "id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
 			});
 		}
@@ -380,17 +389,30 @@
 		var productos = [];
 		if (sesionIds.length) {
 			productos = await todas(function () {
-				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo" + (detalle ? ", nombre, orden" : ""))
+				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo" + (detalle ? ", nombre, orden, created_at, es_historico" : ""))
 					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
 
-		// Calificaciones de los alumnos en los proyectos del trimestre (nuevas y legacy)
+		// Para quién es cada producto además de sus grados ("¿Para quién?", producto_sesion_alumnos,
+		// mi_salon_b17): las filas de estos alumnos (la regla de cada alumno solo mira las suyas)
+		var asignaciones = {};
+		if (ids.length && productos.length) {
+			var A0 = alcance();
+			var filasAsig = await todas(function () {
+				return sb.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids).order("id");
+			});
+			asignaciones = A0 ? A0.indiceAsignaciones(filasAsig) : {};
+		}
+
+		// Calificaciones de los alumnos en los proyectos del trimestre (nuevas y legacy); con la
+		// revisión de una actividad incompleta (estado_en_clase, revisar_en: "Qué le falta")
 		var califs = [];
 		if (ids.length && proyIds.length) {
 			califs = await todas(function () {
 				return sb.from("calificaciones")
-					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id, fecha")
+					.select("alumno_id, producto_sesion_id, tipo, estado_entrega, nivel, puntaje, calificacion, campo_formativo, proyecto_id, fecha, estado_en_clase, revisar_en, completado_en")
 					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids).in("proyecto_id", proyIds).order("id");
 			});
 		}
@@ -410,6 +432,7 @@
 		}
 
 		var examenes = await examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante);
+		var directas = await leerDirectas(sb, ctx, ids, campos);
 
 		// Por alumno: mismas entradas que la boleta individual
 		var porAlumno = {};
@@ -428,11 +451,11 @@
 				usaLegacy = true;
 				legacy.push({ rubro: rubro, campo: codigo, calificacion: c.calificacion });
 			});
-			// Los productos de su grado, y solo los que tienen fecha desde su alta (alumno dado
-			// de alta tarde: js/alcance-hoy.js, la misma regla que Hoy, Inicio y Tareas)
+			// Los productos que recibe (REGLA ÚNICA de js/alcance-hoy.js, la misma de Hoy, Inicio,
+			// Tareas y Qué le falta: sus grados sin excluirlo, o incluido), y solo los que tienen
+			// fecha desde su alta (alumno dado de alta tarde). Sigue en su grado para la boleta.
 			var misProductos = productos.filter(function (p) {
-				if ((p.grados || []).map(Number).indexOf(a.grado) === -1) return false;
-				return cuentaDesdeAlta(alta[a.id], fechaProductoDe(p, fechaSesion), calificaciones[p.id]);
+				return recibe(a, p, asignaciones, fechaSesion[p.sesion_id], calificaciones[p.id], alta[a.id]);
 			});
 			var misRegistros = registros.filter(function (r) { return r.alumno_id === a.id; });
 			var examen = examenes[a.id] || { porCampo: {}, aproximado: false };
@@ -442,7 +465,11 @@
 				registros: misRegistros, camposPorFecha: camposPorFecha,
 				examenPorCampo: examen.porCampo, legacy: legacy, pesos: pesos,
 			});
+			// Calificación directa del trimestre (registro histórico, mi_salon_b20): la propuesta es
+			// esa calificación y no se recalcula con las actividades (aplicarDirectas)
+			aplicarDirectas(porCampo, directas[a.id] || null);
 			campos.forEach(function (campo) {
+				if (porCampo[campo].directa) return;
 				var pct = porCampo[campo].porcentaje;
 				porCampo[campo].calificacionPropuesta = null;
 				if (pct === null) return;
@@ -485,7 +512,72 @@
 		}
 
 		var salida = { porAlumno: porAlumno, pesos: pesos, sinProyectos: proyIds.length === 0 };
-		if (detalle) salida.sesiones = sesiones;
+		if (detalle) {
+			// Las sesiones de "Actividades del trimestre" (actividades sueltas, mi_salon_b17) se marcan:
+			// "Qué le falta" las nombra por su fecha y no como "sesión N"
+			var sueltas = {};
+			(proyRes.data || []).forEach(function (p) { if (p.tipo === "sueltas") sueltas[p.id] = true; });
+			sesiones.forEach(function (s) { if (sueltas[s.proyecto_id]) s.suelta = true; });
+			salida.sesiones = sesiones;
+		}
+		return salida;
+	}
+
+	/*
+		── Calificación directa del trimestre (registro histórico; spec de Jorge del 2026-09-26, §4.2;
+		supabase/mi_salon_b20_registro_historico_2026-09.sql) ──
+		El docente que ya tiene su concentrado en papel o en Excel captura la calificación del
+		trimestre por alumno y campo. Es una PROPUESTA que la boleta toma EN LUGAR de la calculada:
+		  - calificacionPropuesta = esa calificación (ya validada en la escala del grado por la base;
+		    aquí no hay porcentaje que convertir: la conversión sigue siendo solo SQL);
+		  - porcentaje = null (no sale de las actividades; el de las actividades queda en
+		    porcentajeActividades, solo informativo) y nivel según la calificación, con los mismos
+		    cortes de la conversión (9 y 10 = 80 % o más: logrado; 7 y 8 = 60 a 79 %: en proceso;
+		    5 y 6: requiere apoyo);
+		  - directa = { calificacion, capturado_en }: las pantallas la rotulan "Capturada
+		    directamente" (no la boleta impresa).
+		La calificación oficial sigue siendo la que el docente confirma en la boleta. Borrar la
+		directa vuelve al cálculo automático.
+		directas: { LEN: {calificacion, capturado_en}, ... } de un alumno (o null).
+	*/
+	function nivelDeCalificacion(n) {
+		var v = Number(n);
+		if (!(v >= 5 && v <= 10)) return null;
+		return v >= 9 ? "logrado" : (v >= 7 ? "en_proceso" : "requiere_apoyo");
+	}
+	function aplicarDirectas(porCampo, directas) {
+		if (!porCampo || !directas) return porCampo;
+		Object.keys(directas).forEach(function (campo) {
+			var d = directas[campo], pc = porCampo[campo];
+			if (!pc || !d || d.calificacion === null || d.calificacion === undefined) return;
+			var n = Number(d.calificacion);
+			pc.directa = { calificacion: n, capturado_en: d.capturado_en || null };
+			pc.porcentajeActividades = pc.porcentaje === undefined ? null : pc.porcentaje;
+			pc.porcentaje = null;
+			pc.nivel = nivelDeCalificacion(n);
+			pc.calificacionPropuesta = n;
+		});
+		return porCampo;
+	}
+	// { alumnoId: { LEN: {calificacion, capturado_en} } } del grupo y trimestre (sin la tabla: ninguna)
+	async function leerDirectas(sb, ctx, ids, campos) {
+		var salida = {};
+		if (!ids.length) return salida;
+		var filas;
+		try {
+			filas = await todas(function () {
+				return sb.from("calificacion_directa").select("alumno_id, campo, calificacion, capturado_en")
+					.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre)
+					.in("alumno_id", ids).order("id");
+			});
+		} catch (e) {
+			if (!faltaTabla(e)) throw e;
+			return salida;
+		}
+		filas.forEach(function (f) {
+			if (campos.indexOf(f.campo) === -1) return;
+			(salida[f.alumno_id] = salida[f.alumno_id] || {})[f.campo] = { calificacion: f.calificacion, capturado_en: f.capturado_en };
+		});
 		return salida;
 	}
 
@@ -506,6 +598,159 @@
 	}
 
 	/*
+		Exámenes de Mi Salón (supabase/mi_salon_b18_examenes_2026-09.sql; decisión de Jorge del
+		2026-09-26). Dos caminos, los dos dan ACIERTOS y PREGUNTAS por campo formativo:
+		  - 'resultados': la maestra captura, por campo, aciertos de cada alumno (examen_resultados).
+		  - 'propio': una pregunta vale 1 (puntosRespuestaExamen). Opción múltiple y verdadero o
+		    falso se califican solas contra la clave (vacía o doble marca = 0); completar y
+		    abierta, a mano: correcta 1, parcial 0.5, incorrecta 0.
+		Solo cuenta lo CAPTURADO: una pregunta sin fila para ese alumno (o una abierta sin
+		calificar) no entra ni a favor ni en contra, como un trabajo sin calificar. Un alumno sin
+		nada capturado en un examen no tiene ese examen.
+	*/
+	function puntosRespuestaExamen(pregunta, fila) {
+		if (!pregunta || !fila) return null;
+		if (pregunta.tipo === "opcion_multiple" || pregunta.tipo === "verdadero_falso") {
+			return fila.respuesta && pregunta.clave && String(fila.respuesta).toUpperCase() === String(pregunta.clave).toUpperCase() ? 1 : 0;
+		}
+		if (fila.resultado === "correcta") return 1;
+		if (fila.resultado === "parcial") return 0.5;
+		if (fila.resultado === "incorrecta") return 0;
+		return null;
+	}
+
+	// ¿El alumno está marcado "No presentó" en ese examen? datos.alumnosExamen: filas de examen_alumnos
+	function noPresentoExamen(examenId, datos, alumnoId) {
+		return ((datos && datos.alumnosExamen) || []).some(function (r) {
+			return r.examen_id === examenId && r.alumno_id === alumnoId && r.no_presento === true;
+		});
+	}
+
+	/*
+		aciertosExamenSalon(examen, datos, alumnoId) → { LEN: { aciertos, preguntas } } (solo los
+		campos con algo capturado). datos = { preguntas: [{id, examen_id, tipo, campo, clave}],
+		respuestas: [{examen_id, pregunta_id, alumno_id, respuesta, resultado}],
+		resultados: [{examen_id, alumno_id, campo, preguntas, aciertos}] }
+	*/
+	function aciertosExamenSalon(examen, datos, alumnoId) {
+		var salida = {};
+		// "No presentó" (mi_salon_b19): ese examen no cuenta ni a favor ni en contra, aunque tenga algo capturado
+		if (noPresentoExamen(examen.id, datos, alumnoId)) return salida;
+		function sumar2(campo, a, p) {
+			if (!salida[campo]) salida[campo] = { aciertos: 0, preguntas: 0 };
+			salida[campo].aciertos += a;
+			salida[campo].preguntas += p;
+		}
+		if (examen.modo === "resultados") {
+			(datos.resultados || []).forEach(function (r) {
+				if (r.examen_id !== examen.id || r.alumno_id !== alumnoId) return;
+				var p = Number(r.preguntas), a = Number(r.aciertos);
+				if (!(p > 0) || isNaN(a)) return;
+				sumar2(r.campo, Math.max(0, Math.min(p, a)), p);
+			});
+			return salida;
+		}
+		var porPregunta = {};
+		(datos.respuestas || []).forEach(function (r) {
+			if (r.examen_id === examen.id && r.alumno_id === alumnoId) porPregunta[r.pregunta_id] = r;
+		});
+		(datos.preguntas || []).forEach(function (p) {
+			if (p.examen_id !== examen.id) return;
+			var v = puntosRespuestaExamen(p, porPregunta[p.id]);
+			if (v === null) return;
+			sumar2(p.campo, v, 1);
+		});
+		return salida;
+	}
+
+	// La tabla aún no existe (frontend publicado antes que la migración b18): sin exámenes nuevos
+	function faltaTabla(error) {
+		return !!error && (error.code === "42P01" || error.code === "PGRST205" || /does not exist|schema cache/i.test(error.message || ""));
+	}
+
+	async function leerExamenesSalon(sb, ctx, ids) {
+		var vacio = { examenes: [], preguntas: [], respuestas: [], resultados: [], alumnosExamen: [] };
+		var exRes = await sb.from("examenes_grupo").select("id, modo, grados, trimestre, created_at")
+			.eq("maestro_id", ctx.maestroId).eq("grupo_id", ctx.grupoId).eq("trimestre", ctx.trimestre).order("id");
+		if (exRes.error) { if (faltaTabla(exRes.error)) return vacio; throw exRes.error; }
+		var examenes = exRes.data || [];
+		if (!examenes.length || !ids.length) return Object.assign(vacio, { examenes: examenes });
+		var propios = examenes.filter(function (e) { return e.modo === "propio"; }).map(function (e) { return e.id; });
+		var deResultados = examenes.filter(function (e) { return e.modo === "resultados"; }).map(function (e) { return e.id; });
+		var preguntas = [], respuestas = [], resultados = [], alumnosExamen = [];
+		// "No presentó" (mi_salon_b19; sin la tabla, nadie está marcado)
+		var todosIds = examenes.map(function (e) { return e.id; });
+		try {
+			alumnosExamen = await todas(function () {
+				return sb.from("examen_alumnos").select("examen_id, alumno_id, no_presento")
+					.in("examen_id", todosIds).in("alumno_id", ids).eq("no_presento", true).order("id");
+			});
+		} catch (e) {
+			if (!faltaTabla(e)) throw e;
+			alumnosExamen = [];
+		}
+		if (propios.length) {
+			preguntas = await todas(function () {
+				return sb.from("examen_preguntas").select("id, examen_id, tipo, campo, clave").in("examen_id", propios).order("id");
+			});
+			respuestas = await todas(function () {
+				return sb.from("examen_respuestas").select("examen_id, pregunta_id, alumno_id, respuesta, resultado")
+					.in("examen_id", propios).in("alumno_id", ids).order("id");
+			});
+		}
+		if (deResultados.length) {
+			resultados = await todas(function () {
+				return sb.from("examen_resultados").select("examen_id, alumno_id, campo, preguntas, aciertos")
+					.in("examen_id", deResultados).in("alumno_id", ids).order("id");
+			});
+		}
+		return { examenes: examenes, preguntas: preguntas, respuestas: respuestas, resultados: resultados, alumnosExamen: alumnosExamen };
+	}
+
+	/*
+		Examen del trimestre, por campo, para cada alumno: los exámenes de Mi Salón de su grado
+		(todos los del trimestre, sumando aciertos y preguntas) y, si hay datos del modelo
+		anterior (catálogo: examenes + respuestas_examen + banco_preguntas), también el de su
+		grado, que cuenta como tantas preguntas como tenía en ese campo.
+		→ { alumnoId: { porCampo: {LEN: 0..1}, aproximado, aciertos: {LEN: {aciertos, preguntas}} } }
+		aproximado solo si entró el examen del modelo anterior.
+	*/
+	async function examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
+		var viejos = await examenesAnteriores(sb, ctx, alumnos, ids, campos, alta, altaInstante);
+		var nuevos = await leerExamenesSalon(sb, ctx, ids);
+		var salida = {};
+		alumnos.forEach(function (a) {
+			var acc = {}, aproximado = false;
+			var viejo = viejos[a.id];
+			if (viejo) {
+				campos.forEach(function (c) {
+					var n = viejo.preguntas[c];
+					if (!(n > 0) || viejo.porCampo[c] === undefined) return;
+					acc[c] = { aciertos: viejo.porCampo[c] * n, preguntas: n };
+					aproximado = true;
+				});
+			}
+			nuevos.examenes.forEach(function (ex) {
+				if ((ex.grados || []).map(Number).indexOf(a.grado) === -1) return;
+				var r = aciertosExamenSalon(ex, nuevos, a.id);
+				Object.keys(r).forEach(function (c) {
+					if (campos.indexOf(c) === -1) return;
+					if (!acc[c]) acc[c] = { aciertos: 0, preguntas: 0 };
+					acc[c].aciertos += r[c].aciertos;
+					acc[c].preguntas += r[c].preguntas;
+				});
+			});
+			var porCampo = {};
+			Object.keys(acc).forEach(function (c) {
+				if (acc[c].preguntas > 0) porCampo[c] = Math.min(1, acc[c].aciertos / acc[c].preguntas);
+			});
+			if (Object.keys(porCampo).length) salida[a.id] = { porCampo: porCampo, aproximado: aproximado, aciertos: acc };
+		});
+		return salida;
+	}
+
+	/*
+		Modelo ANTERIOR (catálogo, ya no se ofrece en Mi Salón; sus datos se siguen leyendo).
 		Examen del trimestre DEL GRADO DE CADA ALUMNO (en multigrado hay un examen por
 		grado; tomar cualquiera mezclaba grados). Si hay varios del mismo grado, manda el
 		más reciente. Solo los exámenes DEL GRUPO: una maestra con dos grupos del mismo
@@ -517,9 +762,9 @@
 		examenCuentaDesdeAlta): si el examen se aplicó antes de su alta y no lo contestó, no
 		le cuenta; el alumno queda sin examen y el rubro se reparte como cualquier rubro
 		sin datos. alta = {id: "AAAA-MM-DD" | null}, altaInstante = {id: created_at}.
-		→ { alumnoId: { porCampo: {LEN: 0..1}, aproximado } }
+		→ { alumnoId: { porCampo: {LEN: 0..1}, preguntas: {LEN: n}, aproximado } }
 	*/
-	async function examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
+	async function examenesAnteriores(sb, ctx, alumnos, ids, campos, alta, altaInstante) {
 		alta = alta || {};
 		altaInstante = altaInstante || {};
 		var salida = {};
@@ -578,10 +823,10 @@
 			if (A && alta[a.id] && !A.examenCuentaDesdeAlta(alta[a.id], altaInstante[a.id],
 				aplicado[ex.id], !!contesto[a.id + "|" + ex.id])) return; // se aplicó antes de que llegara
 			var valor = (ex.valor_total && ex.total_preguntas) ? Number(ex.valor_total) / Number(ex.total_preguntas) : 1;
-			var max = {}, obt = {};
+			var max = {}, obt = {}, cuantas = {};
 			ex.preguntas_ids.forEach(function (id) {
 				var c = cfPorPregunta[id];
-				if (c) max[c] = (max[c] || 0) + valor;
+				if (c) { max[c] = (max[c] || 0) + valor; cuantas[c] = (cuantas[c] || 0) + 1; }
 			});
 			respuestas.forEach(function (r) {
 				if (r.alumno_id !== a.id || r.examen_id !== ex.id) return;
@@ -592,7 +837,7 @@
 			campos.forEach(function (campo) {
 				if (max[campo] > 0) porCampo[campo] = Math.min(1, (obt[campo] || 0) / max[campo]);
 			});
-			salida[a.id] = { porCampo: porCampo, aproximado: true };
+			salida[a.id] = { porCampo: porCampo, preguntas: cuantas, aproximado: true };
 		});
 		return salida;
 	}
@@ -668,7 +913,12 @@
 		},
 		rubroDeProducto: rubroDeProducto,
 		puntajeProducto: puntajeProducto,
+		puntosRespuestaExamen: puntosRespuestaExamen,
+		aciertosExamenSalon: aciertosExamenSalon,
+		noPresentoExamen: noPresentoExamen,
 		calcularPorcentajes: calcularPorcentajes,
+		aplicarDirectas: aplicarDirectas,
+		nivelDeCalificacion: nivelDeCalificacion,
 		cargarYCalcular: cargarYCalcular,
 		cargarYCalcularGrupo: cargarYCalcularGrupo,
 	};

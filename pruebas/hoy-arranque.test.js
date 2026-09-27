@@ -66,12 +66,15 @@ global.Event = function () {};
 require("../js/campos-formativos.js");
 require("../js/grupo-activo.js");
 require("../js/alcance-hoy.js");
+require("../js/productos-hoy.js");
 // La bandeja de salida (en node no hay IndexedDB: la cola vive en memoria, como sin él)
 require("../js/bandeja-salida.js");
 
 // ── Supabase falso ───────────────────────────────────────────────────────────
 const HOY = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
 	.toISOString().slice(0, 10);
+// Hace una semana (una sesión trabajada con una actividad que quedó incompleta)
+const ANTES = new Date(new Date(HOY + "T12:00:00").getTime() - 7 * 86400000).toISOString().slice(0, 10);
 
 const ALUMNOS = [
 	{ id: "al-2", nombre_completo: "ALUMNO DE SEGUNDO", num_lista: 1, grado: 2 },
@@ -82,7 +85,14 @@ const DATOS = {
 	alumnos: ALUMNOS,
 	asistencias: [{ alumno_id: "al-2", asistencia_estado: "presente" }],
 	registro_diario: [{ alumno_id: "al-3", participacion: 2, conducta: 1 }],
-	proyectos: [{ id: "p1", titulo: "Proyecto de prueba", estado: "activo" }],
+	proyectos: [
+		{ id: "p1", titulo: "Proyecto de prueba", estado: "activo" },
+		// Un proyecto por campo formativo: también activo (su id "ordena" antes que p1)
+		{ id: "0-otro", titulo: "Otro proyecto activo", estado: "activo" },
+				{ id: "pz", titulo: "Pausado", estado: "pausado" },
+		// Actividades del trimestre (sueltas, sin proyecto; mi_salon_b17)
+		{ id: "suel", titulo: "Actividades del trimestre", estado: "completado", tipo: "sueltas" },
+	],
 	sesiones: [
 		{ id: "s1", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1" },
 		{ id: "s2", numero_sesion: 2, fecha: HOY, campo_formativo: "Saberes y Pensamiento Científico", momento: "Desarrollo", proyecto_id: "p1" },
@@ -90,14 +100,35 @@ const DATOS = {
 		{ id: "s3", numero_sesion: 3, fecha: null, campo_formativo: "Ética, Naturaleza y Sociedades", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "pendiente" },
 		// Ya completada y sin fecha: no se ofrece
 		{ id: "s0", numero_sesion: 0, fecha: null, campo_formativo: "Lenguajes", momento: "Cierre", proyecto_id: "p1", estado_sesion: "completada" },
+		// Segundo proyecto activo con 5 pendientes (antes el tope de 4 escondía proyectos)
+		{ id: "q1", numero_sesion: 1, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q2", numero_sesion: 2, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q3", numero_sesion: 3, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q4", numero_sesion: 4, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+		{ id: "q5", numero_sesion: 5, fecha: null, campo_formativo: "Saberes y Pensamiento Científico", proyecto_id: "0-otro", estado_sesion: "pendiente" },
+				{ id: "z1", numero_sesion: 1, fecha: null, campo_formativo: "Lenguajes", proyecto_id: "pz", estado_sesion: "pendiente" },
+		// Sesión de hace una semana (ya trabajada) y la sesión suelta de hoy
+		{ id: "sp", numero_sesion: 9, fecha: ANTES, campo_formativo: "Lenguajes", proyecto_id: "p1", estado_sesion: "completada" },
+		{ id: "sx", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", proyecto_id: "suel", estado_sesion: "activa" },
 	],
 	productos_sesion: [
 		{ id: "pr1", sesion_id: "s1", tipo: "trabajo", nombre: "Cartel del cuento", grados: ["2", "3"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1 },
 		{ id: "pr2", sesion_id: "s1", tipo: "tarea", nombre: "Leer en casa", grados: ["2", "3"], modalidad: "compartida", campo: "LEN", fecha_entrega: HOY, orden: 2 },
-		{ id: "pr3", sesion_id: "s2", tipo: "trabajo", nombre: "Experimento del agua", grados: ["3"], modalidad: "diferenciada", campo: "SAB", fecha_entrega: null, orden: 1 },
+				{ id: "pr3", sesion_id: "s2", tipo: "trabajo", nombre: "Experimento del agua", grados: ["3"], modalidad: "diferenciada", campo: "SAB", fecha_entrega: null, orden: 1 },
+		// Para quién (b17): de 3°, y el de 2° trabaja con 3°
+		{ id: "pr4", sesion_id: "s2", tipo: "trabajo", nombre: "Problemas de 3°", grados: ["3"], modalidad: "diferenciada", campo: "SAB", fecha_entrega: null, orden: 2 },
+		// De hace una semana: quedó incompleta para el de 3°
+		{ id: "prP", sesion_id: "sp", tipo: "trabajo", nombre: "Mapa del barrio", grados: ["2", "3"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1 },
+		// Suelta de hoy
+		{ id: "prS", sesion_id: "sx", tipo: "trabajo", nombre: "Lectura libre", grados: ["2", "3"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1 },
 	],
+	producto_sesion_alumnos: [{ producto_sesion_id: "pr4", alumno_id: "al-2", modo: "incluir" }],
+	calendario_ajustes: [],
 	calificaciones: [
-		{ id: "c1", alumno_id: "al-2", producto_sesion_id: "pr1", estado_entrega: "entregado", nivel: "logrado", puntaje: null, retroalimentacion: null },
+				{ id: "c1", alumno_id: "al-2", producto_sesion_id: "pr1", estado_entrega: "entregado", nivel: "logrado", puntaje: null, retroalimentacion: null },
+		{ id: "c2", alumno_id: "al-3", producto_sesion_id: "prP", estado_entrega: "incompleto", nivel: null, puntaje: null, retroalimentacion: null,
+			estado_en_clase: "incompleta", revisar_en: ANTES, completado_en: null },
+		{ id: "c3", alumno_id: "al-2", producto_sesion_id: "prP", estado_entrega: "entregado", nivel: "logrado", puntaje: null, retroalimentacion: null },
 	],
 };
 
@@ -197,7 +228,38 @@ new Function(codigo)();
 		trasExperimento.indexOf("ALUMNO DE SEGUNDO"), -1);
 	ok("3. hay panel de detalle por alumno y producto",
 		sesiones.indexOf("id='detalle-pr1-al-2'") !== -1 && sesiones.indexOf("id='detalle-pr1-al-3'") !== -1, true);
-	ok("3. la tarea no se repite dentro de la sesión", sesiones.indexOf("Leer en casa"), -1);
+	// La tarea se califica en "Tareas por revisar"; en la sesión solo se lista (para renombrarla
+	// o quitarla), sin controles de calificación
+	ok("3. la tarea no se califica dentro de la sesión", sesiones.indexOf("data-producto='pr2'"), -1);
+	ok("3. la sesión lista sus tareas con su día de revisión",
+		/Tareas de esta sesión[\s\S]*Leer en casa[\s\S]*Se revisa hoy/.test(sesiones), true);
+	ok("3. el botón de la sesión es «Agregar actividad o tarea» (sin window.prompt)",
+		sesiones.indexOf("data-agregar-producto='s1'") !== -1 && sesiones.indexOf("Agregar actividad o tarea") !== -1 &&
+		!/window\.prompt/.test(codigo), true);
+	// Varios proyectos activos: la siguiente de CADA uno, con su nombre (antes 4 en total por uuid)
+	ok("3. Trabajar hoy: la siguiente del segundo proyecto activo también sale", sesiones.indexOf("data-trabajar-hoy='q1'") !== -1, true);
+	ok("3. Trabajar hoy: cada proyecto con su nombre",
+		sesiones.indexOf("Proyecto de prueba") !== -1 && sesiones.indexOf("Otro proyecto activo") !== -1, true);
+	ok("3. Trabajar hoy: sin tope, las demás pendientes se pueden elegir",
+		["q2", "q3", "q4", "q5"].every((id) => sesiones.indexOf("data-trabajar-hoy='" + id + "'") !== -1), true);
+	ok("3. Trabajar hoy: no ofrece sesiones de un proyecto pausado", sesiones.indexOf("data-trabajar-hoy='z1'"), -1);
+
+		// ── Fase 2 (2026-09-26): para quién, incompleta y sueltas ──
+	const trasProblemas = sesiones.split("Problemas de 3°").slice(1).join("").split("Tareas de esta sesión")[0];
+	ok("para quién: el de 2° incluido en una actividad de 3° aparece y «Trabaja con 3°»",
+		/ALUMNO DE SEGUNDO[\s\S]*Trabaja con 3°/.test(trasProblemas), true);
+	ok("para quién: el rótulo dice «3° + 1 alumno de 2°»", sesiones.indexOf("Problemas de 3°<span class='text-sm font-semibold text-blue-700'> · 3° + 1 alumno de 2°") !== -1, true);
+	ok("para quién: cada actividad ofrece «Para quién»", sesiones.indexOf("data-para-quien='pr4'") !== -1, true);
+	ok("incompleta: cada actividad en clase ofrece «Incompleta»", sesiones.indexOf("data-producto='pr1' data-alumno='al-3' data-incompleta='1'") !== -1, true);
+	const pend = elementos.pendientesLista ? elementos.pendientesLista.innerHTML : "";
+	ok("pendientes de la clase anterior: el de 3° con «Mapa del barrio», «Lo completó» y «Sigue incompleta»",
+		/ALUMNO DE TERCERO[\s\S]*Mapa del barrio/.test(pend) && pend.indexOf("Lo completó") !== -1 && pend.indexOf("Sigue incompleta") !== -1, true);
+	ok("pendientes: solo lo incompleto (no el que ya la entregó)", pend.indexOf("ALUMNO DE SEGUNDO"), -1);
+	ok("pendientes: la sección se muestra", !elementos.pendientes.classList.contains("hidden"), true);
+	ok("sueltas: su bloque se llama «Actividades del trimestre», no «Sesión 1», y ofrece «Pasar a un proyecto»",
+		sesiones.indexOf("Actividades del trimestre · Lenguajes") !== -1 && sesiones.indexOf("data-pasar-proyecto='prS'") !== -1, true);
+	ok("sueltas: no se «quitan de hoy»", sesiones.indexOf("data-quitar-hoy='sx'"), -1);
+	ok("sueltas: no aparecen en «Trabajar hoy»", sesiones.indexOf("data-trabajar-hoy='sx'"), -1);
 
 	// Y esto es lo que se caía en cadena: la sección 4
 	// Planeación → Hoy: las sesiones no traen fecha; el maestro elige cuál trabaja hoy

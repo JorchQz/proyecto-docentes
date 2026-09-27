@@ -113,6 +113,8 @@ var Navegacion = (function () {
 		"reporte-alumno": "reportes",
 		junta: "reportes",
 		exportar: "reportes",
+		// Ponte al día (registro histórico): se llega desde Inicio
+		"ponte-al-dia": "dashboard",
 	};
 
 	var TITULOS = {
@@ -121,7 +123,7 @@ var Navegacion = (function () {
 		evaluacion_diagnostica: "Diagnóstico", evaluacion_formativa: "Evaluación formativa", examen: "Exámenes",
 		reportes: "Reportes", boleta: "Boleta", "reporte-alumno": "Reporte del alumno", junta: "Junta de padres",
 		exportar: "Exportar", "mi-grupo": "Mi grupo", incidencias: "Incidencias", "mi-cuenta": "Mi cuenta", ajustes: "Ajustes",
-		"sala-maestros": "Sala de Maestros", calendario: "Calendario", listas: "Listas",
+		"sala-maestros": "Sala de Maestros", calendario: "Calendario", listas: "Listas", "ponte-al-dia": "Ponte al día",
 	};
 
 	// Accesos rápidos de la barra de abajo (celular y tablet vertical). Sala tiene un solo
@@ -314,7 +316,7 @@ var Navegacion = (function () {
 		".jz-lat-cuerpo{flex:1;min-height:0;overflow-y:auto;padding:2px 12px 12px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}" +
 		// Selector de secciones (js/secciones.js, selectorNav)
 		".jz-secciones-slot{min-height:58px;margin-bottom:14px}" +
-		".jz-sel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;padding:3px;border-radius:14px;background:rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
+		".jz-sel{display:grid;grid-template-columns:repeat(var(--jz-sel-n,3),minmax(0,1fr));gap:2px;padding:3px;border-radius:14px;background:rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
 		".jz-sel li{display:flex}" +
 		".jz-sel-op{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;padding:4px 2px;border-radius:11px;color:rgba(255,255,255,.72);text-decoration:none;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background-color .15s ease,color .15s ease}" +
 		".jz-sel-op:hover{color:#fff;background:rgba(255,255,255,.08)}" +
@@ -355,7 +357,7 @@ var Navegacion = (function () {
 		".jz-abajo-op[aria-current]::before{content:'';position:absolute;top:0;left:50%;width:36px;margin-left:-18px;height:3px;border-radius:0 0 3px 3px;background:#059669}" +
 		".jz-abajo-op:focus-visible{outline:2px solid #1e3a8a;outline-offset:-4px;border-radius:12px}" +
 		// Tooltip de la barra contraída
-		".jz-saltar{position:fixed;top:8px;left:8px;z-index:6;padding:12px 16px;border-radius:12px;background:#fff;color:#1e3a8a;font-weight:700;text-decoration:none;box-shadow:0 8px 24px -8px rgba(15,23,42,.5);transform:translateY(-200%)}" +
+		".jz-saltar{position:fixed;top:8px;left:8px;z-index:6;padding:12px 16px;line-height:20px;min-height:44px;box-sizing:border-box;border-radius:12px;background:#fff;color:#1e3a8a;font-weight:700;text-decoration:none;box-shadow:0 8px 24px -8px rgba(15,23,42,.5);transform:translateY(-200%)}" +
 		".jz-saltar:focus{transform:none;outline:2px solid #1e3a8a;outline-offset:2px}" +
 		".jz-cuenta-menu .jz-item:focus-visible{outline-color:#1e3a8a}" +
 		".jz-tip{position:fixed;z-index:5;max-width:16rem;padding:6px 10px;border-radius:8px;background:#0f172a;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;box-shadow:0 6px 16px -6px rgba(15,23,42,.5)}" +

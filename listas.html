@@ -69,7 +69,7 @@
 					<button type="button" role="tab" data-ls-tab="historial" data-etq="Historial" aria-controls="lsPanelHistorial" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold whitespace-nowrap text-gray-600">Historial</button>
 					<button type="button" role="tab" data-ls-tab="alumnos" data-etq="Por alumno" aria-controls="lsPanelAlumnos" aria-selected="false" tabindex="-1" class="min-h-[44px] px-4 rounded-lg text-sm font-semibold whitespace-nowrap text-gray-600">Por alumno</button>
 				</div>
-				<button id="lsNueva" type="button" disabled class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800 disabled:opacity-60">
+				<button id="lsNueva" data-captura type="button" disabled class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800 disabled:opacity-60">
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
 					Nueva lista
 				</button>
@@ -97,16 +97,16 @@
 			</div>
 			<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 flex flex-col gap-4">
 				<div id="lsCabeza" class="min-w-0"></div>
-				<div id="lsAcciones" class="flex flex-wrap gap-2"></div>
+				<div id="lsAcciones" data-captura-zona class="flex flex-wrap gap-2"></div>
 				<div id="lsResumen" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" aria-live="polite"></div>
-				<div id="lsTabla"></div>
+				<div id="lsTabla" data-captura-zona></div>
 				<p id="lsEstadoTabla" class="text-xs text-gray-500"></p>
 			</div>
 
 			<div id="lsSalida" class="grid grid-cols-1 lg:grid-cols-2 gap-4" hidden>
 				<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 					<h2 class="font-bold text-gray-800">Para las familias</h2>
-					<p class="mt-1 text-sm text-gray-600">Sin nombres de alumnos: solo el resumen (cuántos entregaron, cuánto se ha reunido). A cada familia pendiente puedes escribirle en privado con «Recordar».</p>
+					<p id="lsAyudaFamilias" class="mt-1 text-sm text-gray-600">Sin nombres de alumnos: solo el resumen de cada columna. A cada familia pendiente puedes escribirle en privado con «Recordar por WhatsApp».</p>
 					<div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
 						<button id="lsImagen" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
@@ -123,12 +123,12 @@
 					</div>
 				</div>
 				<div class="bg-white rounded-2xl shadow-sm border border-amber-200 p-4 sm:p-5">
-					<h2 class="font-bold text-gray-800">Solo para la maestra</h2>
+					<h2 class="font-bold text-gray-800">Solo para ti</h2>
 					<p class="mt-1 text-sm text-gray-600">Con los nombres de todos los alumnos, para tu control interno. No la compartas con las familias.</p>
 					<div class="mt-3">
 						<button id="lsImprimir" type="button" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50">
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
-							Imprimir (solo para la maestra)
+							Imprimir (solo para ti)
 						</button>
 					</div>
 				</div>
@@ -174,7 +174,7 @@
 				<label for="dlgColumnaEsperado" class="block text-sm font-medium text-gray-800">Cantidad esperada por alumno <span class="font-normal text-gray-500">(opcional)</span></label>
 				<div class="mt-1 flex items-center gap-2"><span class="text-sm text-gray-500" aria-hidden="true">$</span>
 					<input id="dlgColumnaEsperado" type="text" inputmode="decimal" maxlength="12" autocomplete="off" placeholder="50" class="block w-40 min-h-[44px] rounded-lg border border-gray-300 px-3 text-sm text-right"></div>
-				<p class="mt-1 text-xs text-gray-500">Con ella se calcula cuánto falta. Sin ella, solo se suma lo reunido.</p>
+				<p class="mt-1 text-xs text-gray-500">Con ella se calcula cuánto falta. Sin ella es un donativo libre: voluntario, solo se suma lo reunido, sin pendientes ni recordatorios y fuera del avance general.</p>
 			</div>
 			<p data-error class="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800" role="alert" hidden></p>
 			<div class="mt-5 flex flex-col-reverse sm:flex-row sm:justify-between gap-2">
@@ -233,6 +233,7 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>

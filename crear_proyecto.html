@@ -44,11 +44,11 @@
           </div>
           <div class="flex gap-3 shrink-0">
             <button type="button" id="btnDescartarBorrador"
-              class="text-sm border border-amber-300 text-amber-700 px-4 py-2 rounded-xl hover:bg-amber-100 transition">
+              class="text-sm border border-amber-300 text-amber-700 px-4 py-2 min-h-[44px] rounded-xl hover:bg-amber-100 transition">
               Descartar
             </button>
             <button type="button" id="btnContinuarBorrador"
-              class="text-sm bg-amber-500 text-white font-bold px-4 py-2 rounded-xl hover:bg-amber-600 transition">
+              class="text-sm bg-amber-500 text-white font-bold px-4 py-2 min-h-[44px] rounded-xl hover:bg-amber-600 transition">
               Continuar borrador
             </button>
           </div>
@@ -65,7 +65,7 @@
           <!-- Título -->
           <div class="md:col-span-2">
             <label class="block text-gray-700 mb-2 font-medium">Título del Proyecto</label>
-            <input type="text" name="titulo" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="Ej. Proyecto NEM 2026" required>
+            <input type="text" name="titulo" class="w-full min-h-[44px] px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="Ej. Proyecto NEM 2026" required>
           </div>
 
           <!-- Trimestre (define en qué boleta cuenta el proyecto) -->
@@ -83,7 +83,7 @@
           <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Grados (checkboxes en card vertical) -->
             <div>
-              <label class="block text-gray-700 mb-2 font-medium">Grados</label>
+              <label class="block text-gray-700 mb-2 font-medium">Grados <span class="text-xs font-normal text-gray-500">(obligatorio)</span></label>
               <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div id="gradosCheckboxes" class="flex flex-col gap-3">
                   <!-- Opciones dinámicas por JS -->
@@ -103,13 +103,13 @@
 
           <!-- Campos formativos (checkboxes en card vertical) -->
           <div class="md:col-span-2">
-            <label class="block text-gray-700 mb-2 font-medium">Campos formativos</label>
+            <label class="block text-gray-700 mb-2 font-medium">Campos formativos <span class="text-xs font-normal text-gray-500">(obligatorio, uno o varios)</span></label>
             <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
               <div class="flex flex-col gap-3">
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="Lenguajes" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Lenguajes</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="Saberes y Pensamiento Científico" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Saberes y Pensamiento Científico</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="Ética, Naturaleza y Sociedades" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Ética, Naturaleza y Sociedades</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="De lo Humano y lo Comunitario" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">De lo Humano y lo Comunitario</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="Lenguajes" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Lenguajes</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="Saberes y Pensamiento Científico" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Saberes y Pensamiento Científico</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="Ética, Naturaleza y Sociedades" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Ética, Naturaleza y Sociedades</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="campos_formativos" value="De lo Humano y lo Comunitario" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">De lo Humano y lo Comunitario</span></label>
               </div>
             </div>
           </div>
@@ -124,10 +124,10 @@
               </div>
               <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div class="flex flex-col gap-3">
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="metodologia" value="ABPC" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje Basado en Proyectos Comunitarios (ABPC)</span></label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="metodologia" value="STEAM" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje Basado en Indagación (Enfoque STEAM)</span></label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="metodologia" value="ABP" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje Basado en Problemas (ABP)</span></label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="metodologia" value="AS" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje de Servicio (AS)</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="metodologia" value="ABPC" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje Basado en Proyectos Comunitarios (ABPC)</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="metodologia" value="STEAM" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje Basado en Indagación (Enfoque STEAM)</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="metodologia" value="ABP" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje Basado en Problemas (ABP)</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="metodologia" value="AS" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aprendizaje de Servicio (AS)</span></label>
                 </div>
               </div>
             </div>
@@ -136,9 +136,9 @@
               <label class="block text-gray-700 mb-2 font-medium">Escenario</label>
               <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div class="flex flex-col gap-3">
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="escenario" value="Aula" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aula</span></label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="escenario" value="Escolar" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Escolar</span></label>
-                  <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="radio" name="escenario" value="Comunitario" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Comunitario</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="escenario" value="Aula" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Aula</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="escenario" value="Escuela" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Escuela</span></label>
+                  <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="radio" name="escenario" value="Comunidad" class="form-radio h-5 w-5 text-blue-600 border-gray-300 focus:ring-blue-500" required> <span class="text-gray-800">Comunidad</span></label>
                 </div>
               </div>
             </div>
@@ -155,13 +155,13 @@
             <label class="block text-gray-700 mb-2 font-medium">Ejes articuladores</label>
             <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
               <div class="flex flex-col gap-3">
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Inclusión" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Inclusión</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Pensamiento Crítico" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Pensamiento Crítico</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Interculturalidad Crítica" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Interculturalidad Crítica</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Igualdad de Género" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Igualdad de Género</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Vida Saludable" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Vida Saludable</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Apropiación de las culturas a través de la lectura y la escritura" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Apropiación de las culturas a través de la lectura y la escritura</span></label>
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Artes y experiencias estéticas" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Artes y experiencias estéticas</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Inclusión" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Inclusión</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Pensamiento Crítico" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Pensamiento Crítico</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Interculturalidad Crítica" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Interculturalidad Crítica</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Igualdad de Género" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Igualdad de Género</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Vida Saludable" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Vida Saludable</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Apropiación de las culturas a través de la lectura y la escritura" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Apropiación de las culturas a través de la lectura y la escritura</span></label>
+                <label class="inline-flex items-center gap-2 min-h-[44px] cursor-pointer select-none"><input type="checkbox" name="ejes_articuladores" value="Artes y experiencias estéticas" class="form-checkbox h-5 w-5 text-blue-600 rounded-full border-gray-300 focus:ring-blue-500"> <span class="text-gray-800">Artes y experiencias estéticas</span></label>
               </div>
             </div>
           </div>
@@ -173,12 +173,20 @@
           </div>
 
             <!-- Botón siguiente paso -->
+          <!-- Proyecto en curso: qué no cambia (js/proyecto-edicion.js) -->
+          <p id="notaPaso1EnCurso" class="hidden md:col-span-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            Este proyecto ya se está trabajando: su trimestre queda como está, y los grados y campos formativos que ya tiene no se quitan. Puedes agregar otros: si agregas un grado (por ejemplo, porque llegó un alumno de ese grado), sus trabajos aparecen en las sesiones que aún no se trabajan.
+          </p>
+
+          <!-- Aviso de lo que falta en el paso 1 -->
+          <p id="mensajePaso1" role="alert" class="hidden md:col-span-2 text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl px-4 py-3"></p>
+
           <div class="md:col-span-2 flex justify-between mt-4">
             <button type="button" id="btnGuardarBorrador1"
-              class="border border-gray-300 text-gray-600 px-5 py-2 rounded-xl hover:bg-gray-50 transition text-sm">
+              class="border border-gray-300 text-gray-600 px-5 py-2 min-h-[44px] rounded-xl hover:bg-gray-50 transition text-sm">
               Guardar borrador
             </button>
-            <button type="submit" class="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition">Siguiente →</button>
+            <button type="submit" class="bg-blue-600 text-white font-bold px-6 py-2 min-h-[44px] rounded-xl shadow-sm hover:bg-blue-700 transition">Siguiente →</button>
           </div>
         </form>
       </section>
@@ -190,12 +198,12 @@
 
         <div id="contenidosContainer" class="flex flex-col gap-6"></div>
 
-        <div class="mt-6 flex justify-between gap-3">
+        <div class="mt-6 flex flex-wrap justify-between gap-3">
           <button type="button" id="btnVolverPaso1Desde2"
             class="border border-gray-300 text-gray-700 font-bold px-6 py-3 rounded-xl hover:bg-gray-50 transition">
             ← Volver al Paso 1
           </button>
-          <div class="flex gap-3">
+          <div class="flex flex-wrap gap-3">
             <button type="button" id="btnGuardarBorrador2"
               class="border border-gray-300 text-gray-600 px-5 py-3 rounded-xl hover:bg-gray-50 transition text-sm">
               Guardar borrador
@@ -212,29 +220,30 @@
       <section class="border-t pt-6 hidden" id="step2-sesiones">
         <h2 class="text-xl font-bold text-gray-800 mb-1">Paso 3: Sesiones del Proyecto</h2>
         <p class="text-gray-500 text-sm mb-6">Agrega cada sesión de tu planeación</p>
+        <p id="avisoEnCurso" class="hidden mb-6 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"></p>
 
         <div id="sesionesContainer" class="flex flex-col gap-4"></div>
 
         <div class="mt-4">
-          <button type="button" id="btnAgregarSesion"
-            class="border-2 border-blue-600 text-blue-600 font-bold px-5 py-2 rounded-xl hover:bg-blue-50 transition">
+          <button type="button" id="btnAgregarSesion" data-captura
+            class="border-2 border-blue-600 text-blue-600 font-bold px-5 py-2 min-h-[44px] rounded-xl hover:bg-blue-50 transition">
             + Agregar otra sesión
           </button>
         </div>
 
         <div id="mensajePaso2" class="mt-4 hidden"></div>
 
-        <div class="mt-6 flex justify-between gap-3">
+        <div class="mt-6 flex flex-wrap justify-between gap-3">
           <button type="button" id="btnVolverPaso2"
             class="border border-gray-300 text-gray-700 font-bold px-6 py-3 rounded-xl hover:bg-gray-50 transition">
             ← Volver al Paso 2
           </button>
-          <div class="flex gap-3">
+          <div class="flex flex-wrap gap-3">
             <button type="button" id="btnGuardarBorrador3"
               class="border border-gray-300 text-gray-600 px-5 py-3 rounded-xl hover:bg-gray-50 transition text-sm">
               Guardar borrador
             </button>
-            <button type="button" id="btnGuardar"
+            <button type="button" id="btnGuardar" data-captura
               class="bg-green-600 text-white font-bold px-8 py-3 rounded-xl shadow-sm hover:bg-green-700 transition text-lg">
               Guardar proyecto
             </button>
@@ -255,6 +264,7 @@
   <script src="js/supabase.js"></script>
   <script src="js/lectura.js"></script>
   <script src="js/saas-guard.js"></script>
+  <script src="js/mi-salon-acceso.js"></script>
   <script src="js/secciones.js"></script>
   <script src="js/bandeja-salida.js"></script>
 <script src="js/grupo-activo.js"></script>
@@ -262,6 +272,11 @@
   <script src="js/section-shell.js"></script>
   <script src="js/campos-formativos.js"></script>
   <script src="js/sesiones-materializar.js"></script>
+  <script src="js/alcance-hoy.js"></script>
+  <script src="js/productos-hoy.js"></script>
+  <script src="js/para-quien.js"></script>
+  <script src="js/proyecto-edicion.js"></script>
+  <script src="js/texto-sesion.js"></script>
   <script src="js/clave-archivo.js"></script>
   <script src="js/crear_proyecto.js"></script>
 </body>

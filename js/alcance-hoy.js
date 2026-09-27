@@ -24,6 +24,16 @@
 
 	var DIAS_RECIENTES = 30;
 
+	/*
+		Actividades sueltas (sin proyecto, decisión de Jorge del 2026-09-26): viven en un proyecto
+		contenedor por grupo y trimestre con tipo = 'sueltas' ("Actividades del trimestre", estado
+		'completado', fecha_final = su última fecha; mi_salon_b17). Entra al alcance de Hoy con la
+		regla de siempre (trimestre actual o terminado hace poco) y nunca a "Trabajar hoy", a la
+		lista de Proyectos ni a las tarjetas de proyectos activos.
+	*/
+	var TITULO_SUELTAS = "Actividades del trimestre";
+	function esSueltas(proyecto) { return !!(proyecto && proyecto.tipo === "sueltas"); }
+
 	function restarDias(fechaISO, dias) {
 		var d = new Date(fechaISO + "T12:00:00");
 		d.setDate(d.getDate() - dias);
@@ -45,17 +55,177 @@
 		return !!proyecto.fecha_final && proyecto.fecha_final >= restarDias(hoyISO, DIAS_RECIENTES);
 	}
 
-	/*
-		Cuándo vence una tarea: su fecha de entrega si la tiene; si no, el siguiente día
-		hábil después de la sesión en que se dejó (la tarea de hoy se revisa en la próxima
-		clase, no el mismo día). null si la sesión aún no tiene fecha.
-	*/
-	function venceTarea(fechaEntrega, fechaSesion) {
-		if (fechaEntrega) return fechaEntrega;
-		if (!fechaSesion) return null;
-		var d = new Date(fechaSesion + "T12:00:00");
+	// El calendario SEP (js/calendario-sep.js): en el navegador, el global; en node, require
+	function calendario() {
+		if (typeof window !== "undefined" && window.CalendarioSEP) return window.CalendarioSEP;
+		if (typeof require === "function") {
+			try { return require("./calendario-sep"); } catch (e) { /* sin el script */ }
+		}
+		return null;
+	}
+
+	// El siguiente lunes a viernes (la regla de antes; solo si no está js/calendario-sep.js)
+	function siguienteHabil(fechaISO) {
+		var d = new Date(fechaISO + "T12:00:00");
 		do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
 		return d.toISOString().slice(0, 10);
+	}
+
+	/*
+		El siguiente día de clase después de `fecha` (decisión de Jorge del 2026-09-26): calendario
+		SEP y ajustes del grupo (calendario_ajustes: [{fecha, tipo, motivo}]). Lo usan el vencimiento
+		de las tareas y la revisión de una actividad en clase que quedó incompleta.
+	*/
+	function siguienteDiaDeClase(fecha, ajustes) {
+		if (!fecha) return null;
+		var C = calendario();
+		return C ? C.siguienteDiaDeClase(fecha, ajustes || []) : siguienteHabil(fecha);
+	}
+
+	/*
+		Los ajustes del grupo al calendario SEP (calendario_ajustes: días sin clase o con clase del
+		grupo). Acotada: una fila por día ajustado del grupo, a lo más los días hábiles de un ciclo.
+		Lanza el error: quien llama decide (Hoy, Inicio y Tareas se detienen; Qué le falta sigue con
+		el calendario oficial).
+	*/
+	async function leerAjustesCalendario(sb, maestroId, grupoId) {
+		var res = await sb.from("calendario_ajustes").select("fecha, tipo, motivo")
+			.eq("maestro_id", maestroId).eq("grupo_id", grupoId).order("fecha");
+		if (res.error) throw res.error;
+		return res.data || [];
+	}
+
+	/*
+		Cuándo vence una tarea: su fecha de entrega si la tiene; si no, el siguiente DÍA DE CLASE
+		después de la sesión en que se dejó (calendario SEP y ajustes del grupo; antes, el siguiente
+		lunes a viernes, sin saltar festivos ni CTE). La tarea de hoy se revisa en la próxima clase,
+		no el mismo día. null si la sesión aún no tiene fecha.
+		ajustes: filas de calendario_ajustes del grupo (opcional: sin ellas, solo el oficial).
+	*/
+	function venceTarea(fechaEntrega, fechaSesion, ajustes) {
+		if (fechaEntrega) return fechaEntrega;
+		if (!fechaSesion) return null;
+		return siguienteDiaDeClase(fechaSesion, ajustes);
+	}
+
+	/*
+		── Para quién es un producto (decisión de Jorge del 2026-09-26) ──
+		REGLA ÚNICA (la misma en Hoy, Inicio, Tareas, el motor y Qué le falta; en SQL,
+		alumno_recibe_producto de mi_salon_b17): el alumno recibe el producto si (su grado está en
+		producto.grados y no está excluido) o está incluido (producto_sesion_alumnos, modo
+		'incluir' | 'excluir'); además, la regla del alta tarde (cuentaDesdeAlta). El alumno sigue
+		en su grado oficial para la boleta y el examen.
+		asignaciones: el índice de indiceAsignaciones { productoId: { alumnoId: modo } }.
+	*/
+	function indiceAsignaciones(filas) {
+		var idx = {};
+		(filas || []).forEach(function (f) {
+			if (!f || !f.producto_sesion_id || !f.alumno_id) return;
+			(idx[f.producto_sesion_id] = idx[f.producto_sesion_id] || {})[f.alumno_id] = f.modo;
+		});
+		return idx;
+	}
+
+	function modoDe(alumno, producto, asignaciones) {
+		var p = asignaciones && producto ? asignaciones[producto.id] : null;
+		return p && alumno ? p[alumno.id] || null : null;
+	}
+
+	function asignadoA(alumno, producto, asignaciones) {
+		if (!alumno || !producto) return false;
+		var modo = modoDe(alumno, producto, asignaciones);
+		if (modo === "incluir") return true;
+		if (modo === "excluir") return false;
+		return (producto.grados || []).map(Number).indexOf(Number(alumno.grado)) !== -1;
+	}
+
+	/*
+		recibeProducto(alumno, producto, asignaciones, fechaSesion, cal, alta) → boolean
+		alta: la fecha de alta del alumno ("AAAA-MM-DD"); por omisión alumno.alta.
+	*/
+	function recibeProducto(alumno, producto, asignaciones, fechaSesion, cal, alta) {
+		if (!asignadoA(alumno, producto, asignaciones)) return false;
+		var a = alta === undefined ? (alumno && alumno.alta) : alta;
+		return cuentaDesdeAlta(a || null, fechaProducto(fechaSesion, producto.fecha_entrega), cal);
+	}
+
+	/*
+		Un alumno incluido de otro grado "trabaja con" el grado de la actividad: → "2°" (o "2° y 3°")
+		si está incluido y su grado no es el de la actividad; "" si no.
+		gradosPda (opcional): los grados de los PDA ligados al producto. Si los hay, mandan ellos. El
+		alumno se evalúa siempre con los PDA de SU grado (decisión de Jorge del 2026-09-27; deja
+		evidencia solo en los de su grado, b5): un trabajo por nivel que incluye alumnos de otro grado
+		se liga también a los PDA de ese grado, y entonces no hay nota (Morado y Triángulos de
+		PP-NIVELES, con PDA de 1° y de 2°: el de 2° se evalúa con los de 2°). Si el producto no tiene
+		PDA de su grado, la nota dice con qué grado trabaja ("Trabaja con 1°"). R30, 2026-09-27.
+	*/
+	function gradosValidos(lista) {
+		var vistos = {};
+		return (lista || []).map(Number).filter(function (x) {
+			if (!(x >= 1 && x <= 6) || vistos[x]) return false;
+			vistos[x] = true;
+			return true;
+		}).sort(function (a, b) { return a - b; });
+	}
+	function trabajaCon(alumno, producto, asignaciones, gradosPda) {
+		if (modoDe(alumno, producto, asignaciones) !== "incluir") return "";
+		var dePda = gradosValidos(gradosPda);
+		var g = dePda.length ? dePda : gradosValidos(producto.grados);
+		if (!g.length || g.indexOf(Number(alumno.grado)) !== -1) return "";
+		var t = g.map(function (x) { return x + "°"; });
+		return t.length === 1 ? t[0] : t.slice(0, -1).join(", ") + " y " + t[t.length - 1];
+	}
+	// [{ producto_sesion_id, sesiones_pda: { grado } }] (producto_sesion_pda con su PDA) → { productoId: [grados] }
+	function gradosPdaPorProducto(filas) {
+		var out = {};
+		(filas || []).forEach(function (f) {
+			var sp = f && f.sesiones_pda;
+			var g = Number(sp && (Array.isArray(sp) ? sp[0] && sp[0].grado : sp.grado));
+			if (!f || !f.producto_sesion_id || !(g >= 1 && g <= 6)) return;
+			var l = out[f.producto_sesion_id] = out[f.producto_sesion_id] || [];
+			if (l.indexOf(g) === -1) l.push(g);
+		});
+		Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return a - b; }); });
+		return out;
+	}
+
+	/*
+		── Actividad en clase "Incompleta" (decisión de Jorge del 2026-09-26) ──
+		calificaciones.estado_en_clase: 'incompleta' (pendiente: se revisa el revisar_en) ·
+		'completada' (la revisó y la completó) · 'sigue_incompleta' (definitiva). El valor para la
+		boleta sale de estado_entrega y nivel como siempre (el motor): pendiente y "sigue
+		incompleta" = incompleto sin nivel (0.5); completada = el nivel que logró.
+	*/
+	function porCompletar(cal) {
+		return !!(cal && cal.estado_en_clase === "incompleta");
+	}
+	// ¿Ya toca revisarla? (sale en "Pendientes de la clase anterior")
+	function tocaRevisar(cal, hoyISO) {
+		return porCompletar(cal) && !!cal.revisar_en && String(cal.revisar_en).slice(0, 10) <= hoyISO;
+	}
+	// Lo que se escribe en la calificación en cada paso (los campos del grupo del semáforo)
+	function cambiosIncompleta(accion, ctx) {
+		ctx = ctx || {};
+		// Registro histórico (spec §4.3): en una actividad histórica "Incompleta" NO pasa a la
+		// siguiente clase; queda incompleta (0.5) sin revisión pendiente
+		if (accion === "marcar" && ctx.historico) {
+			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: null, revisar_en: null, completado_en: null };
+		}
+		if (accion === "marcar") {
+			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "incompleta",
+				revisar_en: siguienteDiaDeClase(ctx.hoy, ctx.ajustes), completado_en: null };
+		}
+		if (accion === "completo") {
+			return { estado_entrega: "entregado", nivel: ctx.nivel || "logrado", estado_en_clase: "completada", completado_en: ctx.hoy };
+		}
+		if (accion === "sigue") {
+			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "sigue_incompleta", completado_en: ctx.hoy };
+		}
+		if (accion === "pendiente") { // deshacer la revisión: vuelve a pendiente
+			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "incompleta", completado_en: null };
+		}
+		// "quitar": sin la marca de incompleta (lo demás lo decide quien llama)
+		return { estado_en_clase: null, revisar_en: null, completado_en: null };
 	}
 
 	/*
@@ -67,8 +237,9 @@
 		  fiable de la base (no hay columna de ingreso; editar al alumno no la cambia).
 		- Solo es "tarde" quien se dio de alta DESPUÉS de crearse su grupo. Los alumnos que
 		  nacen con el grupo (la semilla QA crea grupo y alumnos en el mismo instante) no
-		  tienen fecha de alta para esta regla: les cuenta todo. En el uso real no cambia
-		  nada, porque ninguna sesión puede tener fecha anterior a su grupo.
+		  tienen fecha de alta para esta regla: les cuenta todo. Tampoco los que se dieron de
+		  alta el mismo día que su grupo (el onboarding los agrega minutos después): una
+		  actividad suelta puede ser de un día anterior al grupo (decisión del 2026-09-26).
 		- Fecha del producto: la de su sesión, que es el día en que se trabajó o se dejó la
 		  tarea (una tarea que se dejó antes de que llegara no se le pidió, aunque venza
 		  después). Sin fecha de sesión, la de entrega; sin ninguna, cuenta.
@@ -87,6 +258,13 @@
 		try {
 			// en-CA da "AAAA-MM-DD"
 			if (!FORMATO_CDMX) FORMATO_CDMX = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
+			/*
+				Dado de alta el MISMO día en que se creó su grupo (el alta del onboarding, minutos
+				después del grupo): también nació con el grupo. Desde el 2026-09-26 una actividad
+				suelta puede ser de un día anterior del trimestre (anterior al grupo): sin esto, a los
+				alumnos del primer día no les tocaría la actividad de la semana pasada.
+			*/
+			if (g && !isNaN(g.getTime()) && FORMATO_CDMX.format(d) === FORMATO_CDMX.format(g)) return null;
 			return FORMATO_CDMX.format(d);
 		} catch (e) {
 			return null; // sin zona horaria disponible no se filtra (lo conservador: no esconder nada)
@@ -161,12 +339,61 @@
 		};
 	}
 
+	/*
+		── Registro histórico (spec de Jorge del 2026-09-26, §4.3; mi_salon_b20) ──
+		Una captura con fecha anterior al día en que se registró es histórica (es_historico). La
+		base la marca (triggers de b20); aquí vive la misma regla para las pantallas:
+		  - esFechaHistorica(fecha, instante): fecha < el día (hora de Ciudad de México) del instante.
+		  - esHistorico(producto, fechaSesion): la columna es_historico si se leyó; si no, su sesión
+		    es de un día anterior al de su creación (created_at).
+		  - tareaPorRevisar(producto, vence, hoy, fechaSesion): una tarea vencida que Hoy, Inicio y
+		    Tareas piden revisar. Las históricas NO (al ponerse al día aparecerían cientos de
+		    pendientes): lo que no se capturó en el registro histórico no se le pide a nadie.
+		  - abrirParaCalificar(producto): una actividad suelta de un día pasado entra a Hoy el día en
+		    que se agregó (para calificarla al momento), salvo la del asistente Ponte al día, que ya se
+		    calificó en su cuadrícula (desde_ponte_al_dia).
+	*/
+	function diaMexico(instante) {
+		if (!instante) return null;
+		var d = new Date(instante);
+		if (isNaN(d.getTime())) return null;
+		try {
+			if (!FORMATO_CDMX) FORMATO_CDMX = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" });
+			return FORMATO_CDMX.format(d);
+		} catch (e) {
+			return d.toISOString().slice(0, 10);
+		}
+	}
+	function esFechaHistorica(fecha, instante) {
+		var dia = diaMexico(instante);
+		return !!(fecha && dia && String(fecha).slice(0, 10) < dia);
+	}
+	function esHistorico(producto, fechaSesion) {
+		if (!producto) return false;
+		if (typeof producto.es_historico === "boolean") return producto.es_historico;
+		var f = fechaSesion || (producto.sesion && producto.sesion.fecha) || null;
+		return esFechaHistorica(f, producto.created_at);
+	}
+	function tareaPorRevisar(producto, vence, hoyISO, fechaSesion) {
+		if (!vence || vence > hoyISO) return false;
+		return !esHistorico(producto, fechaSesion);
+	}
+	function abrirParaCalificar(producto) {
+		return !(producto && producto.desde_ponte_al_dia === true);
+	}
+
 	var api = {
 		DIAS_RECIENTES: DIAS_RECIENTES, PAGINA: PAGINA, LOTE: LOTE,
-		filtro: filtro, incluye: incluye, venceTarea: venceTarea,
+		diaMexico: diaMexico, esFechaHistorica: esFechaHistorica, esHistorico: esHistorico,
+		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
+		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,
+		leerAjustesCalendario: leerAjustesCalendario,
 		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre,
 		fechaAlta: fechaAlta, fechaProducto: fechaProducto, cuentaDesdeAlta: cuentaDesdeAlta,
 		examenCuentaDesdeAlta: examenCuentaDesdeAlta,
+		indiceAsignaciones: indiceAsignaciones, asignadoA: asignadoA, recibeProducto: recibeProducto, trabajaCon: trabajaCon, gradosPdaPorProducto: gradosPdaPorProducto,
+		porCompletar: porCompletar, tocaRevisar: tocaRevisar, cambiosIncompleta: cambiosIncompleta,
+		esSueltas: esSueltas, TITULO_SUELTAS: TITULO_SUELTAS,
 	};
 	if (typeof window !== "undefined") window.AlcanceHoy = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -3,7 +3,8 @@
 -- Solo aditiva: reemplaza la función del trigger de b13 (create or replace, misma firma) y agrega un
 -- CHECK nuevo. No toca filas. Se puede correr dos veces. Va DESPUÉS de
 -- mi_salon_b13_ficha_incidencias_2026-09.sql (si b13 se volviera a correr, regresaría la versión
--- con current_date: correr b13a otra vez). Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly).
+-- con current_date: correr b13a otra vez). Aplicada en PRUEBAS (raoxdxwgsxbqlzdnndly) y en
+-- PRODUCCIÓN el 26 de septiembre de 2026.
 --
 -- 1. Fecha de nacimiento "no futura" con la fecha de MÉXICO. La versión de b13 comparaba contra
 --    current_date, que en Supabase es la fecha UTC: de las 18:00 a las 23:59 de México (UTC-6, sin

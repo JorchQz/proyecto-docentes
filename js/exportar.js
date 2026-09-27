@@ -373,12 +373,12 @@
 			["Campos formativos", "LEN = Lenguajes; SAB = Saberes y Pensamiento Científico; ETI = Ética, Naturaleza y Sociedades; DHL = De lo Humano y lo Comunitario, que en la hoja original se llama «HUM»: las columnas «DHL: …» son las «HUM: …» de esa hoja."],
 			["Calificación válida", "La calificación que vale es la CONFIRMADA por el docente en Mi salón. Las columnas «LEN/SAB/ETI/DHL: Calificación» muestran solo esa calificación; si dicen «pendiente», el docente todavía no la confirma. Este archivo no trae calificaciones propuestas."],
 			["Asistencia", "La asistencia no es criterio de acreditación (Acuerdo 10/09/23, art. 7). Por eso NO debe usarse esta exportación para recalcular calificaciones con una plantilla que pondere la asistencia (por ejemplo, una que le dé 10 % a la asistencia). Las columnas de asistencia son solo dato de referencia."],
-			["Examen", "El examen por campo es APROXIMADO: el banco de preguntas no guarda el valor de cada pregunta, así que el máximo de cada campo se estima como valor total del examen entre número de preguntas."],
+			["Examen", "Los exámenes de Mi Salón (solo resultados o creados en Mi Salón) cuentan aciertos entre preguntas de cada campo, sumando los del trimestre de su grado. Solo si entra un examen del catálogo anterior, el examen por campo es APROXIMADO: el banco de preguntas no guarda el valor de cada pregunta, así que el máximo de cada campo se estima como valor total del examen entre número de preguntas."],
 			["Documento", "Mi salón es un complemento de la boleta oficial (SIGED). Este archivo no es un documento oficial de la SEP."],
 			["Hojas", "«" + HOJA_PRINCIPAL + "»: una fila por alumno. «" + HOJA_MAXIMOS + "»: el máximo posible de cada alumno, en la misma celda que su obtenido. «" + HOJA_LEEME + "»: esta explicación." +
 				(conIncidencias ? " «" + HOJA_INCIDENCIAS + "»: las incidencias registradas del grupo (todas, no solo las del trimestre), la más reciente primero." : "") +
 				(conCalendario ? " «" + HOJA_CALENDARIO + "»: los días que el docente cambió del calendario escolar oficial para este grupo." : "") +
-				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias)." : "") +
+				(conListas ? " «" + HOJA_LISTAS + "»: las listas de cooperación y materiales del grupo, con el nombre de cada alumno (es para el docente; no se comparte con las familias). La última columna de cada lista, «Pendiente», dice en palabras lo que le falta a cada alumno; un donativo libre (monto sin cuota) es voluntario y no deja pendiente, así que una lista que solo tiene donativos no lleva esa columna." : "") +
 				" El CSV trae solo la hoja «" + HOJA_PRINCIPAL + "»."],
 		].concat(conCalendario ? [
 			["Calendario", "La hoja «" + HOJA_CALENDARIO + "» lista los días que el docente cambió del calendario escolar oficial de la SEP para este grupo (suspensiones propias o días con clase por un ajuste de la autoridad educativa local). Es solo dato: no cambia ningún cálculo de asistencia ni de calificaciones."],
@@ -391,7 +391,7 @@
 			["<Campo>: Asist.", "Días asistidos del trimestre (presente o justificada) en el periodo de las sesiones del trimestre. Es el mismo número en los cuatro campos, como en la hoja original. Solo referencia: no entra en la calificación. En «" + HOJA_MAXIMOS + "»: días con lista."],
 			["<Campo>: Part. / Cond.", "Registro diario de participación y conducta (0, 1 o 2 por día), repartido en partes iguales entre los campos trabajados ese día. Cada día vale 1 punto repartido: 1 (normal) y 2 (destacado) valen el punto completo; 0 vale 0."],
 			["<Campo>: Cond. (conducta)", "Es solo REFERENCIA: la conducta NO pondera en la calificación. Se registra en el cierre del día y se informa aparte, en las observaciones (Ley General de Educación, art. 21). La columna conserva su lugar y su encabezado de la hoja original para que se pueda copiar igual, pero no debe sumarse a la calificación. En una boleta cerrada antes de este cambio, su calificación se calculó con el peso de conducta que había entonces y no se recalcula."],
-			["<Campo>: Examen", "Fracción de aciertos en las preguntas del campo del examen del trimestre de su grado (1 = todo correcto). Aproximado (ver arriba)."],
+			["<Campo>: Examen", "Fracción de aciertos en las preguntas del campo de los exámenes del trimestre de su grado (1 = todo correcto). Exacto con los exámenes de Mi Salón; aproximado si entra uno del catálogo anterior (ver arriba)."],
 			["Cuaderno / Lectura / Mates", "Evaluación diagnóstica del trimestre: Logrado / En proceso / Requiere apoyo. Lectura: PPM son palabras por minuto."],
 			["Mates: «" + NO_APLICA + "»", "La habilidad no corresponde al grado del alumno según el Programa Sintético de la NEM: 1° evalúa suma, resta, lectura y escritura de cantidades y problemas; 2° agrega multiplicación, división y tablas (en 2°, «Tablas» evalúa estrategias de cálculo mental para multiplicar, sin memorizar las tablas, y «División», reparto y agrupamiento sin el algoritmo convencional); de 3° a 6°, las ocho (las fracciones empiezan en 3°)."],
 			["Trabajo Diario", "La observación de trabajo diario que guardó el docente; si no hay, la que propone Mi salón a partir de tareas y trabajos."],
@@ -471,13 +471,14 @@
 	// ── Hoja Incidencias (B13) ───────────────────────────────────────────────
 	/*
 		hojaIncidencias(incidencias, nombrePorId) → filas (aoa) con encabezado.
-		incidencias: [{ fecha, hora, asunto, descripcion, acuerdos, created_at,
+		incidencias: [{ folio, fecha, hora, asunto, descripcion, acuerdos, created_at,
 		                incidencia_alumnos: [{ alumno_id }] }] del grupo, cualquier orden.
 		nombrePorId: { alumno_id: "Nombre" } (los alumnos que siguen en el grupo).
 		Todas las del grupo (no son de un trimestre), la más reciente primero.
 	*/
 	var HOJA_INCIDENCIAS = "Incidencias";
-	var ENC_INCIDENCIAS = ["Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"];
+	// El folio (b23: RDI-ciclo-0001, lo asigna el servidor) va primero, como en el documento
+	var ENC_INCIDENCIAS = ["Folio", "Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"];
 
 	// La hoja solo va si el grupo tiene incidencias (sin ellas, el libro queda como antes de B13)
 	function hayIncidencias(meta) {
@@ -526,6 +527,7 @@
 			var ids = (inc.incidencia_alumnos || []).map(function (v) { return v.alumno_id; }).filter(function (id) { return nombrePorId[id]; });
 			var nombres = ids.sort(enOrden).map(function (id) { return nombrePorId[id]; });
 			return [
+				inc.folio || "",
 				inc.fecha || "",
 				inc.hora ? String(inc.hora).slice(0, 5) : "",
 				inc.asunto || "",
@@ -543,8 +545,10 @@
 		listas: [{ lista (fila de listas_grupo con listas_columnas), valores: [filas de listas_valores] }]
 		alumnos: todos los del grupo (activos y de baja), para los nombres y quién cuenta.
 		Por lista, un bloque: nombre, fecha y estado; descripción; encabezado (Alumno y columnas);
-		una fila por alumno (Sí / Pendiente, el texto, el monto en pesos como número, o «No aplica»);
-		el resumen por columna (js/listas.js, el mismo de la pantalla) y un renglón vacío.
+		una fila por alumno (Sí / Pendiente, el texto, el monto en pesos como número, o «No aplica»)
+		que termina en la columna «Pendiente»: lo que le falta en palabras («$30 de «Cooperación»
+		(ya aportó $20)»), para leer lo pendiente sin color, también en los montos, que van como
+		número; el resumen por columna (js/listas.js, el mismo de la pantalla) y un renglón vacío.
 	*/
 	var HOJA_LISTAS = "Listas";
 	function listasJS() {
@@ -566,10 +570,13 @@
 			filas.push(["Lista", l.nombre || "", "Fecha", String(l.fecha || "").slice(0, 10), "Estado", l.estado === "cerrada" ? "Cerrada" : "Abierta"]);
 			if (l.descripcion) filas.push(["Descripción", unaLinea(l.descripcion)]);
 			if (!cols.length) { filas.push(["Sin columnas."]); filas.push([]); return; }
+			// Donativo libre (monto sin cuota): voluntario, nunca entra a «Pendiente»; si la lista
+			// solo tiene donativos libres, no lleva esa columna
+			var conPendiente = L.hayMeta ? L.hayMeta(res) : true;
 			filas.push(["Alumno"].concat(res.columnas.map(function (r) {
 				var c = r.columna;
-				return c.nombre + (c.tipo === "monto" ? (r.cuota ? " (pesos; cuota " + L.pesos(r.cuota) + ")" : " (pesos)") : "");
-			})));
+				return c.nombre + (c.tipo === "monto" ? (r.cuota ? " (pesos; cuota " + L.pesos(r.cuota) + ")" : " (pesos; voluntario)") : "");
+			}), conPendiente ? ["Pendiente"] : []));
 			res.filas.forEach(function (f) {
 				filas.push([(f.alumno.nombre_completo || "Alumno sin nombre") + (f.baja ? " (baja)" : "")].concat(res.columnas.map(function (r) {
 					var c = r.columna, v = L.valorDe(mapa, c.id, f.alumno.id);
@@ -578,7 +585,7 @@
 					if (c.tipo === "texto") return v && v.texto ? unaLinea(v.texto) : "";
 					var cent = v ? L.aCentavos(v.monto) : null;
 					return cent ? cent / 100 : 0;
-				})));
+				}), conPendiente ? [L.pendientesDe(res, f.alumno.id, mapa).join("; ")] : []));
 			});
 			filas.push(["Resumen"].concat(res.columnas.map(function (r) { return L.lineaColumna(r); })));
 			filas.push([]);
@@ -613,7 +620,7 @@
 		// libro queda como siempre (tres hojas)
 		if (hayIncidencias(meta)) {
 			var hoja4 = XLSX.utils.aoa_to_sheet(hojaIncidencias(meta.incidencias, meta.nombrePorId, meta.ordenPorId));
-			hoja4["!cols"] = [{ wch: 12 }, { wch: 7 }, { wch: 40 }, { wch: 40 }, { wch: 80 }, { wch: 60 }, { wch: 14 }];
+			hoja4["!cols"] = [{ wch: 20 }, { wch: 12 }, { wch: 7 }, { wch: 40 }, { wch: 40 }, { wch: 80 }, { wch: 60 }, { wch: 14 }];
 			XLSX.utils.book_append_sheet(wb, hoja4, HOJA_INCIDENCIAS);
 		}
 
@@ -628,7 +635,7 @@
 		// Listas de cooperación y materiales (b15): solo si el grupo tiene alguna
 		if (hayListas(meta)) {
 			var hoja6 = XLSX.utils.aoa_to_sheet(hojaListas(meta.listas, meta.alumnosListas));
-			hoja6["!cols"] = [{ wch: 36 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }];
+			hoja6["!cols"] = [{ wch: 36 }].concat(Array.apply(null, Array(13)).map(function () { return { wch: 22 }; }));
 			XLSX.utils.book_append_sheet(wb, hoja6, HOJA_LISTAS);
 		}
 
@@ -879,7 +886,7 @@
 		async function leerIncidencias() {
 			var filas = await window.LeerTodo.paginas(function () {
 				return window.sb.from("incidencias")
-					.select("id, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo, grado, num_lista))")
+					.select("id, folio, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo, grado, num_lista))")
 					.eq("maestro_id", ctx.maestroId)
 					.eq("grupo_id", ctx.grupo.id)
 					.order("fecha", { ascending: false })

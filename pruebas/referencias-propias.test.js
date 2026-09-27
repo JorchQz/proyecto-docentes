@@ -90,7 +90,36 @@ const EXCEPCIONES = {
 	// B15 (supabase/mi_salon_b15_listas_2026-09.sql): nacen con la revisión en su política
 	listas_grupo: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
 	listas_valores: "sus políticas de insert y update ya exigen que la lista (abierta) y la columna sean del maestro y que el alumno sea suyo y del mismo grupo que la lista",
+	// B17 (supabase/mi_salon_b17_flujo_libre_2026-09.sql): nace con la revisión en su política
+	producto_sesion_alumnos: "sus políticas restrictivas de insert y update exigen producto y alumno propios (ref_propia_producto_sesion, ref_propia_alumno) y del mismo grupo (ref_asignacion_mismo_grupo)",
+	// B18 (supabase/mi_salon_b18_examenes_2026-09.sql): nacen con la revisión en su política
+	examenes_grupo: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	examen_preguntas: "sus políticas de insert y update ya exigen que el examen sea del maestro y de modo 'propio'",
+	examen_resultados: "sus políticas de insert y update ya exigen que el examen (modo 'resultados') sea del maestro y que el alumno sea suyo y del mismo grupo que el examen",
+	examen_respuestas: "sus políticas de insert y update ya exigen que el examen (modo 'propio') y la pregunta de ESE examen sean del maestro y que el alumno sea suyo y del mismo grupo",
+	// B19 (supabase/mi_salon_b19_examenes_cola_2026-09.sql): "No presentó"
+	examen_alumnos: "sus políticas de insert y update ya exigen que el examen sea del maestro y que el alumno sea suyo y del mismo grupo que el examen",
+	// B20 (supabase/mi_salon_b20_registro_historico_2026-09.sql): nacen con la revisión en su política
+	calificacion_directa: "sus políticas de insert y update ya exigen que el grupo sea del maestro y que el alumno sea suyo y de ese grupo",
+	ponte_al_dia: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	// B23 (supabase/mi_salon_b23_folio_incidencias_2026-09.sql): contador de folios
+	incidencias_folios: "el docente no la escribe (sin permiso de insert, update ni delete): solo el trigger incidencias_folio, con el grupo de la incidencia que ya pasó la RLS",
 };
+// b20: lo comprobamos también
+{
+	const b20 = fs.readFileSync(path.join(DIR, "mi_salon_b20_registro_historico_2026-09.sql"), "utf8");
+	const refs = /join public\.alumnos a on a\.grupo_id = g\.id\s+where g\.id = grupo_id and g\.maestro_id = \(select auth\.uid\(\)\)\s+and a\.id = alumno_id and a\.maestro_id = \(select auth\.uid\(\)\)/g;
+	const grupoPropio = /exists \(select 1 from public\.grupos g where g\.id = grupo_id and g\.maestro_id = \(select auth\.uid\(\)\)\)/g;
+	ok("b20: calificacion_directa exige grupo propio y alumno propio de ese grupo (insert y update); ponte_al_dia, grupo propio",
+		[(b20.match(refs) || []).length, (b20.match(grupoPropio) || []).length], [2, 2]);
+}
+// Y lo comprobamos, no solo lo decimos
+{
+	const b17 = fs.readFileSync(path.join(DIR, "mi_salon_b17_flujo_libre_2026-09.sql"), "utf8");
+	const ins = /create policy producto_sesion_alumnos_refs_propias_ins on public\.producto_sesion_alumnos\s+as restrictive for insert to authenticated\s+with check \(public\.ref_propia_producto_sesion\(producto_sesion_id\) and public\.ref_propia_alumno\(alumno_id\)\s+and public\.ref_asignacion_mismo_grupo\(producto_sesion_id, alumno_id\)\)/.test(b17);
+	const upd = /create policy producto_sesion_alumnos_refs_propias_upd on public\.producto_sesion_alumnos\s+as restrictive for update to authenticated\s+using \(true\)\s+with check \(public\.ref_propia_producto_sesion\(producto_sesion_id\) and public\.ref_propia_alumno\(alumno_id\)\s+and public\.ref_asignacion_mismo_grupo\(producto_sesion_id, alumno_id\)\)/.test(b17);
+	ok("b17: producto_sesion_alumnos exige producto y alumno propios y del mismo grupo (insert y update)", ins && upd, ins && upd ? "" : JSON.stringify([ins, upd]));
+}
 
 // 1. Políticas por tabla
 const politicas = [...codigo.matchAll(/create policy\s+(\w+)\s+on\s+public\.(\w+)\s+as\s+(\w+)\s+for\s+(\w+)([\s\S]*?);/gi)]

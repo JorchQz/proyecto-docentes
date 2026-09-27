@@ -56,7 +56,8 @@ ok("un estado desconocido cuenta como revisado sin romper el conteo",
 	T.situacionDe([{ id: "x" }], { x: "otro" }, "2026-09-10", HOY).estado, "revisada");
 
 // ── Alumno dado de alta tarde (decisión de Jorge 10): alumnosDe tal cual está en js/tareas.js
-const hacerAlumnosDe = new Function("alumnos", "window", "calPorClave",
+// asignaciones: "¿Para quién?" (2026-09-26); vacío = solo sus grados
+const hacerAlumnosDe = new Function("alumnos", "window", "calPorClave", "asignaciones",
 	extraer(/\n\tfunction alumnosDe\([\s\S]*?\n\t\}/, "alumnosDe") + "\nreturn alumnosDe;");
 const ALCANCE = require("../js/alcance-hoy.js");
 const grupo = [{ id: "viejo", grado: 3, alta: "2026-08-25" }, { id: "nuevo", grado: 3, alta: "2026-09-23" }];

@@ -36,24 +36,28 @@
 			<select id="filtroEstado" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
 				<option value="">Todas</option>
 				<option value="por_revisar">Por revisar</option>
+				<option value="por_completar">Por completar</option>
 				<option value="proxima">Próximas</option>
 				<option value="revisada">Revisadas</option>
 				<option value="sin_fecha">Sin fecha</option>
 				<option value="sin_revisar_cerrada">Quedaron sin revisar</option>
+				<option value="historica">Registro histórico</option>
 			</select>
 		</div>
 
 		<div id="tareasEstado" class="text-center py-16 text-gray-400 text-lg">Cargando tareas...</div>
-		<div id="tareasLista" class="hidden flex flex-col gap-4"></div>
+		<div id="tareasLista" data-captura-zona class="hidden flex flex-col gap-4"></div>
 
 	</div>
 
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>
+	<script src="js/calendario-sep.js"></script>
 	<script src="js/alcance-hoy.js"></script>
 	<script src="js/section-shell.js"></script>
 	<script src="js/tareas.js"></script>

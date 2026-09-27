@@ -449,6 +449,7 @@
 			RUBROS_ATENCION.forEach(function (r) { rubros[r.rubro] = mA ? fraccionRubro(mA.porCampo, r.rubro) : null; });
 			return {
 				id: a.id, nombre: a.nombre, num: a.num, grado: a.grado,
+				examenAproximado: !!(mA && mA.examenAproximado),
 				actual: prom,
 				anterior: comparacion ? promAnt : null,
 				delta: comparacion ? delta(prom, promAnt) : null,
@@ -466,6 +467,11 @@
 				juicio: CAMPOS.some(function (c) {
 					return RD().juicioSinEvidencias(boletaT, c, mA && mA.porCampo ? mA.porCampo[c] : undefined);
 				}),
+				// Algún campo con la calificación capturada directamente (registro histórico, b20): ese
+				// campo no tiene porcentaje de logro y no entra a las gráficas
+				directa: CAMPOS.some(function (c) {
+					return !!(RD().esDirecta && mA && mA.porCampo && RD().esDirecta(mA.porCampo[c]));
+				}),
 			};
 		});
 
@@ -480,6 +486,7 @@
 			cerrados: modelo.alumnos.filter(function (a) { return a.cerrada; }).length,
 			total: modelo.alumnos.length,
 			juicio: modelo.alumnos.filter(function (a) { return a.juicio; }).length,
+			directa: modelo.alumnos.filter(function (a) { return a.directa; }).length,
 		};
 		modelo.grados = grados.map(function (g) {
 			var lista = modelo.alumnos.filter(function (a) { return a.grado === g; });
@@ -498,6 +505,8 @@
 
 		var ids = {};
 		modelo.alumnos.forEach(function (a) { ids[a.id] = true; });
+		// El examen solo es aproximado si entró el del catálogo anterior (los de Mi Salón son exactos)
+		modelo.examenAproximado = modelo.alumnos.some(function (a) { return a.examenAproximado; });
 		modelo.atencion = {
 			lectura: conteo(modelo.alumnos, grados, function (a) {
 				if (!a.fluidez) return null;
@@ -508,7 +517,7 @@
 					var v = a.rubros[def.rubro];
 					return v === null ? null : v < def.umbral;
 				});
-				c.def = def;
+				c.def = def.aproximado && !modelo.examenAproximado ? Object.assign({}, def, { frase: def.frase.replace(" (dato aproximado)", "") }) : def;
 				return c;
 			}),
 			pda: pdaConMayoriaApoyo(actual.avancePda, ids),
@@ -640,6 +649,10 @@
 				? "<p class='j-tile-sub' data-junta-juicio>" + ci.juicio + (ci.juicio === 1 ? " alumno tiene" : " alumnos tienen") +
 					" alguna calificación asignada por juicio docente, sin evidencias registradas en el trimestre.</p>"
 				: "") +
+			(ci.directa > 0
+				? "<p class='j-tile-sub' data-junta-directa>" + ci.directa + (ci.directa === 1 ? " alumno tiene" : " alumnos tienen") +
+					" alguna calificación capturada directamente por el docente: ese campo no tiene porcentaje de logro en esta presentación.</p>"
+				: "") +
 			"<p class='j-tile-sub'>La calificación de la boleta es un juicio del docente; esta presentación muestra porcentajes de logro, no calificaciones.</p>" +
 			(textoCierre(ci) ? "<p class='j-tile-sub' data-junta-cierre>" + esc(textoCierre(ci)) + "</p>" : "") +
 			"</div>";
@@ -649,7 +662,7 @@
 			html: encabezado(modelo, "Panorama del grupo") +
 				"<div class='j-cuerpo'><div class='j-panorama'>" + hero + comparativo + grados + boleta + "</div>" +
 				"<p class='j-nota'>Porcentaje de logro: combina tareas, trabajos, participación y examen de cada campo formativo " +
-				"con los pesos que definió el docente (el examen por campo es aproximado). El promedio de cada alumno es el de sus campos con datos; " +
+				"con los pesos que definió el docente" + (modelo.examenAproximado ? " (el examen por campo es aproximado)" : "") + ". El promedio de cada alumno es el de sus campos con datos; " +
 				"el del grupo, el de sus alumnos. La asistencia y la conducta no cuentan para la calificación: la conducta se informa aparte.</p></div>",
 		};
 	}

@@ -4,7 +4,7 @@
 	- js/listas.js (parte pura): montos en pesos sumados en centavos con redondeo a centavos;
 	  quién cuenta en una lista (activos, bajas que participaron, activos al cerrar); resumen por
 	  columna y avance general; texto e IMAGEN para las familias SIN nombres; recordatorio amable;
-	  historial por alumno ("Cumplió en X de Y"); impresión "Solo para la maestra"; escape.
+	  historial por alumno ("Cumplió en X de Y"); impresión "Solo para uso docente"; escape.
 	- js/exportar.js: hoja "Listas" en el Excel solo si hay listas.
 	- supabase/mi_salon_b15_listas_2026-09.sql: RLS completa, sin anónimo, CHECK, índices,
 	  cascadas y delete_own_account (con lo de b13 y b14).
@@ -72,7 +72,9 @@ ok("texto: la baja no cuenta donde no participó", [rTxt.total, rTxt.hechos, rTx
 ok("monto con cuota $33.33: reunido 83.34 exacto, esperado 99.99, falta = lo que le falta a cada uno (23.32; lo de más de Carla no cubre a Beto)",
 	[rMon.total, rMon.reunido, rMon.esperadoTotal, rMon.falta, rMon.hechos, rMon.aportaron], [3, 8334, 9999, 2332, 2, 3]);
 ok("líneas del resumen (monto con cuota: por alumnos, sin «de $meta»)", res.columnas.map(L.lineaColumna), ["Completaron la cuota 2 de 3; faltan aportaciones de 1 alumno ($23.32)", "Entregaron 3 de 4; faltan 1", "Registrados 1 de 3; faltan 2"]);
-ok("detalle de la cuota: la cuota y lo reunido en total", L.detalleColumna(rMon), "Cuota: $33.33 por alumno. Reunido en total: $83.34.");
+ok("detalle de la cuota para la maestra: la cuota, lo reunido en total y cuánto es de más (Carla aportó $6.67 de más)", [L.detalleColumna(rMon), rMon.demas],
+	["Cuota: $33.33 por alumno. Reunido en total: $83.34 (incluye $6.67 aportados de más, que no cubren la cuota de otros).", 667]);
+ok("detalle de la cuota para las familias: solo la cuota (sin «Reunido en total»)", L.detalleColumna(rMon, true), "Cuota: $33.33 por alumno.");
 ok("avance general: casillas completas entre las que cuentan (truncado)", res.avance, { hechos: 6, total: 10, porcentaje: 60 });
 // Tres centavos que en punto flotante no suman bien
 {
@@ -103,7 +105,8 @@ const NOMBRES = /Ana|López|Beto|Díaz|Carla|Ruiz|Dora|Eva/;
 const meta = { nombre: "Cooperación del festival", grupo: "3° A", escuela: "Escuela Rural Benito Juárez", fecha: "2026-10-20", descripcion: "$33.33 por alumno." };
 const txt = L.textoFamilias(meta, res);
 ok("texto para las familias: lista, grupo, escuela, fecha y resumen por columna", [/^Cooperación del festival\nGrupo: 3° A\nEscuela Rural Benito Juárez\nFecha: 20 de octubre de 2026/.test(txt),
-	/Material de arte: Entregaron 3 de 4; faltan 1\./.test(txt), /Cooperación: Completaron la cuota 2 de 3; faltan aportaciones de 1 alumno \(\$23\.32\)\. Cuota: \$33\.33 por alumno\. Reunido en total: \$83\.34\./.test(txt)], [true, true, true]);
+	/Material de arte: Entregaron 3 de 4; faltan 1\./.test(txt), /Cooperación: Completaron la cuota 2 de 3; faltan aportaciones de 1 alumno \(\$23\.32\)\. Cuota: \$33\.33 por alumno\.\n/.test(txt)], [true, true, true]);
+ok("texto para las familias: sin «Reunido en total» ni lo aportado de más", /Reunido en total|83\.34|de más/.test(txt), false);
 ok("texto para las familias: ningún nombre de alumno", NOMBRES.test(txt), false);
 // Imagen con un ctx falso: cada texto que se dibuja
 const ctxFalso = { font: "", measureText(t) { return { width: String(t).length * (parseInt(/(\d+)px/.exec(this.font)[1], 10) * 0.55) }; } };
@@ -171,7 +174,9 @@ ok("mensaje amable, con el nombre de SU hijo y sin otros alumnos", [/^Hola, buen
 	const aoaR = E.hojaListas([{ lista: lA, valores: vR }], alR);
 	ok("baja: en el Excel su monto va como número y el resumen no le pide el resto",
 		[aoaR.find((f) => f[0] === "Eustaquio Baja (baja)"), aoaR.find((f) => f[0] === "Resumen")],
-		[["Eustaquio Baja (baja)", 33.33, "Sí"], ["Resumen", "Completaron la cuota 2 de 3; faltan aportaciones de 1 alumno ($30)", "Entregaron 1 de 3; faltan 2"]]);
+		[["Eustaquio Baja (baja)", 33.33, "Sí", ""], ["Resumen", "Completaron la cuota 2 de 3; faltan aportaciones de 1 alumno ($30)", "Entregaron 1 de 3; faltan 2"]]);
+	ok("Excel: la columna «Pendiente» le pide a Dos solo lo que le falta, en palabras",
+		aoaR.find((f) => f[0] === "Dos Activo"), ["Dos Activo", 20, "Pendiente", "$30 de «Cooperación» (ya aportó $20); «Permiso»"]);
 }
 
 // ── R21: sobrepago. Lo de más de uno no cubre lo de otro, así que no se compara con una meta ──
@@ -184,7 +189,11 @@ ok("mensaje amable, con el nombre de SU hijo y sin otros alumnos", [/^Hola, buen
 	const q = rS.columnas[0];
 	ok("sobrepago: la línea habla de alumnos al corriente y de lo que falta a los demás, sin «de $meta»",
 		[L.lineaColumna(q), L.detalleColumna(q)],
-		["Completaron la cuota 3 de 6; faltan aportaciones de 3 alumnos ($96.30)", "Cuota: $35.50 por alumno. Reunido en total: $1,010.20."]);
+		["Completaron la cuota 3 de 6; faltan aportaciones de 3 alumnos ($96.30)", "Cuota: $35.50 por alumno. Reunido en total: $1,010.20 (incluye $893.50 aportados de más, que no cubren la cuota de otros)."]);
+	// Pulido tras R22: «Reunido en total: $1,010.20» junto a «faltan … ($96.30)» confundía a las familias
+	const tS = L.textoFamilias(meta, rS);
+	ok("sobrepago, texto para las familias: la línea y la cuota, sin «Reunido en total» ni el total",
+		[/Cooperación: Completaron la cuota 3 de 6; faltan aportaciones de 3 alumnos \(\$96\.30\)\. Cuota: \$35\.50 por alumno\.\n/.test(tS), /Reunido|1,010\.20|893\.50/.test(tS)], [true, false]);
 	const hS = L.paginasImagen(ctxFalso, Object.assign({}, meta, { resumen: rS }));
 	const tsS = [].concat(...hS.map((h) => h.ops.filter((o) => o.t === "texto").map((o) => o.texto)));
 	const barras = [].concat(...hS.map((h) => h.ops.filter((o) => o.t === "rect" && o.h === 20)));
@@ -192,7 +201,114 @@ ok("mensaje amable, con el nombre de SU hijo y sin otros alumnos", [/^Hola, buen
 		[L.fraccionColumna(q), barras.length, barras[1] ? Math.round(barras[1].w / barras[0].w * 100) : null, barras[1] && barras[1].color],
 		[0.5, 2, 50, L.IMG.ambar]);
 	ok("sobrepago: ningún texto compara lo reunido con una meta", tsS.filter((t) => /Reunido \$[\d,.]+ de \$/.test(t)), []);
+	ok("sobrepago, imagen: la cuota sí; «Reunido en total», el total y lo de más no",
+		[tsS.join(" ").includes("Cuota: $35.50 por alumno."), tsS.filter((t) => /Reunido|1,010\.20|893\.50/.test(t))], [true, []]);
+	ok("sin sobrepago: la maestra ve el total sin «de más»",
+		L.detalleColumna(L.resumenLista({ estado: "abierta" }, [cQ], seis, L.mapaValores([{ columna_id: "q", alumno_id: "s1", monto: "35.50" }])).columnas[0]), "Cuota: $35.50 por alumno. Reunido en total: $35.50.");
 	ok("todos completos: una sola línea, sin «faltan»", L.lineaColumna(L.resumenLista({ estado: "abierta" }, [cQ], seis.slice(0, 3), L.mapaValores(vS)).columnas[0]), "Completaron la cuota 3 de 3");
+}
+
+// ── Pulido tras R22: un monto SIN cuota no tiene «completo» → sin barra en la imagen ──
+// Antes: «Reunido $30 (1 aportación)» con una barra ámbar a un tercio, como si faltara algo.
+{
+	const cL = col("l", "monto", "Cooperación libre", 0, null);
+	const cP = col("p", "palomita", "Permiso", 1);
+	const tres = [al("t1", "Uno", 1), al("t2", "Dos", 2), al("t3", "Tres", 3)];
+	const vL = [{ columna_id: "l", alumno_id: "t1", monto: "30" }, { columna_id: "p", alumno_id: "t1", entregado: true }];
+	const rL = L.resumenLista({ estado: "abierta" }, [cL, cP], tres, L.mapaValores(vL));
+	const [libre, permiso] = rL.columnas;
+	ok("sin cuota: sin meta, sin fracción y sin detalle; la palomita sí tiene meta",
+		[L.tieneMeta(libre), L.fraccionColumna(libre), L.detalleColumna(libre), L.detalleColumna(libre, true), L.tieneMeta(permiso), Math.round(L.fraccionColumna(permiso) * 100)],
+		[false, null, "Donativo libre (sin cuota): es voluntario, no deja pendientes ni cuenta en el avance general.", "", true, 33]);
+	const hL = L.paginasImagen(ctxFalso, Object.assign({}, meta, { resumen: rL }));
+	const ops = [].concat(...hL.map((h) => h.ops));
+	const barrasL = ops.filter((o) => o.t === "rect" && o.h === 20);
+	ok("sin cuota, imagen: solo la barra de «Permiso» (fondo y avance); ninguna barra ámbar para el monto",
+		[barrasL.length, barrasL.filter((o) => o.color === L.IMG.ambar).length], [2, 1]);
+	const lineaLibre = ops.find((o) => o.t === "texto" && o.texto === "Reunido $30 (1 aportación)");
+	ok("sin cuota, imagen: la línea va en tinta neutra (ni verde ni ámbar)", lineaLibre && lineaLibre.color, L.IMG.tinta);
+	// Con todos aportando, tampoco sale en verde: no hay «completo» que celebrar
+	const rTodos = L.resumenLista({ estado: "abierta" }, [cL], tres, L.mapaValores(tres.map((a) => ({ columna_id: "l", alumno_id: a.id, monto: "10" }))));
+	const opsT = [].concat(...L.paginasImagen(ctxFalso, Object.assign({}, meta, { resumen: rTodos })).map((h) => h.ops));
+	ok("sin cuota y todos aportaron: sin barra de columna y texto neutro",
+		[opsT.filter((o) => o.t === "rect" && o.h === 20).length, (opsT.find((o) => o.t === "texto" && o.texto === "Reunido $30 (3 aportaciones)") || {}).color], [0, L.IMG.tinta]);
+}
+
+// ── Decisión de Jorge (2026-09-26): donativo libre (monto SIN cuota) es voluntario ──
+// Sin pendientes (sin amarillo, sin «Recordar», fuera de la columna «Pendiente» del Excel), fuera
+// del avance general y del historial por alumno; solo suma lo reunido. Antes: «la aportación de
+// «Donativo»» como pendiente, «Recordar» a quien no dio y el avance general lo contaba.
+{
+	// Funciones nuevas: con el código de antes, la prueba falla en vez de tronar
+	const llamar = (f, ...a) => (typeof L[f] === "function" ? L[f](...a) : "no existe L." + f);
+	const cQ = col("q", "monto", "Cuota", 0, "50");
+	const cD = col("d", "monto", "Donativo", 1, null);
+	const cP = col("p", "palomita", "Permiso", 2);
+	const tres = [al("t1", "Uno", 1), al("t2", "Dos", 2), al("t3", "Tres", 3)];
+	const vD = [
+		{ columna_id: "q", alumno_id: "t1", monto: "50" }, { columna_id: "d", alumno_id: "t1", monto: "30" }, { columna_id: "p", alumno_id: "t1", entregado: true },
+		{ columna_id: "q", alumno_id: "t2", monto: "20" },
+	];
+	const mpD = L.mapaValores(vD);
+	const lD = { id: "LD", nombre: "Kermés", estado: "abierta", fecha: "2026-10-20", listas_columnas: [cQ, cD, cP] };
+	const rD = L.resumenLista(lD, lD.listas_columnas, tres, mpD);
+	const don = rD.columnas[1];
+	ok("donativo libre: nadie queda pendiente; solo suma lo reunido", [don.libre, don.pendientes, don.faltan, don.reunido, don.aportaron, L.lineaColumna(don)], [true, [], 0, 3000, 1, "Reunido $30 (1 aportación)"]);
+	ok("donativo libre: no cuenta en el avance general (solo la cuota y la palomita: 2 de 6)", rD.avance, { hechos: 2, total: 6, porcentaje: 33 });
+	ok("donativo libre: la celda de quien no dio no se ve pendiente (sin amarillo)", [L.cumpleFila({ cuenta: true }, cD, null), L.cumple(cD, null), llamar("esLibre", cD), llamar("esLibre", cQ)], [true, true, true, false]);
+	ok("donativo libre: no entra a lo que se le recuerda a una familia (sin «la aportación de…»)",
+		[L.pendientesDe(rD, "t3", mpD), L.pendientesDe(rD, "t2", mpD)], [["$50 de «Cuota»", "«Permiso»"], ["$30 de «Cuota» (ya aportó $20)", "«Permiso»"]]);
+	// Una lista SOLO con donativo libre: sin avance, sin «Recordar» ni «Pendiente»
+	const lS = { id: "LS", nombre: "Donativo para la kermés", estado: "abierta", fecha: "2026-10-20", listas_columnas: [cD] };
+	const vS = [{ columna_id: "d", alumno_id: "t1", monto: "25" }];
+	const mpS = L.mapaValores(vS);
+	const rS = L.resumenLista(lS, lS.listas_columnas, tres, mpS);
+	ok("solo donativo libre: sin meta, sin avance y nadie con algo que recordarle",
+		[llamar("hayMeta", rS), rS.avance, tres.map((a) => L.pendientesDe(rS, a.id, mpS).length)], [false, { hechos: 0, total: 0, porcentaje: 0 }, [0, 0, 0]]);
+	ok("hayMeta: con cuota, palomita o texto sí", [llamar("hayMeta", rD), llamar("hayMeta", { columnas: [] })], [true, false]);
+	const tsS = [].concat(...L.paginasImagen(ctxFalso, Object.assign({}, meta, { resumen: rS })).map((h) => h.ops.filter((o) => o.t === "texto").map((o) => o.texto)));
+	ok("solo donativo libre, imagen: sin «Avance general» ni porcentaje; con lo reunido", [tsS.includes("Avance general"), tsS.some((t) => / %$/.test(t)), tsS.includes("Reunido $25 (1 aportación)")], [false, false, true]);
+	const tsD = [].concat(...L.paginasImagen(ctxFalso, Object.assign({}, meta, { resumen: rD })).map((h) => h.ops.filter((o) => o.t === "texto").map((o) => o.texto)));
+	ok("con cuota y donativo, imagen: el avance general es el de la cuota y la palomita (33 %)", [tsD.includes("Avance general"), tsD.includes("33 %")], [true, true]);
+	const tD = L.textoFamilias(meta, rD);
+	ok("texto para las familias: el donativo solo con lo reunido, sin «faltan» ni cuota",
+		[/\nDonativo: Reunido \$30 \(1 aportación\)\.\n/.test(tD), /Donativo:[^\n]*(faltan|Cuota|voluntari)/.test(tD)], [true, false]);
+	const impS = L.htmlImpresion(meta, rS, mpS);
+	ok("solo donativo libre, impresión: sin pendientes resaltados ni avance; el encabezado dice «Voluntario»",
+		[/imp-pend/.test(impS), /Avance general/.test(impS), /Donativo<span class='imp-cuota'>Voluntario<\/span>/.test(impS), /<td class=''>\$0<\/td>/.test(impS)], [false, false, true, true]);
+	ok("con cuota y donativo, impresión: quien no dio donativo no sale pendiente en esa celda",
+		(L.htmlImpresion(meta, rD, mpD).match(/<tr><th scope='row'>3\. Tres<\/th>(<td[^>]*>[^<]*<\/td>)+/) || [""])[0],
+		"<tr><th scope='row'>3. Tres</th><td class='imp-pend'>Pendiente</td><td class=''>$0</td><td class='imp-pend'>Pendiente</td>");
+	// Excel
+	const aoaD = E.hojaListas([{ lista: lD, valores: vD }], tres);
+	ok("Excel: el encabezado del donativo dice «voluntario» y la columna «Pendiente» no lo pide",
+		[aoaD[1], aoaD.find((f) => f[0] === "Tres"), aoaD.find((f) => f[0] === "Dos")],
+		[["Alumno", "Cuota (pesos; cuota $50)", "Donativo (pesos; voluntario)", "Permiso", "Pendiente"], ["Tres", 0, 0, "Pendiente", "$50 de «Cuota»; «Permiso»"], ["Dos", 20, 0, "Pendiente", "$30 de «Cuota» (ya aportó $20); «Permiso»"]]);
+	const aoaS = E.hojaListas([{ lista: lS, valores: vS }], tres);
+	ok("Excel, solo donativo libre: sin columna «Pendiente»; el resumen dice lo reunido",
+		[aoaS[1], aoaS[2], aoaS[3], aoaS.find((f) => f[0] === "Resumen")],
+		[["Alumno", "Donativo (pesos; voluntario)"], ["Uno", 25], ["Dos", 0], ["Resumen", "Reunido $25 (1 aportación)"]]);
+	// Historial: el donativo no se «cumple»
+	const lDc = Object.assign({}, lD, { estado: "cerrada", activos_al_cerrar: ["t1", "t2", "t3"] });
+	const vDc = [{ columna_id: "q", alumno_id: "t3", monto: "50" }, { columna_id: "p", alumno_id: "t3", entregado: true }];
+	const mpDc = L.mapaValores(vDc);
+	const rDc = L.resumenLista(lDc, lDc.listas_columnas, tres, mpDc);
+	const lSc = Object.assign({}, lS, { estado: "cerrada", activos_al_cerrar: ["t1", "t2", "t3"] });
+	const rSc = L.resumenLista(lSc, lSc.listas_columnas, tres, mpS);
+	ok("historial: completó la cuota y el permiso sin donativo → «Completo»; una lista solo de donativo no cuenta",
+		[L.estadoEnLista(rDc, "t3", mpDc), L.estadoEnLista(rSc, "t2", mpS), L.estadoEnLista(rSc, "t1", mpS),
+			L.historialAlumno("t3", [{ lista: lDc, resumen: rDc, mapa: mpDc }, { lista: lSc, resumen: L.resumenLista(lSc, lSc.listas_columnas, tres, mpS), mapa: mpS }]).texto],
+		["completo", null, null, "Cumplió en 1 de 1 lista cerrada"]);
+	// Texto de ayuda de «Para las familias», según el tipo de cada columna
+	const soloCuota = L.resumenLista({ estado: "abierta" }, [cQ], tres, mpD);
+	ok("ayuda para las familias: con cuota no promete «cuánto se ha reunido» (a las familias solo va la cuota)",
+		[llamar("ayudaFamilias", soloCuota), /reunido/i.test(llamar("ayudaFamilias", soloCuota))],
+		["Sin nombres de alumnos: solo el resumen (cuántos completaron la cuota, cuánto falta y la cuota por alumno). A cada familia pendiente puedes escribirle en privado con «Recordar por WhatsApp».", false]);
+	ok("ayuda para las familias: solo donativo libre → lo reunido y sin «Recordar»",
+		llamar("ayudaFamilias", rS), "Sin nombres de alumnos: solo el resumen (cuánto se ha reunido).");
+	ok("ayuda para las familias: mixta → cada tipo con lo suyo; cerrada, sin «Recordar»",
+		[llamar("ayudaFamilias", rD), /Recordar/.test(llamar("ayudaFamilias", rD, true))],
+		["Sin nombres de alumnos: solo el resumen (cuántos entregaron; cuántos completaron la cuota, cuánto falta y la cuota por alumno; del donativo libre, cuánto se ha reunido). A cada familia pendiente puedes escribirle en privado con «Recordar por WhatsApp».", false]);
 }
 
 // ── Historial por alumno ─────────────────────────────────────────────────────
@@ -225,7 +341,7 @@ ok("validar lista", [L.validarLista({ nombre: " ", fecha: "2026-10-01" }), L.val
 ok("validar columna: tipo, largo, tope de 12 y cuota", [L.validarColumna({ nombre: "A", tipo: "otro" }), L.validarColumna({ nombre: "A", tipo: "palomita" }, 12), L.validarColumna({ nombre: "A", tipo: "monto", esperado: "-3" }), L.validarColumna({ nombre: "A", tipo: "monto", esperado: "50" }, 3)],
 	["Elige el tipo de columna.", "Una lista puede tener hasta 12 columnas.", "Cantidad esperada: la cantidad no puede ser negativa.", ""]);
 
-// ── Impresión "Solo para la maestra" y escape ────────────────────────────────
+// ── Impresión "Solo para uso docente" y escape ────────────────────────────────
 const MALO = "<img src=x onerror=alert(1)>'\"&";
 {
 	const alM = [al("z1", MALO, 1)];
@@ -233,7 +349,7 @@ const MALO = "<img src=x onerror=alert(1)>'\"&";
 	const lM = { estado: "abierta", nombre: MALO };
 	const mpM = L.mapaValores([{ columna_id: "z", alumno_id: "z1", texto: MALO }]);
 	const h = L.htmlImpresion({ nombre: MALO, grupo: MALO, escuela: MALO, fecha: "2026-10-01", descripcion: MALO }, L.resumenLista(lM, cM, alM, mpM), mpM);
-	ok("impresión: etiqueta «Solo para la maestra» y todo escapado", [/Solo para la maestra · Uso interno\. No se comparte con las familias\./.test(h), /<img/.test(h), (h.match(/&lt;img src=x onerror=alert\(1\)&gt;&#39;&quot;&amp;/g) || []).length >= 5], [true, false, true]);
+	ok("impresión: etiqueta «Solo para uso docente» y todo escapado", [/Solo para uso docente · Uso interno\. No se comparte con las familias\./.test(h), /<img/.test(h), (h.match(/&lt;img src=x onerror=alert\(1\)&gt;&#39;&quot;&amp;/g) || []).length >= 5], [true, false, true]);
 }
 {
 	const h = L.htmlImpresion(meta, res, mapa);
@@ -254,9 +370,10 @@ const MALO = "<img src=x onerror=alert(1)>'\"&";
 	const wb = E.libroXLSX(XLSXFalso, tabla, { listas: [{ lista, valores }], alumnosListas: alumnos });
 	ok("Excel con listas: cuarta hoja «Listas»", wb.SheetNames, ["Concentrado", "Máximos", "Léeme", "Listas"]);
 	const aoa = hojasX["Listas"].aoa;
-	ok("hoja Listas: bloque con nombre, fecha y estado, encabezado, filas (monto como número) y resumen", [aoa[0], aoa[1], aoa[2], aoa[3], aoa[5], aoa[6]],
-		[["Lista", "Festival", "Fecha", "2026-10-20", "Estado", "Abierta"], ["Alumno", "Cooperación (pesos; cuota $33.33)", "Material de arte", "Talla"],
-			["Ana López", 33.33, "Sí", "Talla 8"], ["Beto Díaz", 10.01, "Sí", ""], ["Dora Baja (baja)", "No aplica", "Sí", "No aplica"],
+	ok("hoja Listas: bloque con nombre, fecha y estado, encabezado, filas (monto como número; «Pendiente» en palabras al final) y resumen", [aoa[0], aoa[1], aoa[2], aoa[3], aoa[4], aoa[5], aoa[6]],
+		[["Lista", "Festival", "Fecha", "2026-10-20", "Estado", "Abierta"], ["Alumno", "Cooperación (pesos; cuota $33.33)", "Material de arte", "Talla", "Pendiente"],
+			["Ana López", 33.33, "Sí", "Talla 8", ""], ["Beto Díaz", 10.01, "Sí", "", "$23.32 de «Cooperación» (ya aportó $10.01); el dato de «Talla»"],
+			["Carla Ruiz", 40, "Pendiente", "", "«Material de arte»; el dato de «Talla»"], ["Dora Baja (baja)", "No aplica", "Sí", "No aplica", ""],
 			["Resumen", "Completaron la cuota 2 de 3; faltan aportaciones de 1 alumno ($23.32)", "Entregaron 3 de 4; faltan 1", "Registrados 1 de 3; faltan 2"]]);
 	const hojasLeeme = (mt) => E.hojaLeeme(mt).find((f) => f[0] === "Hojas")[1];
 	ok("Léeme menciona «Listas» solo si la hoja está", [/«Listas»: las listas de cooperación y materiales del grupo/.test(hojasLeeme({ listas: [{ lista, valores }] })), /Listas/.test(hojasLeeme({}))], [true, false]);
@@ -308,17 +425,22 @@ ok("página: navegación en el head, candado y capa de lectura en orden, ficha y
 	[true, true]);
 ok("regla de /salon/ para listas.html", leer("_redirects").indexOf("/salon/listas.html /salon/listas 301") !== -1, true);
 ok("botones de al menos 44 px en la página", (html.match(/<button[^>]*>/g) || []).filter((b) => !/min-h-\[44px\]|h-11 w-11/.test(b)), []);
-ok("etiquetas claras: «Para las familias», «Solo para la maestra» y «Copiar texto para las familias»",
-	[/Para las familias<\/h2>/.test(html), /Solo para la maestra<\/h2>/.test(html), /Copiar texto para las familias/.test(html), /Imprimir \(solo para la maestra\)/.test(html)], [true, true, true, true]);
+ok("etiquetas claras: «Para las familias», «Solo para ti» y «Copiar texto para las familias»",
+	[/Para las familias<\/h2>/.test(html), /Solo para ti<\/h2>/.test(html), /Copiar texto para las familias/.test(html), /Imprimir \(solo para ti\)/.test(html)], [true, true, true, true]);
 ok("Recordar por WhatsApp: solo con teléfono en la ficha (enlaceWhatsApp) y abre aparte sin referer",
 	[/function tieneTelefono\(a\) \{ return !!\(a && a\.tutor_telefono && F && F\.enlaceWhatsApp\(a\.tutor_telefono\)\); \}/.test(js), /id="dlgRecordarAbrir"[^>]*target="_blank" rel="noopener noreferrer"/.test(html)], [true, true]);
+// Pulido tras R22: el botón se llama como en el aviso de privacidad («Recordar por WhatsApp»)
+ok("el botón de la fila dice «Recordar por WhatsApp», como el aviso de privacidad y el diálogo",
+	[/icono\("mensaje"\) \+ "Recordar por WhatsApp<\/button>"/.test(js), /"Recordar<\/button>/.test(js), /el botón "Recordar por WhatsApp"/.test(leer("tienda/privacidad.html")), /<h2 id="dlgRecordarTitulo"[^>]*>Recordar por WhatsApp<\/h2>/.test(html)],
+	[true, false, true, true]);
 // R21: ventana vieja con la lista ya cerrada en otra ventana
 ok("ventana vieja: desmarcar revisa cuántas filas borró (.select) y, si ninguna, relee la lista y avisa",
 	[/\.delete\(\)\.eq\("maestro_id", userId\)\.eq\("columna_id", col\.id\)\.eq\("alumno_id", alId\)\.select\("id"\)/.test(js),
 		/if \(vacio && \(!res\.data \|\| !res\.data\.length\)\) throw errorSinFilas\(/.test(js),
-		/var CERRADA_EN_OTRA = "Esta lista ya se cerró en otra ventana; recarga para verla\.";/.test(js),
+		/var CERRADA_EN_OTRA = "Esta lista ya se cerró en otra ventana\.";/.test(js),
 		/if \(estado === "cerrada"\) mensaje\("error", CERRADA_EN_OTRA\);/.test(js)],
 	[true, true, true, true]);
+ok("ventana vieja (pulido tras R22): el aviso no pide recargar, porque la lista ya se relee sola", /recarga/i.test(js), false);
 ok("ventana vieja: marcar, eliminar, cerrar, editar datos y columnas releen la lista tras un fallo",
 	["listas: guardar valor", "listas: cambiar estado", "listas: eliminar\"", "listas: guardar lista", "listas: guardar columna", "listas: eliminar columna"].map((k) => {
 		const i = js.indexOf("console.error(\"" + k.replace(/"$/, "") + (k.endsWith("\"") ? "\"" : ""));
@@ -326,6 +448,12 @@ ok("ventana vieja: marcar, eliminar, cerrar, editar datos y columnas releen la l
 	}), [true, true, true, true, true, true]);
 ok("ventana vieja: releer trae la lista, sus columnas y lo registrado con la capa de lectura",
 	/async function releerLista\(id\) \{[\s\S]*?window\.Lectura\.uno\(window\.sb\.from\("listas_grupo"\)[\s\S]*?window\.Lectura\.todas\([\s\S]*?pintarDetalle\(\)/.test(js), true);
+// Donativo libre (decisión de Jorge, 2026-09-26): la página
+ok("donativo libre, página: la ayuda de «Para las familias» se arma según las columnas (sin «cuánto se ha reunido» fijo); columna «Avisar» y avance solo con algo que completar",
+	[/<p id="lsAyudaFamilias"[^>]*>/.test(html), /cuánto se ha reunido/.test(html), /el\.ayudaFamilias\.textContent = ayudaFamilias\(resumenDe\(l\), l\.estado === "cerrada"\)/.test(js),
+		/function conAvisar\(l, res\) \{ return l\.estado !== "cerrada" && hayMeta\(res\); \}/.test(js), /\(conAvisar\(l, res\) \? "<th scope='col'[^"]*'>Avisar<\/th>"/.test(js),
+		/el\.resumen\.innerHTML = \(hayMeta\(res\) \?/.test(js), /Sin ella es un donativo libre: voluntario/.test(html)],
+	[true, false, true, true, true, true, true]);
 ok("la imagen se arma con los datos copiados al empezar (no se mezcla si algo cambia mientras se dibuja)", /var datos = Object\.assign\(metaSalida\(l\), \{ resumen: resumenDe\(l\) \}\);\s*var nombreLista = l\.nombre, nombreGrupo/.test(js), true);
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");

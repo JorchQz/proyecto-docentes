@@ -84,7 +84,8 @@
 				if (of.valor !== null) confirmadas++;
 				if (of.fuera) fueraDeEscala.push(c);
 				var prop = motor[c] && motor[c].calificacionPropuesta !== undefined ? motor[c].calificacionPropuesta : null;
-				campos[c] = { oficial: of.valor, propuesta: prop, fuera: of.fuera };
+				// directa: la propuesta es la calificación capturada directamente (registro histórico, b20)
+				campos[c] = { oficial: of.valor, propuesta: prop, fuera: of.fuera, directa: !!(motor[c] && motor[c].directa) };
 			});
 			var completa = confirmadas === CAMPOS.length;
 			return {
@@ -119,7 +120,7 @@
 			return "<span class='text-base font-bold " + colorCalif(c.oficial) + "'>" + c.oficial + "</span>";
 		}
 		return "<span class='block text-xs font-semibold text-gray-500'>pendiente</span>" +
-			(c.propuesta !== null ? "<span class='block text-[11px] text-gray-400'>propuesta " + c.propuesta + "</span>" : "");
+			(c.propuesta !== null ? "<span class='block text-[11px] text-gray-400'>propuesta " + c.propuesta + (c.directa ? " (capturada directamente)" : "") + "</span>" : "");
 	}
 
 	function avisoConfirmacion(lista) {

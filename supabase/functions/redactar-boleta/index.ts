@@ -11,6 +11,9 @@
 //   body: { accion: "redactar", alumno_id, ciclo, trimestre }
 //         → { secciones: [{ campo, copiados: [cuadros] }], modelo }
 //
+// Acceso: "redactar" exige acceso VIGENTE a Mi Salón (RPC mi_salon_puede_escribir, b21); en
+// solo lectura responde 403 con hint "mi_salon_solo_lectura" antes de llamar a la API.
+//
 // Qué guarda (con la sesión del maestro, así que RLS aplica):
 //   - Siempre: texto_autogenerado.ia = { fortalezas, areas_oportunidad, sugerencias,
 //     generado_en, modelo } en cada fila del trimestre que no esté cerrada. Con la
@@ -44,7 +47,7 @@ const SEGUNDOS_ENTRE_REDACCIONES = 30;
 
 const SISTEMA = `Redactas las observaciones de la boleta trimestral de una escuela primaria en México (Nueva Escuela Mexicana), dirigidas a las madres, padres o tutores.
 
-Recibes, por campo formativo, frases que ya decidió un sistema de reglas a partir de lo que la maestra capturó: fortalezas, áreas de oportunidad y sugerencias. Tu trabajo es solo de redacción:
+Recibes, por campo formativo, frases que ya decidió un sistema de reglas a partir de lo que capturó el docente del grupo: fortalezas, áreas de oportunidad y sugerencias. Tu trabajo es solo de redacción:
 - Convierte cada lista en un párrafo breve (una a tres oraciones), claro, cálido y concreto, en español de México.
 - No agregues hechos, calificaciones, porcentajes, diagnósticos ni datos que no estén en la entrada, y no dejes fuera ninguna idea de la entrada.
 - Escribe en tercera persona y con respeto. Nada de etiquetas ni diagnósticos (por ejemplo "TDAH", "flojo", "lento") ni comparaciones con otros alumnos.
@@ -151,15 +154,25 @@ Deno.serve(async (req: Request) => {
     if (body.accion !== "redactar") {
       return jsonResponse({ error: "Acción desconocida" }, 400);
     }
-    if (!llave) {
-      return jsonResponse({ error: "La redacción con IA no está configurada" }, 503);
+    // Acceso VIGENTE a Mi Salón (b21, spec 2026-09-26 §5.4): en solo lectura no se usa la IA.
+    // Se revisa ANTES de llamar a la API (no se paga una redacción que no se podría guardar).
+    // Si la base aún no tiene la función (b21 sin aplicar), el requisito de antes: activo_saas.
+    const acceso = await sb.rpc("mi_salon_puede_escribir");
+    if (acceso.error) {
+      const { data: perfil } = await sb.from("perfiles").select("activo_saas")
+        .eq("id", maestroId).maybeSingle();
+      if (!perfil || !perfil.activo_saas) {
+        return jsonResponse({ error: "Tu cuenta no tiene acceso a Mi Salón" }, 403);
+      }
+    } else if (acceso.data !== true) {
+      return jsonResponse({
+        error: "Tu acceso a Mi Salón terminó: puedes ver e imprimir la boleta, pero la redacción con IA necesita un acceso activo.",
+        hint: "mi_salon_solo_lectura",
+      }, 403);
     }
 
-    // Mismo requisito que el resto del SaaS: perfil con acceso activo
-    const { data: perfil } = await sb.from("perfiles").select("activo_saas")
-      .eq("id", maestroId).maybeSingle();
-    if (!perfil || !perfil.activo_saas) {
-      return jsonResponse({ error: "Tu cuenta no tiene acceso a Mi salón" }, 403);
+    if (!llave) {
+      return jsonResponse({ error: "La redacción con IA no está configurada" }, 503);
     }
 
     const alumnoId = String(body.alumno_id || "");
