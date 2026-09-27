@@ -471,13 +471,14 @@
 	// ── Hoja Incidencias (B13) ───────────────────────────────────────────────
 	/*
 		hojaIncidencias(incidencias, nombrePorId) → filas (aoa) con encabezado.
-		incidencias: [{ fecha, hora, asunto, descripcion, acuerdos, created_at,
+		incidencias: [{ folio, fecha, hora, asunto, descripcion, acuerdos, created_at,
 		                incidencia_alumnos: [{ alumno_id }] }] del grupo, cualquier orden.
 		nombrePorId: { alumno_id: "Nombre" } (los alumnos que siguen en el grupo).
 		Todas las del grupo (no son de un trimestre), la más reciente primero.
 	*/
 	var HOJA_INCIDENCIAS = "Incidencias";
-	var ENC_INCIDENCIAS = ["Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"];
+	// El folio (b23: RDI-ciclo-0001, lo asigna el servidor) va primero, como en el documento
+	var ENC_INCIDENCIAS = ["Folio", "Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"];
 
 	// La hoja solo va si el grupo tiene incidencias (sin ellas, el libro queda como antes de B13)
 	function hayIncidencias(meta) {
@@ -526,6 +527,7 @@
 			var ids = (inc.incidencia_alumnos || []).map(function (v) { return v.alumno_id; }).filter(function (id) { return nombrePorId[id]; });
 			var nombres = ids.sort(enOrden).map(function (id) { return nombrePorId[id]; });
 			return [
+				inc.folio || "",
 				inc.fecha || "",
 				inc.hora ? String(inc.hora).slice(0, 5) : "",
 				inc.asunto || "",
@@ -618,7 +620,7 @@
 		// libro queda como siempre (tres hojas)
 		if (hayIncidencias(meta)) {
 			var hoja4 = XLSX.utils.aoa_to_sheet(hojaIncidencias(meta.incidencias, meta.nombrePorId, meta.ordenPorId));
-			hoja4["!cols"] = [{ wch: 12 }, { wch: 7 }, { wch: 40 }, { wch: 40 }, { wch: 80 }, { wch: 60 }, { wch: 14 }];
+			hoja4["!cols"] = [{ wch: 20 }, { wch: 12 }, { wch: 7 }, { wch: 40 }, { wch: 40 }, { wch: 80 }, { wch: 60 }, { wch: 14 }];
 			XLSX.utils.book_append_sheet(wb, hoja4, HOJA_INCIDENCIAS);
 		}
 
@@ -884,7 +886,7 @@
 		async function leerIncidencias() {
 			var filas = await window.LeerTodo.paginas(function () {
 				return window.sb.from("incidencias")
-					.select("id, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo, grado, num_lista))")
+					.select("id, folio, fecha, hora, asunto, descripcion, acuerdos, created_at, incidencia_alumnos(alumno_id, alumnos(nombre_completo, grado, num_lista))")
 					.eq("maestro_id", ctx.maestroId)
 					.eq("grupo_id", ctx.grupo.id)
 					.order("fecha", { ascending: false })

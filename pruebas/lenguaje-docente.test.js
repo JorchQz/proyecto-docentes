@@ -52,7 +52,7 @@ const TIENDA = ["tienda/conoce-mi-salon.html", "tienda/js/conoce-mi-salon.js", "
 	"tienda/login.html", "tienda/js/login.js", "tienda/js/tienda-common.js", "tienda/js/mis-compras.js", "tienda/mis-compras.html",
 	"tienda/js/admin-mi-salon.js", "tienda/js/admin-mi-salon-cobros.js", "tienda/conoce-sala.html", "tienda/checkout.html"]
 	.filter((f) => fs.existsSync(path.join(RAIZ, f)));
-const SQL = ["supabase/mi_salon_b20_registro_historico_2026-09.sql", "supabase/mi_salon_b21_acceso_2026-09.sql", "supabase/mi_salon_b22_cobros_2026-09.sql"];
+const SQL = ["supabase/mi_salon_b20_registro_historico_2026-09.sql", "supabase/mi_salon_b21_acceso_2026-09.sql", "supabase/mi_salon_b22_cobros_2026-09.sql", "supabase/mi_salon_b23_folio_incidencias_2026-09.sql"];
 const ARCHIVOS = lista(".", ".html").concat(lista("js", ".js"), TIENDA, tsDe("supabase/functions"), SQL);
 
 // Texto sin comentarios, con las líneas en su lugar (para decir la línea)

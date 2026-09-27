@@ -102,6 +102,8 @@ const EXCEPCIONES = {
 	// B20 (supabase/mi_salon_b20_registro_historico_2026-09.sql): nacen con la revisión en su política
 	calificacion_directa: "sus políticas de insert y update ya exigen que el grupo sea del maestro y que el alumno sea suyo y de ese grupo",
 	ponte_al_dia: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	// B23 (supabase/mi_salon_b23_folio_incidencias_2026-09.sql): contador de folios
+	incidencias_folios: "el docente no la escribe (sin permiso de insert, update ni delete): solo el trigger incidencias_folio, con el grupo de la incidencia que ya pasó la RLS",
 };
 // b20: lo comprobamos también
 {

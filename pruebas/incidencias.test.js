@@ -195,24 +195,24 @@ ok("el formulario pide no escribir nombres de otros alumnos en la descripción",
 
 // ── Excel: hoja Incidencias ──────────────────────────────────────────────────
 const hoja = E.hojaIncidencias([
-	{ fecha: "2026-09-20", hora: "08:00:00", asunto: "A", descripcion: "d", acuerdos: null, created_at: "2026-09-20T15:00:00Z", incidencia_alumnos: [{ alumno_id: "1" }] },
-	{ fecha: "2026-09-25", hora: null, asunto: "B", descripcion: "e", acuerdos: "x", created_at: "2026-09-25T15:00:00Z", incidencia_alumnos: [{ alumno_id: "2" }, { alumno_id: "1" }, { alumno_id: "borrado" }] },
-	{ fecha: "2026-09-21", hora: "09:00:00", asunto: "C", descripcion: "f", acuerdos: "", created_at: "", incidencia_alumnos: [] },
+	{ folio: "RDI-2026-2027-0001", fecha: "2026-09-20", hora: "08:00:00", asunto: "A", descripcion: "d", acuerdos: null, created_at: "2026-09-20T15:00:00Z", incidencia_alumnos: [{ alumno_id: "1" }] },
+	{ folio: "RDI-2026-2027-0003", fecha: "2026-09-25", hora: null, asunto: "B", descripcion: "e", acuerdos: "x", created_at: "2026-09-25T15:00:00Z", incidencia_alumnos: [{ alumno_id: "2" }, { alumno_id: "1" }, { alumno_id: "borrado" }] },
+	{ folio: "RDI-2026-2027-0002", fecha: "2026-09-21", hora: "09:00:00", asunto: "C", descripcion: "f", acuerdos: "", created_at: "", incidencia_alumnos: [] },
 ], { 1: "ANA", 2: "LUIS" }, { 1: { grado: 3, num_lista: 1 }, 2: { grado: 3, num_lista: 2 } });
-ok("Excel: encabezado de la hoja Incidencias", hoja[0], ["Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"]);
+ok("Excel: encabezado de la hoja Incidencias (el folio primero, b23)", hoja[0], ["Folio", "Fecha", "Hora", "Asunto", "Alumnos involucrados", "Descripción", "Acuerdos o compromisos", "Registrada el"]);
 ok("Excel: la más reciente primero, hora HH:MM, alumnos en orden de lista con ; y sin alumnos explicado",
 	hoja.slice(1), [
-		["2026-09-25", "", "B", "ANA; LUIS", "e", "x", "2026-09-25"],
-		["2026-09-21", "09:00", "C", "Sin alumnos (se eliminaron del grupo)", "f", "", ""],
-		["2026-09-20", "08:00", "A", "ANA", "d", "", "2026-09-20"],
+		["RDI-2026-2027-0003", "2026-09-25", "", "B", "ANA; LUIS", "e", "x", "2026-09-25"],
+		["RDI-2026-2027-0002", "2026-09-21", "09:00", "C", "Sin alumnos (se eliminaron del grupo)", "f", "", ""],
+		["RDI-2026-2027-0001", "2026-09-20", "08:00", "A", "ANA", "d", "", "2026-09-20"],
 	]);
 ok("Excel: alumnos en orden de lista en multigrado (grado y número de lista, no el orden de captura)",
 	E.hojaIncidencias([{ fecha: "2026-09-25", asunto: "M", descripcion: "d", incidencia_alumnos: [{ alumno_id: "c" }, { alumno_id: "a" }, { alumno_id: "b" }] }],
-		{ a: "ZETA", b: "BETO", c: "ALMA" }, { a: { grado: 3, num_lista: 2 }, b: { grado: 3, num_lista: 7 }, c: { grado: 4, num_lista: 1 } })[1][3], "ZETA; BETO; ALMA");
+		{ a: "ZETA", b: "BETO", c: "ALMA" }, { a: { grado: 3, num_lista: 2 }, b: { grado: 3, num_lista: 7 }, c: { grado: 4, num_lista: 1 } })[1][4], "ZETA; BETO; ALMA");
 ok("Excel: «Registrada el» en la fecha local de México (21:00 del 25 en México son las 03:00Z del 26)",
 	[E.fechaMexico("2026-09-26T03:00:00Z"), E.fechaMexico("2026-09-26T05:59:00+00:00"), E.fechaMexico("2026-09-26T06:00:00Z"), E.fechaMexico(""), E.fechaMexico(null)],
 	["2026-09-25", "2026-09-25", "2026-09-26", "", ""]);
-ok("Excel: la columna usa la fecha de México", E.hojaIncidencias([{ fecha: "2026-09-25", asunto: "N", descripcion: "d", created_at: "2026-09-26T02:30:00Z", incidencia_alumnos: [] }], {})[1][6], "2026-09-25");
+ok("Excel: la columna usa la fecha de México", E.hojaIncidencias([{ fecha: "2026-09-25", asunto: "N", descripcion: "d", created_at: "2026-09-26T02:30:00Z", incidencia_alumnos: [] }], {})[1][7], "2026-09-25");
 ok("Excel: sin incidencias, una fila que lo dice", E.hojaIncidencias([], {}), [hoja[0], ["Sin incidencias registradas en este grupo."]]);
 const hojas = [];
 const XLSXf = {
@@ -271,6 +271,37 @@ ok("delete_own_account de b13 también borra roles_aseo y calendario_ajustes si 
 		/if to_regclass\('public\.calendario_ajustes'\) is not null then\s*execute 'delete from public\.calendario_ajustes where maestro_id = \$1' using v;/.test(codigo)], [true, true]);
 ok("aditiva: no borra tablas, columnas ni datos ajenos",
 	/\bdrop (table|column)\b|\btruncate\b|alter table [^;]* drop /i.test(codigo), false);
+
+// ── Folio (decisión de Jorge, 2026-09-26; b23) ───────────────────────────────
+{
+	const F = "RDI-2026-2027-0007";
+	const incF = Object.assign({}, inc, { folio: F });
+	const dF = { incidencia: incF, alumnos: [al1, al2], grupo: grupo, docente: "Fanny Ruiz" };
+	const hojasF = I.hojasFamilias(dF);
+	ok("folio en cada hoja: los dos tantos de cada familia y el resumen",
+		[hojasF.length, hojasF.every((h) => h.indexOf("<p class='inc-folio'>Folio <strong>" + F + "</strong></p>") !== -1), I.hojaResumen(dF).indexOf("Folio <strong>" + F) !== -1,
+			I.documento({ incidencia: incF, alumnos: [], sinAlumnos: true, grupo: grupo, docente: "" }).indexOf(F) !== -1], [4, true, true, true]);
+	ok("el folio va justo debajo del título", /<h1>Registro de incidencia<\/h1><p class='inc-folio'>/.test(hojasF[0]), true);
+	ok("sin folio (base sin b23) la hoja sale como antes, sin renglón de folio", /inc-folio/.test(I.documento({ incidencia: inc, alumnos: [al1], grupo: grupo, docente: "" })), false);
+	ok("pie de impresión: el folio junto al alumno y el tanto (y en el resumen y la hoja sin alumnos)",
+		[I.piesDeImpresion(dF, "familias").map((p) => p.texto), I.piesDeImpresion(dF, "resumen")[0].texto, I.piesDeImpresion({ incidencia: incF, alumnos: [] }, "sola")[0].texto],
+		[["Registro de incidencia " + F + " · PÉREZ LÓPEZ ANA · Ejemplar para el expediente", "Registro de incidencia " + F + " · PÉREZ LÓPEZ ANA · Copia para la familia",
+			"Registro de incidencia " + F + " · RUIZ SOTO LUIS · Ejemplar para el expediente", "Registro de incidencia " + F + " · RUIZ SOTO LUIS · Copia para la familia"],
+			"Registro de incidencia " + F + " · Resumen para el expediente", "Registro de incidencia " + F + " · Pelea en el recreo"]);
+	ok("lista: la tarjeta muestra el folio antes de la fecha (escapado)",
+		[/<span class='font-semibold text-gray-700' data-folio>Folio RDI-2026-2027-0007<\/span> · 25 de septiembre de 2026/.test(I.tarjeta(Object.assign({ id: "x" }, incF), ["ANA"])),
+			/data-folio/.test(I.tarjeta(Object.assign({ id: "x" }, inc), ["ANA"])), I.tarjeta(Object.assign({ id: "x" }, inc, { folio: "<b>" }), []).indexOf("<b>") === -1], [true, false, true]);
+	ok("la página lee el folio y lo pone en el nombre del PDF; no hay campo para editarlo",
+		[/select\("id, folio, asunto/.test(js), /"Incidencia " \+ \(limpiar\(inc\.folio\)/.test(js), /folio/i.test(html.slice(html.indexOf('id="incForm"'), html.indexOf("</form>"))), /p_folio|folio:/.test(js.slice(js.indexOf('rpc("guardar_incidencia"'), js.indexOf('rpc("guardar_incidencia"') + 500))],
+		[true, true, false, false]);
+	const b23 = fs.readFileSync(path.join(__dirname, "..", "supabase", "mi_salon_b23_folio_incidencias_2026-09.sql"), "utf8");
+	ok("b23: el servidor asigna el folio (trigger BEFORE INSERT con contador por grupo y ciclo bloqueado), índice único, no se edita, candado",
+		[/create trigger incidencias_folio\s+before insert or update of folio on public\.incidencias/.test(b23),
+			/on conflict \(grupo_id, ciclo\) do update set ultimo = f\.ultimo \+ 1/.test(b23),
+			/create unique index if not exists incidencias_folio_unico on public\.incidencias \(grupo_id, folio\)/.test(b23),
+			/hint = 'folio_fijo'/.test(b23), /select public\.mi_salon_candado\('public\.incidencias_folios'\)/.test(b23),
+			/'RDI-' \|\| p_ciclo \|\| '-'/.test(b23)], [true, true, true, true, true, true]);
+}
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

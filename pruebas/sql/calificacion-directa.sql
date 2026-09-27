@@ -6,7 +6,8 @@
 --   2. Cambiarla cambia la confirmada.
 --   3. Confirmar otro número en la boleta (Reportes) pasa a la directa (espejo).
 --   4. Borrarla vuelve al cálculo automático: la boleta deja de estar confirmada.
---   5. Con la boleta cerrada: no se crea ni se cambia; borrarla no toca lo cerrado.
+--   5. Con la boleta cerrada: no se crea, ni se cambia, ni se borra (b23; R27a).
+--      Borrar el alumno (cascada) sí pasa aunque su boleta esté cerrada.
 --   6. Una confirmada en Reportes SIN directa no cambia con otras escrituras.
 --   7. Escala del grado: un 5 en 1° se rechaza (la boleta no se toca).
 --   8. Borrar el alumno (cascada) no falla.
@@ -125,9 +126,10 @@ select public.zz_cd_anotar('con la boleta cerrada no se cambia (boleta_cerrada)'
   public.zz_cd_intentar($q$update public.calificacion_directa set calificacion = 9
     where alumno_id = '00000000-0000-4000-8000-00000000cd03' and campo = 'SAB' and trimestre = 1$q$) like 'P0001|boleta_cerrada',
   public.zz_cd_boleta('00000000-0000-4000-8000-00000000cd03', 'SAB'));
-select public.zz_cd_anotar('con la boleta cerrada, borrar la directa no toca lo entregado',
+select public.zz_cd_anotar('con la boleta cerrada no se borra (boleta_cerrada, b23) y lo entregado no cambia',
   public.zz_cd_intentar($q$delete from public.calificacion_directa
-    where alumno_id = '00000000-0000-4000-8000-00000000cd03' and campo = 'SAB' and trimestre = 1$q$) = 'ok'
+    where alumno_id = '00000000-0000-4000-8000-00000000cd03' and campo = 'SAB' and trimestre = 1$q$) = 'P0001|boleta_cerrada'
+  and (select count(*) from public.calificacion_directa where alumno_id = '00000000-0000-4000-8000-00000000cd03' and campo = 'SAB' and trimestre = 1) = 1
   and public.zz_cd_boleta('00000000-0000-4000-8000-00000000cd03', 'SAB') = '6|true|-|requiere_apoyo|true',
   public.zz_cd_boleta('00000000-0000-4000-8000-00000000cd03', 'SAB'));
 
@@ -145,6 +147,9 @@ select public.zz_cd_anotar('sin acceso vigente: la directa no se guarda (mi_salo
 reset role;
 select public.zz_cd_anotar('borrar el alumno con directa (cascada) no falla',
   public.zz_cd_intentar($q$delete from public.alumnos where id = '00000000-0000-4000-8000-00000000cd04'$q$) = 'ok');
+select public.zz_cd_anotar('borrar el alumno con directa en una boleta CERRADA (cascada) no falla',
+  public.zz_cd_intentar($q$delete from public.alumnos where id = '00000000-0000-4000-8000-00000000cd03'$q$) = 'ok',
+  public.zz_cd_intentar($q$delete from public.alumnos where id = '00000000-0000-4000-8000-00000000cd03'$q$));
 
 select grupo, caso, ok, detalle from public.zz_cd_resultados
 union all

@@ -3,11 +3,11 @@
 	lanzamiento: b20, b21 y b22).
 
 	Varias migraciones reemplazan delete_own_account completa (b10, jissez_interes_secciones, b17,
-	b18, b19, b19a, b20, b21 y b22). La que se aplica AL FINAL es la que queda, así que la última del
-	orden recomendado (b22) debe contener todo lo que borran las anteriores:
+	b18, b19, b19a, b20, b21, b22 y b23). La que se aplica AL FINAL es la que queda, así que la última
+	del orden recomendado (b23) debe contener todo lo que borran las anteriores:
 	  - cada tabla que borra alguna versión anterior también la borra b22 (b19a: búsquedas vacías y
 	    productos finales; b20: calificacion_directa y ponte_al_dia; b21: mi_salon_correos y
-	    mi_salon_accesos) más mi_salon_ordenes;
+	    mi_salon_accesos) más mi_salon_ordenes (b22) e incidencias_folios (b23);
 	  - lo de b13 en adelante va con guarda to_regclass (b22 se puede aplicar aunque falte una tabla);
 	  - las compras de la tienda y los PAGOS de Mi Salón siguen bloqueando el borrado;
 	  - la cabecera de b22 dice que va al final.
@@ -53,6 +53,8 @@ const ORDEN = [
 	"mi_salon_b20_registro_historico_2026-09.sql",
 	"mi_salon_b21_acceso_2026-09.sql",
 	"mi_salon_b22_cobros_2026-09.sql",
+	// Folio de incidencias y ajustes de R27a/R27b (2026-09-26): trae la versión FINAL
+	"mi_salon_b23_folio_incidencias_2026-09.sql",
 ];
 
 // El cuerpo de delete_own_account de un archivo (la última definición, si hay varias)
@@ -85,8 +87,8 @@ ORDEN.slice(0, -1).forEach((f) => {
 });
 ok("la última borra marketplace_busquedas_vacias y productos_finales (R26b)",
 	tu.has("public.marketplace_busquedas_vacias") && tu.has("public.productos_finales"));
-ok("la última borra lo de b20, b21 y b22 (calificacion_directa, ponte_al_dia, mi_salon_correos, mi_salon_accesos, mi_salon_ordenes)",
-	["calificacion_directa", "ponte_al_dia", "mi_salon_correos", "mi_salon_accesos", "mi_salon_ordenes"].filter((t) => !tu.has("public." + t)), []);
+ok("la última borra lo de b20, b21, b22 y b23 (calificacion_directa, ponte_al_dia, mi_salon_correos, mi_salon_accesos, mi_salon_ordenes, incidencias_folios)",
+	["calificacion_directa", "ponte_al_dia", "mi_salon_correos", "mi_salon_accesos", "mi_salon_ordenes", "incidencias_folios"].filter((t) => !tu.has("public." + t)), []);
 ok("un pago de Mi Salón bloquea el borrado (guarda con to_regclass, antes de borrar nada)",
 	/if to_regclass\('public\.mi_salon_accesos'\) is not null then\s+if exists \(select 1 from public\.mi_salon_accesos where docente_id = v and origen = 'pago'\) then[\s\S]*?errcode = 'check_violation'/.test(cu)
 	&& cu.indexOf("origen = 'pago'") < cu.indexOf("delete from public."));
@@ -106,6 +108,7 @@ ok("las tablas nuevas van con guarda to_regclass", sinGuarda.length === 0, sinGu
 const guardas = (cu.match(/if to_regclass\('public\.([a-z_]+)'\) is not null then\s+execute 'delete from public\.([a-z_]+)/g) || [])
 	.map((g) => g.match(/public\.([a-z_]+)'\)[\s\S]*public\.([a-z_]+)/)).filter((x) => x[1] !== x[2]);
 ok("cada guarda revisa la misma tabla que borra", guardas.length === 0);
+ok("la última del orden es b23 (folio de incidencias)", ultima, "mi_salon_b23_folio_incidencias_2026-09.sql");
 ok("la cabecera de la última (" + ultima + ") dice que va al final", /ORDEN: va AL FINAL/.test(leer(ultima)));
 ok("solo la última dice que va al final", ORDEN.slice(0, -1).filter((f) => /ORDEN: va AL FINAL/.test(leer(f))), []);
 

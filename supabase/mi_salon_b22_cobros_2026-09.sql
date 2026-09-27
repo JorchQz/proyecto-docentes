@@ -42,8 +42,8 @@
 --   8. Estado para la app: pago pendiente (OXXO con su referencia) y el aviso del día.
 --   9. Panel: precios, cupo fundador, pagos, métricas y listas de WhatsApp por segmento.
 --
--- 10. delete_own_account: la versión FINAL (§13). ORDEN: va AL FINAL del orden de producción
---     (interes, b16, b17, b18, b18a, b19, b19a, b20, b21, b22; b21b y b22_avisos_cron aparte).
+-- 10. delete_own_account: la de b22 (§13). ORDEN: va antes de b23, que trae la versión FINAL
+--     (interes, b16, b17, b18, b18a, b19, b19a, b20, b21, b22, b23; b21b y b22_avisos_cron aparte).
 --
 -- Decisiones de Jorge (2026-09-26) sobre cobros: los compradores de la tienda con precio fundador
 -- NO ocupan lugar del cupo; en empate entre cupón y fundador gana el cupón; no se vende lo que no
@@ -1489,9 +1489,10 @@ exception when undefined_function then
 end $$;
 
 
--- ── 13. delete_own_account: la versión FINAL (b19a + b20 + b21 + b22) ─────────────────
+-- ── 13. delete_own_account: b19a + b20 + b21 + b22 (la FINAL está en b23) ────────────────
 /*
-  ORDEN: va AL FINAL. Varias migraciones reemplazan delete_own_account completa (b10,
+  ORDEN: b23 (mi_salon_b23_folio_incidencias_2026-09.sql) va después y trae la versión FINAL,
+  que es esta más el contador de folios de incidencias. Varias migraciones reemplazan delete_own_account completa (b10,
   jissez_interes_secciones, b17, b18, b19, b19a, b20, b21 y esta). La que se aplica al último es la
   que queda; esta es la de b21 (b19a completa: marketplace_busquedas_vacias y productos_finales; b20:
   calificacion_directa y ponte_al_dia; b21: mi_salon_correos, mi_salon_accesos y la guarda de pagos
@@ -1501,7 +1502,7 @@ end $$;
   mi_salon_precios y jissez_config son configuración (no son de la cuenta).
   La prueba pruebas/migraciones-orden.test.js exige todo esto de la última del orden.
 */
--- @@delete_own_account inicio (b22: la versión FINAL)
+-- @@delete_own_account inicio (b22; la FINAL está en b23)
 create or replace function public.delete_own_account()
 returns void
 language plpgsql
