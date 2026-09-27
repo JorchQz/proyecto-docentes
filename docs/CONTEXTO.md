@@ -177,7 +177,8 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (71 suites al 2026-09-26).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (72 suites al 2026-09-26).
+> - `registro-historico` (2026-09-26) — lista pegada (Excel, WhatsApp, compuestos, acentos), días de clase y cuadrícula de asistencia, captura en bloque, calificación directa en el motor y la boleta (escala por grado), reglas `es_historico` (Hoy, Inicio, Tareas, Qué le falta, cumpleaños) y `delete_own_account` de b20.
 > - `flujo-libre` (2026-09-26) — regla única de "¿Para quién?" (y el motor con ella), `planAsignacion`, `siguienteDiaDeClase` (CTE, festivos, vacaciones, ajustes, fin de ciclo), `venceTarea`, incompleta/pendiente/completada/sigue incompleta y su valor, sueltas y "Pasar a un proyecto", y los arreglos de R25a. `bandeja-salida` §10: la cola sin señal con las columnas nuevas.
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad;
 >   la conducta no pondera (peso 0 aunque los ajustes traigan otro) y cuadre a mano 28/28/6/33.
@@ -411,6 +412,35 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   (`LeerTodo.paginas`; `porLotes` queda para listas largas de ids). La prueba `pruebas/lecturas-sin-tope.test.js` falla si
   aparece una lectura nueva sin tope; las acotadas por naturaleza (un día, una sesión, un
   alumno) están listadas ahí con su razón.
+- **Registro histórico (spec de Jorge del 2026-09-26, §4; `supabase/mi_salon_b20_registro_historico_2026-09.sql`):**
+  quien entra a mitad del trimestre se pone al día en una tarde con el asistente **"Ponte al día"**
+  (`ponte-al-dia.html`, `js/ponte-al-dia.js`; reglas puras en `js/historico.js`). Se ofrece al crear
+  el grupo si el trimestre ya empezó (el alta deja su avance en `ponte_al_dia`; Inicio lo ofrece
+  para retomarlo mientras esté "en curso"; "Ya no mostrar" lo salta). Cuatro pasos, todos
+  saltables: 1) alumnos, con **lista pegada** de Excel, Word o WhatsApp (`js/lista-pegada.js`,
+  también en el alta: separa paterno, materno y nombre(s), detecta el grado y permite poner el
+  mismo grado a varios); 2) **asistencia pasada** del inicio del trimestre a ayer con los días de
+  clase del calendario SEP y los ajustes del grupo, "todos asistieron" y solo se tocan las faltas
+  (mismo modelo que Asistencia); 3) **actividades en bloque** como sueltas del trimestre
+  (`agregar_actividades_historicas`, que usa `agregar_actividad_suelta`) y su semáforo en una
+  cuadrícula alumno × actividad; exámenes por el camino de "Solo subir resultados"
+  (`examen.html?nuevo=resultados&desde=ponte`); 4) **revisar la boleta** (motor y "cómo se calculó").
+  **Calificación directa del trimestre** (`calificacion_directa`): por alumno y campo, en la escala
+  de su grado (la base la valida con `piso_calificacion_boleta`; no cambia una boleta cerrada). Es
+  una PROPUESTA que el motor pone en lugar de la calculada (`MotorCalificacion.aplicarDirectas`:
+  sin porcentaje; el de las actividades queda aparte); la oficial sigue siendo la que el docente
+  confirma. Se rotula "Capturada directamente" en Reportes, reporte detallado (solo en pantalla),
+  Qué le falta, Recrea/Concentrado y junta; la boleta imprimible no la lleva. "Usar el cálculo
+  automático" (Reportes → Boleta) o "Automática" (el asistente) la borran.
+  **es_historico**: una captura con fecha anterior al día (hora de México) en que se registra
+  (`asistencias`, `calificaciones` con `capturado_en`; `productos_sesion` contra su creación),
+  marcada por triggers. Con ella: "Incompleta" no pasa a la siguiente clase
+  (`AlcanceHoy.cambiosIncompleta` con `historico`), Hoy, Inicio y Tareas no piden revisar tareas
+  históricas (`AlcanceHoy.tareaPorRevisar`; Tareas las rotula "Registro histórico"), Hoy no abre
+  para calificar lo del asistente (`desde_ponte_al_dia`), Qué le falta solo cuenta lo registrado
+  (sin captura, lo histórico o anterior al alta del grupo no se pide), los cumpleaños de Inicio
+  siguen siendo de hoy en adelante, la asistencia no genera avisos ni incidencias (no hay nada que
+  los genere) y la boleta impresa no muestra la marca.
 - **Campo sin evidencias:** sin propuesta; en la boleta se elige a mano (juicio docente)
   para poder confirmar y cerrar. Boleta cerrada: todo de solo lectura (ver arriba).
 - **Evidencia por PDA** (`recalcular_evidencia_pda`): con todas las calificaciones del
@@ -526,6 +556,7 @@ común).
 | `bandas_ppm` | Catálogo de fluidez lectora por grado, tomado de los Estándares Nacionales de Habilidad Lectora de 2010 (Acuerdo 592, **abrogado**): ya no son estándar vigente, así que la interfaz los rotula **"referencia SEP 2010"** ("Referencia SEP 2010 para 2°: 60 a 84 ppm"; niveles "Requiere apoyo", "Cercano a la referencia", "En la referencia", "Avanzado"). `grado` PK, `requiere_apoyo_max`, `cercano_max`, `estandar_max` (avanzado = mayor); las bandas no cambian. Lectura para `authenticated`. La regla de clasificación y el rótulo viven en `CatalogoHabilidades.clasificarPPM` y `textoReferenciaPPM` |
 | `calendario_ajustes` | Días que la maestra cambia del calendario oficial SEP para UN grupo (b14, 2026-09-25): `maestro_id`, `grupo_id` (cascada), `fecha`, `tipo` (`suspension`/`festividad_local`/`otro` = sin clase; `con_clase` = sí hay clase aunque el oficial diga que no, LGE art. 87), `motivo` (≤ 140). UNIQUE `(grupo_id, fecha)`. El calendario oficial NO está en la base: vive en `js/calendario-sep.js` (`CICLOS`; un ciclo nuevo es solo datos). La tabla vieja `dias_no_habiles_extra` (por maestro, sin grupo) sigue sin uso |
 | `roles_aseo` | Rol de aseo de un grupo en un mes (b14): `grupo_id`, `mes` (primer día), `por_dia` (1-5), `inicia_alumno_id`, `continua`, `siguiente_alumno_id` + `siguiente_num_lista` (con quién sigue el mes siguiente), `asignacion` (jsonb `[{fecha, alumnos:[id]}]` con los cambios a mano). UNIQUE `(grupo_id, mes)`. Reglas en `js/rol-aseo.js` |
+| `calificacion_directa` | Registro histórico (b20): calificación del trimestre capturada directamente por alumno y campo: `maestro_id`, `grupo_id`, `alumno_id`, `ciclo`, `trimestre`, `campo` (código corto), `calificacion` (5-10 y la escala del grado), `es_historico` (siempre true), `capturado_en`; UNIQUE `(maestro_id, alumno_id, ciclo, trimestre, campo)`. Propuesta que el motor usa en lugar de la calculada (§3). RLS: propias, grupo propio y alumno de ese grupo. También en b20: `asistencias` y `calificaciones` con `capturado_en` y `es_historico`; `productos_sesion` con `es_historico` y `desde_ponte_al_dia`; `ponte_al_dia` (avance del asistente por grupo: `estado` en_curso/saltado/terminado, `paso`, `pasos_hechos`, `terminado_en`) |
 | `listas_grupo` / `listas_columnas` / `listas_valores` | Listas de cooperación y materiales **por grupo** (b15, 2026-09-26): la lista (`nombre` ≤ 80, `fecha`, `descripcion` ≤ 300, `estado` `abierta`/`cerrada`, `activos_al_cerrar`), sus columnas (`tipo` `palomita`/`texto`/`monto`, `monto_esperado` opcional solo en monto) y un valor por columna y alumno (`entregado`, `texto` ≤ 80 o `monto` numeric(9,2) de 0 a 999,999.99; UNIQUE `(columna_id, alumno_id)`). Cerrada = expediente de solo lectura (trigger + RLS; no se borra). Cascada: grupo → listas → columnas → valores; borrar un alumno borra sus valores; darlo de baja los conserva. RLS `auth.uid() = maestro_id` con grupo, lista abierta, columna y alumno del mismo grupo propios. Reglas y resumen (sumas en centavos) en `js/listas.js`; imagen y texto para familias SIN nombres. Hoja «Listas» del Excel; `delete_own_account` las borra. Migración `supabase/mi_salon_b15_listas_2026-09.sql` |
 
 > **Convención de campos formativos:** las tablas históricas (`calificaciones`,
@@ -683,7 +714,8 @@ de las cuatro tablas centrales se creó directo en la BD (manda la BD).
 | Auth (login/registro) | Completo | `tienda/login.html`, `tienda/js/login.js` (la raíz `index.html` solo reencamina) |
 | Selector de secciones (Tienda · Mi Salón · Sala de Maestros), solo para cuentas con `activo_saas`: pestañas en una fila de marca arriba en PC y tablet (≥ 768 px) y barra fija abajo en celular (respeta el área segura; la página gana espacio al final y lo fijo abajo sube). Un solo componente para las tres secciones. Guarda la **última sección** por dispositivo (`localStorage` `jissez.seccion`): el login vuelve ahí (Mi Salón → panel, o alta si no hay grupo; Tienda → portada; Sala → su página; primera vez, Mi Salón; `?next=` válido se respeta), y entrar por la raíz (`index.html`) lleva a Mi Salón o Sala si fue la última, confirmando antes sesión y acceso. `portal.html` (la pantalla de tres tarjetas de la decisión 12) quedó solo como redirección a la última sección. Los compradores sin acceso ven la tienda igual que antes | Completo (2026-09-25; reemplaza al portal del 2026-09-24) | `js/secciones.js`, `js/navbar.js`, `tienda/js/tienda-common.js` (`montarNav`), `tienda/js/login.js`, `index.html`, `portal.html` + `js/portal.js` |
 | Sala de Maestros ("Próximamente": espacio para compartir material didáctico entre docentes), protegida como Mi Salón | Página de espera (2026-09-25) | `sala-maestros.html`, `js/sala-maestros.js` |
-| Onboarding (crear grupo + alumnos + ciclo + trimestre) | Completo | `onboarding.html` |
+| Onboarding (crear grupo + alumnos + ciclo + trimestre; lista pegada de Excel, Word o WhatsApp) | Completo | `onboarding.html`, `js/lista-pegada.js` |
+| Ponte al día (registro histórico: alumnos, asistencia pasada, actividades en bloque, revisar la boleta y calificación directa) | Completo (2026-09-26, b20; en pruebas) | `ponte-al-dia.html`, `js/ponte-al-dia.js`, `js/historico.js` |
 | Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
 | **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy). Desde 2026-09-25 su cola de guardado vive en el dispositivo (IndexedDB `jissez-bandeja`): sobrevive a recargar o cerrar sin red, se reenvía al volver la red, al volver a primer plano y al abrir Hoy; escrituras idempotentes (upsert por llave; calificación con `evaluado_en` = momento de la captura y "gana la más reciente"); solo se reintenta lo de red y lo que la base rechaza se avisa y sale de la cola (una calificación de una actividad que se quitó en otra pantalla: aviso "Esta actividad se quitó en otra pantalla; tu captura no se aplicó" y la actividad sale de la pantalla, b19a). Un error de la base sin traducir (p. ej. falta una migración) se muestra en español y el detalle va a la consola | Completo (2026-09, B.1; cola persistente 2026-09-25) | `hoy.html`, `js/hoy.js`, `js/bandeja-salida.js` |
 | **Actividades sueltas** (sin proyecto, "guiar sin obligar"): "Actividad suelta" en Hoy (de cualquier día del trimestre en curso; la de un día pasado se califica al agregarla), guardadas en el contenedor "Actividades del trimestre" (`proyectos.tipo = 'sueltas'`, una sesión por fecha y campo); "Pasar a un proyecto" del mismo grupo y trimestre sin perder calificaciones, asignación ni PDA (`mover_producto_a_sesion`, la única vía para cambiar de sesión un producto); "Calificar" desde la tarjeta "Actividades del trimestre" de Proyectos | En la rama, pendiente de publicar (b17 y b19a) | `js/hoy.js`, `js/productos-hoy.js`, `js/pasar-a-proyecto.js`, `js/planeacion.js` |

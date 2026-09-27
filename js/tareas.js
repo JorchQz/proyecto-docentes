@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var prods = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
 			return window.sb.from("productos_sesion")
-				.select("id, sesion_id, nombre, descripcion, grados, campo, fecha_entrega")
+				.select("id, sesion_id, nombre, descripcion, grados, campo, fecha_entrega, created_at, es_historico")
 				.eq("tipo", "tarea").eq("activo", true)
 				.in("sesion_id", lote).order("id");
 		});
@@ -218,6 +218,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Actividad en clase que quedó incompleta: "Por completar" mientras haya alumnos pendientes
 		if (t.porCompletar) return { total: t.porCompletar.length, revisados: 0, conteo: {}, estado: "por_completar" };
 		var s = situacionDe(alumnosDe(t), revisiones[t.id] || {}, t.vence, hoy);
+		// Registro histórico (Ponte al día, spec §4.3): lo que no se capturó no se pide en Hoy
+		if (s.estado === "por_revisar" && !window.AlcanceHoy.tareaPorRevisar(t, t.vence, hoy, t.sesion && t.sesion.fecha)) s.estado = "historica";
 		if (s.estado === "por_revisar" && !window.AlcanceHoy.incluye(t.proyecto, grupoActual, hoy)) s.estado = "sin_revisar_cerrada";
 		return s;
 	}
@@ -245,6 +247,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		proxima: "<span class='inline-flex items-center bg-blue-50 text-blue-800 text-xs px-2 py-1 rounded-full font-semibold'>Próxima</span>",
 		sin_fecha: "<span class='inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold'>Sin fecha</span>",
 		sin_revisar_cerrada: "<span class='inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold'>Quedó sin revisar</span>",
+		historica: "<span class='inline-flex items-center bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap'>Registro histórico</span>",
 	};
 
 	function render(lista) {
@@ -280,6 +283,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "<a href='hoy.html#pendientes' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition'>Revisar en Hoy</a>"
 				: s.estado === "por_revisar"
 				? "<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition'>Revisar en Hoy</a>"
+				: s.estado === "historica"
+				? "<span class='text-xs text-gray-500'>Es del registro histórico (Ponte al día): solo cuenta lo que capturaste; no se pide en Hoy.</span>"
 				: s.estado === "sin_revisar_cerrada"
 				? "<span class='text-xs text-gray-500'>Su proyecto terminó hace más de " + window.AlcanceHoy.DIAS_RECIENTES + " días y es de otro trimestre: ya no aparece en Hoy.</span>"
 				: "";

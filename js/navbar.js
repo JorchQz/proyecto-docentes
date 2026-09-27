@@ -113,6 +113,8 @@ var Navegacion = (function () {
 		"reporte-alumno": "reportes",
 		junta: "reportes",
 		exportar: "reportes",
+		// Ponte al día (registro histórico): se llega desde Inicio
+		"ponte-al-dia": "dashboard",
 	};
 
 	var TITULOS = {
@@ -121,7 +123,7 @@ var Navegacion = (function () {
 		evaluacion_diagnostica: "Diagnóstico", evaluacion_formativa: "Evaluación formativa", examen: "Exámenes",
 		reportes: "Reportes", boleta: "Boleta", "reporte-alumno": "Reporte del alumno", junta: "Junta de padres",
 		exportar: "Exportar", "mi-grupo": "Mi grupo", incidencias: "Incidencias", "mi-cuenta": "Mi cuenta", ajustes: "Ajustes",
-		"sala-maestros": "Sala de Maestros", calendario: "Calendario", listas: "Listas",
+		"sala-maestros": "Sala de Maestros", calendario: "Calendario", listas: "Listas", "ponte-al-dia": "Ponte al día",
 	};
 
 	// Accesos rápidos de la barra de abajo (celular y tablet vertical). Sala tiene un solo

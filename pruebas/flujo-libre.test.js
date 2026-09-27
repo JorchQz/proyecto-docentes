@@ -174,7 +174,8 @@ intentar("incompleta", function () {
 	const h = leer("js/hoy.js"), hh = leer("hoy.html");
 	ok("Hoy: botón Incompleta en las actividades en clase y bloque «Pendientes de la clase anterior»",
 		[/chip\("Incompleta", cal\.estado_entrega === "incompleto"/.test(h), /data-incompleta='1'/.test(h), /id="pendientes"/.test(hh) && /Pendientes de la clase anterior/.test(hh),
-			/cambiosIncompleta\("marcar", \{ hoy: hoy, ajustes: ajustesCal \}\)/.test(h)], [true, true, true, true]);
+			// (b20: con historico, una actividad de un día anterior al de su creación no pasa a la siguiente clase)
+			/cambiosIncompleta\("marcar", \{ hoy: hoy, ajustes: ajustesCal,[\s\S]{0,200}historico: window\.AlcanceHoy\.esHistorico\(producto/.test(h)], [true, true, true, true]);
 	ok("Hoy: quien faltó hoy sigue pendiente", /if \(falto && pendiente\)/.test(h) && /Faltó hoy: queda pendiente para su siguiente clase\./.test(h), true);
 	ok("Tareas: estado «Por completar» e Inicio: su conteo", [/por_completar: "<span/.test(leer("js/tareas.js")), /value="por_completar">Por completar</.test(leer("tareas.html")),
 		/Por completar de la clase anterior/.test(leer("js/dashboard.js"))], [true, true, true]);

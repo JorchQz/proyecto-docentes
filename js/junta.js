@@ -467,6 +467,11 @@
 				juicio: CAMPOS.some(function (c) {
 					return RD().juicioSinEvidencias(boletaT, c, mA && mA.porCampo ? mA.porCampo[c] : undefined);
 				}),
+				// Algún campo con la calificación capturada directamente (registro histórico, b20): ese
+				// campo no tiene porcentaje de logro y no entra a las gráficas
+				directa: CAMPOS.some(function (c) {
+					return !!(RD().esDirecta && mA && mA.porCampo && RD().esDirecta(mA.porCampo[c]));
+				}),
 			};
 		});
 
@@ -481,6 +486,7 @@
 			cerrados: modelo.alumnos.filter(function (a) { return a.cerrada; }).length,
 			total: modelo.alumnos.length,
 			juicio: modelo.alumnos.filter(function (a) { return a.juicio; }).length,
+			directa: modelo.alumnos.filter(function (a) { return a.directa; }).length,
 		};
 		modelo.grados = grados.map(function (g) {
 			var lista = modelo.alumnos.filter(function (a) { return a.grado === g; });
@@ -642,6 +648,10 @@
 			(ci.juicio > 0
 				? "<p class='j-tile-sub' data-junta-juicio>" + ci.juicio + (ci.juicio === 1 ? " alumno tiene" : " alumnos tienen") +
 					" alguna calificación asignada por juicio docente, sin evidencias registradas en el trimestre.</p>"
+				: "") +
+			(ci.directa > 0
+				? "<p class='j-tile-sub' data-junta-directa>" + ci.directa + (ci.directa === 1 ? " alumno tiene" : " alumnos tienen") +
+					" alguna calificación capturada directamente por el docente: ese campo no tiene porcentaje de logro en esta presentación.</p>"
 				: "") +
 			"<p class='j-tile-sub'>La calificación de la boleta es un juicio del docente; esta presentación muestra porcentajes de logro, no calificaciones.</p>" +
 			(textoCierre(ci) ? "<p class='j-tile-sub' data-junta-cierre>" + esc(textoCierre(ci)) + "</p>" : "") +

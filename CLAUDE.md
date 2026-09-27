@@ -42,6 +42,7 @@ Manual testing checklist is in `docs/TESTING.md`.
 - `js/motor-calificacion.js` — The only grade formula; percent → grade conversion happens only in SQL (`calcular_calificacion_boleta`)
 - `js/alcance-hoy.js` — Rules shared by "Hoy", Inicio and Tareas (project scope, task due date, day-close count, paged reads past Supabase's 1000-row cap)
 - `js/textos-boleta.js`, `js/reporte-datos.js` — Report-card text proposals (Capa 1) and the data layer shared by boleta, reporte, junta and exportación
+- `js/historico.js`, `js/lista-pegada.js`, `js/ponte-al-dia.js` — Historic record (b20): pasted student list, the "Ponte al día" wizard (past attendance grid, bulk activities, review the boleta) and the direct trimester grade; `es_historico` rules live in `js/alcance-hoy.js`
 - `docs/CONTEXTO.md` — Single source of truth: product spec, NEM model, full data model
 - `docs/plantilla-proyecto.md` — Printable template for designing projects
 - `bot/` — Docs for the external planning-generator bot (writes to `dosificacion_*`)
@@ -65,6 +66,8 @@ tienda/login.html (login/register)
 dashboard.html (Inicio)
   → hoy.html, asistencia.html, mi-grupo.html, reportes.html, crear_proyecto.html, ...
 mi-grupo.html → "Crear otro grupo" → onboarding.html?nuevo=1 (adds a group, keeps the others)
+onboarding.html → ponte-al-dia.html?desde=alta     [the group's trimester already started: historic
+                                                    record in 4 skippable steps; resumed from Inicio]
 ```
 
 Protected pages check the session and the Mi Salón access on load; without a session they go to the login, without access to the store.
@@ -94,6 +97,7 @@ Full, verified schema is in `docs/CONTEXTO.md §6`. Quick reference:
 | `calendario_ajustes`, `roles_aseo` | per-group adjustments to the official SEP calendar (`js/calendario-sep.js`, data only: attendance % still counts the days the teacher took roll) and the optional cleaning roster; page `calendario.html` |
 | `listas_grupo`, `listas_columnas`, `listas_valores` | per-group cooperation/materials lists (checkbox, text, peso amounts; an amount without quota is a voluntary donation: no pending, not in the overall progress); anything shared with families carries NO student names; closed lists are a read-only record; page `listas.html` |
 | `examenes_grupo`, `examen_preguntas`, `examen_respuestas`, `examen_resultados`, `examen_alumnos` | Mi Salón exams (b18, b19): `modo` `resultados` (hits per campo per student) or `propio` (questions: multiple choice, true/false, fill-in, open; answers by tap, camera scan or by hand). `examen_alumnos.no_presento` (b19): does not count for or against and lets the exam close as Calificado. Several exams in a trimester ADD UP (hits / questions per campo) in the motor's exam rubric. Answers, results and "No presentó" carry a `captura_id` mark and go through the offline queue |
+| `calificacion_directa`, `ponte_al_dia` | Historic record (b20): the trimester grade typed directly per student and campo (a proposal the motor uses instead of the calculated one, `MotorCalificacion.aplicarDirectas`; within the grade's scale; the official grade is still the confirmed one) and the wizard's progress per group. `asistencias`/`calificaciones` gain `capturado_en` + `es_historico`, `productos_sesion` gains `es_historico` + `desde_ponte_al_dia` (set by triggers; historic items never become pending in Hoy/Inicio/Tareas) |
 | `interes_secciones` | "Avísame" requests for sections not open yet (`usuario_id`, `seccion` 'sala'/'mi_salon', `created_at`); one row per account and section, removable from the same page (`tienda/js/interes-seccion.js`) |
 
 Campo formativo convention: legacy tables store the long name ("Lenguajes", …); new tables (`productos_sesion`, `boleta_trimestral`) store short codes (`LEN`/`SAB`/`ETI`/`DHL`). The mapping lives in `js/campos-formativos.js` (the frontend applies it on write) and, for the SQL function that creates loose activities (`agregar_actividad_suelta`, b17), in its SQL twin `campo_largo()`; keep both in sync.

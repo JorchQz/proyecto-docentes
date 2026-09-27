@@ -522,10 +522,11 @@ async function iniciarExamenes() {
 	// ══════════════════════════════════════════════════════════════════════════════
 	// Nuevo examen / editar datos / duplicar
 	// ══════════════════════════════════════════════════════════════════════════════
-	function abrirDialogoExamen(ex, base) {
+	// inicial (opcional): { modo } preelegido en un examen nuevo (Ponte al día abre "Solo subir resultados")
+	function abrirDialogoExamen(ex, base, inicial) {
 		var nuevo = !ex;
 		var d = el.dlgExamen;
-		var modo = ex ? ex.modo : (base ? base.modo : null);
+		var modo = ex ? ex.modo : (base ? base.modo : ((inicial && inicial.modo) || null));
 		var fuente = ex || base || {};
 		var grados = (fuente.grados && fuente.grados.length ? fuente.grados : gradosGrupo).map(Number);
 		var trimestre = fuente.trimestre || grupo.trimestre_actual || 1;
@@ -890,6 +891,17 @@ async function iniciarExamenes() {
 	el.subtitulo.textContent = partes.join(" · ");
 	mostrar();
 	window.addEventListener("hashchange", function () { mensaje(null); mostrar(); });
+	/*
+		Registro histórico (Ponte al día, paso 3): examen.html?nuevo=resultados&desde=ponte abre el
+		camino de siempre, "Solo subir resultados", con su fecha editable (la del examen que ya se
+		aplicó), y deja a la vista cómo volver al asistente.
+	*/
+	var params = new URLSearchParams(window.location.search);
+	if (params.get("desde") === "ponte") {
+		var volver = document.getElementById("exPonte");
+		if (volver) volver.classList.remove("hidden");
+	}
+	if (params.get("nuevo") === "resultados" && !window.location.hash) abrirDialogoExamen(null, null, { modo: "resultados" });
 	// Lo pendiente de otra vez (o de otra ventana) se intenta enviar ya
 	if (bandeja) bandeja.iniciar();
 }

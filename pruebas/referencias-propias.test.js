@@ -99,7 +99,18 @@ const EXCEPCIONES = {
 	examen_respuestas: "sus políticas de insert y update ya exigen que el examen (modo 'propio') y la pregunta de ESE examen sean del maestro y que el alumno sea suyo y del mismo grupo",
 	// B19 (supabase/mi_salon_b19_examenes_cola_2026-09.sql): "No presentó"
 	examen_alumnos: "sus políticas de insert y update ya exigen que el examen sea del maestro y que el alumno sea suyo y del mismo grupo que el examen",
+	// B20 (supabase/mi_salon_b20_registro_historico_2026-09.sql): nacen con la revisión en su política
+	calificacion_directa: "sus políticas de insert y update ya exigen que el grupo sea del maestro y que el alumno sea suyo y de ese grupo",
+	ponte_al_dia: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
 };
+// b20: lo comprobamos también
+{
+	const b20 = fs.readFileSync(path.join(DIR, "mi_salon_b20_registro_historico_2026-09.sql"), "utf8");
+	const refs = /join public\.alumnos a on a\.grupo_id = g\.id\s+where g\.id = grupo_id and g\.maestro_id = \(select auth\.uid\(\)\)\s+and a\.id = alumno_id and a\.maestro_id = \(select auth\.uid\(\)\)/g;
+	const grupoPropio = /exists \(select 1 from public\.grupos g where g\.id = grupo_id and g\.maestro_id = \(select auth\.uid\(\)\)\)/g;
+	ok("b20: calificacion_directa exige grupo propio y alumno propio de ese grupo (insert y update); ponte_al_dia, grupo propio",
+		[(b20.match(refs) || []).length, (b20.match(grupoPropio) || []).length], [2, 2]);
+}
 // Y lo comprobamos, no solo lo decimos
 {
 	const b17 = fs.readFileSync(path.join(DIR, "mi_salon_b17_flujo_libre_2026-09.sql"), "utf8");

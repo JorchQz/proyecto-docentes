@@ -632,7 +632,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!sesiones.length) return;
 		var productos = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
 			return window.sb.from("productos_sesion")
-				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden, created_at")
+				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden, created_at, es_historico, desde_ponte_al_dia")
 				.in("sesion_id", lote).eq("activo", true)
 				.order("orden").order("id");
 		});
@@ -659,6 +659,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (!s || !s.fecha || s.fecha >= hoy || p.tipo === "tarea") return;
 			if (!window.AlcanceHoy.esSueltas(proyectoPorId[s.proyecto_id])) return;
 			if (p.id !== pedida && fechaLocal(p.created_at) !== hoy) return;
+			// Las del asistente Ponte al día ya se calificaron en su cuadrícula: no llenan Hoy (b20)
+			if (p.id !== pedida && !window.AlcanceHoy.abrirParaCalificar(p)) return;
 			if (sesionesHoy.indexOf(s) === -1) sesionesHoy.push(s);
 			if (p.id === pedida) sesionPedida = s.id;
 		});
@@ -677,10 +679,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Tareas por revisar: vencen hoy o antes (las de días pasados siguen ahí
 		// hasta que el maestro las revise)
+		// Las del registro histórico no (spec §4.3: lo que no se capturó al ponerse al día no se pide
+		// aquí; AlcanceHoy.tareaPorRevisar, la misma regla de Inicio y Tareas)
 		tareas = productos.filter(function (p) {
 			if (p.tipo !== "tarea") return false;
-			var vence = venceDe(p);
-			return vence && vence <= hoy;
+			return window.AlcanceHoy.tareaPorRevisar(p, venceDe(p), hoy, p.sesion && p.sesion.fecha);
 		}).sort(function (a, b) {
 			var fa = venceDe(a) || "";
 			var fb = venceDe(b) || "";
@@ -1361,7 +1364,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// del calendario SEP y los ajustes del grupo; tocarla otra vez la quita
 			guardarCalificacion(alumno, producto, cal.estado_entrega === "incompleto"
 				? Object.assign({ estado_entrega: null, nivel: null }, sinIncompleta)
-				: window.AlcanceHoy.cambiosIncompleta("marcar", { hoy: hoy, ajustes: ajustesCal }));
+				: window.AlcanceHoy.cambiosIncompleta("marcar", { hoy: hoy, ajustes: ajustesCal,
+					// Actividad histórica (de un día anterior al de su creación): no pasa a la siguiente clase
+					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion && producto.sesion.fecha) }));
 		} else if (btn.dataset.estado) {
 			var nuevoEstado = cal.estado_entrega === btn.dataset.estado ? null : btn.dataset.estado;
 			guardarCalificacion(alumno, producto, Object.assign({ estado_entrega: nuevoEstado, nivel: null }, sinIncompleta));
