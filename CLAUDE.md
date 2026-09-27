@@ -37,6 +37,8 @@ Manual testing checklist is in `docs/TESTING.md`.
 - `js/navbar.js` — Shared nav rendered on every protected page (sidebar / hamburger; loaded in `<head>`)
 - `js/secciones.js`, `js/saas-guard.js` — Section switcher (Tienda / Mi Salón / Sala) and the Mi Salón access gate
 - `js/bandeja-salida.js` — Offline queue for "Hoy" and Exámenes (IndexedDB, per-field capture marks)
+- `js/texto-sesion.js` — How grade keys ("1") and work-group keys ("Morado") of a session's differentiated text are labeled and ordered (Inicio, Actividades, Crear proyecto); format in `docs/CONTEXTO.md §4`
+- `js/importador.js`, `scripts/cargar-pp-niveles.js` — Bot project import (translates `pda_sesion` to catalog ids, builds `contenidos_pda`) and the one-transaction loader that imports a bot project with per-work-group products and "¿Para quién?" from a private JSON plan (`--simular` / `--aplicar`)
 - `js/productos-hoy.js`, `js/para-quien.js` — "¿Para quién?" rules (whole group, grades or chosen students → `producto_sesion_alumnos`), loose-activity validation and the shared dialog used by Crear proyecto
 - `js/examen-modelo.js`, `js/examen.js`, `js/examen-propio.js`, `js/examen-hoja.js`, `js/examen-lector.js`, `js/examen-camara.js` — Mi Salón exams: upload results or build an exam, printable answer sheet (QR + 4 markers), in-browser camera reader, "No presentó"
 - `js/grupo-activo.js` — The only place that decides the active group (selector in the nav)

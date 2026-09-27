@@ -508,6 +508,30 @@ Una buena planeación multigrado combina ambos: INICIO suele ser "todos" (detona
 DESARROLLO suele ser "diferenciado" (trabajo por nivel), CIERRE suele ser "todos" (puesta en
 común).
 
+### Grupos de trabajo por nivel (2026-09-27, PP-NIVELES de Fanny)
+Cuando el grupo trabaja por niveles que no son grados (lectoescritura: Morado, Naranja, Azul;
+matemáticas: Círculos, Triángulos, Cuadrados), los niveles sirven SOLO para asignar a cada alumno
+lo que la docente revisa: la lista, la asistencia y la boleta siguen por grado.
+- **Texto de la sesión:** `*_actividades.diferenciado` (y `*_diferenciado`) aceptan, además de
+  las llaves de grado (`"1"` a `"6"`), llaves de **grupo de trabajo** (`"Morado"`, `"Círculos"`,
+  `"Morado y Naranja"`). Con `mode: "todos"` pueden convivir los pasos de todo el grupo (`todos`) y
+  los de cada grupo (`diferenciado`): `{ "mode": "todos", "todos": [...], "diferenciado":
+  { "Morado": [...], "Azul": [...] }, "orden_grupos": ["Morado", "Naranja", "Azul"] }`.
+  `orden_grupos` (opcional) guarda el orden, porque jsonb no conserva el de las llaves.
+- **Cómo se lee** (`js/texto-sesion.js`, lo usan Inicio, Actividades y Crear proyecto): llave de
+  grado → "Grado 1:" (texto de la fase) o "1°:" (pasos y tareas); llave de grupo → tal cual
+  ("Morado: …"); primero los pasos de todo el grupo, luego los grados en orden y luego los grupos
+  en el orden de `orden_grupos` (sin él, alfabético). Crear proyecto los muestra en el recuadro
+  "Por grupo de trabajo" y los guarda igual (antes se perdían al guardar).
+- **Tareas** (`cierre_tareas`): van **por grado** (las únicas que el materializador convierte en
+  productos); con el cierre "igual para todos" se eligen "Tareas iguales para todos" o "Tareas por
+  grado" (antes, guardar un proyecto con cierre común y tareas por grado las borraba).
+- **Productos:** un trabajo por grupo, con nombre que lo dice ("… · Naranja") y "¿Para quién?"
+  alumno por alumno (`producto_sesion_alumnos`); se ligan a los PDA del nivel (un alumno de 2° en
+  Morado se evalúa con los de 1°: b24, abajo). Se cargan con `scripts/cargar-pp-niveles.js` desde un
+  plan en JSON (con nombres de alumnos: vive en `docs/referencia/`, fuera de git); la tabla legible
+  de PP-NIVELES está en `docs/referencia/pp-niveles-asignacion.md`.
+
 ---
 
 ## 5. Stack técnico
@@ -564,7 +588,7 @@ común).
 | `sesiones` | `proyecto_id`, `maestro_id`, `numero_sesion`, `duracion` (text, ej. `"90 min"`), `fecha`, `campo_formativo`, `momento`, `inicio_todos`/`desarrollo_todos`/`cierre_todos` (text), `inicio_actividades`/`desarrollo_actividades`/`cierre_actividades`/`cierre_tareas` (jsonb), `inicio_diferenciado`/`desarrollo_diferenciado`/`cierre_diferenciado` (jsonb), `pda_sesion` (jsonb), `recursos` (jsonb), `criterios_evaluacion`, `estado_sesion` (`pendiente`/`activa`/`completada`/`recorrida`), `notas_cierre`, `observaciones` |
 | `tareas` | **En desuso (0 filas; nadie la escribe desde 2026-09-23).** Las tareas son `productos_sesion` tipo `tarea`: se revisan en "Hoy" y `tareas.html` las sigue desde ahí. Columnas: `sesion_id`, `proyecto_id`, `grupo_id`, `maestro_id`, `descripcion`, `grado`, `fecha_asignada`, `fecha_revision`, `revisada` |
 | `calificaciones` | `alumno_id`, `maestro_id`, `sesion_id`, `proyecto_id`, `grupo_id`, `tipo` (mismo vocabulario que `productos_sesion.tipo` — `tarea`/`trabajo`/`producto_final`/`examen`/`otro` — más `participacion`/`conducta` legacy y `actividad` legacy sin escritores; **con `producto_sesion_id` el trigger `calificaciones_tipo_desde_producto` copia el tipo del producto**), `descripcion`, `calificacion` (numeric 5–10), `entrego` (bool), `fecha`, `grado`, `campo_formativo` (nombre largo). **Nuevo grano (2026-09):** `producto_sesion_id` (FK a `productos_sesion`), `estado_entrega` (`entregado`/`incompleto`/`no_entregado`/`justificado`/`no_aplica`), `nivel` (semáforo), `puntaje` (0–10), `retroalimentacion` (visible a padres), `nota_privada`, `evaluado_en`; índice único parcial `(maestro_id, alumno_id, producto_sesion_id)`. Los tipos `participacion`/`conducta` ya **no se escriben** aquí (ver `registro_diario`). **Integridad (b19a):** el trigger `calificaciones_desde_producto` rechaza escribir en un producto quitado (`activo` false; P0001, hint `producto_inactivo`, que la cola de Hoy trata como definitivo) y copia siempre `sesion_id` y `proyecto_id` del producto; las políticas restrictivas `calificaciones_mismo_grupo_*` exigen que alumno, producto y `grupo_id` sean del mismo grupo |
-| `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`origen`** (`automatico` = la dejó el trigger al calificar un producto · `maestro` = la ajustó a mano; el trigger nunca pisa las del maestro), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha` |
+| `evaluacion_formativa` | `maestro_id`, `sesion_id`, `alumno_id`, `criterio` (texto), **`origen`** (`automatico` = la dejó el trigger al calificar un producto · `maestro` = la ajustó a mano; el trigger nunca pisa las del maestro), **`sesion_pda_id`** (FK a `sesiones_pda` — obligatorio de facto en filas nuevas: la pantalla lo resuelve siempre, con backfill perezoso para sesiones viejas), `semaforo` (`logrado`/`en_proceso`/`requiere_apoyo`), `observacion`, `fecha`. La evidencia va a los PDA ligados al producto que son del grado del alumno; con **b24** (`pda_de_alumno_en_producto`, 2026-09-27, en pruebas; en producción con el OK de Jorge), un alumno INCLUIDO de otro grado en un producto sin PDA de su grado deja evidencia en los PDA del producto (un alumno de 2° que trabaja en Morado → PDA de 1°) |
 | `sesiones_pda` | `sesion_id` (FK `sesiones`, CASCADE), `pda_id` (FK `catalogo_pda`, **nullable** desde B.5 — antes era NOT NULL y un criterio libre reventaba la materialización), `grado` (1–6), `criterio_aplicado`, UNIQUE `(sesion_id, pda_id, grado)` y, para el criterio libre, UNIQUE `(sesion_id, grado, criterio_aplicado)` cuando `pda_id IS NULL`. Espejo estructurado del jsonb `pda_sesion`; lo materializan `js/sesiones-materializar.js` (importador y crear_proyecto) y el backfill perezoso de `evaluacion_formativa.js` |
 | `productos_sesion` | Lo calificable de cada sesión: `sesion_id`, `maestro_id`, `tipo` (`trabajo`/`tarea`/`producto_final`/`examen`/`otro`), `nombre`, `descripcion`, `grados` (text[], SIEMPRE orden ascendente), `modalidad` (`compartida`/`diferenciada`), `campo` (**código corto** `LEN`/`SAB`/`ETI`/`DHL`), `orden`, `activo` (false = no cuenta en máximos), `origen` (`importado`/`backfill`/`maestro`/`bot` — `backfill` = producto genérico pendiente de enriquecer con el nombre real), `fecha_entrega` (tareas). `sesion_id` solo cambia con `mover_producto_a_sesion` ("Pasar a un proyecto", trigger `productos_sesion_sesion_fija`, b19a); un producto con calificaciones no se quita (b17) |
 | `producto_sesion_pda` | N:M `productos_sesion` ↔ `sesiones_pda` (un producto evalúa 1..n PDA del mismo grado) |
