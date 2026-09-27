@@ -779,8 +779,11 @@ begin
     return jsonb_build_object('ok', true, 'estado', 'reembolsado', 'accesos_quitados', v_quitados, 'docente_id', m.docente_id);
   end if;
 
-  -- Ya pagada: no se repite nada (webhook repetido, verificación manual después del webhook)
-  if o.estado = 'pagado' then
+  -- Ya pagada Y aplicada: no se repite nada (webhook repetido, verificación manual después del
+  -- webhook). Una orden 'pagado' SIN aprobado_en nunca se aplicó (R27b: el webhook la mandó por el
+  -- camino de la tienda tras una falla pasajera) y se aplica ahora; el índice único (pago_id, ciclo)
+  -- y aprobado_en, que se pone abajo, mantienen la idempotencia.
+  if o.estado = 'pagado' and m.aprobado_en is not null then
     return jsonb_build_object('ok', true, 'estado', 'pagado', 'ya_procesada', true, 'accesos_creados', 0,
       'vence', public.mi_salon_vence_max(m.docente_id), 'docente_id', m.docente_id, 'producto', m.producto,
       'nombre', v_nombre, 'monto', o.monto_total);

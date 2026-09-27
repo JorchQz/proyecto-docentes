@@ -34,19 +34,27 @@ export interface ResultadoPagoMiSalon {
   miSalon?: Record<string, unknown>;
 }
 
-/** ¿La orden es de Mi Salón? Si la tabla no existe (migración sin aplicar) o falla, false. */
+/** Códigos de "la tabla no existe" (Postgres 42P01; PostgREST PGRST205 cuando no está en su caché). */
+const TABLA_NO_EXISTE = new Set(["42P01", "PGRST205"]);
+
+/**
+ * ¿La orden es de Mi Salón? false SOLO si de verdad no lo es: no tiene fila en mi_salon_ordenes o la
+ * tabla no existe (migración b22 sin aplicar). Cualquier otro error (timeout, 503 de PostgREST, red)
+ * se LANZA (R27b): antes devolvía false y el pago de Mi Salón se iba por el camino de la tienda, la
+ * orden quedaba 'pagado' sin acceso y los reintentos decían yaProcesada. Al lanzar, la orden sigue
+ * pendiente, el webhook responde error (Mercado Pago reintenta) y confirmar-pago la repara.
+ */
 export async function esOrdenMiSalon(admin: Cliente, ordenId: string): Promise<boolean> {
-  try {
-    const { data, error } = await admin
-      .from("mi_salon_ordenes")
-      .select("orden_id")
-      .eq("orden_id", ordenId)
-      .maybeSingle();
-    if (error) return false;
-    return !!data;
-  } catch (_) {
-    return false;
+  const { data, error } = await admin
+    .from("mi_salon_ordenes")
+    .select("orden_id")
+    .eq("orden_id", ordenId)
+    .maybeSingle();
+  if (error) {
+    if (TABLA_NO_EXISTE.has(String((error as { code?: string }).code || ""))) return false;
+    throw new Error("No se pudo saber si la orden " + ordenId + " es de Mi Salón: " + (error.message || "error"));
   }
+  return !!data;
 }
 
 /**

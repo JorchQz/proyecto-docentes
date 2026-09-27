@@ -186,6 +186,26 @@ export async function procesarPago(
     };
   }
 
+  // ── Una orden de la tienda sin renglones no se marca pagada (R27b) ────────
+  // Toda orden de la tienda tiene al menos un renglón (paquete, proyecto o pedido personalizado).
+  // Una sin renglones es de Mi Salón (que no los tiene) mal encaminada o una orden rota: marcarla
+  // 'pagado' la dejaría "ya procesada" sin entregar nada. Se queda pendiente para revisarla o
+  // para que confirmar-pago la repare.
+  const { data: renglones, error: errRenglones } = await admin
+    .from("marketplace_orden_items")
+    .select("id")
+    .eq("orden_id", ordenId)
+    .limit(1);
+  if (errRenglones || !renglones || !renglones.length) {
+    console.error("Orden aprobada sin renglones (o sin poder leerlos); no se marca pagada:", { ordenId, errRenglones });
+    return {
+      ok: false,
+      estado: "pendiente",
+      statusMp: status,
+      error: errRenglones ? "No se pudieron leer los renglones de la orden" : "La orden no tiene renglones",
+    };
+  }
+
   // ── Pago aprobado: marcar y entregar ─────────────────────────────────────
   await admin
     .from("marketplace_ordenes")

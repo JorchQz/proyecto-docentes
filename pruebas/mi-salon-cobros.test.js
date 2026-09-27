@@ -211,15 +211,26 @@ function ok(nombre, real, esperado) {
 		return { data: null, error: null };
 	});
 	const rTienda = await pagos_ts.procesarPago(tienda, { id: 55, external_reference: "o1", status: "approved", transaction_amount: 100, currency_id: "MXN" }, {});
-	ok("tienda aprobada: mismo camino de siempre (solo se agrega la lectura de mi_salon_ordenes al principio)", tienda.log,
-		["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_ordenes:update", "marketplace_orden_items:select", "marketplace_accesos:upsert", "marketplace_pedidos:select", "rpc:marketplace_aplicar_precios"]);
+	ok("tienda aprobada: mismo camino de siempre (se agregan la lectura de mi_salon_ordenes al principio y la de sus renglones antes de marcarla pagada, R27b)", tienda.log,
+		["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_orden_items:select", "marketplace_ordenes:update", "marketplace_orden_items:select", "marketplace_accesos:upsert", "marketplace_pedidos:select", "rpc:marketplace_aplicar_precios"]);
+	// R27b: una orden de la tienda SIN renglones no se marca pagada (queda pendiente, sin accesos)
+	const tiendaVacia = falso((t, op) => t === "marketplace_ordenes" && op === "select" ? { data: { id: "o1", estado: "pendiente", user_id: "u1", monto_total: 100 }, error: null } : (t === "marketplace_orden_items" ? { data: [], error: null } : { data: null, error: null }));
+	const rVacia = await pagos_ts.procesarPago(tiendaVacia, { id: 58, external_reference: "o1", status: "approved", transaction_amount: 100, currency_id: "MXN" }, {});
+	ok("tienda aprobada SIN renglones: no se marca pagada ni entrega nada (pendiente, ok=false)", [rVacia.ok, rVacia.estado, tiendaVacia.log.includes("marketplace_ordenes:update"), tiendaVacia.log.includes("marketplace_accesos:upsert")], [false, "pendiente", false, false]);
 	ok("tienda aprobada: mismo resultado y mismos accesos (PDF + anexos)", [rTienda.estado, rTienda.accesos, (upsertAccesos || []).map((a) => a.tipo)], ["pagado", 2, ["pdf", "anexos"]]);
 	const tiendaPend = falso((t, op) => t === "marketplace_ordenes" && op === "select" ? { data: { id: "o1", estado: "pendiente", user_id: "u1", monto_total: 100 } } : { data: null });
 	const rPend = await pagos_ts.procesarPago(tiendaPend, { id: 56, external_reference: "o1", status: "pending", status_detail: "pending_waiting_payment" }, {});
 	ok("tienda pendiente (OXXO): igual que antes", [tiendaPend.log, rPend.estado], [["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_ordenes:update"], "pendiente"]);
-	const tiendaSinTabla = falso((t, op) => t === "mi_salon_ordenes" ? { data: null, error: { message: "relation does not exist" } } : (t === "marketplace_ordenes" && op === "select" ? { data: { id: "o1", estado: "pagado", user_id: "u1", monto_total: 100 } } : { data: null }));
-	const rSinTabla = await pagos_ts.procesarPago(tiendaSinTabla, { id: 57, external_reference: "o1", status: "approved" }, {});
-	ok("si la base aún no tiene mi_salon_ordenes, la tienda sigue igual", [rSinTabla.estado, rSinTabla.yaProcesada], ["pagado", true]);
+	const sinTabla = (codigo) => falso((t, op) => t === "mi_salon_ordenes" ? { data: null, error: { message: "relation does not exist", code: codigo } } : (t === "marketplace_ordenes" && op === "select" ? { data: { id: "o1", estado: "pagado", user_id: "u1", monto_total: 100 } } : { data: null }));
+	const rSinTabla = await pagos_ts.procesarPago(sinTabla("42P01"), { id: 57, external_reference: "o1", status: "approved" }, {});
+	const rSinTabla2 = await pagos_ts.procesarPago(sinTabla("PGRST205"), { id: 57, external_reference: "o1", status: "approved" }, {});
+	ok("si la base aún no tiene mi_salon_ordenes (42P01 o PGRST205), la tienda sigue igual", [rSinTabla.estado, rSinTabla.yaProcesada, rSinTabla2.estado, rSinTabla2.yaProcesada], ["pagado", true, "pagado", true]);
+	// R27b: cualquier OTRA falla al leer mi_salon_ordenes (timeout, 503) se lanza: la orden no se toca
+	// (queda pendiente) y confirmar-pago o el siguiente aviso la reparan
+	const pasajera = falso((t, op) => t === "mi_salon_ordenes" ? { data: null, error: { message: "503 Service Unavailable" } } : (t === "marketplace_ordenes" && op === "select" ? { data: { id: "o2", estado: "pendiente", user_id: "u2", monto_total: 199 } } : { data: [] }));
+	let lanzo = null;
+	try { await pagos_ts.procesarPago(pasajera, { id: 59, external_reference: "o2", status: "approved", transaction_amount: 199, currency_id: "MXN" }, {}); } catch (e) { lanzo = e.message; }
+	ok("falla pasajera al leer mi_salon_ordenes: se lanza y no se toca la orden (no se va por la tienda)", [!!lanzo && /No se pudo saber si la orden o2 es de Mi Salón/.test(lanzo), pasajera.log], [true, ["mi_salon_ordenes:select"]]);
 	// Orden de MI SALÓN
 	let argsMs = null;
 	const salon = falso((t, op, q) => {
@@ -253,6 +264,11 @@ function ok(nombre, real, esperado) {
 	ok("comprar-mi-salon: exige los Términos", /acepta_terminos !== true/.test(comprar), true);
 	ok("webhook y confirmar-pago de la tienda: sin cambios (el despacho vive en pagos.ts)", [leer("supabase/functions/webhook-mercadopago/index.ts").includes("mi_salon"), leer("supabase/functions/confirmar-pago/index.ts").includes("mi_salon")], [false, false]);
 	const sql = leer("supabase/mi_salon_b22_cobros_2026-09.sql");
+	// R27b: una orden 'pagado' que nunca se aplicó (aprobado_en null) sí se aplica; esOrdenMiSalon solo da false sin la tabla
+	ok("mi_salon_aplicar_pago: 'ya procesada' solo si está pagada Y aplicada (aprobado_en); esOrdenMiSalon lanza salvo 42P01/PGRST205",
+		[/if o\.estado = 'pagado' and m\.aprobado_en is not null then/.test(sql), /if o\.estado = 'pagado' then/.test(sql),
+			/TABLA_NO_EXISTE = new Set\(\["42P01", "PGRST205"\]\)/.test(leer("supabase/functions/_shared/mi-salon-pagos.ts")), /if \(error\) return false;/.test(leer("supabase/functions/_shared/mi-salon-pagos.ts"))],
+		[true, false, true, false]);
 	const avisosTs = leer("supabase/functions/avisos-mi-salon/index.ts");
 	const sinComentarios = (t) => t.split("\n").filter((l) => !/^\s*(\/\/|--)/.test(l)).join("\n");
 	ok("ninguna fecha de aviso escrita en el código (salen de mi_salon_periodos)", [/2026-11-06|2026-11-30|2026-12-1[179]/.test(sql), /20\d\d-\d\d-\d\d/.test(sinComentarios(avisosTs))], [false, false]);
