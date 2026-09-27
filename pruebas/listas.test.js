@@ -4,7 +4,7 @@
 	- js/listas.js (parte pura): montos en pesos sumados en centavos con redondeo a centavos;
 	  quién cuenta en una lista (activos, bajas que participaron, activos al cerrar); resumen por
 	  columna y avance general; texto e IMAGEN para las familias SIN nombres; recordatorio amable;
-	  historial por alumno ("Cumplió en X de Y"); impresión "Solo para la maestra"; escape.
+	  historial por alumno ("Cumplió en X de Y"); impresión "Solo para uso docente"; escape.
 	- js/exportar.js: hoja "Listas" en el Excel solo si hay listas.
 	- supabase/mi_salon_b15_listas_2026-09.sql: RLS completa, sin anónimo, CHECK, índices,
 	  cascadas y delete_own_account (con lo de b13 y b14).
@@ -341,7 +341,7 @@ ok("validar lista", [L.validarLista({ nombre: " ", fecha: "2026-10-01" }), L.val
 ok("validar columna: tipo, largo, tope de 12 y cuota", [L.validarColumna({ nombre: "A", tipo: "otro" }), L.validarColumna({ nombre: "A", tipo: "palomita" }, 12), L.validarColumna({ nombre: "A", tipo: "monto", esperado: "-3" }), L.validarColumna({ nombre: "A", tipo: "monto", esperado: "50" }, 3)],
 	["Elige el tipo de columna.", "Una lista puede tener hasta 12 columnas.", "Cantidad esperada: la cantidad no puede ser negativa.", ""]);
 
-// ── Impresión "Solo para la maestra" y escape ────────────────────────────────
+// ── Impresión "Solo para uso docente" y escape ────────────────────────────────
 const MALO = "<img src=x onerror=alert(1)>'\"&";
 {
 	const alM = [al("z1", MALO, 1)];
@@ -349,7 +349,7 @@ const MALO = "<img src=x onerror=alert(1)>'\"&";
 	const lM = { estado: "abierta", nombre: MALO };
 	const mpM = L.mapaValores([{ columna_id: "z", alumno_id: "z1", texto: MALO }]);
 	const h = L.htmlImpresion({ nombre: MALO, grupo: MALO, escuela: MALO, fecha: "2026-10-01", descripcion: MALO }, L.resumenLista(lM, cM, alM, mpM), mpM);
-	ok("impresión: etiqueta «Solo para la maestra» y todo escapado", [/Solo para la maestra · Uso interno\. No se comparte con las familias\./.test(h), /<img/.test(h), (h.match(/&lt;img src=x onerror=alert\(1\)&gt;&#39;&quot;&amp;/g) || []).length >= 5], [true, false, true]);
+	ok("impresión: etiqueta «Solo para uso docente» y todo escapado", [/Solo para uso docente · Uso interno\. No se comparte con las familias\./.test(h), /<img/.test(h), (h.match(/&lt;img src=x onerror=alert\(1\)&gt;&#39;&quot;&amp;/g) || []).length >= 5], [true, false, true]);
 }
 {
 	const h = L.htmlImpresion(meta, res, mapa);
@@ -425,8 +425,8 @@ ok("página: navegación en el head, candado y capa de lectura en orden, ficha y
 	[true, true]);
 ok("regla de /salon/ para listas.html", leer("_redirects").indexOf("/salon/listas.html /salon/listas 301") !== -1, true);
 ok("botones de al menos 44 px en la página", (html.match(/<button[^>]*>/g) || []).filter((b) => !/min-h-\[44px\]|h-11 w-11/.test(b)), []);
-ok("etiquetas claras: «Para las familias», «Solo para la maestra» y «Copiar texto para las familias»",
-	[/Para las familias<\/h2>/.test(html), /Solo para la maestra<\/h2>/.test(html), /Copiar texto para las familias/.test(html), /Imprimir \(solo para la maestra\)/.test(html)], [true, true, true, true]);
+ok("etiquetas claras: «Para las familias», «Solo para ti» y «Copiar texto para las familias»",
+	[/Para las familias<\/h2>/.test(html), /Solo para ti<\/h2>/.test(html), /Copiar texto para las familias/.test(html), /Imprimir \(solo para ti\)/.test(html)], [true, true, true, true]);
 ok("Recordar por WhatsApp: solo con teléfono en la ficha (enlaceWhatsApp) y abre aparte sin referer",
 	[/function tieneTelefono\(a\) \{ return !!\(a && a\.tutor_telefono && F && F\.enlaceWhatsApp\(a\.tutor_telefono\)\); \}/.test(js), /id="dlgRecordarAbrir"[^>]*target="_blank" rel="noopener noreferrer"/.test(html)], [true, true]);
 // Pulido tras R22: el botón se llama como en el aviso de privacidad («Recordar por WhatsApp»)
