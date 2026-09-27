@@ -15,6 +15,7 @@ Resumen del orden:
 3. Despliegue de las Edge Functions (las que cobran primero; `comprar-mi-salon` al final).
 4. Cron de los avisos.
 5. Despliegue del frontend (push a `main`).
+5b. Cargar PP-NIVELES en el grupo de Fanny (después de las migraciones con b24 y del push a `main`).
 6. El 12 de octubre, con la confirmación de Jorge: encender el interruptor.
 
 Por qué este orden: el frontend nuevo lee columnas y tablas de b20 a b23 (sin ellas, Hoy y Reportes
@@ -43,8 +44,8 @@ público no nota nada.
 
 ## 1. Migraciones
 
-En este orden exacto (cada una es aditiva e idempotente; la última define la versión final de
-`delete_own_account`):
+En este orden exacto (cada una es aditiva e idempotente; b23 define la versión final de
+`delete_own_account` y b24, la última, no la toca):
 
 | # | Archivo | Qué hace |
 |---|---|---|
@@ -59,12 +60,13 @@ En este orden exacto (cada una es aditiva e idempotente; la última define la ve
 | 9 | `supabase/mi_salon_b21_acceso_2026-09.sql` | periodos, accesos, T1 gratis a toda cuenta, interruptor (apagado), solo lectura en el servidor |
 | 10 | `supabase/mi_salon_b22_cobros_2026-09.sql` | precios, fundador, cupones, órdenes y pagos, avisos, panel; parcha funciones de la tienda (abajo) |
 | 11 | `supabase/mi_salon_b23_folio_incidencias_2026-09.sql` | folio RDI de incidencias (y a las que ya existen), directa con boleta cerrada, admin_ sin anon; `delete_own_account` FINAL |
+| 12 | `supabase/mi_salon_b24_evidencia_incluidos_2026-09.sql` | un alumno INCLUIDO de otro grado ("¿Para quién?") deja evidencia en los PDA del producto (PP-NIVELES de Fanny); `pda_de_alumno_en_producto` sin anon ni PUBLIC |
 
-Aparte, después de la 11:
+Aparte, después de la 12:
 
 | # | Archivo | Qué hace |
 |---|---|---|
-| 12 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
+| 13 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
 
 NO se aplican en producción: `mi_salon_b21c_piloto_pruebas_2026-09.sql` (cuentas QA, solo pruebas)
 y `mi_salon_b22_avisos_cron_2026-09.sql` (va en el paso 4).
@@ -84,6 +86,13 @@ igual a producción, en una transacción revertida):
   funciones `admin_` (en producción lo tenían `admin_ajustar_lanzamiento`, `admin_estado_precios`,
   `admin_estado_promocion`, `admin_guardar_promocion`, `admin_confirmar_orden` y
   `admin_otorgar_acceso`); el panel entra con sesión y sigue igual.
+- b24 (2026-09-27, constructor AQ; permisos del constructor AR tras R30) reemplaza con `create or
+  replace` los dos triggers de evidencia de `calificaciones` (`propagar_calificacion_a_pda` y
+  `retirar_evidencia_de_pda`, de b5) y agrega `pda_de_alumno_en_producto`: para lo que ya había da
+  los mismos PDA (verificado en toda la base de pruebas: solo cambian los alumnos incluidos de otro
+  grado en un producto sin PDA de su grado). La función nueva no la ejecutan anon ni PUBLIC;
+  authenticated y service_role sí (los triggers corren con el rol de quien califica). No toca
+  tablas, políticas ni `delete_own_account`.
 - b23 asigna folio a las incidencias que ya existen, en orden de creación por grupo y ciclo. En la
   lectura del 2026-09-26 producción tenía **1** incidencia (de la cuenta de soporte, 2 alumnos,
   ciclo 2026-2027): quedará `RDI-2026-2027-0001`.
@@ -94,7 +103,7 @@ está en git); toma `PROD_DB_URL` de la variable de entorno o de `.env.local` y 
 `.qa/node_modules` (o de un `npm install pg`):
 
 ```
-node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql supabase/mi_salon_b23_folio_incidencias_2026-09.sql
+node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql supabase/mi_salon_b23_folio_incidencias_2026-09.sql supabase/mi_salon_b24_evidencia_incluidos_2026-09.sql
 node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
 
@@ -123,7 +132,11 @@ select
      and has_function_privilege('anon', oid, 'execute'))                                as admin_anon,       -- 0
   position('m.aprobado_en is not null' in pg_get_functiondef('public.mi_salon_aplicar_pago(uuid,jsonb)'::regprocedure)) > 0 as pago_reparable, -- true
   position('incidencias_folios' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0
-    and position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
+    and position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final, -- true
+  to_regprocedure('public.pda_de_alumno_en_producto(uuid,uuid)') is not null
+    and not has_function_privilege('anon', 'public.pda_de_alumno_en_producto(uuid,uuid)', 'execute')
+    and position('pda_de_alumno_en_producto' in pg_get_functiondef('public.propagar_calificacion_a_pda'::regproc)) > 0
+    and position('pda_de_alumno_en_producto' in pg_get_functiondef('public.retirar_evidencia_de_pda'::regproc)) > 0 as b24; -- true
 ```
 
 ## 2. Secretos de las Edge Functions
@@ -235,6 +248,30 @@ Después del despliegue (con el interruptor apagado):
   (`/tienda/mi-salon-compra`) abren sin errores; el panel → Mi Salón muestra el interruptor apagado.
 - Una cuenta sin `activo_saas` ni piloto sigue viendo solo la tienda.
 - `tienda/conoce-mi-salon` sigue oculta: sin enlaces en la tienda y con `noindex`.
+
+## 5b. Cargar PP-NIVELES en el grupo de Fanny
+
+Va **después** del paso 1 (las migraciones, con b24) y del paso 5 (el push a `main`): el script usa el
+código de la rama publicada (importador, materializador y "¿Para quién?") y necesita b17 y b24 en la
+base. Solo con el OK de Jorge. Se corre desde la raíz del repo, en la computadora que tiene el plan
+`docs/referencia/pp-niveles-plan.json` (trae nombres de alumnos: está fuera de git) y `PROD_DB_URL` en
+`.env.local` (o en la variable de entorno; nunca se imprime). Todo va en una transacción como la
+docente (RLS y candado de solo lectura); si la comprobación final no cuadra, no escribe nada.
+
+```
+node scripts/cargar-pp-niveles.js --base prod --grupo 34fc6a07-ec93-449f-8c73-e651bbeec0d8 --simular
+node scripts/cargar-pp-niveles.js --base prod --grupo 34fc6a07-ec93-449f-8c73-e651bbeec0d8 --aplicar
+```
+
+- `--simular` no escribe nada (transacción de solo lectura). Debe terminar con "Comprobación: OK" y
+  "Simulación: no se escribió nada." (código 0). Antes de las migraciones se detiene con código 3
+  ("La base aún no tiene «¿Para quién?» (migración b17)"). Sin b24 avisa que un alumno de 2° en un
+  trabajo con los PDA de 1° no dejaría evidencia en ellos: no aplicar así.
+- `--aplicar` solo después de una simulación limpia. Termina con "COMMIT: cargado." Si el proyecto
+  ya está en el grupo, no hace nada (código 2): no se carga dos veces.
+- Comprobar con la cuenta de soporte o la de Fanny: Inicio muestra la sesión 1 como siguiente, Hoy
+  ofrece "Trabajar hoy" y cada trabajo sale para sus alumnos (tabla en
+  `docs/referencia/pp-niveles-asignacion.md`).
 
 ## 6. El 12 de octubre: encender el interruptor (con la confirmación de Jorge)
 

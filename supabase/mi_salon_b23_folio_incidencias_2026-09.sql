@@ -33,8 +33,9 @@
 --      admin_ nueva debe llevar su propio "revoke ... from public, anon".
 --   4. delete_own_account: la versión FINAL (b22 + incidencias_folios).
 --
--- ORDEN: va AL FINAL del orden de producción (interes, b16, b17, b18, b18a, b19, b19a, b20, b21,
--- b22, b23; b21b y b22_avisos_cron aparte). Antes que el frontend que muestra el folio.
+-- ORDEN: va AL FINAL de las que reemplazan delete_own_account (interes, b16, b17, b18, b18a, b19,
+-- b19a, b20, b21, b22, b23); después, en la misma transacción, solo b24, que no la toca; b21b y
+-- b22_avisos_cron aparte. Antes que el frontend que muestra el folio.
 -- =============================================================================
 
 
@@ -238,7 +239,7 @@ end $$;
 /*
   ORDEN: va AL FINAL. Varias migraciones reemplazan delete_own_account completa (b10,
   jissez_interes_secciones, b17, b18, b19, b19a, b20, b21, b22 y esta). La que se aplica al último
-  es la que queda; esta es la de b22 (b19a completa, b20, b21 y la guarda de pagos de Mi Salón,
+  es la que queda (b24 va después, pero no la toca); esta es la de b22 (b19a completa, b20, b21 y la guarda de pagos de Mi Salón,
   mi_salon_ordenes) más el contador de folios de incidencias de b23 (también se iría en cascada con
   los grupos). Cada tabla nueva con guarda to_regclass. La prueba pruebas/migraciones-orden.test.js
   exige todo esto de la última del orden.
