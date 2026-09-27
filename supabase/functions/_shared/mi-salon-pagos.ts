@@ -31,6 +31,7 @@ export interface ResultadoPagoMiSalon {
   statusMp?: string;
   detalleMp?: string;
   error?: string;
+  transitorio?: boolean;
   miSalon?: Record<string, unknown>;
 }
 
@@ -42,7 +43,12 @@ const TABLA_NO_EXISTE = new Set(["42P01", "PGRST205"]);
  * tabla no existe (migración b22 sin aplicar). Cualquier otro error (timeout, 503 de PostgREST, red)
  * se LANZA (R27b): antes devolvía false y el pago de Mi Salón se iba por el camino de la tienda, la
  * orden quedaba 'pagado' sin acceso y los reintentos decían yaProcesada. Al lanzar, la orden sigue
- * pendiente, el webhook responde error (Mercado Pago reintenta) y confirmar-pago la repara.
+ * pendiente y sin tocar. Cómo se repara (R29): el webhook responde 503 y Mercado Pago vuelve a mandar
+ * el MISMO aviso por su cuenta; el primer reintento que encuentra la base bien aplica el pago
+ * (idempotente: un acceso y un correo). Si mientras tanto la docente vuelve de Mercado Pago o pulsa
+ * "Ya pagué, verificar", confirmar-pago lo aplica igual (y si también le falla, responde 500 y
+ * puede volver a intentarlo). Antes de R29 el webhook respondía 200 y el aviso se perdía: solo lo
+ * reparaba confirmar-pago.
  */
 export async function esOrdenMiSalon(admin: Cliente, ordenId: string): Promise<boolean> {
   const { data, error } = await admin
@@ -94,9 +100,20 @@ export async function procesarPagoMiSalon(
     p_orden_id: ordenId,
     p_pago: datosDelPago(pago),
   });
+  // Las reglas de negocio (orden desconocida, importe o moneda que no cuadran, pago sin id) vuelven
+  // DENTRO de data con ok=false y son definitivas. Un error de la llamada (timeout, 5xx de PostgREST,
+  // red) es una falla pasajera: la función corre en una transacción, así que no dejó nada a medias,
+  // y el webhook responde 503 para que Mercado Pago reintente (R29).
   if (error || !data) {
-    console.error("mi_salon_aplicar_pago falló:", ordenId, error);
-    return { ok: false, estado: "pendiente", statusMp: status, detalleMp: detalle, error: error?.message || "Sin respuesta" };
+    console.error("mi_salon_aplicar_pago falló (falla pasajera):", ordenId, error);
+    return {
+      ok: false,
+      estado: "pendiente",
+      transitorio: true,
+      statusMp: status,
+      detalleMp: detalle,
+      error: error?.message || "Sin respuesta",
+    };
   }
   // deno-lint-ignore no-explicit-any
   const r = data as Record<string, any>;

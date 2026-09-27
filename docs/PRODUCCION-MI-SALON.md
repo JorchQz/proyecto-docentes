@@ -103,6 +103,26 @@ empezando cada una con `begin; set local lock_timeout = '5s';` y terminando con 
 corre cada pegada como un bloque). La consulta final de b21b debe devolver dos filas, origen
 `piloto`, vence `2027-07-30`.
 
+**Diferencia importante con el script:** el script aplica las 11 en UNA transacción (o entran todas o
+ninguna). Pegándolas una por una, cada migración es su propia transacción: si falla, por ejemplo, la
+7, esa se revierte entera, pero la 1 a la 6 ya quedaron aplicadas y la 8 a la 11 no. La cadena queda
+a medias. Si pasa:
+
+1. No seguir con la siguiente ni saltarse la que falló (las de después dependen de las de antes: b22
+   usa las tablas de b21 y b23 trae la versión final de `delete_own_account`).
+2. Si el editor dice `current transaction is aborted`, correr `rollback;` antes de cualquier otra
+   cosa. La migración que falló no dejó nada: su `begin`/`commit` la revirtió completa.
+3. Anotar cuál fue la última que terminó en `Success` y leer el error de la que falló. Si es
+   `lock_timeout` (tabla ocupada), volver a pegar ESA misma más tarde, a otra hora de poco uso; si es
+   otra cosa, parar y reproducirlo en pruebas antes de seguir.
+4. Cuando pase, continuar con las que faltan, en orden. Repetir una que ya había entrado no hace daño
+   (todas son idempotentes).
+5. Mientras la cadena esté a medias, **no pasar al paso 3** (Edge Functions) **ni al 5** (frontend).
+   Lo que ya entró es aditivo y el interruptor de Mi Salón sigue apagado, pero cada punto intermedio
+   de la cadena no se probó por separado (solo la cadena completa): completarla cuanto antes, de
+   preferencia el mismo día.
+6. La cadena está completa cuando la comprobación final de abajo da todos sus valores esperados.
+
 Comprobación final (editor SQL de producción, solo lectura):
 
 ```sql
@@ -163,11 +183,23 @@ supabase functions deploy comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl
 
 - Nuevas: `bienvenida-mi-salon` (b21), `comprar-mi-salon` y `avisos-mi-salon` (b22).
 - Otra vez: `redactar-boleta` (exige acceso vigente, b21) y las que importan `_shared/pagos.ts`, que
-  cambió (una orden de Mi Salón va por `_shared/mi-salon-pagos.ts`; si no se puede saber si una
-  orden es de Mi Salón por una falla pasajera, la orden queda pendiente y se repara sola con
-  confirmar-pago o el siguiente aviso de Mercado Pago; una orden de la tienda sin renglones ya no
-  se marca pagada; las demás órdenes de la tienda siguen igual): `webhook-mercadopago`,
+  cambió (una orden de Mi Salón va por `_shared/mi-salon-pagos.ts`; una orden de la tienda sin
+  renglones ya no se marca pagada; en la tienda los accesos se escriben antes de marcar la orden
+  pagada; las demás órdenes de la tienda siguen igual): `webhook-mercadopago`,
   `confirmar-pago`, `avisos-pedidos` y `completar-pedido`.
+- **Falla pasajera al procesar un pago** (la base no responde: timeout, 5xx de PostgREST, no se pudo
+  saber si la orden es de Mi Salón). Cómo se repara de verdad: la orden NO se marca pagada ni se
+  entrega nada, y el webhook responde **503** (antes respondía 200 y el aviso se perdía). Con el 503,
+  Mercado Pago vuelve a mandar el mismo aviso por su cuenta; el primer reintento que encuentra la
+  base bien entrega una sola vez (un acceso, un correo; los siguientes dicen "ya procesada"). Aparte,
+  confirmar-pago lo aplica cuando la docente o el comprador vuelve de Mercado Pago o pulsa "Ya pagué,
+  verificar". Las respuestas definitivas siguen en 200 (orden desconocida, ya procesada, pago
+  rechazado, importe o moneda que no cuadran) y la firma inválida en 401. Para revisar: en los
+  registros de `webhook-mercadopago`, buscar `falla pasajera`; y órdenes que siguen pendientes horas
+  después: `select o.id, o.created_at, (m.orden_id is not null) as mi_salon from marketplace_ordenes o
+  left join mi_salon_ordenes m on m.orden_id = o.id where o.estado = 'pendiente' and o.created_at <
+  now() - interval '6 hours' order by o.created_at desc limit 20;` y buscar cada `id` en Mercado Pago
+  (referencia externa): si ahí está aprobado, pedir a la persona que pulse "Ya pagué, verificar".
 - La URL del webhook de Mercado Pago no cambia.
 - Comprobación: Supabase → Edge Functions muestra las ocho con la versión de hoy; en los registros
   de `webhook-mercadopago`, la siguiente venta de la tienda se procesa como siempre.
