@@ -244,7 +244,7 @@ function raiz(opciones) {
 	const comun = leer("tienda/js/tienda-common.js");
 	ok("Tienda: guarda la última sección al poner el selector", /guardarUltima\("tienda"\)/.test(comun), true);
 	const guard = leer("js/saas-guard.js");
-	ok("candado: saasAcceso se cumple solo al permitir", /function permitir\(\) \{[\s\S]{0,120}resolverAcceso\(true\)/.test(guard) && (guard.match(/resolverAcceso\(/g) || []).length === 1, true);
+	ok("candado: saasAcceso se cumple solo al permitir", /function permitir\((estado)?\) \{[\s\S]{0,300}resolverAcceso\(true\)/.test(guard) && (guard.match(/resolverAcceso\(/g) || []).length === 1, true);
 
 	// ── Estilos del selector ─────────────────────────────────────────────────────
 	const js = leer("js/secciones.js");

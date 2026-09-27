@@ -390,6 +390,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		podía borrarse una calificación confirmada) cuando se guardaban juntas filas de
 		distinta forma. Se agrupan por forma y va un upsert por grupo.
 	*/
+	// ¿Mi Salón está en solo lectura? (js/mi-salon-acceso.js; el servidor rechaza escribir)
+	function soloLecturaMS() {
+		return !!(window.MiSalonAcceso && window.MiSalonAcceso.soloLectura());
+	}
+
 	async function upsertPorForma(tabla, filas, onConflict) {
 		const grupos = {};
 		filas.forEach(function (f) {
@@ -657,7 +662,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				});
 			});
 			// Confirmadas (solo %) y sin confirmar (con número) tienen forma distinta
-			if (upserts.length) await upsertPorForma("boleta_trimestral", upserts, "maestro_id,alumno_id,ciclo,trimestre,campo");
+			// En solo lectura (b21) la propuesta se ve pero no se guarda: la base la rechazaría
+			if (upserts.length && !soloLecturaMS()) await upsertPorForma("boleta_trimestral", upserts, "maestro_id,alumno_id,ciclo,trimestre,campo");
 		} catch (e) {
 			console.error("boleta_trimestral (numérico):", e);
 			fallosPropuesta.push("la propuesta de calificación");
@@ -1448,6 +1454,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		que no llegó.
 	*/
 	async function guardarTextosPropuestos(textos, boletaPorCampo, ctx, forzar) {
+		// Solo lectura de Mi Salón (b21): la propuesta se muestra, pero no se guarda (la base la
+		// rechazaría); lo que ya estaba guardado sigue igual
+		if (window.MiSalonAcceso && window.MiSalonAcceso.soloLectura()) return null;
 		const filas = [];
 		const antes = Object.assign({}, boletaPorCampo);
 		CODIGOS.concat([window.TextosBoleta.GENERAL]).forEach(function (codigo) {

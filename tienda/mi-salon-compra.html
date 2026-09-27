@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="robots" content="noindex, nofollow">
+	<title>Tu acceso a Mi Salón — Jissez</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="js/tienda-theme.js"></script>
+	<script src="https://unpkg.com/lucide@latest"></script>
+	<link rel="stylesheet" href="css/tienda.css">
+</head>
+<body class="antialiased min-h-screen">
+<!--
+	Compra y renovación de Mi Salón (b22, spec de Jorge 2026-09-26 §3 y §6). Página hermana del
+	checkout de la tienda, con su mismo estilo. Todo lo decide el SERVIDOR: qué opciones hay, el
+	precio (fundador, de lista o con cupón) y qué periodos cubre (mi_salon_opciones); el cobro lo
+	prepara la Edge comprar-mi-salon y el acceso lo crea el webhook con el pago aprobado. Lógica en
+	js/mi-salon-compra.js. Llegan aquí el botón "Renovar" de Mi Salón (MiSalonAcceso.COMPRA), la
+	presentación de Mi Salón y el regreso de Mercado Pago (?orden=...).
+-->
+
+<div class="border-b border-line bg-white">
+	<div class="max-w-content mx-auto px-4 sm:px-6 h-11 flex items-center gap-2 text-[13px] text-mute">
+		<a href="../dashboard.html" class="inline-flex items-center min-h-[44px] hover:text-ink transition">Mi Salón</a>
+		<i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+		<span class="text-ink font-medium">Tu acceso</span>
+	</div>
+</div>
+
+<main class="max-w-content mx-auto px-4 sm:px-6 py-8 lg:py-10">
+	<h1 id="msTitulo" class="font-black tracking-tight text-[clamp(1.7rem,3vw,2.3rem)] text-ink">Tu acceso a Mi Salón</h1>
+	<p id="msEstadoActual" class="hidden mt-2 text-[15px] text-mute"></p>
+
+	<div id="msCargando" class="text-center py-16 text-mute">Cargando...</div>
+
+	<!-- Resultado al volver de Mercado Pago -->
+	<div id="msResultado" class="hidden mt-6 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4" role="status" aria-live="polite"></div>
+
+	<!-- Pago pendiente (OXXO por pagar, SPEI o en revisión) -->
+	<div id="msPendiente" class="hidden mt-6 rounded-2xl p-5 flex flex-col gap-3" style="background:#fffbeb;border:1px solid #fbbf24" role="status"></div>
+
+	<!-- Venta cerrada o sin opciones -->
+	<div id="msCerrado" class="hidden mt-8 bg-white rounded-3xl border border-line p-6 text-ink"></div>
+
+	<div id="msContenido" class="hidden mt-8 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
+
+		<!-- ===== Izquierda: opción, vigencia y pago ===== -->
+		<div class="flex flex-col gap-5">
+			<fieldset class="bg-white rounded-3xl border border-line p-6 shadow-sm">
+				<legend class="sr-only">Elige tu acceso</legend>
+				<p class="font-bold text-ink text-lg">Elige tu acceso</p>
+				<p class="text-sm text-mute mt-1">Un solo pago. Todos tus grupos y los textos de la boleta con IA incluidos. Sin cobro automático.</p>
+				<div id="msOpciones" class="mt-4 flex flex-col gap-3"></div>
+			</fieldset>
+
+			<!-- Siempre en grande, antes de pagar (spec §6) -->
+			<div id="msVigencia" class="rounded-3xl p-6 board-tex text-white shadow-xl" aria-live="polite">
+				<p class="text-sm text-white/75">Con esta compra</p>
+				<p id="msVigenciaTexto" class="mt-1 text-[clamp(1.35rem,2.6vw,1.9rem)] font-black leading-tight"></p>
+				<div id="msVigenciaExtra" class="mt-2 text-[15px] text-white/90 flex flex-col gap-1"></div>
+			</div>
+
+			<div class="bg-white rounded-3xl border border-line p-6 shadow-sm flex flex-col gap-4">
+				<div class="flex items-start gap-3">
+					<span class="w-11 h-11 rounded-2xl bg-action/12 text-action-dark flex items-center justify-center shrink-0"><i data-lucide="credit-card" class="w-5 h-5"></i></span>
+					<div>
+						<p class="font-bold text-ink">Pago con Mercado Pago</p>
+						<p class="text-sm text-mute">Elige cómo pagar en la siguiente pantalla. No necesitas cuenta de Mercado Pago.</p>
+					</div>
+				</div>
+				<div class="rounded-2xl border border-line divide-y divide-line overflow-hidden" style="background:#faf9f4">
+					<div class="flex items-center gap-3 px-4 py-3">
+						<i data-lucide="credit-card" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i>
+						<div class="min-w-0 flex-1">
+							<p class="text-sm font-semibold text-ink">Tarjeta o cuenta Mercado Pago</p>
+							<p class="text-xs text-mute">Crédito, débito o prepago · hasta 12 mensualidades con tu banco</p>
+						</div>
+						<span class="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full" style="background:#dcfce7;color:#166534">Al instante</span>
+					</div>
+					<div class="flex items-center gap-3 px-4 py-3">
+						<i data-lucide="landmark" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i>
+						<div class="min-w-0 flex-1">
+							<p class="text-sm font-semibold text-ink">Transferencia SPEI</p>
+							<p class="text-xs text-mute">Desde tu banca en línea, sin tarjeta</p>
+						</div>
+						<span class="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full" style="background:#dcfce7;color:#166534">Unos minutos</span>
+					</div>
+					<div class="flex items-center gap-3 px-4 py-3">
+						<i data-lucide="banknote" class="w-4 h-4 shrink-0" style="color:#1e3a8a"></i>
+						<div class="min-w-0 flex-1">
+							<p class="text-sm font-semibold text-ink">Efectivo en tienda</p>
+							<p class="text-xs text-mute">OXXO y otros establecimientos</p>
+						</div>
+						<span class="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full" style="background:#fef3c7;color:#b45309">Hasta 1-3 días</span>
+					</div>
+				</div>
+
+				<label for="aceptaTerminos" class="flex items-start gap-3 rounded-2xl border border-line px-4 py-3 cursor-pointer" style="background:#faf9f4">
+					<input id="aceptaTerminos" type="checkbox" class="mt-0.5 w-5 h-5 shrink-0 rounded" style="accent-color:#059669">
+					<span class="text-[13px] leading-snug text-ink">
+						Acepto los <a href="terminos.html" target="_blank" rel="noopener" class="font-semibold underline" style="color:#1e3a8a">Términos y Condiciones</a>
+						y el <a href="privacidad.html" target="_blank" rel="noopener" class="font-semibold underline" style="color:#1e3a8a">Aviso de Privacidad</a>.
+					</span>
+				</label>
+
+				<button id="msPagar" type="button" class="w-full h-14 rounded-2xl font-bold text-white text-base transition shadow-[0_8px_24px_-12px_rgba(5,150,105,.8)] flex items-center justify-center gap-2 disabled:opacity-60" style="background:#059669">
+					<i data-lucide="lock" class="w-5 h-5"></i> Continuar al pago
+				</button>
+				<p class="text-xs text-mute text-center leading-relaxed">
+					Tu acceso se activa en cuanto Mercado Pago confirma el pago. Si pagas en efectivo, puede tardar de unas horas a 3 días; te avisamos por correo.
+				</p>
+			</div>
+		</div>
+
+		<!-- ===== Derecha: resumen, precio fundador y cupón (en celular va primero) ===== -->
+		<div class="order-first lg:order-none lg:sticky lg:top-24">
+			<div class="bg-white border border-line rounded-3xl p-6 shadow-sm">
+				<h2 class="font-bold text-ink text-lg mb-4">Resumen</h2>
+				<div class="flex items-start gap-3 pb-4 border-b border-line">
+					<span class="w-12 h-12 rounded-2xl bg-board/8 text-board flex items-center justify-center shrink-0"><i data-lucide="school" class="w-6 h-6"></i></span>
+					<div class="min-w-0">
+						<p id="msResumenTitulo" class="font-bold text-ink text-[15px] leading-tight"></p>
+						<p id="msResumenCubre" class="text-[13px] text-mute mt-0.5"></p>
+					</div>
+				</div>
+
+				<p id="msLugares" class="hidden mt-4 rounded-xl px-3 py-2.5 text-[13px] font-semibold flex items-center gap-2" style="background:#ecfdf5;color:#047857">
+					<i data-lucide="users" class="w-4 h-4 shrink-0"></i><span></span>
+				</p>
+
+				<div class="pt-4 flex flex-col gap-2">
+					<label for="msCupon" class="text-[11px] font-bold uppercase tracking-[0.08em] text-mute">¿Tienes un cupón?</label>
+					<div class="flex gap-2">
+						<input id="msCupon" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24" placeholder="Escribe tu código" class="flex-1 min-w-0 h-11 rounded-xl border border-line px-3 text-ink text-sm uppercase" style="background:#fff">
+						<button id="msAplicarCupon" type="button" class="shrink-0 h-11 px-4 rounded-xl border border-line font-bold text-sm text-ink hover:bg-paper transition">Aplicar</button>
+					</div>
+					<p id="msCuponMensaje" class="hidden text-[13px] leading-snug"></p>
+				</div>
+
+				<div id="msCuenta" class="pt-4 mt-4 border-t border-line flex flex-col gap-2 text-sm"></div>
+
+				<div class="flex justify-between items-center pt-3 mt-3 border-t border-line">
+					<span class="font-black text-ink text-lg">Total</span>
+					<span id="msTotal" class="text-right font-black text-ink text-2xl"></span>
+				</div>
+
+				<div class="mt-5 pt-4 border-t border-line space-y-2">
+					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="calendar-check" class="w-3.5 h-3.5 text-action"></i> Pago único por periodo escolar, sin cobro automático</div>
+					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-board"></i> Tus datos nunca se borran por falta de pago</div>
+					<div class="flex items-center gap-2 text-[12px] text-mute"><i data-lucide="lock" class="w-3.5 h-3.5 text-mute"></i> Pago procesado por Mercado Pago</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/supabase.js"></script>
+<script src="js/tienda-common.js"></script>
+<script src="js/mi-salon-compra.js"></script>
+</body>
+</html>

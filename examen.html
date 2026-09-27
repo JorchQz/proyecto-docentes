@@ -97,7 +97,7 @@
 				class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] bg-blue-800 text-white">
 				Ver examen
 			</button>
-			<button id="tabCalificar" type="button"
+			<button id="tabCalificar" data-captura type="button"
 				class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-semibold min-h-[44px] bg-gray-100 text-gray-600 hover:bg-gray-200">
 				Calificar
 			</button>
@@ -113,7 +113,7 @@
 				<div id="footerCF" class="flex flex-wrap items-center gap-2 text-xs font-semibold"></div>
 				<div class="flex items-center gap-3 shrink-0">
 					<span id="footerProgreso" class="text-xs text-gray-500">0 de 0 alumnos</span>
-					<button id="btnSiguienteAlumno" type="button"
+					<button id="btnSiguienteAlumno" data-captura type="button"
 						class="px-4 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">
 						Siguiente alumno →
 					</button>
@@ -131,7 +131,7 @@
 	<dialog id="exDlgConfirmar" class="ex-dlg" aria-labelledby="exDlgConfirmarTitulo"></dialog>
 
 	<!-- Revisar con la cámara (pantalla completa) -->
-	<div id="exCamara" class="hidden fixed inset-0 z-[60] bg-gray-950 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="Revisar hojas con la cámara"></div>
+	<div id="exCamara" data-captura-zona class="hidden fixed inset-0 z-[60] bg-gray-950 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="Revisar hojas con la cámara"></div>
 
 	<!-- Lo que se imprime -->
 	<div id="zonaImpresion" aria-hidden="true"></div>
@@ -139,6 +139,7 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>

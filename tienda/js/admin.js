@@ -67,6 +67,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		precios: document.getElementById("panelPrecios"),
 		ordenes: document.getElementById("panelOrdenes"),
 		acceso: document.getElementById("panelAcceso"),
+		// Mi Salón (b21): tienda/js/admin-mi-salon.js
+		misalon: document.getElementById("panelMiSalon"),
 	};
 	tabs.forEach(function (t) {
 		t.addEventListener("click", function () {
@@ -81,6 +83,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (tab === "precios") { cargarPrecios(); }
 			if (tab === "sueltos") { renderSueltos(); }
 			if (tab === "pedidos") { cargarPedidos(); }
+			if (tab === "misalon" && window.AdminMiSalon) { window.AdminMiSalon.cargar(); }
 		});
 	});
 

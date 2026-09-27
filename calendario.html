@@ -106,7 +106,7 @@
 				</div>
 				<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
 					<h3 class="font-bold text-gray-800 mb-2">Ajustes de tu grupo</h3>
-					<div id="calAjustesLista"><p class="text-sm text-gray-400">Cargando...</p></div>
+					<div id="calAjustesLista" data-captura-zona><p class="text-sm text-gray-400">Cargando...</p></div>
 				</div>
 			</div>
 
@@ -154,7 +154,7 @@
 					</div>
 				</div>
 				<div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
-					<button id="aseoGenerar" type="button" class="min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">Generar y guardar</button>
+					<button id="aseoGenerar" data-captura type="button" class="min-h-[44px] px-5 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800 disabled:opacity-50">Generar y guardar</button>
 					<p id="aseoEstado" class="text-sm text-gray-600" aria-live="polite"></p>
 				</div>
 			</div>
@@ -201,7 +201,7 @@
 	<!-- Un día del calendario -->
 	<dialog id="dlgDia" class="cal-dlg" aria-labelledby="dlgDiaTitulo">
 		<div class="p-5 sm:p-6">
-			<div id="dlgDiaCuerpo"></div>
+			<div id="dlgDiaCuerpo" data-captura-zona></div>
 			<div class="mt-5 flex justify-end">
 				<button type="button" data-cerrar class="min-h-[44px] px-5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cerrar</button>
 			</div>
@@ -239,6 +239,7 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>

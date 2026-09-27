@@ -5,8 +5,13 @@
 	comentario del <head> de la página para saber dónde irán los enlaces cuando se lance.
 
 	═══════════════════════════════════════════════════════════════════════════════════════════
-	PRECIO DE MI SALÓN: el ÚNICO lugar donde se configura (modelo decidido: suscripción por
-	trimestre o por ciclo escolar).
+	PRECIO DE MI SALÓN. Desde los cobros (b22) los precios viven en la TABLA mi_salon_precios
+	(panel → Mi Salón → Precios): con Mi Salón abierto la página los lee de
+	mi_salon_precios_publicos() (ConoceMiSalon.planesDeTabla) junto con "Quedan N lugares con
+	precio fundador", y el botón lleva a la compra (mi-salon-compra.html). PRECIOS_MI_SALON queda
+	en null A PROPÓSITO: es solo lo que se ve con Mi Salón apagado ("Precio por anunciar" y el
+	"Avísame"). No hay que sincronizar nada: no se escriben precios aquí.
+	Lo de abajo describe ese modo sin tabla (modelo anterior: trimestre o ciclo escolar).
 
 	Cómo llenarlo cuando Jorge dé el precio:
 	  trimestre  precio en pesos de un trimestre, como número sin signo ni comas (por ejemplo 149).
@@ -121,7 +126,86 @@ var ConoceMiSalon = (function () {
 		return !conAcceso && !hayPrecio(cfg);
 	}
 
-	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, encabezado: encabezado, BENEFICIO_GENERICO: BENEFICIO_GENERICO };
+	/*
+		Mi Salón abierto (b21): ¿sigue el periodo gratis? `vence` es la fecha (AAAA-MM-DD) del
+		periodo gratis en mi_salon_periodos; `ahora`, la fecha de hoy. Una cuenta creada hasta ese
+		día recibe el acceso gratis; después ya no (decisión de Jorge, 2026-09-26: sin prueba).
+	*/
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function hoyMexico(ahora) {
+		try {
+			return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(ahora);
+		} catch (_) {
+			return ahora.toISOString().slice(0, 10);
+		}
+	}
+	function gratisVigente(vence, ahora) {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(String(vence || ""))) return false;
+		return hoyMexico(ahora || new Date()) <= vence;
+	}
+	function textoGratis(vence) {
+		var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(vence || ""));
+		return m
+			? "Crea tu cuenta y tendrás acceso completo a Mi Salón hasta el " + Number(m[3]) + " de " + MESES[Number(m[2]) - 1] + ", sin tarjeta."
+			: "Crea tu cuenta y tendrás acceso completo a Mi Salón.";
+	}
+
+	/*
+		Precios desde la TABLA (b22, cobros): con Mi Salón abierto, la página lee
+		mi_salon_precios_publicos() (mi_salon_precios del ciclo en venta, lugares con precio
+		fundador) y pinta una tarjeta por producto activo. PRECIOS_MI_SALON (arriba) queda solo como
+		lo que se ve con Mi Salón apagado ("Precio por anunciar"): así los precios viven en un solo
+		lugar, la tabla, que el admin edita en el panel. `pub` = respuesta de la RPC.
+	*/
+	var DETALLE = {
+		trimestre: "Tu trimestre completo, hasta después de la entrega de boletas.",
+		resto_ciclo: "Del trimestre en curso hasta el final del ciclo escolar.",
+		ciclo: "Los tres trimestres del ciclo escolar.",
+	};
+	function planesDeTabla(pub) {
+		if (!pub || !pub.abierto || !Array.isArray(pub.productos)) return [];
+		var lugares = Number(pub.lugares_fundador) > 0;
+		return pub.productos.filter(function (p) { return p && p.vende_ahora && precioValido(Number(p.precio_lista)); }).map(function (p, i, arr) {
+			var fundador = lugares && precioValido(Number(p.precio_fundador)) ? Number(p.precio_fundador) : null;
+			var precio = fundador !== null ? fundador : Number(p.precio_lista);
+			return {
+				clave: p.producto,
+				titulo: p.nombre || p.producto,
+				detalle: p.descripcion || DETALLE[p.producto] || "",
+				precio: precio,
+				texto: formatoPrecio(precio),
+				lista: fundador !== null ? formatoPrecio(Number(p.precio_lista)) : null,
+				fundador: fundador !== null,
+				periodo: "pago único",
+				compra: "mi-salon-compra.html?producto=" + encodeURIComponent(p.producto),
+				destacado: i === arr.length - 1,
+			};
+		});
+	}
+	function encabezadoTabla(pub) {
+		var n = planesDeTabla(pub).length;
+		if (!n) return null;
+		return {
+			titulo: n > 1 ? "Pago único por trimestre o por el resto del ciclo." : "Pago único por trimestre.",
+			texto: "Sin cobro automático: pagas con tarjeta, SPEI u OXXO y tu acceso vence en fechas fijas, tres semanas después de la entrega de boletas. " + CUENTA_TIENDA.replace("Con tu suscripción e", "E"),
+		};
+	}
+	// "Quedan 37 lugares con precio fundador": contador real, nada de urgencia inventada
+	function textoLugares(pub) {
+		var n = Number(pub && pub.lugares_fundador);
+		if (!isFinite(n) || n <= 0) return null;
+		var hay = (pub.productos || []).some(function (p) { return p && p.vende_ahora && precioValido(Number(p.precio_fundador)); });
+		if (!hay) return null;
+		return n === 1 ? "Queda 1 lugar con precio fundador." : "Quedan " + n + " lugares con precio fundador.";
+	}
+	var BENEFICIO_TIENDA = "Si ya compraste planeaciones en Jissez, tienes precio fundador en Mi Salón aunque ya no queden lugares.";
+	function beneficioTabla(pub) {
+		var hay = pub && (pub.productos || []).some(function (p) { return p && p.vende_ahora && precioValido(Number(p.precio_fundador)); });
+		return hay ? BENEFICIO_TIENDA : null;
+	}
+
+	return { precioValido: precioValido, formatoPrecio: formatoPrecio, enlaceCompra: enlaceCompra, planes: planes, hayPrecio: hayPrecio, ofrecerAviso: ofrecerAviso, beneficio: beneficio, encabezado: encabezado, BENEFICIO_GENERICO: BENEFICIO_GENERICO, gratisVigente: gratisVigente, textoGratis: textoGratis,
+		planesDeTabla: planesDeTabla, encabezadoTabla: encabezadoTabla, textoLugares: textoLugares, beneficioTabla: beneficioTabla };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = { PRECIOS_MI_SALON: PRECIOS_MI_SALON, ConoceMiSalon: ConoceMiSalon }; // pruebas en node
 
@@ -173,9 +257,83 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 
 	function aplicarAcceso(conAcceso) {
 		raiz.classList.toggle("ms-acceso", !!conAcceso);
+		if (tabla) { pintarTabla(); return; }
 		pintarPrecios(conAcceso);
 		var aviso = document.getElementById("msAvisoBloque");
 		if (aviso) aviso.classList.toggle("hidden", !ConoceMiSalon.ofrecerAviso(PRECIOS_MI_SALON, conAcceso));
+	}
+
+	/*
+		Precios desde la tabla (b22): con Mi Salón abierto, mi_salon_precios_publicos(). Una tarjeta
+		por producto a la venta (precio fundador mientras queden lugares, con el de lista tachado),
+		"Quedan N lugares con precio fundador" y el botón a la compra. A quien ya tiene Mi Salón se
+		le deja además "Ver precios y renovar" en su bloque.
+	*/
+	var tabla = null;
+	function pintarTabla() {
+		var cards = ConoceMiSalon.planesDeTabla(tabla);
+		var caja = document.getElementById("msPlanes");
+		if (!cards.length || !caja) return;
+		caja.innerHTML = cards.map(function (p, i) {
+			var fondo = p.destacado ? "board-tex text-white shadow-xl" : "bg-paper border border-line";
+			var sub = p.destacado ? "text-white/75" : "text-mute";
+			return '<div class="reveal in lift rounded-3xl p-7 flex flex-col ' + fondo + '"' + (i ? ' style="transition-delay:.06s"' : "") + ">" +
+				'<h3 class="font-bold text-lg">' + esc(p.titulo) + "</h3>" +
+				'<p class="mt-1 text-sm ' + sub + '">' + esc(p.detalle) + "</p>" +
+				'<p class="mt-5" data-precio="' + p.precio + '"><span class="text-[34px] font-black tracking-tight ' + (p.destacado ? "text-white" : "text-ink") + '">' + esc(p.texto) + "</span>" +
+				(p.lista ? ' <span class="line-through ' + sub + '">' + esc(p.lista) + "</span>" : "") + ' <span class="' + sub + '">' + esc(p.periodo) + "</span></p>" +
+				(p.fundador ? '<p class="mt-1 text-xs font-bold ' + (p.destacado ? "text-white" : "text-action-dark") + '">Precio fundador</p>' : "") +
+				'<a href="' + esc(p.compra) + '" data-compra="' + esc(p.clave) + '" class="mt-6 inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-action hover:bg-action-dark text-white font-bold transition">Elegir ' + esc(p.titulo.toLowerCase()) + ' <i data-lucide="arrow-right" class="w-5 h-5"></i></a>' +
+				"</div>";
+		}).join("");
+		var lug = ConoceMiSalon.textoLugares(tabla);
+		var el = document.getElementById("msLugaresPres");
+		if (!el) {
+			el = document.createElement("p");
+			el.id = "msLugaresPres";
+			el.className = "mt-5 text-center text-sm font-semibold text-action-dark";
+			caja.parentNode.insertBefore(el, caja.nextSibling);
+		}
+		el.textContent = lug || "";
+		el.classList.toggle("hidden", !lug);
+		var e = ConoceMiSalon.encabezadoTabla(tabla);
+		if (e) {
+			var titulo = document.getElementById("msPreciosTitulo");
+			var texto = document.getElementById("msPreciosTexto");
+			if (titulo) titulo.textContent = e.titulo;
+			if (texto) texto.textContent = e.texto;
+		}
+		var aviso = document.getElementById("msAvisoBloque");
+		if (aviso) aviso.classList.add("hidden");
+		var b = ConoceMiSalon.beneficioTabla(tabla);
+		var tarjeta = document.getElementById("msBeneficio");
+		var bt = document.getElementById("msBeneficioTexto");
+		if (tarjeta && bt && b) {
+			bt.textContent = b;
+			tarjeta.classList.remove("hidden");
+			var grid = document.getElementById("msIncluyeGrid");
+			if (grid) { grid.classList.add("sm:grid-cols-2", "max-w-3xl"); grid.classList.remove("max-w-xl"); }
+		}
+		var bloqueAcceso = document.querySelector("[data-ms=acceso]");
+		if (bloqueAcceso && !document.getElementById("msRenovarPres")) {
+			var a = document.createElement("a");
+			a.id = "msRenovarPres";
+			a.href = "mi-salon-compra.html";
+			a.className = "mt-3 flex items-center justify-center min-h-[44px] text-sm font-semibold underline text-board";
+			a.textContent = "Ver precios y renovar";
+			bloqueAcceso.appendChild(a);
+		}
+		if (window.Tienda) Tienda.iconos();
+	}
+	if (window.Tienda && Tienda.miSalonAbierto && window.sb) {
+		Tienda.miSalonAbierto().then(function (si) {
+			if (!si) return null;
+			return window.sb.rpc("mi_salon_precios_publicos").then(function (r) {
+				if (r.error || !r.data || !ConoceMiSalon.planesDeTabla(r.data).length) return;
+				tabla = r.data;
+				pintarTabla();
+			});
+		}).catch(function () {});
 	}
 
 	// Título y texto de "Cómo adquirirlo" según cuántos precios hay (ConoceMiSalon.encabezado)
@@ -205,8 +363,29 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 		seccion: "salon",
 	}).then(function (session) {
 		Tienda.iconos();
-		if (!session) { aplicarAcceso(false); return null; }
-		return Tienda.tieneSaas(session).then(aplicarAcceso);
+		if (!session) { aplicarAcceso(false); return false; }
+		return Tienda.tieneSaas(session).then(function (si) { aplicarAcceso(si); return si; });
+	}).then(function (conAcceso) {
+		// Mi Salón abierto (b21): a quien aún no lo tiene se le ofrece crear su cuenta con el
+		// primer trimestre gratis, en lugar del "Avísame", mientras dure el periodo gratis
+		if (conAcceso || !Tienda.miSalonAbierto) return null;
+		return Tienda.miSalonAbierto().then(function (abierto) {
+			if (!abierto) return null;
+			return window.sb.from("jissez_config").select("gratis_ciclo, gratis_periodo").eq("id", true).maybeSingle().then(function (c) {
+				if (c.error || !c.data) return null;
+				return window.sb.from("mi_salon_periodos").select("vence").eq("ciclo", c.data.gratis_ciclo).eq("periodo", c.data.gratis_periodo).maybeSingle();
+			}).then(function (p) {
+				var vence = p && !p.error && p.data ? p.data.vence : null;
+				if (!ConoceMiSalon.gratisVigente(vence, new Date())) return;
+				var bloque = document.getElementById("msAbiertoBloque");
+				var texto = document.getElementById("msAbiertoTexto");
+				var aviso = document.getElementById("msAvisoBloque");
+				if (texto) texto.textContent = ConoceMiSalon.textoGratis(vence);
+				if (bloque) bloque.classList.remove("hidden");
+				if (aviso) aviso.classList.add("hidden");
+				Tienda.iconos();
+			});
+		});
 	}).then(function () {
 		// "Avísame cuando esté disponible" solo mientras no haya precio (y sin acceso)
 		var bloque = document.getElementById("msAvisoBloque");

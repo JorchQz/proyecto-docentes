@@ -176,7 +176,69 @@ var BandejaSalida = (function () {
 	var MENSAJE_RED = /failed to fetch|fetch failed|networkerror|network request failed|load failed|timeout|timed out|aborted|network/i;
 
 	/*
-		tipoDeFallo(error) → "red" | "sesion" | "rechazo"
+		Modo solo lectura de Mi Salón (supabase/mi_salon_b21_acceso_2026-09.sql). Cada envío lleva
+		la hora en que se capturó en el aparato (captura.capturado_en) en la cabecera
+		x-capturado-en: sin acceso vigente, la base todavía acepta una captura hecha ANTES de que
+		venciera el acceso si llega dentro de las 48 horas siguientes al vencimiento. Si la base la
+		rechaza por solo lectura (42501 con la pista "mi_salon_solo_lectura"), la captura NO sale
+		de la cola: se queda guardada en el aparato, la cola pasa al estado "acceso" (la página lo
+		dice) y se vuelve a intentar al abrir la página, al volver la red o a primer plano (por
+		ejemplo, después de renovar). Nunca se descarta en silencio.
+	*/
+	var CABECERA_CAPTURA = "x-capturado-en";
+	var PISTA_SOLO_LECTURA = "mi_salon_solo_lectura";
+	function esSoloLectura(e) {
+		if (!e) return false;
+		if (e.hint === PISTA_SOLO_LECTURA) return true;
+		return String(e.message || "").indexOf(PISTA_SOLO_LECTURA) !== -1 || String(e.details || "").indexOf(PISTA_SOLO_LECTURA) !== -1;
+	}
+	var TEXTO_ACCESO = "tu acceso a Mi Salón terminó y la base ya no la acepta (se capturó después del vencimiento o pasaron más de 48 horas); sigue guardada en este dispositivo";
+	// Para el aviso de la cola en pantalla (Hoy, Exámenes y el aviso de las demás páginas)
+	var TEXTO_ACCESO_PANTALLA = "Tu acceso a Mi Salón terminó: lo capturado sigue guardado en este dispositivo, pero la base ya no lo acepta. Si renuevas tu acceso, se envía solo.";
+
+	// Pone la cabecera en una consulta de supabase-js (setHeader, o sus cabeceras si es más vieja)
+	function conCabecera(q, valor) {
+		if (!q || !valor) return q;
+		try {
+			if (typeof q.setHeader === "function") return q.setHeader(CABECERA_CAPTURA, valor) || q;
+			if (q.headers && typeof q.headers.set === "function") q.headers.set(CABECERA_CAPTURA, valor);
+			else if (q.headers && typeof q.headers === "object") q.headers[CABECERA_CAPTURA] = valor;
+		} catch (_) {}
+		return q;
+	}
+
+	/*
+		conCaptura(sb, capturadoEn) → un cliente que pone la cabecera x-capturado-en en cada
+		consulta de sb.from(tabla) (select, insert, upsert, update, delete). Sin hora, el mismo sb.
+	*/
+	function conCaptura(sb, capturadoEn) {
+		if (!sb || typeof sb.from !== "function" || !capturadoEn) return sb;
+		return {
+			auth: sb.auth,
+			from: function (tabla) {
+				var qb = sb.from(tabla);
+				var envuelto = {};
+				["select", "insert", "upsert", "update", "delete"].forEach(function (m) {
+					if (typeof qb[m] !== "function") return;
+					envuelto[m] = function () { return conCabecera(qb[m].apply(qb, arguments), capturadoEn); };
+				});
+				return envuelto;
+			},
+		};
+	}
+
+	// La hora de captura más reciente de un lote (con ella, si la más nueva entra, entran todas)
+	function capturaDeLote(lote) {
+		var mx = null;
+		(lote || []).forEach(function (it) {
+			var t = Date.parse(it && it.capturado_en);
+			if (!isNaN(t) && (mx === null || t > mx)) mx = t;
+		});
+		return mx === null ? null : new Date(mx).toISOString();
+	}
+
+	/*
+		tipoDeFallo(error) → "red" | "sesion" | "rechazo" | "acceso" (solo lectura de Mi Salón)
 		"rechazo" exige una respuesta del servidor que diga que no: sin respuesta, o una
 		excepción que no se entiende, se trata como de red (se reintenta; nunca se descarta una
 		captura por algo que no es un "no" de la base).
@@ -185,6 +247,8 @@ var BandejaSalida = (function () {
 		var status = e && typeof e.status === "number" ? e.status : null;
 		var code = e && e.code ? String(e.code) : "";
 		var msg = String((e && e.message) || "");
+		// Solo lectura de Mi Salón (b21): el acceso terminó. NO es un "no" a la captura: se conserva
+		if (esSoloLectura(e)) return "acceso";
 		if (status === 401 || code === "PGRST301" || code === "PGRST303" || /\bjwt\b/i.test(msg)) return "sesion";
 		if (status === 0 || status === 408 || status === 429 || (status !== null && status >= 500)) return "red";
 		if (status !== null && status >= 400) return "rechazo";
@@ -1312,7 +1376,8 @@ var BandejaSalida = (function () {
 	}
 
 	// ── La bandeja ───────────────────────────────────────────────────────────────
-	var FALLAS = ["red", "servidor", "sesion", "cuenta"];
+	// "acceso": solo quedan capturas que la base no acepta por solo lectura (se conservan)
+	var FALLAS = ["red", "servidor", "sesion", "cuenta", "acceso"];
 
 	// La promesa, o un error "sin señal" si tarda más de ms (la marca hace inofensivo que llegue tarde)
 	function conLimite(promesa, ms) {
@@ -1332,7 +1397,9 @@ var BandejaSalida = (function () {
 		  o.auth        auth para leer y refrescar la sesión (Lectura.authDirecto: sin detener la página)
 		  o.maestroId   la cuenta con sesión (la dueña de lo que se capture aquí)
 		  o.almacen     (pruebas) un almacén ya abierto; si no, IndexedDB o memoria
-		  o.alCambiar({ pendientes, estado: "ok"|"enviando"|"red"|"servidor"|"sesion"|"cuenta", persistente })
+		  o.alCambiar({ pendientes, estado: "ok"|"enviando"|"red"|"servidor"|"sesion"|"cuenta"|"acceso", persistente })
+		     "acceso": lo que queda en la cola la base no lo acepta por solo lectura de Mi Salón (b21):
+		     sigue guardado en el aparato y se reintenta al abrir, al volver la red o a primer plano
 		  o.alGuardar(captura, { valor, id, fila, base, sigue })    se confirmó
 		  o.alConflicto(captura, { actual, texto, sigue, base })   otro aparato lo cambió: se conservó lo de la base
 		  o.alRechazar(captura, explicacion, { actual?, sigue, base? })    la base no la aceptó: ya salió de la cola
@@ -1351,6 +1418,7 @@ var BandejaSalida = (function () {
 			espera: null, intentos: 0, estado: "ok", n: 0, claves: {}, unoPorUno: false,
 			esperandoVacia: [], esperandoEnvio: [], cadena: Promise.resolve(), enVuelo: {},
 			huboFalla: false, // la cola se atoró (red, servidor, sesión) desde la última vez que se vació
+			bloqueadas: {}, // clave → seq de las capturas que la base no aceptó por solo lectura (se conservan)
 		};
 		var listo = (o.almacen ? Promise.resolve(o.almacen) : abrirAlmacen()).then(function (a) { st.almacen = a; return a; });
 		var esperaMax = o.esperaMax || 30000;
@@ -1526,12 +1594,12 @@ var BandejaSalida = (function () {
 			var marca = marcaDe(it.tipo);
 			var conMarca = marca.disponible !== false;
 			try {
-				return await conLimite(enviar(o.sb, it, ctxDe(it, conMarca, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
+				return await conLimite(enviar(conCaptura(o.sb, it.capturado_en), it, ctxDe(it, conMarca, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
 			} catch (e) {
 				if (conMarca && faltaMarca(e)) {
 					marca.disponible = false;
 					if (typeof console !== "undefined") console.warn("bandeja: la base aún no tiene las columnas de marca; se compara por contenido");
-					return await conLimite(enviar(o.sb, it, ctxDe(it, false, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
+					return await conLimite(enviar(conCaptura(o.sb, it.capturado_en), it, ctxDe(it, false, revisarFalta)), o.limiteMs || LIMITE_ENVIO);
 				}
 				throw e;
 			}
@@ -1556,11 +1624,11 @@ var BandejaSalida = (function () {
 		async function enviarLote(lote) {
 			var conMarca = marca.disponible !== false;
 			try {
-				return await conLimite(enviarLoteRelleno(o.sb, lote, conMarca), o.limiteMs || LIMITE_ENVIO);
+				return await conLimite(enviarLoteRelleno(conCaptura(o.sb, capturaDeLote(lote)), lote, conMarca), o.limiteMs || LIMITE_ENVIO);
 			} catch (e) {
 				if (conMarca && faltaMarca(e)) {
 					marca.disponible = false;
-					return await conLimite(enviarLoteRelleno(o.sb, lote, false), o.limiteMs || LIMITE_ENVIO);
+					return await conLimite(enviarLoteRelleno(conCaptura(o.sb, capturaDeLote(lote)), lote, false), o.limiteMs || LIMITE_ENVIO);
 				}
 				throw e;
 			}
@@ -1627,8 +1695,12 @@ var BandejaSalida = (function () {
 				return false;
 			}
 			for (;;) {
-				var lista = await propios();
-				if (!lista.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; break; }
+				var todas = await propios();
+				if (!todas.length) { st.estado = "ok"; st.intentos = 0; st.unoPorUno = false; st.huboFalla = false; st.bloqueadas = {}; break; }
+				// Las que la base no aceptó por solo lectura se quedan en la cola, pero en esta vuelta
+				// ya no se reintentan (una captura NUEVA de la misma llave sí: su seq es otro)
+				var lista = todas.filter(function (x) { return st.bloqueadas[x.clave] !== x.seq; });
+				if (!lista.length) { st.estado = "acceso"; st.huboFalla = true; break; }
 				if (!(await duenaPresente())) break;
 				if (st.estado === "ok") { st.estado = "enviando"; avisar(); }
 				// Lo que se envía es lo que está guardado AHORA (un toque que llegó mientras tanto ya se combinó)
@@ -1668,6 +1740,17 @@ var BandejaSalida = (function () {
 					st.estado = "enviando";
 				} catch (e) {
 					var tipo = tipoDeFallo(e);
+					if (tipo === "acceso") {
+						// Solo lectura de Mi Salón: cada captura lleva su hora; de una en una se sabe cuál entra
+						if (lote.length > 1) { st.unoPorUno = true; continue; }
+						if (!(await duenaPresente())) break;
+						// NO sale de la cola: se conserva y se avisa (estado "acceso"); se sigue con las demás
+						st.bloqueadas[it.clave] = it.seq;
+						st.huboFalla = true;
+						if (typeof console !== "undefined") console.warn("bandeja: solo lectura de Mi Salón, la captura se conserva", it.descripcion);
+						if (o.alBloquear) { try { o.alBloquear(it, TEXTO_ACCESO); } catch (_) {} }
+						continue;
+					}
 					if (tipo === "rechazo") {
 						if (lote.length > 1) { st.unoPorUno = true; continue; } // ¿cuál fue? de uno en uno
 						// Un "no" con la sesión de otra cuenta no es de la captura: se espera a su dueña
@@ -1714,6 +1797,7 @@ var BandejaSalida = (function () {
 		function reintentarYa() {
 			if (FALLAS.indexOf(st.estado) !== -1) st.estado = "ok";
 			st.intentos = 0;
+			st.bloqueadas = {}; // las de solo lectura se vuelven a intentar (quizá ya se renovó)
 			return procesar();
 		}
 
@@ -1951,6 +2035,7 @@ var BandejaSalida = (function () {
 					: ultimo.estado === "servidor" ? " El servidor no respondió bien; se reintentará."
 					: ultimo.estado === "sesion" ? " Tu sesión se cerró: vuelve a iniciar sesión para enviarlas."
 					: ultimo.estado === "cuenta" ? " Son de otra cuenta: se enviarán cuando ella entre en este dispositivo."
+					: ultimo.estado === "acceso" ? " " + TEXTO_ACCESO_PANTALLA
 					: " Enviando...";
 				mostrar(cuantas + detalle + (problemas.length ? " Estas no se aplicaron:" : ""), problemas.length > 0);
 				return;
@@ -2021,6 +2106,12 @@ var BandejaSalida = (function () {
 		clave: clave,
 		CAMPOS: CAMPOS,
 		tipoDeFallo: tipoDeFallo,
+		esSoloLectura: esSoloLectura,
+		conCaptura: conCaptura,
+		capturaDeLote: capturaDeLote,
+		CABECERA_CAPTURA: CABECERA_CAPTURA,
+		TEXTO_ACCESO: TEXTO_ACCESO,
+		TEXTO_ACCESO_PANTALLA: TEXTO_ACCESO_PANTALLA,
 		explicar: explicar,
 		faltaMarca: faltaMarca,
 		valorDeFila: valorDeFila,

@@ -5,8 +5,9 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Planeaciones NEM</title>
 	<!-- La entrada pública es la tienda de planeaciones. El SaaS completo está
-	     oculto: solo lo ven las cuentas con activo_saas=true, que tienen el selector
-	     de secciones (Tienda, Mi Salón, Sala de Maestros; js/secciones.js).
+	     oculto: solo lo ven las cuentas con activo_saas=true, o con acceso piloto, o todas
+	     cuando el interruptor de lanzamiento abre Mi Salón (perfiles.mi_salon.visible, b21);
+	     esas tienen el selector de secciones (Tienda, Mi Salón, Sala de Maestros; js/secciones.js).
 
 	     Entrar por la raíz lleva a la tienda, salvo a una cuenta con acceso cuya última
 	     sección en este dispositivo fue Mi Salón o Sala de Maestros: esa vuelve ahí. Solo
@@ -88,9 +89,18 @@
 						window.sb.auth.getSession().then(function (res) {
 							var sesion = res && res.data ? res.data.session : null;
 							if (!sesion) return tienda();
-							return window.sb.from("perfiles").select("activo_saas").eq("id", sesion.user.id).maybeSingle()
+							// activo_saas y el estado de b21 (perfiles.mi_salon.visible: piloto o Mi Salón
+							// abierto); si la base aún no tiene la columna, solo activo_saas
+							function leer(cols) { return window.sb.from("perfiles").select(cols).eq("id", sesion.user.id).maybeSingle(); }
+							return leer("activo_saas, mi_salon")
 								.then(function (perf) {
-									if (perf.error || !perf.data || perf.data.activo_saas !== true) return tienda();
+									var e = perf && perf.error;
+									return e && /mi_salon/.test(String(e.message || "") + String(e.details || "")) ? leer("activo_saas") : perf;
+								})
+								.then(function (perf) {
+									var d = perf && !perf.error ? perf.data : null;
+									var ve = !!d && (d.activo_saas === true || !!(d.mi_salon && d.mi_salon.visible === true));
+									if (!ve) return tienda();
 									ir(window.Secciones.destinoRaiz(ultima) || "tienda/index.html");
 								});
 						}).catch(tienda);

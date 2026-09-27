@@ -234,6 +234,8 @@ async function iniciarExamenes() {
 				: e.estado === "servidor" ? "No se pudo guardar por ahora; se reintentará. " + cuantas + donde
 				: e.estado === "sesion" ? "Tu sesión se cerró: " + cuantas + ". Siguen en esta tablet; vuelve a iniciar sesión para enviarlas."
 				: e.estado === "cuenta" ? "En esta tablet entró otra cuenta: las capturas pendientes de la anterior se enviarán cuando ella entre."
+				// Solo lectura de Mi Salón (b21): se conservan, no se descartan
+				: e.estado === "acceso" ? cuantas.charAt(0).toUpperCase() + cuantas.slice(1) + ". " + window.BandejaSalida.TEXTO_ACCESO_PANTALLA
 				: "Enviando " + cuantas.replace(" pendientes de enviar", "").replace(" pendiente de enviar", "") + "...";
 			partes += '<div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border ' + (e.estado === "enviando" || e.estado === "ok" ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-300 bg-amber-50 text-amber-900") + ' px-4 py-3" data-cola-estado="' + esc(e.estado) + '">' +
 				icono("alerta") + '<p class="text-sm font-medium flex-1" data-cola-texto>' + esc(texto) + '</p>' +

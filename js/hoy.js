@@ -206,6 +206,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				" cuando ella vuelva a entrar y abra Hoy.", "error");
 		} else if (e.estado === "sesion") {
 			estadoGuardado("Tu sesión se cerró: " + n + ". Siguen en este dispositivo; vuelve a iniciar sesión para enviarlas.", "error");
+		} else if (e.estado === "acceso") {
+			// Solo lectura de Mi Salón (b21): la base ya no las acepta; no se descartan
+			estadoGuardado(n.charAt(0).toUpperCase() + n.slice(1) + ". " + window.BandejaSalida.TEXTO_ACCESO_PANTALLA, "error");
 		} else {
 			estadoGuardado(n, "info");
 		}

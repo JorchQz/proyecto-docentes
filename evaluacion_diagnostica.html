@@ -65,7 +65,7 @@
 	<!-- Contenido principal -->
 	<div id="mainContent" class="max-w-4xl mx-auto px-4 flex flex-col gap-4">
 		<div id="diagMensaje" class="hidden rounded-lg px-4 py-3 text-sm font-medium"></div>
-		<div id="diagCuerpo">
+		<div id="diagCuerpo" data-captura-zona>
 			<div class="text-center py-20 text-gray-400 text-base">Cargando evaluación...</div>
 		</div>
 	</div>
@@ -75,7 +75,7 @@
 		<div class="max-w-4xl mx-auto flex flex-col gap-2">
 			<div class="flex items-center justify-between text-sm text-gray-600">
 				<span id="footerProgreso">0 de 0 alumnos evaluados</span>
-				<button id="btnFinalizar" type="button"
+				<button id="btnFinalizar" data-captura type="button"
 					class="px-5 py-2.5 rounded-xl bg-blue-800 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-900 transition-colors min-h-[44px]">
 					Volver al Dashboard
 				</button>
@@ -89,6 +89,7 @@
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>

@@ -627,6 +627,7 @@
 		if (S) { aplicarSecciones(header, S, nombre, seccion); }
 		quitarReserva();
 		iconos();
+		enlazarMiSalon(header, activo);
 
 		// Toggle del menú móvil.
 		var toggle = header.querySelector("[data-menu-toggle]");
@@ -682,11 +683,35 @@
 			var guardado = sessionStorage.getItem(clave);
 			if (guardado === "1" || guardado === "0") { return guardado === "1"; }
 		} catch (_) {}
-		var perf = await window.sb.from("perfiles").select("activo_saas").eq("id", uid).maybeSingle();
+		var perf = await leerAccesoSaas(uid);
 		if (perf.error) { return false; }
-		var si = !!(perf.data && perf.data.activo_saas === true);
+		var si = veMiSalon(perf.data);
 		recordarSaas(uid, si);
 		return si;
+	}
+
+	/*
+		Lectura del acceso a Mi Salón (supabase/mi_salon_b21_acceso_2026-09.sql): activo_saas y la
+		columna calculada perfiles.mi_salon (el estado: visible, vigente, vence...) en UNA consulta.
+		Si la base todavía no tiene la columna (el frontend salió antes que la migración), se lee
+		solo activo_saas, como antes. Devuelve la respuesta de Supabase ({ data, error }).
+	*/
+	async function leerAccesoSaas(uid) {
+		var perf = await window.sb.from("perfiles").select("activo_saas, mi_salon").eq("id", uid).maybeSingle();
+		var e = perf && perf.error;
+		var t = e ? String(e.message || "") + " " + String(e.details || "") + " " + String(e.hint || "") : "";
+		if (e && /mi_salon/.test(t) && (e.code === "42703" || e.code === "PGRST200" || e.code === "PGRST204" || /column|columna|schema cache/i.test(t))) {
+			perf = await window.sb.from("perfiles").select("activo_saas").eq("id", uid).maybeSingle();
+		}
+		return perf;
+	}
+
+	// ¿Ve Mi Salón? activo_saas (el piloto, como siempre) o el estado del servidor: acceso piloto o
+	// Mi Salón abierto (interruptor de lanzamiento). Misma regla que js/saas-guard.js.
+	function veMiSalon(fila) {
+		if (!fila) { return false; }
+		if (fila.activo_saas === true) { return true; }
+		return !!(fila.mi_salon && typeof fila.mi_salon === "object" && fila.mi_salon.visible === true);
 	}
 
 	// Guarda lo que se supo del acceso: en la pestaña ("1" o "0") y, si tiene acceso, también
@@ -867,7 +892,93 @@
 			'</footer>';
 		var wrapper = document.createElement("div");
 		wrapper.innerHTML = html;
-		document.body.appendChild(wrapper.firstChild);
+		var pie = wrapper.firstChild;
+		document.body.appendChild(pie);
+		miSalonAbierto().then(function (si) {
+			var fila = pie.querySelector(".flex-wrap");
+			if (!si || !fila || fila.querySelector("[data-enlace-mi-salon]")) { return; }
+			var a = document.createElement("a");
+			a.href = PRESENTACION_MI_SALON;
+			a.setAttribute("data-enlace-mi-salon", "");
+			a.className = "inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-ink transition";
+			a.textContent = "Mi Salón";
+			fila.insertBefore(a, fila.children[2] || null);
+		});
+	}
+
+	/*
+		Interruptor de lanzamiento de Mi Salón (jissez_config.mi_salon_abierto, b21; decisión de
+		Jorge: se enciende a mano). Apagado, la presentación de Mi Salón sigue oculta: ningún enlace.
+		Encendido, la tienda la enlaza en su menú y en el pie (los de montarNav y montarFooter, y
+		el hueco [data-enlace-mi-salon] del pie de la portada). Se lee una vez por página; si la
+		lectura falla, como apagado.
+	*/
+	var PRESENTACION_MI_SALON = "conoce-mi-salon.html";
+	var abiertoPromesa = null;
+	function miSalonAbierto() {
+		if (abiertoPromesa) { return abiertoPromesa; }
+		abiertoPromesa = (async function () {
+			if (!window.sb) { return false; }
+			try {
+				var r = await window.sb.from("jissez_config").select("mi_salon_abierto").eq("id", true).maybeSingle();
+				return !!(r && !r.error && r.data && r.data.mi_salon_abierto === true);
+			} catch (_) {
+				return false;
+			}
+		})();
+		return abiertoPromesa;
+	}
+
+	// Enlaces a la presentación de Mi Salón en el encabezado de la tienda, solo con Mi Salón abierto
+	function enlazarMiSalon(header, activo) {
+		miSalonAbierto().then(function (si) {
+			if (!si) { return; }
+			var act = activo === "mi-salon";
+			var cls = act ? "bg-white/15 text-white font-semibold" : "text-white/85 hover:bg-white/10 hover:text-white";
+			[
+				[header.querySelector("[data-links]"), "inline-flex items-center h-11 px-3.5 rounded-lg text-[15px] transition "],
+				[header.querySelector("[data-mobile-menu] .flex-col"), "flex items-center h-12 px-3 rounded-lg text-[15px] transition "],
+			].forEach(function (par) {
+				var cont = par[0];
+				if (!cont || cont.querySelector("[data-enlace-mi-salon]")) { return; }
+				var a = document.createElement("a");
+				a.href = PRESENTACION_MI_SALON;
+				a.setAttribute("data-enlace-mi-salon", "");
+				a.className = par[1] + cls;
+				a.textContent = "Mi Salón";
+				// Después del catálogo (o al principio en la portada)
+				var ref = cont.querySelector('a[href="catalogo.html"]');
+				cont.insertBefore(a, ref ? ref.nextSibling : cont.firstChild);
+			});
+			// Huecos fijos de la página (el pie de la portada)
+			Array.prototype.forEach.call(document.querySelectorAll("[data-hueco-mi-salon]"), function (h) {
+				if (h.querySelector("a")) { return; }
+				var a = document.createElement("a");
+				a.href = PRESENTACION_MI_SALON;
+				a.setAttribute("data-enlace-mi-salon", "");
+				a.className = h.getAttribute("data-clase") || "";
+				a.textContent = "Mi Salón";
+				h.appendChild(a);
+				h.hidden = false;
+			});
+			// Llegada tras el login de quien todavía no usa Mi Salón (tienda/js/login.js, decisión de
+			// Jorge 2026-09-26): la tienda de siempre, con un aviso discreto, una sola vez
+			var aviso = null;
+			try { aviso = sessionStorage.getItem("jissez.llegadaMiSalon"); sessionStorage.removeItem("jissez.llegadaMiSalon"); } catch (_) {}
+			if (aviso && !document.getElementById("avisoLlegadaMiSalon")) {
+				var barra = document.createElement("div");
+				barra.id = "avisoLlegadaMiSalon";
+				barra.setAttribute("role", "status");
+				barra.className = "border-b border-line bg-white";
+				barra.innerHTML = '<div class="max-w-content mx-auto px-4 sm:px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink">' +
+					'<i data-lucide="school" class="w-4 h-4 shrink-0 text-board"></i><span class="flex-1 min-w-0">' + esc(aviso) + "</span>" +
+					'<a href="' + PRESENTACION_MI_SALON + '" data-enlace-mi-salon class="inline-flex items-center min-h-[44px] font-semibold text-board underline">Conocer Mi Salón</a>' +
+					'<button type="button" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-mute hover:text-ink" aria-label="Cerrar el aviso"><i data-lucide="x" class="w-4 h-4"></i></button></div>';
+				barra.querySelector("button").addEventListener("click", function () { barra.remove(); });
+				header.parentNode.insertBefore(barra, header.nextSibling);
+				iconos();
+			}
+		});
 	}
 
 	// Anima los elementos .reveal al entrar en viewport (respeta prefers-reduced-motion).
@@ -1185,6 +1296,9 @@
 		nombreUsuario: nombreUsuario,
 		asegurarPerfil: asegurarPerfil,
 		tieneSaas: tieneSaas,
+		leerAccesoSaas: leerAccesoSaas,
+		veMiSalon: veMiSalon,
+		miSalonAbierto: miSalonAbierto,
 		recordarSaas: recordarSaas,
 		cargarSecciones: cargarSecciones,
 		descargarArchivo: descargarArchivo,

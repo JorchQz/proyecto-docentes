@@ -18,8 +18,13 @@ var LoginDestino = (function () {
 
 	// ¿La cuenta tiene Mi Salón? `perf` es la respuesta de perfiles; si la lectura
 	// falla se trata como sin acceso (la tienda funciona igual y el selector no se ofrece).
+	// Con activo_saas o, desde b21, con el estado del servidor (perfiles.mi_salon.visible:
+	// acceso piloto o Mi Salón abierto por el interruptor de lanzamiento).
 	function tieneSaas(perf) {
-		return !!(perf && !perf.error && perf.data && perf.data.activo_saas === true);
+		if (!perf || perf.error || !perf.data) return false;
+		if (perf.data.activo_saas === true) return true;
+		var ms = perf.data.mi_salon;
+		return !!(ms && typeof ms === "object" && ms.visible === true);
 	}
 
 	// Una ruta desde la raíz del sitio (la que da js/secciones.js), vista desde tienda/.
@@ -48,7 +53,33 @@ var LoginDestino = (function () {
 		return destinoSaas === "onboarding.html" ? destinoSaas : "hoy.html";
 	}
 
-	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil, enSalon: enSalon, destinoSalon: destinoSalon };
+	/*
+		Con Mi Salón abierto (b21) TODA cuenta "ve" Mi Salón. Decisión de Jorge (2026-09-26): quien
+		todavía no lo usa (un comprador de la tienda) llega a la tienda como siempre, con un aviso
+		discreto para conocerlo; no se le manda al alta del grupo. Usa Mi Salón quien tiene
+		activo_saas o acceso piloto, ya tiene un grupo o su última sección en este aparato fue Mi
+		Salón o la Sala. `grupos`: la respuesta de la consulta de grupos (null si no se consultó).
+		Si esa consulta falló, se asume que sí lo usa (se conserva lo de antes).
+	*/
+	function usaMiSalon(perf, ultima, grupos) {
+		if (!perf || perf.error || !perf.data) return true;
+		if (perf.data.activo_saas === true) return true;
+		var ms = perf.data.mi_salon;
+		if (ms && ms.piloto === true) return true;
+		if (ultima === "salon" || ultima === "sala") return true;
+		if (!grupos || grupos.error) return true;
+		return !!(grupos.data && grupos.data.length);
+	}
+
+	// El aviso discreto de la tienda (tienda-common.js lo pinta una vez, con Mi Salón abierto)
+	var MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+	function textoLlegada(perf) {
+		var ms = perf && perf.data && perf.data.mi_salon;
+		var m = ms && ms.vigente && ms.origen === "gratis_t1" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ms.vence || "")) : null;
+		return "Mi Salón ya está disponible para docentes" + (m ? ": tu primer trimestre es gratis hasta el " + Number(m[3]) + " de " + MESES[Number(m[2]) - 1] + "." : ".");
+	}
+
+	return { nextSeguro: nextSeguro, tieneSaas: tieneSaas, desdeTienda: desdeTienda, porPerfil: porPerfil, enSalon: enSalon, destinoSalon: destinoSalon, usaMiSalon: usaMiSalon, textoLlegada: textoLlegada };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = LoginDestino; // pruebas en node
 
@@ -89,6 +120,8 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 	}
 
 	var mode = "login"; // 'login' | 'register'
+	// ?registro=1 abre directo en "Crear cuenta" (la presentación de Mi Salón con Mi Salón abierto)
+	if (params.get("registro") === "1") { mode = "register"; updateModeUI(); }
 
 	// Si ya hay sesión, saltar directo.
 	Tienda.getSession().then(async function (session) {
@@ -97,13 +130,17 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 
 	// Decide a dónde llevar al usuario tras autenticar.
 	async function destino(userId) {
+		// ¿Ve Mi Salón? (activo_saas y el estado de b21, con respaldo si la base no lo tiene)
+		var perf = Tienda.leerAccesoSaas
+			? await Tienda.leerAccesoSaas(userId)
+			: await window.sb.from("perfiles").select("activo_saas").eq("id", userId).maybeSingle();
+		// Correo de bienvenida de Mi Salón: solo si el servidor dice que está pendiente (Mi Salón
+		// abierto y cuenta creada desde entonces). También con ?next= (la presentación de Mi Salón
+		// manda al registro con next). Se espera solo a que salga la petición, no su respuesta.
+		if (!perf.error && perf.data && perf.data.mi_salon && perf.data.mi_salon.bienvenida_pendiente === true) {
+			await pedirBienvenida();
+		}
 		if (nextExplicito) { return nextExplicito; }
-		// ¿Tiene el SaaS completo activado?
-		var perf = await window.sb
-			.from("perfiles")
-			.select("activo_saas")
-			.eq("id", userId)
-			.maybeSingle();
 		// Recordar si tiene Mi Salón: la primera página tras el login aparta el espacio del selector
 		if (!perf.error && Tienda.recordarSaas) { Tienda.recordarSaas(userId, LoginDestino.tieneSaas(perf)); }
 		if (!LoginDestino.tieneSaas(perf)) { return enSalon ? "/tienda/catalogo.html" : LoginDestino.porPerfil(perf); }
@@ -122,7 +159,31 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			// revisa el grupo por su cuenta
 			grupos = await window.sb.from("grupos").select("id").eq("maestro_id", userId).limit(1);
 		}
+		// Quien todavía no usa Mi Salón (solo lo "ve" porque está abierto): a la tienda, con aviso
+		if (S && S.necesitaGrupos(ultima) && !LoginDestino.usaMiSalon(perf, ultima, grupos)) {
+			try { sessionStorage.setItem("jissez.llegadaMiSalon", LoginDestino.textoLlegada(perf)); } catch (_) {}
+			return "catalogo.html";
+		}
 		return LoginDestino.porPerfil(perf, S ? S.destinoLogin(ultima, grupos) : "dashboard.html");
+	}
+
+	/*
+		Pide el correo de bienvenida de Mi Salón (Edge Function bienvenida-mi-salon). La función
+		decide de nuevo en el servidor (Mi Salón abierto, cuenta creada desde entonces, correo no
+		enviado todavía) y es idempotente: pedirlo dos veces no manda dos correos. keepalive: la
+		página navega enseguida y la petición no debe cortarse.
+	*/
+	async function pedirBienvenida() {
+		try {
+			var s = await Tienda.getSession();
+			if (!s || !s.access_token || !Tienda.EDGE_BASE) return;
+			fetch(Tienda.EDGE_BASE + "/bienvenida-mi-salon", {
+				method: "POST",
+				keepalive: true,
+				headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token },
+				body: "{}",
+			}).catch(function () {});
+		} catch (_) {}
 	}
 
 	toggleLink.addEventListener("click", function (e) {

@@ -38,5 +38,8 @@
 /salon/tienda/conoce-mi-salon /tienda/conoce-mi-salon 301
 /salon/tienda/conoce-sala.html /tienda/conoce-sala 301
 /salon/tienda/conoce-sala /tienda/conoce-sala 301
+# La compra de Mi Salón (b22) tampoco: el pago es de la tienda
+/salon/tienda/mi-salon-compra.html /tienda/mi-salon-compra 301
+/salon/tienda/mi-salon-compra /tienda/mi-salon-compra 301
 /salon/index.html /salon/ 301
 /salon/* /:splat 200

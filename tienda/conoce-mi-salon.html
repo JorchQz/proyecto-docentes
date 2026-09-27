@@ -6,21 +6,21 @@
 	<title>Mi Salón: la app para llevar tu salón con la NEM — Jissez</title>
 	<meta name="description" content="Mi Salón es la app de Jissez para llevar el día a día del salón con la Nueva Escuela Mexicana: pasa lista, califica con semáforo y llega al cierre del trimestre con la boleta propuesta. Pensada para multigrado y para la tablet.">
 	<!--
-		PÁGINA OCULTA (decisión de Jorge, 2026-09-26): publicada, pero sin enlaces desde la tienda ni
-		desde ningún menú, y sin indexar (este meta robots y la regla de /_headers). Jorge y marketing
-		la ven con el enlace directo: jissez.com/tienda/conoce-mi-salon
+		PÁGINA OCULTA (decisión de Jorge, 2026-09-26) mientras Mi Salón esté cerrado: publicada, sin
+		enlaces desde la tienda ni desde ningún menú, y sin indexar (este meta robots y la regla de
+		/_headers). Jorge y marketing la ven con el enlace directo: jissez.com/tienda/conoce-mi-salon
 
-		Cuando se lance, para encenderla:
-		  1. Quitar el meta robots de abajo y la regla "/tienda/conoce-*" de /_headers.
-		  2. Agregar los enlaces (NO están puestos todavía):
-		     - Tienda, portada (tienda/index.html): en el pie, columna de enlaces ("Mi Salón").
-		     - Menú de la tienda (tienda/js/tienda-common.js, montarNav → navLinks): "Mi Salón".
-		     - Selector de secciones (js/secciones.js): para una cuenta SIN acceso, si se decide
-		       mostrarle el selector, la pestaña Mi Salón llevaría aquí.
-		     - Candado (js/saas-guard.js, TIENDA_URL): una cuenta sin acceso que abre Mi Salón podría
-		       llegar aquí en vez de al catálogo.
-		  3. Si se quiere medir anuncios, agregar el Pixel de Meta como en tienda/index.html (el aviso de
-		     privacidad ya lo cubre en las páginas de la tienda).
+		Lanzamiento (b21, interruptor jissez_config.mi_salon_abierto; docs/CONTEXTO.md §6.5):
+		  - Los ENLACES se encienden solos con el interruptor: tienda/js/tienda-common.js pone "Mi Salón"
+		    en el menú de la tienda, en su pie y en el pie de la portada solo con Mi Salón abierto. Con
+		    Mi Salón abierto, esta página ofrece crear la cuenta con el primer trimestre gratis.
+		    El botón "Renovar" del modo solo lectura de Mi Salón (js/mi-salon-acceso.js) también trae aquí
+		    mientras no exista la compra.
+		  - La INDEXACIÓN no se puede encender con lógica (el buscador lee el HTML y la cabecera): al
+		    lanzar, quitar el meta robots de abajo y las reglas "/tienda/conoce-*" de /_headers (paso
+		    exacto en docs/CONTEXTO.md §6.5).
+		  - Si se quiere medir anuncios, agregar el Pixel de Meta como en tienda/index.html (el aviso de
+		    privacidad ya lo cubre en las páginas de la tienda).
 		El precio se configura en tienda/js/conoce-mi-salon.js (PRECIOS_MI_SALON).
 	-->
 	<meta name="robots" content="noindex, nofollow">
@@ -370,6 +370,17 @@
 					<p class="mt-1 text-mute">Si quieres, te avisamos a tu correo en cuanto puedas suscribirte.</p>
 				</div>
 				<div data-interes-caja class="sm:w-[23rem] sm:shrink-0"></div>
+			</div>
+
+			<!-- Mi Salón abierto (interruptor de lanzamiento, b21): el primer trimestre es gratis para toda
+			     cuenta creada hasta el vencimiento del periodo gratis. js/conoce-mi-salon.js lo muestra en
+			     lugar del "Avísame" a quien todavía no tiene Mi Salón; la fecha sale de la tabla de periodos. -->
+			<div id="msAbiertoBloque" class="hidden mt-6 max-w-3xl mx-auto bg-white border border-line rounded-3xl p-6 sm:p-7 flex flex-col sm:flex-row sm:items-center gap-5">
+				<div class="flex-1">
+					<h3 class="font-bold text-ink text-lg">Tu primer trimestre es gratis.</h3>
+					<p id="msAbiertoTexto" class="mt-1 text-mute">Crea tu cuenta y tendrás acceso completo a Mi Salón.</p>
+				</div>
+				<a href="login.html?registro=1&amp;next=..%2Fdashboard.html" class="inline-flex items-center justify-center gap-2 min-h-[48px] px-6 rounded-xl bg-action hover:bg-action-dark text-white font-bold transition sm:shrink-0">Crear mi cuenta <i data-lucide="arrow-right" class="w-5 h-5"></i></a>
 			</div>
 
 			<!-- Qué incluye + beneficio para quien ya compró planeaciones. El beneficio lo decide
