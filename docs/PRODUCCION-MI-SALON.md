@@ -1,34 +1,45 @@
 # Mi Salón a producción: pasos exactos (lanzamiento del 12 de octubre de 2026)
 
-Preparado por el constructor AN el 2026-09-26, sobre la rama `mi-salon-parte-b` ya integrada
-(registro histórico b20, acceso b21, cobros b22). Producción (`cluvaxxqvhtxxiwctpnl`, jissez.com)
-está en `b4c6958` y **no tiene ninguna migración desde `jissez_interes_secciones`**. Todo lo de abajo
-se hace **solo con el OK de Jorge**, en este orden. El proyecto de pruebas (`raoxdxwgsxbqlzdnndly`)
-ya quedó igual a lo que irá a producción (mismas migraciones, mismo orden, mismo
-`delete_own_account`).
+Preparado por el constructor AN el 2026-09-26 y ajustado por el constructor AO el mismo día (R27b:
+orden de las Edge Functions, hora de poco uso, "si falla a medias", `lock_timeout`; b23: folio de
+incidencias), sobre la rama `mi-salon-parte-b` ya integrada (registro histórico b20, acceso b21,
+cobros b22, folio b23). Producción (`cluvaxxqvhtxxiwctpnl`, jissez.com) está en `b4c6958` y **no
+tiene ninguna migración desde `jissez_interes_secciones`**. Todo lo de abajo se hace **solo con el
+OK de Jorge**, en este orden. El proyecto de pruebas (`raoxdxwgsxbqlzdnndly`) ya quedó igual a lo
+que irá a producción (mismas migraciones, mismo orden, mismo `delete_own_account`).
 
 Resumen del orden:
 
-1. Migraciones (en una transacción) y el piloto de producción.
+1. Migraciones (en una transacción, a hora de poco uso) y el piloto de producción.
 2. Secretos de las Edge Functions.
-3. Despliegue de las Edge Functions.
+3. Despliegue de las Edge Functions (las que cobran primero; `comprar-mi-salon` al final).
 4. Cron de los avisos.
 5. Despliegue del frontend (push a `main`).
 6. El 12 de octubre, con la confirmación de Jorge: encender el interruptor.
 
-Por qué este orden: el frontend nuevo lee columnas y tablas de b20 a b22 (sin ellas, Hoy y Reportes
-dicen "No se pudo cargar"); las Edge Functions nuevas llaman funciones de b21 y b22; el cron llama a
-una Edge Function que ya debe existir. Mientras el interruptor esté apagado, lo nuevo solo lo ven
-las cuentas con `activo_saas` o acceso `piloto`: el público no nota nada.
+Por qué este orden: el frontend nuevo lee columnas y tablas de b20 a b23 (sin ellas, Hoy y Reportes
+dicen "No se pudo cargar" e Incidencias no carga el folio); las Edge Functions nuevas llaman
+funciones de b21 y b22; el cron llama a una Edge Function que ya debe existir. Mientras el
+interruptor esté apagado, lo nuevo solo lo ven las cuentas con `activo_saas` o acceso `piloto`: el
+público no nota nada.
 
 ---
 
 ## 0. Antes de empezar
 
+- Hora de poco uso: las migraciones toman bloqueos breves en tablas de la tienda
+  (`marketplace_ordenes`, funciones de cupones) y del SaaS. Correrlas de noche (por ejemplo, entre
+  las 23:00 y las 6:00 del centro), sin ventas en curso. El script trae `lock_timeout = '5s'`: si una
+  tabla está ocupada, falla y revierte todo en vez de hacer fila y trabar la tienda; se reintenta
+  más tarde.
 - Respaldo: confirmar en Supabase → Database → Backups que hay un respaldo de hoy (o PITR activo).
 - Verificación de integridad de b19a en producción (solo lectura; todo debe dar 0). Está al final de
   `supabase/mi_salon_b19a_integridad_2026-09.sql`, comentada: copiarla y correrla en el editor SQL.
   Si algo no da 0, parar y revisar con Jorge antes de seguir.
+- Plantillas de examen: no publicar ninguna (`examenes.estado` = 'publicado' con `maestro_id` null)
+  antes de desplegar el frontend (paso 5). b18a aprieta la política de UPDATE de `examenes` y el
+  frontend publicado (`b4c6958`) todavía "aplica" una plantilla con un UPDATE; hoy las 63 plantillas
+  de producción están en 'borrador' y nadie ve ese botón.
 
 ## 1. Migraciones
 
@@ -41,33 +52,58 @@ En este orden exacto (cada una es aditiva e idempotente; la última define la ve
 | 2 | `supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql` | `v_avance_pda` con el campo del catálogo |
 | 3 | `supabase/mi_salon_b17_flujo_libre_2026-09.sql` | actividades sueltas, "¿Para quién?", Incompleta |
 | 4 | `supabase/mi_salon_b18_examenes_2026-09.sql` | exámenes de Mi Salón |
-| 5 | `supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql` | plantillas de examen |
+| 5 | `supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql` | plantillas de examen: reemplaza UNA política (UPDATE de `examenes`, solo los propios) |
 | 6 | `supabase/mi_salon_b19_examenes_cola_2026-09.sql` | exámenes en la cola sin señal |
 | 7 | `supabase/mi_salon_b19a_integridad_2026-09.sql` | integridad (producto quitado, mismo grupo) |
 | 8 | `supabase/mi_salon_b20_registro_historico_2026-09.sql` | Ponte al día, `es_historico`, calificación directa (ya confirmada en la boleta) |
 | 9 | `supabase/mi_salon_b21_acceso_2026-09.sql` | periodos, accesos, T1 gratis a toda cuenta, interruptor (apagado), solo lectura en el servidor |
-| 10 | `supabase/mi_salon_b22_cobros_2026-09.sql` | precios, fundador, cupones, órdenes y pagos, avisos, panel; `delete_own_account` FINAL |
+| 10 | `supabase/mi_salon_b22_cobros_2026-09.sql` | precios, fundador, cupones, órdenes y pagos, avisos, panel; parcha funciones de la tienda (abajo) |
+| 11 | `supabase/mi_salon_b23_folio_incidencias_2026-09.sql` | folio RDI de incidencias (y a las que ya existen), directa con boleta cerrada, admin_ sin anon; `delete_own_account` FINAL |
 
-Aparte, después de la 10:
+Aparte, después de la 11:
 
 | # | Archivo | Qué hace |
 |---|---|---|
-| 11 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
+| 12 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
 
 NO se aplican en producción: `mi_salon_b21c_piloto_pruebas_2026-09.sql` (cuentas QA, solo pruebas)
 y `mi_salon_b22_avisos_cron_2026-09.sql` (va en el paso 4).
 
-Cómo aplicarlas (una sola transacción: si una falla, no queda nada a medias):
+Precisiones (verificadas contra el texto de cada archivo y con la cadena completa sobre una base
+igual a producción, en una transacción revertida):
+
+- Candado de solo lectura: **135 políticas en 45 tablas** (3 por tabla: `acceso_mi_salon_ins`,
+  `_upd` y `_del`). Eran 132 en 44 hasta b22; b23 agrega `incidencias_folios`.
+- b18a solo reemplaza la política de UPDATE de `examenes` ("examenes reclamar/editar" → "examenes
+  editar propios"); no toca filas ni columnas.
+- Funciones que YA existen en producción y la cadena reemplaza (mismo resultado para lo que ya
+  había): de la tienda, `marketplace_promocion_aplica` (b22: el ámbito nuevo 'mi_salon' nunca lleva
+  la oferta), `admin_listar_ordenes` y `admin_estado_cuenta_cupon` (b22: el detalle de una orden de
+  Mi Salón; las de la tienda salen idénticas); del SaaS, `marca_captura_calificaciones` (b20),
+  `incrementar_uso_criterio` (b21) y `delete_own_account`. b23 quita EXECUTE a anon y PUBLIC de las
+  funciones `admin_` (en producción lo tenían `admin_ajustar_lanzamiento`, `admin_estado_precios`,
+  `admin_estado_promocion`, `admin_guardar_promocion`, `admin_confirmar_orden` y
+  `admin_otorgar_acceso`); el panel entra con sesión y sigue igual.
+- b23 asigna folio a las incidencias que ya existen, en orden de creación por grupo y ciclo. En la
+  lectura del 2026-09-26 producción tenía **1** incidencia (de la cuenta de soporte, 2 alumnos,
+  ciclo 2026-2027): quedará `RDI-2026-2027-0001`.
+
+Cómo aplicarlas (una sola transacción con `lock_timeout` de 5 s: si una falla, no queda nada a
+medias). El script versionado es `scripts/aplicar-migraciones-prod.js` (copia del de `.qa/`, que no
+está en git); toma `PROD_DB_URL` de la variable de entorno o de `.env.local` y el paquete `pg` de
+`.qa/node_modules` (o de un `npm install pg`):
 
 ```
-node .qa/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql
-node .qa/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
+node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql supabase/mi_salon_b23_folio_incidencias_2026-09.sql
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
 
-(o pegarlas una por una, en ese orden, en el editor SQL de producción). La consulta final de b21b
-debe devolver dos filas, origen `piloto`, vence `2027-07-30`.
+Si no se puede usar el script: pegarlas una por una, en ese orden, en el editor SQL de producción,
+empezando cada una con `begin; set local lock_timeout = '5s';` y terminando con `commit;` (el editor
+corre cada pegada como un bloque). La consulta final de b21b debe devolver dos filas, origen
+`piloto`, vence `2027-07-30`.
 
-Comprobación después (editor SQL de producción, solo lectura):
+Comprobación final (editor SQL de producción, solo lectura):
 
 ```sql
 select
@@ -77,8 +113,17 @@ select
   (select count(*) from public.mi_salon_avisos)                                         as avisos,           -- 10
   (select count(*) from auth.users u where not exists (
      select 1 from public.mi_salon_accesos a where a.docente_id = u.id))                as sin_acceso,       -- 0 (hasta el 18-dic)
-  (select count(*) from pg_policies where policyname like 'acceso_mi_salon%')           as candados,         -- 3 por tabla del SaaS
-  position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
+  (select count(*) from public.mi_salon_accesos where origen = 'piloto')                as piloto,           -- 2
+  (select count(*) from pg_policies where policyname like 'acceso_mi_salon%')           as candados,         -- 135
+  (select count(distinct tablename) from pg_policies where policyname like 'acceso_mi_salon%') as tablas_candado, -- 45
+  (select count(*) from public.incidencias where folio is null)                         as sin_folio,        -- 0
+  (select count(*) from public.incidencias i where not exists (
+     select 1 from public.incidencias_folios f where f.grupo_id = i.grupo_id))          as sin_contador,     -- 0
+  (select count(*) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'admin\_%'
+     and has_function_privilege('anon', oid, 'execute'))                                as admin_anon,       -- 0
+  position('m.aprobado_en is not null' in pg_get_functiondef('public.mi_salon_aplicar_pago(uuid,jsonb)'::regprocedure)) > 0 as pago_reparable, -- true
+  position('incidencias_folios' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0
+    and position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
 ```
 
 ## 2. Secretos de las Edge Functions
@@ -101,26 +146,64 @@ Los de la tienda ya existen; confirmar que estén todos:
 ## 3. Despliegue de las Edge Functions
 
 Desde la raíz del repo, con la rama integrada (`supabase/config.toml` ya trae `verify_jwt = false`
-para las tres nuevas: validan la sesión o el `CRON_SECRET` por dentro):
+para las tres nuevas: validan la sesión o el `CRON_SECRET` por dentro). **En este orden**: primero
+las que procesan pagos (así, cuando exista la primera orden de Mi Salón, el webhook ya sabe
+encaminarla) y al final `comprar-mi-salon`, la única que crea órdenes de Mi Salón:
 
 ```
-supabase functions deploy bienvenida-mi-salon --project-ref cluvaxxqvhtxxiwctpnl
-supabase functions deploy comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl
-supabase functions deploy avisos-mi-salon     --project-ref cluvaxxqvhtxxiwctpnl
-supabase functions deploy redactar-boleta     --project-ref cluvaxxqvhtxxiwctpnl
 supabase functions deploy webhook-mercadopago --project-ref cluvaxxqvhtxxiwctpnl
 supabase functions deploy confirmar-pago      --project-ref cluvaxxqvhtxxiwctpnl
 supabase functions deploy avisos-pedidos      --project-ref cluvaxxqvhtxxiwctpnl
 supabase functions deploy completar-pedido    --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy redactar-boleta     --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy bienvenida-mi-salon --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy avisos-mi-salon     --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl
 ```
 
 - Nuevas: `bienvenida-mi-salon` (b21), `comprar-mi-salon` y `avisos-mi-salon` (b22).
 - Otra vez: `redactar-boleta` (exige acceso vigente, b21) y las que importan `_shared/pagos.ts`, que
-  cambió (una orden de Mi Salón va por `_shared/mi-salon-pagos.ts`; las de la tienda siguen igual):
-  `webhook-mercadopago`, `confirmar-pago`, `avisos-pedidos` y `completar-pedido`.
+  cambió (una orden de Mi Salón va por `_shared/mi-salon-pagos.ts`; si no se puede saber si una
+  orden es de Mi Salón por una falla pasajera, la orden queda pendiente y se repara sola con
+  confirmar-pago o el siguiente aviso de Mercado Pago; una orden de la tienda sin renglones ya no
+  se marca pagada; las demás órdenes de la tienda siguen igual): `webhook-mercadopago`,
+  `confirmar-pago`, `avisos-pedidos` y `completar-pedido`.
 - La URL del webhook de Mercado Pago no cambia.
 - Comprobación: Supabase → Edge Functions muestra las ocho con la versión de hoy; en los registros
   de `webhook-mercadopago`, la siguiente venta de la tienda se procesa como siempre.
+
+## Si falla a medias
+
+Cada paso deja producción en un estado que funciona; así se sale de cada uno:
+
+- **Falla una migración (paso 1).** El script revierte TODO (una transacción): producción queda
+  como estaba, sin ninguna migración nueva. Leer el error: si es `lock_timeout` (tabla ocupada),
+  reintentar más tarde a otra hora de poco uso; si es otra cosa, parar y revisarlo en pruebas antes
+  de volver a intentar. No aplicar las migraciones por separado para "avanzar lo que sí pasa".
+- **Falla b21b (piloto).** No afecta lo demás (las migraciones ya quedaron). Es idempotente: se
+  corrige y se vuelve a correr.
+- **Falla el despliegue de una Edge Function (paso 3).** Las ya desplegadas funcionan con la base
+  migrada; la que falló sigue en su versión anterior. Las cuatro de la tienda (webhook,
+  confirmar-pago, avisos-pedidos, completar-pedido) son compatibles con la base nueva también en su
+  versión anterior (las órdenes de la tienda no cambian). Reintentar la que falló antes de seguir y,
+  sobre todo, **no desplegar `comprar-mi-salon` mientras `webhook-mercadopago` y `confirmar-pago`
+  no estén en la versión nueva** (una orden de Mi Salón con el webhook viejo quedaría pagada sin
+  acceso). Si ya se desplegó por error, borrarla desde el panel de Edge Functions hasta tener el
+  webhook nuevo: con el interruptor apagado nadie del público llega a la compra.
+- **Falla el cron (paso 4).** No envía nada con el interruptor apagado; se corrige antes del 12 de
+  octubre.
+- **Falla el push o el despliegue del frontend (paso 5).** jissez.com sigue con `b4c6958`, que
+  funciona con la base migrada (las migraciones son aditivas; con el interruptor apagado el público
+  no nota nada). Si el sitio nuevo sale con un error, `git revert` del merge y push a `main`
+  (vuelve a `b4c6958`); la base se queda migrada, no hay que deshacerla.
+- **Algo sale mal después de encender el interruptor (paso 6).** Apagarlo (botón del panel o el
+  `update` del paso 6). Apagar no quita accesos ni datos.
+- **Pago de Mi Salón que quedó 'pagado' sin acceso** (el defecto de R27b, antes de este arreglo):
+  con b22 corregida, `confirmar-pago` o el siguiente aviso del webhook lo aplican solos. Para
+  revisarlos: `select o.id, o.estado, m.aprobado_en from marketplace_ordenes o join mi_salon_ordenes m
+  on m.orden_id = o.id where o.estado = 'pagado' and m.aprobado_en is null;` (debe dar 0 filas).
+- **No se toca a mano**: nunca borrar filas de `mi_salon_accesos`, `incidencias_folios` ni
+  `marketplace_ordenes` para "limpiar" un intento fallido; todo lo de arriba es idempotente.
 
 ## 4. Cron de los avisos
 
