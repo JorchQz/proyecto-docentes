@@ -559,10 +559,8 @@ function getTextoFase(fase) {
 	if (typeof todos === "string" && todos.trim()) return todos;
 	if (typeof diferenciado === "string" && diferenciado.trim()) return diferenciado;
 	if (typeof diferenciado === "object" && diferenciado !== null) {
-		const lineas = Object.keys(diferenciado)
-			.map((g) => ({ g: g, t: textoActividad(diferenciado[g]) }))
-			.filter((x) => x.t)
-			.map((x) => "Grado " + x.g + ": " + x.t);
+		// Llave de grado → "Grado 1:"; de grupo de trabajo ("Morado") → tal cual (js/texto-sesion.js)
+		const lineas = window.TextoSesion.lineas(diferenciado, null, "texto", textoActividad);
 		if (lineas.length) return lineas.join("\n");
 	}
 	return "Sin información registrada.";
@@ -580,32 +578,16 @@ function textoActividad(x) {
 /*
 	Las actividades llegan en varias formas: lista, texto, o el objeto de "Crear
 	proyecto" { mode, todos: [...], diferenciado: { "1": [...] } }. Antes ese objeto se
-	pintaba tal cual y salía "• todos • null".
+	pintaba tal cual y salía "• todos • null". Las llaves de grupo de trabajo ("Morado",
+	"Círculos") se rotulan tal cual, después de los pasos de todo el grupo (js/texto-sesion.js).
 */
 function getActividadesFase(fase) {
 	const raw = sesionActiva ? sesionActiva[fase + "_actividades"] : null;
-	if (!raw) return [];
-	if (typeof raw === "string") return raw.trim() ? [raw.trim()] : [];
-	if (Array.isArray(raw)) return raw.map(textoActividad).filter(Boolean);
-	if (typeof raw === "object") {
-		if ("mode" in raw || "todos" in raw || "diferenciado" in raw || "por_grado" in raw) {
-			const out = (Array.isArray(raw.todos) ? raw.todos : raw.todos ? [raw.todos] : []).map(textoActividad).filter(Boolean);
-			const porGrado = raw.diferenciado || raw.por_grado;
-			if (porGrado && typeof porGrado === "object") {
-				Object.keys(porGrado).forEach((g) => {
-					(Array.isArray(porGrado[g]) ? porGrado[g] : [porGrado[g]]).map(textoActividad).filter(Boolean)
-						.forEach((t) => out.push(g + "°: " + t));
-				});
-			}
-			return out;
-		}
-		return Object.values(raw).map(textoActividad).filter(Boolean);
-	}
-	return [];
+	return window.TextoSesion.lineasActividades(raw, textoActividad);
 }
 
 function getTareasCierreTexto() {
-	return extraerTareasCierre().map((t) => (t.grado != null ? t.grado + "°: " + t.descripcion : t.descripcion));
+	return extraerTareasCierre().map((t) => (t.grado != null ? window.TextoSesion.rotulo(t.grado, "corto") + ": " + t.descripcion : t.descripcion));
 }
 
 function extraerTareasCierre() {
@@ -619,10 +601,12 @@ function extraerTareasCierre() {
 		// Modo diferenciado: { diferenciado: { "4": [...] } }; "por_grado" es alias antiguo
 		const porGrado = raw.diferenciado || raw.por_grado;
 		if (mode === "diferenciado" && porGrado && typeof porGrado === "object") {
+			// El bot guarda cada grado como texto ("1": "Platica en casa…"), Crear proyecto como lista
 			const out = [];
-			Object.keys(porGrado).forEach((grado) => {
-				(porGrado[grado] || []).forEach((t) => {
-					out.push({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: Number(grado) });
+			window.TextoSesion.llavesEnOrden(porGrado, raw.orden_grupos).forEach((grado) => {
+				const lista = porGrado[grado];
+				(Array.isArray(lista) ? lista : lista ? [lista] : []).forEach((t) => {
+					out.push({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: grado });
 				});
 			});
 			return out;
