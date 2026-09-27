@@ -151,18 +151,14 @@ async function iniciarActividades() {
 		'</div>';
 	}
 
+	// Los pasos de todo el grupo y luego los de cada grado ("1°: …") o grupo de trabajo
+	// ("Morado: …"), con la misma regla que Inicio (js/texto-sesion.js). Antes, en "todos" se
+	// perdían los pasos por grupo y en "diferenciado" salían sin decir de qué grado eran.
 	function extraer(jsonb) {
 		if (!jsonb) return [];
 		try {
 			const d = typeof jsonb === "string" ? JSON.parse(jsonb) : jsonb;
-			if (d.mode === "todos" && Array.isArray(d.todos)) {
-				return d.todos.filter(Boolean);
-			}
-			if (d.mode === "diferenciado" && d.diferenciado) {
-				return Object.values(d.diferenciado)
-					.flatMap(function (arr) { return Array.isArray(arr) ? arr : []; })
-					.filter(Boolean);
-			}
+			return window.TextoSesion.lineasActividades(d);
 		} catch (_) {}
 		return [];
 	}
