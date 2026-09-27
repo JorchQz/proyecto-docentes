@@ -909,6 +909,32 @@ document.addEventListener("DOMContentLoaded", async function () {
         </div>`;
     }
 
+    /*
+      Tareas del cierre "igual para todos": iguales para todos o POR GRADO (2026-09-27: antes las
+      tareas por grado solo existían con TODO el cierre diferenciado y, al abrir un proyecto con
+      cierre común y tareas por grado, guardar las borraba). Con un solo grado no hay selector.
+    */
+    function tareasDelCierreTodos() {
+      const lista = makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', 'Agregar tarea', 'Tareas para casa');
+      if (!grados.length) return lista;
+      // Con un solo grado no se ofrece el selector; el bloque existe para no perder las tareas
+      // por grado que ya traiga la sesión
+      const porGrado = grados.map(function (g) {
+        return `<div>${makeItemList(`${key}_tarea_grado_${g}`, `Tarea para ${g}°...`, 'Agregar tarea', `Tareas para casa de ${g}°`)}</div>`;
+      }).join('');
+      return `
+        <div class="tareas-block" data-tareas-mode="todos">
+          <div class="flex items-center justify-end mt-3${grados.length < 2 ? ' hidden' : ''}">
+            <div class="flex rounded-lg overflow-hidden border border-gray-300 text-xs" role="group" aria-label="Tareas para casa">
+              <button type="button" class="tareas-btn-todos min-h-[44px] px-3 py-1.5 bg-blue-600 text-white font-medium transition" aria-pressed="true">Tareas iguales para todos</button>
+              <button type="button" class="tareas-btn-grado min-h-[44px] px-3 py-1.5 bg-white text-gray-600 font-medium transition hover:bg-gray-50" aria-pressed="false">Tareas por grado</button>
+            </div>
+          </div>
+          <div class="tareas-todos-panel">${lista}</div>
+          <div class="tareas-grado-panel hidden grid grid-cols-1 md:grid-cols-${cols} gap-3">${porGrado}</div>
+        </div>`;
+    }
+
     let difCols = '';
     const gradoKeys = grados.length > 0 ? grados : ['A', 'B'];
     gradoKeys.forEach(function (g) {
@@ -950,14 +976,132 @@ document.addEventListener("DOMContentLoaded", async function () {
             class="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden"
             placeholder="Descripción de ${label.toLowerCase()} para todos los grados..."></textarea>
           ${makeItemList(`${key}_act_todos`, 'Actividad en clase...', 'Agregar actividad', 'Actividades')}
-          ${includeTareas ? makeItemList(`${key}_tarea_todos`, 'Tarea para casa...', 'Agregar tarea', 'Tareas para casa') : ''}
+          ${includeTareas ? tareasDelCierreTodos() : ''}
         </div>
         <div class="mode-dif-panel hidden">
           <div class="grid grid-cols-1 md:grid-cols-${cols} gap-3">
             ${difCols}
           </div>
         </div>
+        <div class="grupos-trabajo hidden mt-3 border-t border-gray-200 pt-3"></div>
       </div>`;
+  }
+
+  /*
+    Pasos por GRUPO DE TRABAJO ("Morado", "Círculos"; js/texto-sesion.js): llegan en
+    *_actividades.diferenciado con una llave que no es grado (proyectos cargados por nivel,
+    scripts/cargar-pp-niveles.js). Se muestran en su propio recuadro, en los dos modos, y se
+    guardan igual (ProyectoEdicion.actividadesDeSeccion). Antes se perdían al guardar.
+  */
+  function pintarGruposTrabajo(section, sectionKey, grupos) {
+    const cont = section.querySelector('.grupos-trabajo');
+    if (!cont || !grupos || !grupos.length) return;
+    cont.innerHTML = '<p class="text-xs font-semibold text-gray-500 mb-1">Por grupo de trabajo</p>' +
+      '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' + grupos.map(function (g, i) {
+        return `
+          <div class="item-list-container" data-key="${sectionKey}_act_grupo_${i}" data-grupo="${escapeHtml(g.llave)}" data-placeholder="Paso de ${escapeHtml(g.llave)}...">
+            <p class="text-xs font-semibold text-blue-700 mb-1.5 break-words">${escapeHtml(g.llave)}</p>
+            <div class="item-list flex flex-col gap-1.5"></div>
+            <button type="button" class="add-item-btn mt-1.5 flex items-center gap-1.5 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg min-h-[44px] px-3 py-1.5 hover:bg-blue-50 transition">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Agregar paso
+            </button>
+          </div>`;
+      }).join('') + '</div>';
+    cont.classList.remove('hidden');
+    cont.querySelectorAll('.item-list-container').forEach(function (container, i) {
+      conectarListaItems(container);
+      (grupos[i].items || []).forEach(function (texto) { agregarRenglon(container, texto); });
+    });
+  }
+
+  // Los pasos por grupo de trabajo de una sección, en el orden de la pantalla
+  function gruposDeSeccion(block, sectionKey) {
+    const section = block.querySelector('.didactic-section[data-section="' + sectionKey + '"]');
+    if (!section) return [];
+    return Array.from(section.querySelectorAll('.grupos-trabajo .item-list-container[data-grupo]')).map(function (c) {
+      return {
+        llave: c.dataset.grupo,
+        items: Array.from(c.querySelectorAll('[name="' + c.dataset.key + '_item"]')).map(function (i) { return i.value.trim(); }).filter(Boolean),
+      };
+    });
+  }
+
+  // Tareas del cierre: modo "todos" o "grado" del cierre igual para todos
+  function modoTareasDe(block) {
+    const t = block.querySelector('.didactic-section[data-section="cierre"] .tareas-block');
+    return t ? (t.dataset.tareasMode || 'todos') : 'todos';
+  }
+  function ponerModoTareas(block, modo) {
+    const t = block.querySelector('.didactic-section[data-section="cierre"] .tareas-block');
+    if (!t) return;
+    t.dataset.tareasMode = modo === 'grado' ? 'grado' : 'todos';
+    const porGrado = t.dataset.tareasMode === 'grado';
+    t.querySelector('.tareas-todos-panel')?.classList.toggle('hidden', porGrado);
+    t.querySelector('.tareas-grado-panel')?.classList.toggle('hidden', !porGrado);
+    [['.tareas-btn-todos', !porGrado], ['.tareas-btn-grado', porGrado]].forEach(function (par) {
+      const b = t.querySelector(par[0]);
+      if (!b) return;
+      b.setAttribute('aria-pressed', par[1] ? 'true' : 'false');
+      b.classList.toggle('bg-blue-600', par[1]);
+      b.classList.toggle('text-white', par[1]);
+      b.classList.toggle('bg-white', !par[1]);
+      b.classList.toggle('text-gray-600', !par[1]);
+    });
+  }
+  function tareasPorGradoDeBloque(block) {
+    const dif = {};
+    block.querySelectorAll('.tareas-grado-panel .item-list-container').forEach(function (c) {
+      const m = String(c.dataset.key || '').match(/^cierre_tarea_grado_(.+)$/);
+      if (!m) return;
+      dif[m[1]] = Array.from(c.querySelectorAll('[name="' + c.dataset.key + '_item"]')).map(function (i) { return i.value.trim(); }).filter(Boolean);
+    });
+    return dif;
+  }
+
+  // Un renglón nuevo en una lista (el mismo que crea "Agregar")
+  function agregarRenglon(container, texto) {
+    container.querySelector('.add-item-btn')?.click();
+    const els = container.querySelectorAll('.item-row textarea, .item-row input');
+    if (!els.length) return;
+    const last = els[els.length - 1];
+    last.value = texto;
+    last.dispatchEvent(new Event('input'));
+  }
+
+  // "Agregar" y quitar renglones de una lista (Actividades, Tareas, pasos por grupo)
+  function conectarListaItems(container) {
+    const list = container.querySelector('.item-list');
+    const key = container.dataset.key;
+
+    container.querySelector('.add-item-btn').addEventListener('click', function () {
+      const placeholder = container.dataset.placeholder || '';
+      const newRow = document.createElement('div');
+      newRow.className = 'item-row flex gap-2 items-start';
+      newRow.innerHTML = `
+        <span class="activity-num text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-1 rounded mt-0.5 shrink-0 min-w-[1.75rem] text-center leading-4">1</span>
+        <textarea name="${key}_item" rows="1"
+          class="flex-1 min-h-[44px] px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden break-words"
+          placeholder="${escapeHtml(placeholder)}"></textarea>
+        <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -mt-1.5 -mb-3 rounded-full transition shrink-0" aria-label="Eliminar">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>`;
+      const ta = newRow.querySelector('textarea');
+      ta.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = this.scrollHeight + 'px';
+      });
+      list.appendChild(newRow);
+      renumberItems(list);
+      ta.focus();
+    });
+
+    list.addEventListener('click', function (e) {
+      const btn = e.target.closest('.remove-item-btn');
+      if (!btn) return;
+      btn.closest('.item-row').remove();
+      renumberItems(list);
+    });
   }
 
   function renumberItems(list) {
@@ -1496,39 +1640,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
 
     // Listas dinámicas (Tareas y Actividades)
-    div.querySelectorAll('.item-list-container').forEach(function (container) {
-      const list = container.querySelector('.item-list');
-      const key = container.dataset.key;
+    div.querySelectorAll('.item-list-container').forEach(conectarListaItems);
 
-      container.querySelector('.add-item-btn').addEventListener('click', function () {
-        const placeholder = container.dataset.placeholder || '';
-        const newRow = document.createElement('div');
-        newRow.className = 'item-row flex gap-2 items-start';
-        newRow.innerHTML = `
-          <span class="activity-num text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-1 rounded mt-0.5 shrink-0 min-w-[1.75rem] text-center leading-4">1</span>
-          <textarea name="${key}_item" rows="1"
-            class="flex-1 min-h-[44px] px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none overflow-hidden break-words"
-            placeholder="${placeholder}"></textarea>
-          <button type="button" class="remove-item-btn inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 -mt-1.5 -mb-3 rounded-full transition shrink-0" aria-label="Eliminar">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
-          </button>`;
-        const ta = newRow.querySelector('textarea');
-        ta.addEventListener('input', function () {
-          this.style.height = 'auto';
-          this.style.height = this.scrollHeight + 'px';
-        });
-        list.appendChild(newRow);
-        renumberItems(list);
-        ta.focus();
-      });
-
-      list.addEventListener('click', function (e) {
-        const btn = e.target.closest('.remove-item-btn');
-        if (!btn) return;
-        btn.closest('.item-row').remove();
-        renumberItems(list);
-      });
-    });
+    // Tareas del cierre igual para todos: iguales o por grado
+    const tareasBlock = div.querySelector('.didactic-section[data-section="cierre"] .tareas-block');
+    if (tareasBlock) {
+      tareasBlock.querySelector('.tareas-btn-todos').addEventListener('click', function () { ponerModoTareas(div, 'todos'); });
+      tareasBlock.querySelector('.tareas-btn-grado').addEventListener('click', function () { ponerModoTareas(div, 'grado'); });
+    }
 
     // Eliminar sesión
     div.querySelector('.btn-eliminar').addEventListener('click', function () {
@@ -1817,9 +1936,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (renglones.length) {
       html += '<ul class="flex flex-col divide-y divide-gray-200">' + renglones.map(function (r) {
         const e = pqEstado(block, r);
+        // Un trabajo con nombre propio (no el genérico "Producto — Sesión N") lo dice
+        const nombre = r.producto && r.hueco.tipo === 'trabajo' && r.producto.nombre && !/^Producto — Sesión/.test(r.producto.nombre) ? r.producto.nombre : '';
         return `<li class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium text-gray-800 break-words">${escapeHtml(r.etiqueta)}</p>
+              <p class="text-sm font-medium text-gray-800 break-words">${escapeHtml(r.etiqueta + (nombre ? ': ' + nombre : ''))}</p>
               <p class="pq-resumen text-xs text-gray-600 break-words">${escapeHtml(window.ParaQuien.resumen(r.grados, e.asignacion, alumnosGrupo))}${e.tocado ? ' <span class="ml-1 inline-flex items-center rounded-full bg-blue-100 text-blue-800 font-semibold px-2 py-0.5">Por guardar</span>' : ''}</p>
             </div>
             <button type="button" data-pq-clave="${escapeHtml(r.clave)}" aria-label="Cambiar para quién es ${escapeHtml(r.etiqueta)}"
@@ -1828,7 +1949,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       }).join('') + '</ul>';
     }
     if (deHoy) {
-      html += '<p class="text-xs text-gray-500 mt-2">' + (deHoy === 1 ? 'Esta sesión tiene 1 actividad o tarea agregada en Hoy' : 'Esta sesión tiene ' + deHoy + ' actividades o tareas agregadas en Hoy') +
+      html += '<p class="text-xs text-gray-500 mt-2">' + (deHoy === 1
+        ? 'Esta sesión tiene 1 actividad o tarea más (agregada en Hoy o para un grupo de trabajo)'
+        : 'Esta sesión tiene ' + deHoy + ' actividades o tareas más (agregadas en Hoy o para un grupo de trabajo)') +
         ': su «para quién» se cambia en Hoy.</p>';
     }
     return html;
@@ -2014,46 +2137,48 @@ document.addEventListener("DOMContentLoaded", async function () {
         return Array.from(block.querySelectorAll(selector))
           .map(function (i) { return i.value.trim(); }).filter(Boolean);
       }
+      // La misma regla que payloadDeBloque (ProyectoEdicion): pasos por grupo de trabajo y
+      // tareas por grado con el cierre igual para todos también van al borrador
       function getActividades(sectionKey, sectionMode) {
-        if (sectionMode === 'todos') {
-          return { mode: 'todos',
-            todos: getItems('[name="' + sectionKey + '_act_todos_item"]'),
-            diferenciado: null };
-        }
         const dif = {};
-        block.querySelectorAll('[name^="' + sectionKey + '_act_dif_"]')
-          .forEach(function (input) {
-            const m = input.name.match(
-              new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
-            if (m) {
-              const gr = m[1];
-              if (!dif[gr]) dif[gr] = [];
-              const v = input.value.trim();
-              if (v) dif[gr].push(v);
-            }
-          });
-        return { mode: 'diferenciado', todos: null,
-          diferenciado: Object.keys(dif).length > 0 ? dif : null };
+        if (sectionMode !== 'todos') {
+          block.querySelectorAll('[name^="' + sectionKey + '_act_dif_"]')
+            .forEach(function (input) {
+              const m = input.name.match(
+                new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
+              if (m) {
+                const gr = m[1];
+                if (!dif[gr]) dif[gr] = [];
+                const v = input.value.trim();
+                if (v) dif[gr].push(v);
+              }
+            });
+        }
+        return window.ProyectoEdicion.actividadesDeSeccion(sectionMode, {
+          todos: getItems('[name="' + sectionKey + '_act_todos_item"]'),
+          porGrado: dif,
+          grupos: gruposDeSeccion(block, sectionKey),
+        });
       }
       function getTareas(sectionMode) {
-        if (sectionMode === 'todos') {
-          return { mode: 'todos',
-            todos: getItems('[name="cierre_tarea_todos_item"]'),
-            diferenciado: null };
-        }
         const dif = {};
-        block.querySelectorAll('[name^="cierre_tarea_dif_"]')
-          .forEach(function (input) {
-            const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
-            if (m) {
-              const gr = m[1];
-              if (!dif[gr]) dif[gr] = [];
-              const v = input.value.trim();
-              if (v) dif[gr].push(v);
-            }
-          });
-        return { mode: 'diferenciado', todos: null,
-          diferenciado: Object.keys(dif).length > 0 ? dif : null };
+        if (sectionMode !== 'todos') {
+          block.querySelectorAll('[name^="cierre_tarea_dif_"]')
+            .forEach(function (input) {
+              const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
+              if (m) {
+                const gr = m[1];
+                if (!dif[gr]) dif[gr] = [];
+                const v = input.value.trim();
+                if (v) dif[gr].push(v);
+              }
+            });
+        }
+        return window.ProyectoEdicion.tareasDelCierre(sectionMode, modoTareasDe(block), {
+          todos: getItems('[name="cierre_tarea_todos_item"]'),
+          porGradoDif: dif,
+          porGrado: tareasPorGradoDeBloque(block),
+        });
       }
       const mI = mode('inicio');
       const mD = mode('desarrollo');
@@ -2417,7 +2542,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     block.querySelectorAll('.pda-block [id^="sugerencia_grado_"]').forEach(function (el) { el.classList.add('hidden'); });
     const cierre = block.querySelector('.didactic-section[data-section="cierre"]');
     if (cierre) {
-      cierre.querySelectorAll('.mode-btn-todos, .mode-btn-dif').forEach(function (b) {
+      cierre.querySelectorAll('.mode-btn-todos, .mode-btn-dif, .tareas-btn-todos, .tareas-btn-grado').forEach(function (b) {
         b.disabled = true;
         b.classList.add('cursor-not-allowed', 'opacity-60');
       });
@@ -2526,24 +2651,20 @@ document.addEventListener("DOMContentLoaded", async function () {
           if (actData && actData.diferenciado) {
             Object.entries(actData.diferenciado).forEach(function (entry) {
               const gr = entry[0];
-              const items = entry[1];
-              if (!items || !items.length) return;
+              // Los pasos de un grupo de trabajo van en su propio recuadro (abajo)
+              if (!window.TextoSesion.esLlaveGrado(gr)) return;
+              const items = Array.isArray(entry[1]) ? entry[1] : entry[1] ? [entry[1]] : [];
+              if (!items.length) return;
               const listContainer = section.querySelector(
                 '.item-list-container[data-key="' + key + '_act_dif_' + gr + '"]');
               if (listContainer) {
-                items.forEach(function (texto) {
-                  listContainer.querySelector('.add-item-btn')?.click();
-                  const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
-                  if (els.length) {
-                    const last = els[els.length - 1];
-                    last.value = texto;
-                    last.dispatchEvent(new Event('input'));
-                  }
-                });
+                items.forEach(function (texto) { agregarRenglon(listContainer, texto); });
               }
             });
           }
         }
+        // Pasos por grupo de trabajo ("Morado"): en los dos modos, en su recuadro
+        pintarGruposTrabajo(section, key, window.TextoSesion.gruposDe(actData));
       }
 
       restoreSection('inicio',
@@ -2560,38 +2681,32 @@ document.addEventListener("DOMContentLoaded", async function () {
         const tareasMode = data.cierre_tareas.mode || 'todos';
         const cierreSection = block.querySelector(
           '.didactic-section[data-section="cierre"]');
-        if (cierreSection) {
-          if (tareasMode === 'todos' && data.cierre_tareas.todos?.length) {
+        const modoCierre = (data.cierre_actividades && data.cierre_actividades.mode) || 'todos';
+        const listaDe = function (v) { return Array.isArray(v) ? v : v ? [v] : []; };
+        if (cierreSection && window.ProyectoEdicion.modoTareasAlAbrir(data.cierre_tareas, modoCierre) === 'grado') {
+          // Cierre igual para todos con tareas POR GRADO (el bot y los proyectos por nivel)
+          ponerModoTareas(block, 'grado');
+          Object.entries(data.cierre_tareas.diferenciado || {}).forEach(function (entry) {
+            const listContainer = cierreSection.querySelector('.item-list-container[data-key="cierre_tarea_grado_' + entry[0] + '"]');
+            if (listContainer) listaDe(entry[1]).forEach(function (texto) { agregarRenglon(listContainer, texto); });
+          });
+        } else if (cierreSection) {
+          if (tareasMode === 'todos' && listaDe(data.cierre_tareas.todos).length) {
             const listContainer = cierreSection.querySelector(
               '.item-list-container[data-key="cierre_tarea_todos"]');
             if (listContainer) {
-              data.cierre_tareas.todos.forEach(function (texto) {
-                listContainer.querySelector('.add-item-btn')?.click();
-                const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
-                if (els.length) {
-                  const last = els[els.length - 1];
-                  last.value = texto;
-                  last.dispatchEvent(new Event('input'));
-                }
-              });
+              listaDe(data.cierre_tareas.todos).forEach(function (texto) { agregarRenglon(listContainer, texto); });
             }
           } else if (tareasMode === 'diferenciado' && data.cierre_tareas.diferenciado) {
             Object.entries(data.cierre_tareas.diferenciado).forEach(function (entry) {
               const gr = entry[0];
-              const items = entry[1];
-              if (!items || !items.length) return;
+              // El bot guarda cada grado como texto; Crear proyecto, como lista
+              const items = listaDe(entry[1]);
+              if (!items.length) return;
               const listContainer = cierreSection.querySelector(
                 '.item-list-container[data-key="cierre_tarea_dif_' + gr + '"]');
               if (listContainer) {
-                items.forEach(function (texto) {
-                  listContainer.querySelector('.add-item-btn')?.click();
-                  const els = listContainer.querySelectorAll('.item-row textarea, .item-row input');
-                  if (els.length) {
-                    const last = els[els.length - 1];
-                    last.value = texto;
-                    last.dispatchEvent(new Event('input'));
-                  }
-                });
+                items.forEach(function (texto) { agregarRenglon(listContainer, texto); });
               }
             });
           }
@@ -2660,38 +2775,48 @@ document.addEventListener("DOMContentLoaded", async function () {
         .map(i => i.value.trim()).filter(Boolean);
     }
 
+    // Pasos de la sección: los de todo el grupo o por grado (según su modo) y, en los dos modos,
+    // los de cada grupo de trabajo ("Morado"), que ya no se pierden al guardar
     function getBlockActividades(sectionKey, sectionMode) {
-      if (sectionMode === 'todos') {
-        return { mode: 'todos', todos: getItems(`[name="${sectionKey}_act_todos_item"]`), diferenciado: null };
-      }
       const dif = {};
-      block.querySelectorAll(`[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
-        const m = input.name.match(new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
-        if (m) {
-          const gr = m[1];
-          if (!dif[gr]) dif[gr] = [];
-          const v = input.value.trim();
-          if (v) dif[gr].push(v);
-        }
+      if (sectionMode !== 'todos') {
+        block.querySelectorAll(`[name^="${sectionKey}_act_dif_"]`).forEach(function (input) {
+          const m = input.name.match(new RegExp('^' + sectionKey + '_act_dif_(.+)_item$'));
+          if (m) {
+            const gr = m[1];
+            if (!dif[gr]) dif[gr] = [];
+            const v = input.value.trim();
+            if (v) dif[gr].push(v);
+          }
+        });
+      }
+      return window.ProyectoEdicion.actividadesDeSeccion(sectionMode, {
+        todos: getItems(`[name="${sectionKey}_act_todos_item"]`),
+        porGrado: dif,
+        grupos: gruposDeSeccion(block, sectionKey),
       });
-      return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
     }
 
+    // Tareas: con el cierre diferenciado, las de cada columna; con el cierre igual para todos,
+    // iguales para todos o POR GRADO (antes esas se perdían y el materializador las borraba)
     function getBlockTareas(sectionMode) {
-      if (sectionMode === 'todos') {
-        return { mode: 'todos', todos: getItems('[name="cierre_tarea_todos_item"]'), diferenciado: null };
-      }
       const dif = {};
-      block.querySelectorAll('[name^="cierre_tarea_dif_"]').forEach(function (input) {
-        const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
-        if (m) {
-          const gr = m[1];
-          if (!dif[gr]) dif[gr] = [];
-          const v = input.value.trim();
-          if (v) dif[gr].push(v);
-        }
+      if (sectionMode !== 'todos') {
+        block.querySelectorAll('[name^="cierre_tarea_dif_"]').forEach(function (input) {
+          const m = input.name.match(/^cierre_tarea_dif_(.+)_item$/);
+          if (m) {
+            const gr = m[1];
+            if (!dif[gr]) dif[gr] = [];
+            const v = input.value.trim();
+            if (v) dif[gr].push(v);
+          }
+        });
+      }
+      return window.ProyectoEdicion.tareasDelCierre(sectionMode, modoTareasDe(block), {
+        todos: getItems('[name="cierre_tarea_todos_item"]'),
+        porGradoDif: dif,
+        porGrado: tareasPorGradoDeBloque(block),
       });
-      return { mode: 'diferenciado', todos: null, diferenciado: Object.keys(dif).length > 0 ? dif : null };
     }
 
     return {
@@ -2714,22 +2839,29 @@ document.addEventListener("DOMContentLoaded", async function () {
         archivos: block._archivos || [],
         links: block._links || []
       },
+      /*
+        PDA por grado. Un grado cuya lista no se muestra (el proyecto no trae sus PDA en el paso 2)
+        o que no ofrece el PDA que ya tenía la sesión conserva lo guardado: antes se guardaba
+        vacío y el materializador quitaba ese PDA de la sesión (ProyectoEdicion.pdaSesionConservando).
+      */
       pda_sesion: (function() {
-        const resultado = [];
-        (paso1Data.grados || []).forEach(function(gr) {
+        const original = block.dataset.sesionId && sesionesOriginales[block.dataset.sesionId]
+          ? sesionesOriginales[block.dataset.sesionId].pda_sesion : null;
+        const leidas = (paso1Data.grados || []).map(function(gr) {
           const gNum = parseInt(gr, 10);
-          const pdaId = block.querySelector(`[name="pda_select_grado_${gNum}"]`)?.value || null;
+          const select = block.querySelector(`[name="pda_select_grado_${gNum}"]`);
+          const antes = (Array.isArray(original) ? original : []).find(function(p) { return p && Number(p.grado) === gNum && p.pda_id; });
+          const representable = !!select && (!antes || Array.from(select.options).some(function(o) { return o.value === String(antes.pda_id); }));
+          const pdaId = select?.value || null;
           const criterio = block.querySelector(`[name="criterio_grado_${gNum}"]`)?.value?.trim() || null;
-          if (!pdaId && !criterio) return;
           const pda = (catalogoPDA || []).find(function(p) { return p.id === pdaId; });
-          resultado.push({
+          return {
             grado: gNum,
-            pda_id: pdaId,
-            pda_texto: pda ? pda.pda : null,
-            criterio_aplicado: criterio
-          });
+            representable: representable,
+            entrada: !pdaId && !criterio ? null : { grado: gNum, pda_id: pdaId, pda_texto: pda ? pda.pda : null, criterio_aplicado: criterio },
+          };
         });
-        return resultado.length > 0 ? resultado : null;
+        return window.ProyectoEdicion.pdaSesionConservando(leidas, original);
       })(),
       observaciones:           g('observaciones'),
     };

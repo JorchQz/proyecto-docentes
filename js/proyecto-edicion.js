@@ -158,8 +158,21 @@
 		return JSON.stringify(v === undefined ? null : v);
 	}
 	function vacio(v) { return v === null || v === undefined || v === ""; }
+	/*
+		Sin contenido: null, "", [] o un objeto cuyos valores (salvo "mode") no traen nada. Así
+		{ mode: "todos", todos: [], diferenciado: null } (lo que arma la pantalla) es lo mismo que
+		null (lo que guardó el bot en una sesión sin tareas) y abrir y guardar no reescribe la fila.
+	*/
+	function sinContenido(v) {
+		if (vacio(v)) return true;
+		if (Array.isArray(v)) return v.every(sinContenido);
+		if (typeof v === "object") return Object.keys(v).every(function (k) { return k === "mode" || sinContenido(v[k]); });
+		return false;
+	}
 	function mismoValor(a, b) {
 		if (vacio(a) && vacio(b)) return true;
+		if (a && typeof a === "object" && b && typeof b === "object" && sinContenido(a) && sinContenido(b)) return true;
+		if ((vacio(a) && b && typeof b === "object" && sinContenido(b)) || (vacio(b) && a && typeof a === "object" && sinContenido(a))) return true;
 		if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
 		return estable(a) === estable(b);
 	}
@@ -175,6 +188,95 @@
 			if (!original || !mismoValor(fila[k], original[k])) out[k] = fila[k];
 		});
 		return out;
+	}
+
+	/*
+		── Guardar sin cambios no reescribe lo que la pantalla no sabía mostrar (2026-09-27) ──
+		Encontrado con el proyecto PP-NIVELES de Fanny: al abrirlo en Crear proyecto y guardar sin
+		tocar nada, las sesiones con cierre "igual para todos" y tareas POR GRADO (3, 6, 9, 12 y 15)
+		perdían sus tareas (la pantalla solo tenía tareas por grado con TODO el cierre diferenciado)
+		y el materializador las borraba. Lo mismo con los pasos por grupo de trabajo ("Morado") y con
+		un PDA que la sesión no ofrece en su lista.
+	*/
+
+	// Tareas del cierre: "todos" (la lista de siempre) o "grado" (por grado aunque el texto del
+	// cierre sea igual para todos). Con el cierre diferenciado, las tareas van en cada columna.
+	function modoTareasAlAbrir(cierreTareas, modoCierre) {
+		if (modoCierre === "diferenciado") return "todos";
+		return cierreTareas && cierreTareas.mode === "diferenciado" ? "grado" : "todos";
+	}
+
+	function listaLimpia(v) {
+		return (Array.isArray(v) ? v : v === null || v === undefined ? [] : [v])
+			.map(function (x) { return String(x === null || x === undefined ? "" : x).trim(); }).filter(Boolean);
+	}
+
+	/*
+		tareasDelCierre(modoCierre, modoTareas, { todos, porGrado, porGradoDif }) → cierre_tareas
+		  porGradoDif: las columnas del cierre diferenciado (como siempre, con sus llaves aunque vacías)
+		  porGrado: las listas "Por grado" del cierre igual para todos (solo las que traen tareas)
+	*/
+	function tareasDelCierre(modoCierre, modoTareas, l) {
+		l = l || {};
+		if (modoCierre === "diferenciado") {
+			var difCol = l.porGradoDif || {};
+			return { mode: "diferenciado", todos: null, diferenciado: Object.keys(difCol).length ? difCol : null };
+		}
+		if (modoTareas === "grado") {
+			var dif = {};
+			Object.keys(l.porGrado || {}).forEach(function (g) {
+				var items = listaLimpia(l.porGrado[g]);
+				if (items.length) dif[g] = items;
+			});
+			return { mode: "diferenciado", todos: null, diferenciado: Object.keys(dif).length ? dif : null };
+		}
+		return { mode: "todos", todos: listaLimpia(l.todos), diferenciado: null };
+	}
+
+	/*
+		actividadesDeSeccion(modo, { todos, porGrado, grupos }) → *_actividades
+		  grupos: [{ llave: "Morado", items: [...] }] en el orden de la pantalla: los pasos por grupo
+		  de trabajo (js/texto-sesion.js). Van en diferenciado con su llave y su orden en
+		  orden_grupos, en los dos modos; un grupo sin pasos se quita.
+	*/
+	function actividadesDeSeccion(modo, l) {
+		l = l || {};
+		var grupos = {}, orden = [];
+		(l.grupos || []).forEach(function (g) {
+			var llave = String(g && g.llave || "").trim();
+			var items = listaLimpia(g && g.items);
+			if (!llave || !items.length || orden.indexOf(llave) !== -1) return;
+			grupos[llave] = items;
+			orden.push(llave);
+		});
+		var out;
+		if (modo === "diferenciado") {
+			var dif = Object.assign({}, l.porGrado || {}, grupos);
+			out = { mode: "diferenciado", todos: null, diferenciado: Object.keys(dif).length ? dif : null };
+		} else {
+			out = { mode: "todos", todos: listaLimpia(l.todos), diferenciado: orden.length ? grupos : null };
+		}
+		if (orden.length) out.orden_grupos = orden;
+		return out;
+	}
+
+	/*
+		pdaSesionConservando(leidas, original) → pda_sesion
+		  leidas: [{ grado, representable, entrada }] por cada grado del proyecto, en orden:
+		    representable = la sesión tiene su lista de PDA para ese grado y, si ya tenía un PDA,
+		    esa lista lo ofrece; entrada = lo que dice la pantalla ({grado, pda_id, pda_texto,
+		    criterio_aplicado}) o null.
+		  Un grado que la pantalla no puede mostrar conserva lo guardado (antes se guardaba vacío y
+		  el materializador quitaba ese PDA de la sesión).
+	*/
+	function pdaSesionConservando(leidas, original) {
+		var guardado = Array.isArray(original) ? original : [];
+		var out = [];
+		(leidas || []).forEach(function (l) {
+			if (l.representable) { if (l.entrada) out.push(l.entrada); return; }
+			guardado.forEach(function (p) { if (p && Number(p.grado) === Number(l.grado)) out.push(p); });
+		});
+		return out.length ? out : null;
 	}
 
 	/*
@@ -301,7 +403,9 @@
 		validarPaso1: validarPaso1, claveCatalogo: claveCatalogo,
 		sesionTrabajada: sesionTrabajada, CAMPOS_TEXTO_SESION: CAMPOS_TEXTO_SESION, soloTexto: soloTexto,
 		sesionesSinCampo: sesionesSinCampo, planGuardado: planGuardado,
-		cambiosDeSesion: cambiosDeSesion, borrarSinTrabajar: borrarSinTrabajar,
+		cambiosDeSesion: cambiosDeSesion, sinContenido: sinContenido, borrarSinTrabajar: borrarSinTrabajar,
+		modoTareasAlAbrir: modoTareasAlAbrir, tareasDelCierre: tareasDelCierre,
+		actividadesDeSeccion: actividadesDeSeccion, pdaSesionConservando: pdaSesionConservando,
 		actualizarSinTrabajar: actualizarSinTrabajar, guardarSesiones: guardarSesiones, avisoCarrera: avisoCarrera,
 		CAMPOS_PLAN_SESION: CAMPOS_PLAN_SESION, copiaDeSesion: copiaDeSesion, trimestreDeCopia: trimestreDeCopia,
 	};
