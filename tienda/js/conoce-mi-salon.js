@@ -198,7 +198,7 @@ var ConoceMiSalon = (function () {
 		if (!hay) return null;
 		return n === 1 ? "Queda 1 lugar con precio fundador." : "Quedan " + n + " lugares con precio fundador.";
 	}
-	var BENEFICIO_TIENDA = "Si ya compraste planeaciones en Jissez, tienes precio fundador en Mi Salón aunque ya no queden lugares.";
+	var BENEFICIO_TIENDA = "Si compraste planeaciones en Jissez antes de que abriera Mi Salón, tienes precio fundador aunque ya no queden lugares, y no ocupas uno de ellos.";
 	function beneficioTabla(pub) {
 		var hay = pub && (pub.productos || []).some(function (p) { return p && p.vende_ahora && precioValido(Number(p.precio_fundador)); });
 		return hay ? BENEFICIO_TIENDA : null;

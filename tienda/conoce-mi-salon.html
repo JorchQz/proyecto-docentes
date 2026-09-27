@@ -290,7 +290,7 @@
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="user-plus" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
 				<h3 class="mt-4 text-lg font-bold text-ink">Da de alta a tus alumnos</h3>
-				<p class="mt-1.5 text-mute">Nombre y grado de cada uno. La ficha con los datos del tutor es opcional.</p>
+				<p class="mt-1.5 text-mute">Pega la lista desde Excel, Word o WhatsApp, o escríbelos uno por uno, con el grado de cada quien. La ficha con los datos del tutor es opcional.</p>
 			</li>
 			<li class="ms-paso bg-paper border border-line rounded-3xl p-6">
 				<div class="flex items-center justify-between"><span class="w-11 h-11 rounded-2xl bg-board/8 text-board flex items-center justify-center"><i data-lucide="folder-plus" class="w-5 h-5"></i></span><span class="ms-paso-num text-4xl font-black text-line" aria-hidden="true"></span></div>
@@ -308,6 +308,28 @@
 				<p class="mt-1.5 text-mute">Revisa la propuesta, confirma, imprime la boleta y prepara la junta con familias.</p>
 			</li>
 		</ol>
+
+		<!-- Ponte al día (registro histórico, spec de Jorge del 2026-09-26 §4; ponte-al-dia.html y
+		     js/ponte-al-dia.js): se ofrece al crear un grupo con el trimestre ya empezado (el primero o
+		     uno más, js/onboarding.js ofrecePonteAlDia); 4 pasos que se saltan y se retoman desde Inicio
+		     (js/dashboard.js crearCardPonteAlDia); lista pegada (js/lista-pegada.js); "Todos asistieron"
+		     y los días sin clase al calendario del grupo (calendario_ajustes); actividades en bloque con
+		     semáforo y exámenes por "Solo subir resultados"; la calificación directa queda confirmada en
+		     la boleta (mi_salon_b20 §2b). Lo histórico no llena Hoy de pendientes (es_historico). -->
+		<div id="ponte" class="reveal mt-10 rounded-3xl bg-paper border border-line p-6 sm:p-10">
+			<div class="max-w-2xl">
+				<span class="inline-flex items-center gap-2 h-8 px-3 rounded-full text-[13px] font-bold bg-action/12 text-action-dark"><i data-lucide="history" class="w-4 h-4"></i> Ponte al día</span>
+				<h3 class="mt-4 font-black text-ink tracking-tight text-[clamp(1.5rem,2.8vw,2.1rem)] leading-tight">¿Empiezas con el trimestre avanzado? Ponte al día en una tarde.</h3>
+				<p class="mt-3 text-lg text-mute">Si creas tu grupo cuando el trimestre ya empezó, Mi Salón te ofrece «Ponte al día»: cuatro pasos para capturar lo que ya llevas. Puedes saltar cualquier paso y retomarlo desde Inicio.</p>
+			</div>
+			<ol class="mt-6 grid sm:grid-cols-2 gap-4">
+				<li class="bg-white border border-line rounded-2xl p-5"><h4 class="font-bold text-ink">1. Tus alumnos</h4><p class="mt-1.5 text-mute">Pega la lista desde Excel, Word o WhatsApp: se separan nombre y apellidos, y puedes corregir antes de guardar.</p></li>
+				<li class="bg-white border border-line rounded-2xl p-5"><h4 class="font-bold text-ink">2. Asistencia pasada</h4><p class="mt-1.5 text-mute">Todos asistieron: solo tocas las faltas, semana por semana. Los días que no hubo clase quedan en el calendario de tu grupo.</p></li>
+				<li class="bg-white border border-line rounded-2xl p-5"><h4 class="font-bold text-ink">3. Trabajos y exámenes</h4><p class="mt-1.5 text-mute">Varias actividades de una vez, calificadas con semáforo. De los exámenes, subes solo los resultados.</p></li>
+				<li class="bg-white border border-line rounded-2xl p-5"><h4 class="font-bold text-ink">4. Revisa la boleta</h4><p class="mt-1.5 text-mute">La calificación propuesta por campo formativo y cómo se calculó. ¿Ya tienes tus calificaciones en papel o en Excel? Captúralas directamente y quedan confirmadas en la boleta.</p></li>
+			</ol>
+			<p class="mt-4 text-sm text-mute">Lo que capturas en «Ponte al día» queda como registro de días pasados: no te llena Hoy de pendientes.</p>
+		</div>
 
 		<div id="instalar" class="reveal mt-10 rounded-3xl board-tex text-white p-6 sm:p-10 grid lg:grid-cols-[1fr_1.2fr] gap-8 items-start">
 			<div>
@@ -452,7 +474,7 @@
 			</details>
 			<details class="reveal bg-white border border-line rounded-2xl px-5">
 				<summary class="flex items-center justify-between gap-4 py-5 font-bold text-ink text-lg">¿La calificación la pone la app? <i data-lucide="plus" class="faq-plus w-5 h-5 text-board shrink-0"></i></summary>
-				<p class="pb-5 text-mute leading-relaxed">No. Mi Salón propone la de cada alumno con lo que capturaste y la escala de su grado; tú la revisas y la confirmas. Sin tu confirmación la boleta no se cierra. Es un complemento de la boleta oficial (SIGED), no la sustituye.</p>
+				<p class="pb-5 text-mute leading-relaxed">No. Mi Salón propone la de cada alumno con lo que capturaste y la escala de su grado; tú la revisas y la confirmas. Si capturas directamente la calificación que ya tenías en papel o en Excel, esa ya queda confirmada. Sin tu confirmación la boleta no se cierra. Es un complemento de la boleta oficial (SIGED), no la sustituye.</p>
 			</details>
 		</div>
 	</div>

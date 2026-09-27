@@ -170,6 +170,38 @@ ok("comillas: solo latinas en el texto visible, parejas", [
 	(visible.match(/["“”]/g) || []).length, (visible.match(/«/g) || []).length === (visible.match(/»/g) || []).length, (visible.match(/«/g) || []).length > 0,
 ], [0, true, true]);
 
+// ── Lanzamiento (constructor AN, 2026-09-26): Ponte al día, T1 gratis y precios de la tabla ──
+ok("Ponte al día: se menciona con sus cuatro pasos", [/¿Empiezas con el trimestre avanzado\? Ponte al día en una tarde\./.test(texto),
+	/1\. Tus alumnos/.test(texto), /2\. Asistencia pasada/.test(texto), /3\. Trabajos y exámenes/.test(texto), /4\. Revisa la boleta/.test(texto)], [true, true, true, true, true]);
+// Cada afirmación, contra el código
+const onbJs = leer("js/onboarding.js"), ponteJs = leer("js/ponte-al-dia.js"), listaJs = leer("js/lista-pegada.js"), dashJs = leer("js/dashboard.js");
+ok("Ponte al día verificable: se ofrece al crear el grupo con el trimestre empezado y se retoma desde Inicio",
+	[/ofrecePonteAlDia\(\)/.test(onbJs) && /ponte-al-dia\.html\?desde=alta/.test(onbJs), /Sigue con Ponte al día/.test(dashJs)], [true, true]);
+ok("Ponte al día verificable: lista de Excel, Word o WhatsApp que se corrige antes de guardar",
+	[/Excel, Word o WhatsApp/.test(listaJs), /la corrige si hace falta/.test(listaJs), /Pega la lista desde Excel, Word o WhatsApp/.test(texto)], [true, true, true]);
+ok("Ponte al día verificable: todos asistieron, solo las faltas por semana, y los días sin clase al calendario del grupo",
+	[/Todos asistieron: <strong>toca solo las faltas<\/strong>/.test(ponteJs), /Semana " \+ \(asis\.semana \+ 1\)/.test(ponteJs), /from\("calendario_ajustes"\)\.upsert\(sinClase/.test(ponteJs)], [true, true, true]);
+ok("Ponte al día verificable: actividades con semáforo y exámenes por 'Solo subir resultados'",
+	[/Solo subir resultados/.test(ponteJs), /semáforo/.test(ponteJs)], [true, true]);
+ok("Ponte al día verificable: la directa queda confirmada (b20 §2b) y lo histórico no llena Hoy",
+	[/calificacion_confirmada = true/.test(leer("supabase/mi_salon_b20_registro_historico_2026-09.sql")), /quedan confirmadas en la boleta/.test(texto),
+		/no te llena Hoy de pendientes/.test(texto), /es_historico/.test(leer("js/alcance-hoy.js"))], [true, true, true, true]);
+ok("FAQ de la calificación: la directa ya queda confirmada", /Si capturas directamente la calificación que ya tenías en papel o en Excel, esa ya queda confirmada\./.test(texto), true);
+const cmsJs = require(path.join(RAIZ, "tienda/js/conoce-mi-salon.js")).ConoceMiSalon;
+ok("T1 gratis hasta el 18 de diciembre (de la tabla de periodos) solo con Mi Salón abierto",
+	[cmsJs.textoGratis("2026-12-18"), /id="msAbiertoBloque" class="hidden/.test(html)],
+	["Crea tu cuenta y tendrás acceso completo a Mi Salón hasta el 18 de diciembre, sin tarjeta.", true]);
+const pubAbierto = { abierto: true, ciclo: "2026-2027", periodo: "T1", lugares_fundador: 63, cupo_fundador: 100, productos: [
+	{ producto: "trimestre", nombre: "Trimestre", precio_lista: 299, precio_fundador: 199, vende_ahora: true },
+	{ producto: "resto_ciclo", nombre: "Resto del ciclo", precio_lista: 549, precio_fundador: 399, vende_ahora: true },
+	{ producto: "ciclo", nombre: "Ciclo completo", precio_lista: 749, precio_fundador: 549, vende_ahora: false }] };
+ok("precios de la tabla: fundador con el de lista tachado y 'Quedan N lugares' (Ciclo completo no se vende en 2026-2027)",
+	[cmsJs.planesDeTabla(pubAbierto).map((p) => p.titulo + " " + p.texto + " (" + p.lista + ")"), cmsJs.textoLugares(pubAbierto)],
+	[["Trimestre $199 ($299)", "Resto del ciclo $399 ($549)"], "Quedan 63 lugares con precio fundador."]);
+ok("con Mi Salón apagado: sin precios de la tabla ni lugares ('Precio por anunciar'), página sin indexar",
+	[cmsJs.planesDeTabla({ abierto: false }).length, cmsJs.textoLugares({ abierto: false }), /data-precio="pendiente">Precio por anunciar/.test(html), /<meta name="robots" content="noindex, nofollow">/.test(html)],
+	[0, null, true, true]);
+
 // Aviso de privacidad y términos (textos legales aprobados por Jorge el 2026-09-26)
 const privacidad = leer("tienda/privacidad.html");
 const terminos = leer("tienda/terminos.html");

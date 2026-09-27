@@ -128,7 +128,7 @@ function ok(nombre, real, esperado) {
 		[["trimestre", "$199", "$299", true, "mi-salon-compra.html?producto=trimestre"], ["resto_ciclo", "$399", "$549", true, "mi-salon-compra.html?producto=resto_ciclo"]]);
 	ok("sin lugares: precio de lista, sin tachar", ConoceMiSalon.planesDeTabla(Object.assign({}, pub, { lugares_fundador: 0 })).map((c) => [c.texto, c.lista, c.fundador]), [["$299", null, false], ["$549", null, false]]);
 	ok("\"Quedan N lugares\" y nada con 0", [ConoceMiSalon.textoLugares(pub), ConoceMiSalon.textoLugares(Object.assign({}, pub, { lugares_fundador: 0 }))], ["Quedan 63 lugares con precio fundador.", null]);
-	ok("beneficio de los compradores de la tienda (fundador aunque no queden lugares)", ConoceMiSalon.beneficioTabla(pub), "Si ya compraste planeaciones en Jissez, tienes precio fundador en Mi Salón aunque ya no queden lugares.");
+	ok("beneficio de los compradores de la tienda (fundador aunque no queden lugares)", ConoceMiSalon.beneficioTabla(pub), "Si compraste planeaciones en Jissez antes de que abriera Mi Salón, tienes precio fundador aunque ya no queden lugares, y no ocupas uno de ellos.");
 	ok("Mi Salón apagado: sin tabla, como antes (Precio por anunciar)", [ConoceMiSalon.planesDeTabla({ abierto: false }), ConoceMiSalon.planes(PRECIOS_MI_SALON, false)[0].texto], [[], "Precio por anunciar"]);
 	ok("la presentación lee la tabla solo con Mi Salón abierto", /miSalonAbierto\(\)\.then\(function \(si\) \{\s*if \(!si\) return null;\s*return window\.sb\.rpc\("mi_salon_precios_publicos"\)/.test(leer("tienda/js/conoce-mi-salon.js")), true);
 
