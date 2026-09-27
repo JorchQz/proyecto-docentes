@@ -291,7 +291,7 @@ async function candado(respuestas, pathname) {
 	const sinAcceso2 = conCandado.filter((f) => { const h = leer(f); const g = h.indexOf('src="js/saas-guard.js"'), a = h.indexOf('src="js/mi-salon-acceso.js"'); return !(a > g); });
 	ok("las " + conCandado.length + " páginas de Mi Salón cargan js/mi-salon-acceso.js después del candado", sinAcceso2, []);
 	ok("Inicio tiene el lugar del banner y Mi cuenta el del estado", [/id="avisoAcceso"/.test(leer("dashboard.html")), /id="estadoAcceso"/.test(leer("mi-cuenta.html"))], [true, true]);
-	const captura = ["hoy", "asistencia", "mi-grupo", "onboarding", "actividades", "examen", "listas", "incidencias", "calendario", "ajustes", "evaluacion_diagnostica", "evaluacion_formativa", "reportes", "planeacion", "crear_proyecto", "tareas"];
+	const captura = ["hoy", "ponte-al-dia", "asistencia", "mi-grupo", "onboarding", "actividades", "examen", "listas", "incidencias", "calendario", "ajustes", "evaluacion_diagnostica", "evaluacion_formativa", "reportes", "planeacion", "crear_proyecto", "tareas"];
 	ok("las páginas de captura marcan sus controles (data-captura)", captura.filter((p) => !/data-captura/.test(leer(p + ".html"))), []);
 	ok("Ajustes: borrar la cuenta NO queda bloqueado", /id="(showDeleteFormBtn|confirmDeleteBtn)"[^>]*data-captura/.test(leer("ajustes.html")), false);
 	const rep = leer("js/reportes.js");

@@ -377,7 +377,7 @@
 		// Calificación capturada directamente (registro histórico): lo sabe el docente; no se imprime
 		if (x.directa !== null && x.directa !== undefined) {
 			salida.push({ tipo: "directa", docente: true,
-				texto: "Calificación capturada directamente: " + x.directa + " (registro histórico). La boleta la propone en lugar del cálculo con las actividades." });
+				texto: "Calificación capturada directamente: " + x.directa + " (registro histórico). Ya cuenta como la confirmada de la boleta, en lugar del cálculo con las actividades." });
 		}
 		if (x.sinEvidencias) {
 			salida.push({ tipo: "sin_evidencias", docente: false,

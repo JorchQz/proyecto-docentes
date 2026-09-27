@@ -43,7 +43,7 @@
 			</ol>
 			<p class="text-xs text-gray-500">Cualquier paso se puede saltar y retomar después desde Inicio. Lo que captures aquí queda marcado como registro histórico: no llena Hoy de pendientes.</p>
 			<div class="flex flex-col sm:flex-row gap-2">
-				<button type="button" id="ponteEmpezar" class="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700">Empezar</button>
+				<button type="button" id="ponteEmpezar" data-captura class="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700">Empezar</button>
 				<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl border border-gray-300 bg-white font-semibold text-gray-700 hover:bg-gray-50">Ahora no, ir a Inicio</a>
 			</div>
 		</section>
@@ -55,7 +55,7 @@
 
 		<div id="ponteMensaje" class="hidden rounded-xl px-4 py-3 text-sm" role="status" aria-live="polite"></div>
 
-		<main id="ponteContenido" class="hidden bg-white rounded-2xl shadow-md p-4 sm:p-6"></main>
+		<main id="ponteContenido" data-captura-zona class="hidden bg-white rounded-2xl shadow-md p-4 sm:p-6"></main>
 
 		<div id="ponteSalir" class="hidden flex flex-col sm:flex-row sm:justify-between gap-2">
 			<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl text-sm font-semibold text-blue-700 hover:bg-blue-50">Salir y seguir después</a>
@@ -64,13 +64,14 @@
 	</div>
 
 	<!-- PDA de una actividad (opcional) -->
-	<dialog id="dlgPda" class="w-[min(40rem,calc(100vw-24px))] max-h-[calc(100dvh-24px)] rounded-2xl p-0 overflow-hidden backdrop:bg-black/40" aria-labelledby="dlgPdaTitulo"></dialog>
+	<dialog id="dlgPda" data-captura-zona class="w-[min(40rem,calc(100vw-24px))] max-h-[calc(100dvh-24px)] rounded-2xl p-0 overflow-hidden backdrop:bg-black/40" aria-labelledby="dlgPdaTitulo"></dialog>
 	<!-- Cómo se calculó la calificación propuesta de un alumno -->
 	<dialog id="dlgCalculo" class="w-[min(44rem,calc(100vw-24px))] max-h-[calc(100dvh-24px)] rounded-2xl p-0 overflow-hidden backdrop:bg-black/40" aria-labelledby="dlgCalculoTitulo"></dialog>
 
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
 	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
 	<script src="js/secciones.js"></script>
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/grupo-activo.js"></script>

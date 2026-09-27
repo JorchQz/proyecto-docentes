@@ -449,6 +449,26 @@
 		return { filas: filas, cuenta: cuenta };
 	}
 
+	/*
+		filasSinClase(e) → [...upsert en calendario_ajustes] (decisión de Jorge del 2026-09-26)
+		e = { sinClase: {fecha: true}, maestroId, grupoId }
+		Un día que el docente marca "Sin clase" en la asistencia pasada se guarda como SUSPENSIÓN en el
+		calendario de su grupo (tipo 'suspension', llave grupo_id + fecha, como la pantalla Calendario):
+		así deja de contar como día de clase en Asistencia, Qué le falta y el Excel, y se puede quitar
+		desde Calendario. Solo días hábiles (la base no acepta sábado ni domingo), en orden.
+	*/
+	var MOTIVO_SIN_CLASE = "Sin clase (marcado en Ponte al día)";
+	function filasSinClase(e) {
+		e = e || {};
+		return Object.keys(e.sinClase || {}).filter(function (d) {
+			if (!e.sinClase[d] || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+			var dow = new Date(d + "T12:00:00Z").getUTCDay();
+			return dow >= 1 && dow <= 5;
+		}).sort().map(function (d) {
+			return { maestro_id: e.maestroId, grupo_id: e.grupoId, fecha: d, tipo: "suspension", motivo: MOTIVO_SIN_CLASE };
+		});
+	}
+
 	// ══════════════════════════════════════════════════════════════════════════
 	// 4. Trabajos y exámenes pasados (captura en bloque)
 	// ══════════════════════════════════════════════════════════════════════════
@@ -592,6 +612,7 @@
 		rangoDelTrimestre: rangoDelTrimestre, inicioDelTrimestre: inicioDelTrimestre, leerPeriodos: leerPeriodos,
 		diasHistoricos: diasHistoricos, semanas: semanas, lunesDe: lunesDe,
 		siguienteAsistencia: siguienteAsistencia, filasAsistencia: filasAsistencia,
+		filasSinClase: filasSinClase, MOTIVO_SIN_CLASE: MOTIVO_SIN_CLASE,
 		validarActividad: validarActividad, itemsParaGuardar: itemsParaGuardar,
 		siguienteSemaforo: siguienteSemaforo, cambiosDeSemaforo: cambiosDeSemaforo, semaforoDeFila: semaforoDeFila,
 		filasCalificaciones: filasCalificaciones,

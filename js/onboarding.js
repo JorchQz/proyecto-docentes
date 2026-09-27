@@ -73,7 +73,7 @@
 		Modo "grupo nuevo" (onboarding.html?nuevo=1, desde Mi grupo → Crear otro grupo): una
 		maestra puede tener grupos en escuelas distintas (Jorge, 2026-09-26). Es la misma alta:
 		inserta un grupo NUEVO (nunca toca los que ya tiene), lo deja como grupo activo
-		(GrupoActivo.elegir) y al terminar abre Inicio con él. Solo cambian los textos y hay un
+		(GrupoActivo.elegir) y al terminar abre Ponte al día (si el trimestre ya empezó) o Inicio. Solo cambian los textos y hay un
 		enlace para volver sin crear nada.
 	*/
 	if (/[?&]nuevo=1\b/.test(window.location.search)) {

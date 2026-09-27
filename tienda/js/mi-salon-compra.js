@@ -77,6 +77,28 @@ var MiSalonCompra = (function () {
 		}[motivo] || "No está disponible por ahora.";
 	}
 
+	/*
+		Por qué una opción no se vende, con la explicación completa (decisión de Jorge del 2026-09-26:
+		no se vende lo que no agrega periodos, y se explica claro).
+		p: la cotización de la opción (mi_salon_cotizar_de); e: el estado del acceso; hoy: "AAAA-MM-DD".
+		Ejemplo: "Ya tienes acceso hasta el 18 de diciembre de 2026; desde el 23 de octubre de 2026 esta
+		compra incluye también el segundo trimestre."
+	*/
+	var SIGUIENTE = { T1: "T2", T2: "T3", T3: "T1" };
+	function explicarNoDisponible(p, e, hoy) {
+		if (!p) return motivoTexto(null);
+		if (p.motivo !== "ya_cubierto") return motivoTexto(p.motivo);
+		var vence = (e && e.vence) || p.vence_acceso || null;
+		var hasta = vence ? "Ya tienes acceso hasta el " + fechaLarga(vence) : "Ya tienes acceso a esos periodos";
+		var tardia = p.compra_tardia_desde;
+		if (p.producto === "trimestre" && !p.compra_tardia && tardia && (!hoy || String(hoy) < String(tardia)) && SIGUIENTE[p.periodo]) {
+			var sig = { periodo: SIGUIENTE[p.periodo], ciclo: p.periodo === "T3" ? null : p.ciclo };
+			return hasta + "; desde el " + fechaLarga(tardia) + " esta compra incluye también " +
+				(p.periodo === "T3" ? "el primer trimestre del ciclo siguiente" : nombrePeriodo(sig, p.ciclo)) + ".";
+		}
+		return hasta + ": esta opción no agregaría ningún periodo, así que no se vende.";
+	}
+
 	// "Quedan 37 lugares con precio fundador" (contador real; nada si no hay precio fundador)
 	function textoLugares(n) {
 		n = Number(n);
@@ -138,7 +160,7 @@ var MiSalonCompra = (function () {
 
 	return {
 		fechaLarga: fechaLarga, pesos: pesos, nombrePeriodo: nombrePeriodo, textoCobertura: textoCobertura,
-		textoValidez: textoValidez, motivoTexto: motivoTexto, textoLugares: textoLugares, renglones: renglones,
+		textoValidez: textoValidez, motivoTexto: motivoTexto, explicarNoDisponible: explicarNoDisponible, textoLugares: textoLugares, renglones: renglones,
 		mensajeCupon: mensajeCupon, textoEstado: textoEstado, titulo: titulo, elegirInicial: elegirInicial, metodoTexto: metodoTexto,
 	};
 })();
@@ -222,7 +244,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 				: (p.precio_lista != null ? '<span class="text-xl font-black text-mute">' + esc(M.pesos(p.precio_lista)) + "</span>" : "");
 			var detalle = disp
 				? "Cubre " + esc(M.textoCobertura(p.cobertura)) + ". Hasta el " + esc(M.fechaLarga(p.vence)) + "."
-				: esc(M.motivoTexto(p.motivo));
+				: esc(M.explicarNoDisponible(p, datos.estado, datos.hoy));
 			return '<label class="flex items-start gap-3 rounded-2xl border p-4 ' + (disp ? "cursor-pointer hover:bg-paper" : "opacity-60 cursor-not-allowed") + '" style="border-color:' + (sel ? "#059669" : "#e7e6df") + (sel ? ";box-shadow:0 0 0 1px #059669" : "") + '">' +
 				'<input type="radio" name="msProducto" value="' + esc(p.producto) + '" class="mt-1 w-5 h-5 shrink-0" style="accent-color:#059669"' + (sel ? " checked" : "") + (disp ? "" : " disabled") + ">" +
 				'<span class="min-w-0 flex-1"><span class="flex flex-wrap items-baseline justify-between gap-2"><span class="font-bold text-ink">' + esc(p.nombre || p.producto) + "</span><span>" + precio + "</span></span>" +
@@ -273,7 +295,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			cerrado.innerHTML = !datos.venta_abierta
 				? '<p class="font-bold text-lg">La compra de Mi Salón todavía no está disponible.</p><p class="text-mute mt-1">Te avisaremos por correo cuando abra.</p>'
 				: '<p class="font-bold text-lg">Por ahora no hay nada que comprar.</p><p class="text-mute mt-1">' +
-					esc((datos.productos || []).map(function (p) { return (p.nombre || p.producto) + ": " + M.motivoTexto(p.motivo); }).join(" ") || "Todavía no hay un periodo a la venta.") + "</p>" +
+					esc((datos.productos || []).map(function (p) { return (p.nombre || p.producto) + ": " + M.explicarNoDisponible(p, datos.estado, datos.hoy); }).join(" ") || "Todavía no hay un periodo a la venta.") + "</p>" +
 					'<a href="../dashboard.html" class="mt-4 inline-flex items-center gap-2 min-h-[44px] px-5 rounded-xl font-semibold text-white" style="background:#1e3a8a">Ir a Mi Salón</a>';
 			Tienda.iconos();
 			return;

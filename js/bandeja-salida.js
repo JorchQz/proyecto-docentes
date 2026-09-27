@@ -757,9 +757,17 @@ var BandejaSalida = (function () {
 				var d = it.datos;
 				return [["maestro_id", it.maestro_id], ["grupo_id", d.grupo_id], ["alumno_id", d.alumno_id], ["fecha", d.fecha]];
 			},
+			/*
+				capturado_en = la hora del aparato (mi_salon_b20): la asistencia de Hoy que sale de la
+				cola al día siguiente (sin señal) NO es histórica, porque se capturó el mismo día que su
+				fecha. Solo va en la fila nueva: al editar una fila ya existente la base conserva su
+				capturado_en (el trigger lo decide al crearla), y no toca las marcas por campo.
+			*/
 			nueva: function (it, v) {
 				var d = it.datos;
-				return { maestro_id: it.maestro_id, grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha, asistencia_estado: v.estado };
+				var fila = { maestro_id: it.maestro_id, grupo_id: d.grupo_id, alumno_id: d.alumno_id, fecha: d.fecha, asistencia_estado: v.estado };
+				if (it.capturado_en) fila.capturado_en = it.capturado_en;
+				return fila;
 			},
 		},
 		registro: {

@@ -321,7 +321,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		el.contenido.innerHTML =
 			"<h2 class='text-lg font-bold text-gray-900'>2. Asistencia pasada</h2>" +
 			"<p class='mt-1 text-sm text-gray-600'>Del " + fechaCorta(asis.dias[0]) + " al " + fechaCorta(asis.dias[total - 1]) + ": <strong>" + total + " días de clase</strong> según el calendario SEP y los ajustes de tu grupo. " +
-			"Todos asistieron: <strong>toca solo las faltas</strong> (un toque, Falta; otro, Justificada; otro, Presente). Si un día no hubo clase en tu grupo, toca «Hubo clase» para marcarlo sin clase.</p>" +
+			"Todos asistieron: <strong>toca solo las faltas</strong> (un toque, Falta; otro, Justificada; otro, Presente). Si un día no hubo clase en tu grupo, toca «Hubo clase» para marcarlo sin clase: al guardar, ese día queda como suspensión en el calendario de tu grupo (se quita desde Calendario).</p>" +
 			"<div class='mt-4 flex flex-wrap items-center justify-between gap-2'>" +
 			"<div class='flex items-center gap-2'>" +
 			"<button type='button' data-semana='-1' class='inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-30' aria-label='Semana anterior'" + (asis.semana === 0 ? " disabled" : "") + ">" + ICONO_IZQ + "</button>" +
@@ -380,7 +380,31 @@ document.addEventListener("DOMContentLoaded", function () {
 		var boton = el.contenido.querySelector("[data-guardar-asis]");
 		var r = H.filasAsistencia({ alumnos: alumnos, dias: asis.dias, marcas: asis.marcas, enBase: asis.enBase, sinClase: asis.sinClase,
 			maestroId: userId, grupoId: grupo.id, capturadoEn: ahora() });
+		/*
+			"Sin clase" (decisión de Jorge del 2026-09-26): esos días se guardan como suspensión en el
+			calendario del grupo (calendario_ajustes), con confirmación, y se pueden quitar desde
+			Calendario. Primero el calendario y después la asistencia: si el calendario no se guarda,
+			no se guarda nada y lo marcado sigue en pantalla.
+		*/
+		var sinClase = H.filasSinClase({ sinClase: asis.sinClase, maestroId: userId, grupoId: grupo.id });
+		if (sinClase.length && !window.confirm((sinClase.length === 1 ? "Marcaste 1 día sin clase (" + fechaCorta(sinClase[0].fecha) + ")" :
+			"Marcaste " + sinClase.length + " días sin clase") + ". Se guardan en el calendario de tu grupo como suspensión: ya no cuentan como días de clase " +
+			"en Asistencia ni en «Qué le falta». Puedes quitarlos cuando quieras desde Calendario. ¿Continuar?")) return;
 		if (boton) { boton.disabled = true; boton.textContent = "Guardando..."; }
+		if (sinClase.length) {
+			try {
+				var aj = await window.sb.from("calendario_ajustes").upsert(sinClase, { onConflict: "grupo_id,fecha" }).select("id, fecha, tipo, motivo");
+				if (aj.error) throw aj.error;
+				var puestas = {};
+				(aj.data || []).forEach(function (f) { puestas[f.fecha] = f; });
+				ajustesCal = (ajustesCal || []).filter(function (x) { return !puestas[x.fecha]; }).concat(aj.data || []);
+			} catch (e) {
+				console.error("ponte al día: días sin clase", e);
+				mensaje("error", "No se pudieron guardar los días sin clase en el calendario de tu grupo: " + textoError(e) + ". No se guardó nada; lo que marcaste sigue en pantalla.");
+				if (boton) { boton.disabled = false; boton.textContent = "Guardar la asistencia"; }
+				return;
+			}
+		}
 		try {
 			var lotes = porLotes(r.filas, 500);
 			for (var i = 0; i < lotes.length; i++) {
@@ -396,7 +420,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		}
 		asis.marcas = {};
 		await marcarHecho(2, 3);
-		mensaje("ok", "Asistencia guardada: " + r.filas.length + " registros (" + (r.cuenta.ausente || 0) + " faltas y " + (r.cuenta.justificada || 0) + " justificadas).");
+		mensaje("ok", "Asistencia guardada: " + r.filas.length + " registros (" + (r.cuenta.ausente || 0) + " faltas y " + (r.cuenta.justificada || 0) + " justificadas)" +
+			(sinClase.length ? ". " + (sinClase.length === 1 ? "1 día quedó" : sinClase.length + " días quedaron") + " sin clase en el calendario de tu grupo (se quitan desde Calendario)." : "."));
 		irA(3, true);
 	}
 
@@ -846,11 +871,18 @@ document.addEventListener("DOMContentLoaded", function () {
 		var directa = RD.esDirecta(pc);
 		var prop = pc.calificacionPropuesta;
 		var numero, nota;
-		if (of.confirmada) { numero = of.valor; nota = cerrada ? "boleta cerrada" : "confirmada"; }
+		/*
+			Calificación directa = YA confirmada (decisión de Jorge del 2026-09-26): al guardarla, la base
+			la pone como la confirmada de la boleta en ese campo (trigger de mi_salon_b20). Se cambia o
+			se borra aquí mismo mientras la boleta no esté cerrada.
+		*/
+		if (of.confirmada && directa) { numero = of.valor; nota = cerrada ? "boleta cerrada" : "capturada directamente · confirmada"; }
+		else if (of.confirmada) { numero = of.valor; nota = cerrada ? "boleta cerrada" : "confirmada"; }
 		else if (directa) { numero = prop; nota = "capturada directamente"; }
 		else if (prop !== null && prop !== undefined) { numero = prop; nota = "propuesta · " + (Math.floor(Number(pc.porcentaje) * 10 + 1e-9) / 10).toFixed(1) + " %"; }
 		else { numero = null; nota = "sin evidencias"; }
-		var editable = boletaVista.directa && !cerrada && !of.confirmada;
+		// Una confirmada en Reportes (sin directa) no se pisa desde aquí: se cambia en Reportes
+		var editable = boletaVista.directa && !cerrada && (!of.confirmada || directa);
 		var control = "";
 		if (editable) {
 			control = "<select data-directa='" + a.id + "|" + c + "' aria-label='Calificación directa de " + esc(a.nombre_completo) + " en " + esc(NOMBRE_CAMPO[c]) + "' class='mt-1 min-h-[44px] w-full rounded-lg border " + (directa ? "border-violet-400 bg-violet-50" : "border-gray-300 bg-white") + " px-1 text-sm'>" +
@@ -879,12 +911,12 @@ document.addEventListener("DOMContentLoaded", function () {
 		el.contenido.innerHTML =
 			"<h2 class='text-lg font-bold text-gray-900'>4. Revisa la boleta</h2>" +
 			"<p class='mt-1 text-sm text-gray-600'>La calificación que la boleta propone por campo formativo con lo que capturaste (trimestre " + trimestre + "). " +
-			"Es una propuesta: la confirmas alumno por alumno en Reportes → Boleta (es tu juicio docente).</p>" +
+			"La calculada con las actividades es una propuesta: la confirmas alumno por alumno en Reportes → Boleta (es tu juicio docente).</p>" +
 			"<div class='mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>" +
-			"<p class='text-sm text-violet-950'><strong>¿Ya tienes tus calificaciones del trimestre en papel o en Excel?</strong> Captúralas directamente: la boleta las propone en lugar del cálculo con las actividades. Se pueden borrar para volver al cálculo automático.</p>" +
+			"<p class='text-sm text-violet-950'><strong>¿Ya tienes tus calificaciones del trimestre en papel o en Excel?</strong> Captúralas directamente: cada una queda ya confirmada en la boleta de ese campo, sin volver a confirmarla. Puedes cambiarla o borrarla (vuelve al cálculo automático) mientras la boleta no esté cerrada.</p>" +
 			"<button type='button' data-modo-directa aria-pressed='" + boletaVista.directa + "' class='shrink-0 " + (boletaVista.directa ? BTN_PRI : BTN_SEC) + "'>" + (boletaVista.directa ? "Listo, ocultar la captura" : "Capturar calificación directa") + "</button></div>" +
 			"<div class='mt-3 overflow-x-auto rounded-xl border border-gray-200'><table class='pd-tabla w-full border-separate border-spacing-0'><thead class='bg-gray-50'>" + cabeza + "</thead><tbody>" + cuerpo + "</tbody></table></div>" +
-			"<p class='mt-2 text-xs text-gray-500'>En ámbar, la propuesta con las actividades (y su porcentaje de logro); en violeta, la capturada directamente; en negro, la que ya confirmaste. La conversión del porcentaje a calificación es la de la SEP (90 o más, 10; 80 a 89, 9; y así), con el mínimo de cada grado: 1° de 6 a 10; 2° a 6° de 5 a 10.</p>" +
+			"<p class='mt-2 text-xs text-gray-500'>En ámbar, la propuesta con las actividades (y su porcentaje de logro); en violeta, la capturada directamente (ya confirmada); en negro, la que confirmaste en Reportes. La conversión del porcentaje a calificación es la de la SEP (90 o más, 10; 80 a 89, 9; y así), con el mínimo de cada grado: 1° de 6 a 10; 2° a 6° de 5 a 10.</p>" +
 			"<div class='mt-6 pt-4 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2'>" +
 			"<button type='button' data-anterior class='" + BTN_SEC + "'>" + ICONO_IZQ + "Paso anterior</button>" +
 			"<div class='flex flex-col sm:flex-row gap-2'><a href='reportes.html' class='" + BTN_SEC + "'>Ir a Reportes</a>" +
@@ -924,6 +956,9 @@ document.addEventListener("DOMContentLoaded", function () {
 		try {
 			var r = await M.cargarYCalcular(window.sb, { maestroId: userId, grupoId: grupo.id, alumnoId: a.id, grado: a.grado, trimestre: trimestre, campos: CAMPOS });
 			boletaVista.motor.porAlumno[a.id] = Object.assign({}, boletaVista.motor.porAlumno[a.id] || {}, { porCampo: r.porCampo });
+			// La boleta del alumno también cambió (la directa queda como la confirmada, o se quitó)
+			var bol = await RD.boletasCiclo(window.sb, { maestroId: userId, ciclo: grupo.ciclo_escolar || "", alumnos: [a] }, [a.id]);
+			boletaVista.boletas[a.id] = bol[a.id];
 		} catch (err) {
 			console.error("ponte al día: recalcular", err);
 			mensaje("error", "Se guardó, pero no se pudo volver a calcular a " + a.nombre_completo + ": " + textoError(err) + ". Vuelve a abrir este paso.");
@@ -951,7 +986,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			var cab = "<p class='flex items-center gap-2 text-sm font-bold text-gray-800'><span class='inline-block w-2.5 h-2.5 rounded-full' style='background:" + COLOR_CAMPO[c] + "'></span>" + esc(NOMBRE_CAMPO[c]) + "</p>";
 			if (RD.esDirecta(pc)) {
 				return "<div class='rounded-xl border border-violet-200 bg-violet-50 p-3'>" + cab +
-					"<p class='mt-1 text-sm text-violet-950'>Calificación capturada directamente: <strong>" + esc(pc.directa.calificacion) + "</strong>. No se calcula con las actividades; para volver al cálculo automático, elige «Automática».</p></div>";
+					"<p class='mt-1 text-sm text-violet-950'>Calificación capturada directamente: <strong>" + esc(pc.directa.calificacion) + "</strong>. Ya cuenta como la confirmada de la boleta; no se calcula con las actividades. Para volver al cálculo automático, elige «Automática» (mientras la boleta no esté cerrada).</p></div>";
 			}
 			var efectivos = M.pesosEfectivos(pc.rubros) || {};
 			var filas = M.RUBROS.map(function (r) {

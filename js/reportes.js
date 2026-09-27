@@ -1199,7 +1199,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			btn.addEventListener("click", async function () {
 				const campo = btn.dataset.quitarDirecta;
 				if (!window.confirm("Se borra la calificación que capturaste directamente en " + (btn.dataset.calNombre || campo) +
-					" y la propuesta vuelve a salir de las actividades del trimestre. Una calificación que ya confirmaste no cambia. ¿Continuar?")) return;
+					": deja de estar confirmada y la propuesta vuelve a salir de las actividades del trimestre (la confirmas tú en esta boleta). ¿Continuar?")) return;
 				btn.disabled = true;
 				const { error } = await window.sb.from("calificacion_directa").delete()
 					.eq("maestro_id", userId).eq("alumno_id", alumnoId).eq("ciclo", cicloBoleta)

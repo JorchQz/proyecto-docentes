@@ -72,6 +72,24 @@ function ok(nombre, real, esperado) {
 		["resto_ciclo", "resto_ciclo", "resto_ciclo", null]);
 	ok("motivos en palabras", [C.motivoTexto("ya_cubierto"), C.motivoTexto("fuera_de_venta"), C.motivoTexto("otro")],
 		["Ya tienes acceso a esos periodos.", "Ya no está a la venta en este periodo.", "No está disponible por ahora."]);
+	// No se vende lo que no agrega periodos, y se explica (decisión de Jorge del 2026-09-26)
+	const cubiertoT1 = { motivo: "ya_cubierto", producto: "trimestre", periodo: "T1", ciclo: "2026-2027", compra_tardia: false, compra_tardia_desde: "2026-10-23", vence_acceso: "2026-12-18" };
+	ok("ya cubierto antes de la compra tardía: explica desde cuándo la compra agrega el siguiente trimestre",
+		C.explicarNoDisponible(cubiertoT1, { vence: "2026-12-18" }, "2026-10-12"),
+		"Ya tienes acceso hasta el 18 de diciembre de 2026; desde el 23 de octubre de 2026 esta compra incluye también el segundo trimestre.");
+	ok("ya cubierto sin nada que agregar: lo dice y no se vende",
+		C.explicarNoDisponible({ motivo: "ya_cubierto", producto: "resto_ciclo", periodo: "T1", ciclo: "2026-2027", vence_acceso: "2027-07-30" }, { vence: "2027-07-30" }, "2026-10-12"),
+		"Ya tienes acceso hasta el 30 de julio de 2027: esta opción no agregaría ningún periodo, así que no se vende.");
+	ok("otro motivo: el texto corto de siempre", C.explicarNoDisponible({ motivo: "fuera_de_venta" }, null, "2027-03-10"), "Ya no está a la venta en este periodo.");
+	ok("la lista de opciones y el aviso de 'nada que comprar' usan la explicación completa",
+		(leer("tienda/js/mi-salon-compra.js").match(/M\.explicarNoDisponible\(p, datos\.estado, datos\.hoy\)/g) || []).length, 2);
+	ok("b22: la cobertura manda compra_tardia_desde (para explicarlo)", /'compra_tardia_desde', P\.compra_tardia_desde/.test(leer("supabase/mi_salon_b22_cobros_2026-09.sql")), true);
+	const b22 = leer("supabase/mi_salon_b22_cobros_2026-09.sql").replace(/\r\n/g, "\n");
+	ok("b22: en empate entre cupón y fundador gana el cupón (decisión de Jorge del 2026-09-26)",
+		/if v_cupon_precio < v_final or \(v_cupon_precio = v_final and v_tipo = 'fundador'\) then/.test(b22), true);
+	ok("b22: los compradores de la tienda no ocupan lugar del cupo (motivo 'tienda' fuera del conteo y primero en el motivo)",
+		[/m\.motivo_fundador is distinct from 'tienda'/.test(b22),
+			b22.indexOf("mi_salon_comprador_tienda(p_uid) then return 'tienda'") < b22.indexOf("return 'previo';")], [true, true]);
 	ok("método del pago pendiente", [C.metodoTexto({ metodo: "oxxo", tipo_metodo: "ticket" }), C.metodoTexto({ tipo_metodo: "bank_transfer" }), C.metodoTexto(null)], ["en efectivo en OXXO", "por transferencia SPEI", ""]);
 	const js = leer("tienda/js/mi-salon-compra.js");
 	ok("la página NO calcula precios: los pide a la base (mi_salon_opciones) y paga con la Edge (comprar-mi-salon), sin mandar precio",

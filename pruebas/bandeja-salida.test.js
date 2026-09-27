@@ -1504,6 +1504,32 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		ok("§12 nada se guardó", bdQ.calificaciones.length, 0);
 	});
 
+	// ── §13 La asistencia de Hoy enviada sin señal al día siguiente no es histórica (B5, mi_salon_b20)
+	// La cola manda capturado_en (la hora del aparato) en la fila NUEVA de asistencia: el trigger de
+	// la base decide es_historico con ella (fecha < día de capturado_en). Al editar una fila que ya
+	// existía no se manda (la base conserva la suya) y las marcas por campo siguen igual.
+	await caso("§13 capturado_en en asistencia", async () => {
+		const bdH = crearBD();
+		const almH = B.almacenMemoria();
+		const ayer = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
+		await almH.poner({ clave: "asistencia|g1|a1|" + F, tipo: "asistencia", maestro_id: "m1", seq: 1, capturado_en: ayer,
+			datos: asis("a1", "ausente"), descripcion: "A1", base: null });
+		const bH = bandeja(cliente(bdH, {}), almH);
+		await bH.iniciar();
+		await vacia(bH);
+		const fila = bdH.asistencias.find((a) => a.alumno_id === "a1");
+		ok("§13 la fila nueva lleva capturado_en = la hora del aparato", [fila && fila.asistencia_estado, fila && fila.capturado_en], ["ausente", ayer]);
+		ok("§13 con su marca de captura", ESQUEMA === "ninguno" ? true : !!(fila && fila.captura_id), true);
+		// Editarla después (en línea): no manda capturado_en en el update
+		const cH = cliente(bdH, {});
+		const bH2 = bandeja(cH, B.almacenMemoria());
+		bH2.iniciar();
+		await bH2.agregar("asistencia", asis("a1", "presente"), "A1", B.baseDeFila ? B.baseDeFila("asistencia", fila) : { estado: "ausente" });
+		await vacia(bH2);
+		ok("§13 al editar: la base conserva su capturado_en", [bdH.asistencias[0].asistencia_estado, bdH.asistencias[0].capturado_en,
+			cH.escrituras.some((w) => /asistencias:update/.test(w) && /capturado_en/.test(w))], ["presente", ayer, false]);
+	});
+
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);
 })().catch((e) => { console.log("FALLA excepción: " + (e && e.stack)); process.exit(1); });
