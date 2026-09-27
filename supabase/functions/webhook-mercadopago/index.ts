@@ -7,16 +7,8 @@
 // POST /functions/v1/webhook-mercadopago
 // (La llama Mercado Pago; no lleva JWT de usuario.)
 //
-// Códigos de respuesta (R29, decisión de Jorge del 2026-09-26):
-//   401 → firma inválida.
-//   503 → falla pasajera al procesar el pago (la base no respondió: no se pudo leer la orden ni saber
-//         si es de Mi Salón, timeout, 5xx de PostgREST, escritura fallida). La orden NO quedó
-//         pagada; Mercado Pago reintenta el mismo aviso solo y `procesarPago()` es idempotente, así
-//         que el reintento entrega una vez (un acceso, un correo).
-//   200 → todo lo demás, también las respuestas definitivas que no se arreglan reintentando: orden
-//         desconocida, ya procesada, pago rechazado o pendiente, importe o moneda que no cuadran,
-//         notificación que no es de pago, pago que Mercado Pago no devuelve. Un error ahí haría que
-//         MP reintentara durante días algo que no cambia.
+// Siempre responde 200 salvo firma inválida: si devolviéramos error, MP
+// reintentaría en bucle durante días por un fallo que no se arregla solo.
 
 import { crearAdmin, mensajeError } from "../_shared/db.ts";
 import { jsonResponse } from "../_shared/cors.ts";
@@ -24,7 +16,6 @@ import {
   consultarPago,
   firmaWebhookValida,
   procesarPago,
-  type ResultadoPago,
 } from "../_shared/pagos.ts";
 
 Deno.serve(async (req: Request) => {
@@ -80,24 +71,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const admin = crearAdmin(supabaseUrl, serviceKey);
-    let resultado: ResultadoPago;
-    try {
-      resultado = await procesarPago(admin, pago, { siteUrl, resendKey });
-    } catch (err) {
-      // procesarPago solo lanza por una falla de la base (p. ej. no se pudo saber si la orden es de
-      // Mi Salón): la orden quedó sin tocar y reintentar la resuelve.
-      console.error("webhook: falla pasajera (excepción), 503 para que MP reintente", {
-        paymentId, orden: pago.external_reference, error: mensajeError(err),
-      });
-      return jsonResponse({ ok: false, transitorio: true, error: mensajeError(err) }, 503);
-    }
-
-    if (resultado.transitorio) {
-      console.error("webhook: falla pasajera, 503 para que MP reintente", {
-        paymentId, orden: pago.external_reference, error: resultado.error,
-      });
-      return jsonResponse(resultado, 503);
-    }
+    const resultado = await procesarPago(admin, pago, { siteUrl, resendKey });
 
     console.log("webhook procesado", {
       paymentId,
@@ -110,8 +84,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse(resultado);
   } catch (err) {
     console.error("webhook-mercadopago error:", err);
-    // 200 a propósito (fuera de procesarPago: cuerpo, variables, consulta a MP): evita reintentos en
-    // bucle por algo que no se arregla solo. El error queda en logs.
+    // 200 a propósito: evita reintentos en bucle. El error queda en logs.
     return jsonResponse({ error: mensajeError(err) }, 200);
   }
 });

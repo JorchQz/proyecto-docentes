@@ -8,13 +8,6 @@
 //
 // Ambas terminan en `procesarPago()`, que es idempotente: se puede llamar
 // mil veces con el mismo pago sin duplicar accesos ni correos.
-//
-// Falla pasajera vs. regla de negocio (R29, decisión de Jorge del 2026-09-26): cuando la base no
-// responde (lectura o escritura fallida, timeout, 5xx de PostgREST) `procesarPago()` devuelve
-// `transitorio: true` (o lanza, si la falla ocurre al decidir si la orden es de Mi Salón) SIN marcar
-// la orden como pagada, y el webhook responde 503 para que Mercado Pago reintente el mismo aviso.
-// Una regla de negocio (orden desconocida, monto parcial, pago rechazado, ya procesada) es
-// definitiva: `transitorio` queda ausente y el webhook responde 200.
 
 import type { Cliente } from "./db.ts";
 import {
@@ -47,9 +40,6 @@ export interface ResultadoPago {
   /** detalle de MP para mostrar mensajes precisos (p. ej. "esperando pago en OXXO") */
   detalleMp?: string;
   error?: string;
-  /** true si falló la base, no una regla de negocio: la orden no quedó pagada y reintentar puede
-   *  resolverlo. El webhook responde 503 para que Mercado Pago reintente. */
-  transitorio?: boolean;
 }
 
 /** Consulta un pago concreto en la API de Mercado Pago. */
@@ -121,18 +111,12 @@ export async function procesarPago(
     return await procesarPagoMiSalon(admin, pago, opts);
   }
 
-  const { data: orden, error: errOrden } = await admin
+  const { data: orden } = await admin
     .from("marketplace_ordenes")
     .select("id, estado, user_id, monto_total")
     .eq("id", ordenId)
     .maybeSingle();
 
-  // Una lectura fallida no es "orden desconocida": se reintenta (antes se confundían y el aviso se
-  // perdía con un 200).
-  if (errOrden) {
-    console.error("No se pudo leer la orden (falla pasajera):", ordenId, errOrden);
-    return { ok: false, estado: "pendiente", transitorio: true, error: "No se pudo leer la orden" };
-  }
   if (!orden) {
     return { ok: false, estado: "pendiente", error: "Orden no encontrada" };
   }
@@ -141,30 +125,18 @@ export async function procesarPago(
   if (status === "refunded" || status === "charged_back") {
     // 'reembolsado' (no 'fallido'): así el estado de cuenta del cupón la
     // muestra como devolución y el trigger sella reembolsado_en.
-    // Cada paso es idempotente: si alguno falla, el reintento lo termina (no deja el acceso vivo).
-    const { error: errEstado } = await admin
+    await admin
       .from("marketplace_ordenes")
       .update({ estado: "reembolsado", referencia_pago: paymentId })
       .eq("id", ordenId);
-    const { error: errQuitar } = await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
+    await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
     // Un pedido personalizado devuelto se cancela (si ya estaba entregado, el
     // acceso se acaba de retirar arriba).
-    const { error: errPedidos } = await admin
+    await admin
       .from("marketplace_pedidos")
       .update({ estado: "cancelado", updated_at: new Date().toISOString() })
       .eq("orden_id", ordenId)
       .neq("estado", "cancelado");
-    if (errEstado || errQuitar || errPedidos) {
-      console.error("Reembolso a medias (falla pasajera):", { ordenId, errEstado, errQuitar, errPedidos });
-      return {
-        ok: false,
-        estado: "reembolsado",
-        transitorio: true,
-        statusMp: status,
-        detalleMp: detalle,
-        error: "No se pudo registrar el reembolso completo",
-      };
-    }
     // La venta deja de contar para el escalón de lanzamiento.
     await recalcularPrecios(admin);
     return { ok: true, estado: "reembolsado", statusMp: status, detalleMp: detalle };
@@ -184,21 +156,10 @@ export async function procesarPago(
   if (status !== "approved") {
     const nuevoEstado: EstadoOrden =
       status === "rejected" || status === "cancelled" ? "fallido" : "pendiente";
-    const { error: errPend } = await admin
+    await admin
       .from("marketplace_ordenes")
       .update({ estado: nuevoEstado, referencia_pago: paymentId })
       .eq("id", ordenId);
-    if (errPend) {
-      console.error("No se pudo guardar el estado del pago (falla pasajera):", ordenId, errPend);
-      return {
-        ok: false,
-        estado: nuevoEstado,
-        transitorio: true,
-        statusMp: status,
-        detalleMp: detalle,
-        error: "No se pudo guardar el estado del pago",
-      };
-    }
     return { ok: true, estado: nuevoEstado, statusMp: status, detalleMp: detalle };
   }
 
@@ -241,39 +202,17 @@ export async function procesarPago(
       ok: false,
       estado: "pendiente",
       statusMp: status,
-      // Sin poder leerlos es una falla pasajera (se reintenta); sin renglones es definitivo.
-      transitorio: errRenglones ? true : undefined,
       error: errRenglones ? "No se pudieron leer los renglones de la orden" : "La orden no tiene renglones",
     };
   }
 
-  // ── Pago aprobado: entregar y después marcar (R29) ───────────────────────
-  // Primero los accesos (upsert que no duplica) y DESPUÉS 'pagado': si algo falla en medio, la orden
-  // sigue pendiente y el reintento termina el trabajo. Al revés, una orden 'pagado' sin accesos
-  // quedaría "ya procesada" para siempre.
-  let accesos: number;
-  try {
-    accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
-  } catch (err) {
-    console.error("No se pudieron otorgar los accesos (falla pasajera); la orden sigue pendiente:", ordenId, err);
-    return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, error: "No se pudieron otorgar los accesos" };
-  }
-
-  // Solo UNA llamada pasa la orden a 'pagado' (por la condición del update): si el webhook y
-  // confirmar-pago llegan juntos, la otra ve 0 filas y responde ya procesada, sin segundo correo.
-  const { data: marcadas, error: errMarcar } = await admin
+  // ── Pago aprobado: marcar y entregar ─────────────────────────────────────
+  await admin
     .from("marketplace_ordenes")
     .update({ estado: "pagado", referencia_pago: paymentId })
-    .eq("id", ordenId)
-    .neq("estado", "pagado")
-    .select("id");
-  if (errMarcar) {
-    console.error("No se pudo marcar la orden pagada (falla pasajera); los accesos ya están:", ordenId, errMarcar);
-    return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, error: "No se pudo marcar la orden pagada" };
-  }
-  if (!marcadas || !marcadas.length) {
-    return { ok: true, estado: "pagado", yaProcesada: true, statusMp: status };
-  }
+    .eq("id", ordenId);
+
+  const accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
 
   // Pedidos personalizados de esta orden: pasan a la cola y se avisa por correo
   // al cliente y al negocio. Nunca bloquea la entrega del resto.
@@ -472,17 +411,16 @@ export function tiposDeAcceso(tipoItem: string, tipoPaquete: string | null): str
     : ["pdf", "anexos"];
 }
 
-/** Otorga los accesos que corresponden a los items de una orden. Lanza si la base falla. */
+/** Otorga los accesos que corresponden a los items de una orden. */
 export async function otorgarAccesosDeOrden(
   admin: Cliente,
   ordenId: string,
   userId: string,
 ): Promise<number> {
-  const { data: items, error: errItems } = await admin
+  const { data: items } = await admin
     .from("marketplace_orden_items")
     .select("producto_id, tipo, marketplace_productos(tipo_paquete)")
     .eq("orden_id", ordenId);
-  if (errItems) throw new Error("No se pudieron leer los renglones de la orden: " + (errItems.message || "error"));
 
   const accesos: Array<Record<string, unknown>> = [];
   for (const item of items || []) {
@@ -509,8 +447,10 @@ export async function otorgarAccesosDeOrden(
       onConflict: "user_id,producto_id,tipo",
       ignoreDuplicates: true,
     });
-  // Lanza (R29): quien llama no debe marcar la orden pagada sin sus accesos.
-  if (error) throw new Error("upsert de accesos falló: " + (error.message || "error"));
+  if (error) {
+    console.error("upsert de accesos falló:", error);
+    return 0;
+  }
   return accesos.length;
 }
 
