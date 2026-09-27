@@ -35,7 +35,8 @@
 --      desde que ese acceso venció. La hora del aparato se acota: no más de 10 minutos en
 --      el futuro ni más de 30 días en el pasado.
 --   7. RPC security definer: incrementar_uso_criterio revisa el acceso; delete_own_account
---      (versión completa: b19 + b19a + b20 + accesos) sigue funcionando sin acceso.
+--      (versión completa: b19 + b19a + b20 + accesos) sigue funcionando sin acceso. b22 la vuelve a
+--      reemplazar (la última del orden) con todo lo de esta más mi_salon_ordenes.
 --   8. Panel de administración: lista de docentes, métricas, dar/quitar acceso, interruptor.
 --   9. Correo de bienvenida: mi_salon_correos (una fila por docente y tipo) para que sea
 --      idempotente; lo manda la Edge Function bienvenida-mi-salon, solo con Mi Salón abierto.
@@ -494,8 +495,8 @@ end $$;
 -- delete_own_account: borrar la cuenta SIEMPRE se permite, con o sin acceso (security
 -- definer: no pasa por las políticas de arriba). Versión COMPLETA de b19 + b19a (búsquedas
 -- vacías y productos finales) + b20 (calificación directa y Ponte al día, con guarda) + los accesos y
--- correos de Mi Salón. Al fusionar con b20 (Ponte al día) se unen las versiones. Una cuenta con un PAGO de Mi Salón no se borra sola (como las
--- compras de la tienda): es un registro de cobro.
+-- correos de Mi Salón. Una cuenta con un PAGO de Mi Salón no se borra sola (como las compras de la
+-- tienda): es un registro de cobro. b22 la reemplaza al final con todo esto más mi_salon_ordenes.
 -- @@delete_own_account inicio
 create or replace function public.delete_own_account()
 returns void

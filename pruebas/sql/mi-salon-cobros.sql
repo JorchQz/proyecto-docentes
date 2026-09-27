@@ -216,7 +216,9 @@ begin
     (q ->> 'precio_final')::numeric = 199 and q ->> 'tipo_precio' = 'fundador' and q ->> 'cupon_codigo' is null
     and q ->> 'cupon_referido' = 'ZZB22DIEZ' and q -> 'cupon' ->> 'motivo' = 'fundador_mejor', q::text);
   q := public.mi_salon_cotizar_de(tienda, 'trimestre', 'ZZB22CIEN', '2026-12-21');
-  perform public.zz_b22_anotar('cupon', 'empate cupón ($299 − $100 = $199) contra fundador ($199): fundador', q ->> 'tipo_precio' = 'fundador' and q ->> 'cupon_codigo' is null, q::text);
+  -- Decisión de Jorge (2026-09-26): en empate gana el CUPÓN (el creador cobra su comisión)
+  perform public.zz_b22_anotar('cupon', 'empate cupón ($299 − $100 = $199) contra fundador ($199): gana el cupón',
+    q ->> 'tipo_precio' = 'cupon' and q ->> 'cupon_codigo' = 'ZZB22CIEN' and (q ->> 'precio_final')::numeric = 199 and q ->> 'cupon_referido' is null, q::text);
   q := public.mi_salon_cotizar_de(nueva, 'trimestre', 'ZZB22DIEZ', '2026-12-21');
   perform public.zz_b22_anotar('cupon', 'sin fundador (cupo lleno) + cupón 10%: $269 con cupón', (q ->> 'precio_final')::numeric = 269 and q ->> 'tipo_precio' = 'cupon', q::text);
   q := public.mi_salon_cotizar_de(nueva, 'trimestre', 'NOEXISTE', '2026-12-21');
@@ -358,6 +360,7 @@ declare
   a uuid := public.zz_b22_cuenta('zz.b22.lugara@jissez.test');
   b uuid := public.zz_b22_cuenta('zz.b22.lugarb@jissez.test');
   cc uuid := public.zz_b22_cuenta('zz.b22.lugarc@jissez.test');
+  t uuid := (select u.id from auth.users u where u.email = 'zz.b22.tienda@jissez.test');
   base int;
   r jsonb; p jsonb; q jsonb;
   oa uuid;
@@ -377,6 +380,21 @@ begin
   r := public.mi_salon_registrar_orden(a, 'trimestre', null, now(), false, '2027-02-12');
   perform public.mi_salon_aplicar_pago((r ->> 'orden_id')::uuid, public.zz_b22_pago('zz-b22-a2', 'approved', 199, '2027-02-12T12:00:00-06:00'));
   perform public.zz_b22_anotar('lugares', 'dos pagos de la misma docente cuentan como UN lugar', public.mi_salon_fundador_usados('2026-2027') = base + 1, public.mi_salon_fundador_usados('2026-2027')::text);
+  -- Comprador de la tienda: precio fundador aunque el cupo esté lleno y NO ocupa lugar, tampoco en
+  -- su compra siguiente (decisión de Jorge, 2026-09-26: van aparte)
+  update public.perfiles set activo_saas = true where id = t;
+  r := public.mi_salon_registrar_orden(t, 'trimestre', null, now(), false, '2026-10-23');
+  perform public.mi_salon_aplicar_pago((r ->> 'orden_id')::uuid, public.zz_b22_pago('zz-b22-t1', 'approved', 199, '2026-10-23T12:00:00-06:00'));
+  perform public.zz_b22_anotar('lugares', 'comprador de la tienda con el cupo lleno: paga fundador (motivo tienda) y NO ocupa lugar',
+    (select m.tipo_precio || '/' || m.motivo_fundador from public.mi_salon_ordenes m where m.orden_id = (r ->> 'orden_id')::uuid) = 'fundador/tienda'
+    and public.mi_salon_fundador_usados('2026-2027') = base + 1, public.mi_salon_fundador_usados('2026-2027')::text);
+  q := public.mi_salon_cotizar_de(t, 'trimestre', null, '2027-02-12');
+  perform public.zz_b22_anotar('lugares', 'su compra siguiente sigue siendo motivo tienda (no previo): tampoco ocupa lugar',
+    q ->> 'motivo_fundador' = 'tienda' and (q ->> 'precio_final')::numeric = 199, q::text);
+  update public.jissez_config set mi_salon_cupo_fundador = base + 2 where id;
+  perform public.zz_b22_anotar('lugares', '"Quedan N lugares" no baja por el comprador de la tienda', public.mi_salon_lugares_fundador('2026-2027') = 1,
+    public.mi_salon_lugares_fundador('2026-2027')::text);
+  update public.jissez_config set mi_salon_cupo_fundador = base + 1 where id;
   q := public.mi_salon_cotizar_de(b, 'trimestre', null, '2026-10-23');
   perform public.zz_b22_anotar('lugares', 'con el cupo lleno otra docente paga precio de lista', q ->> 'tipo_precio' = 'lista' and (q ->> 'lugares_fundador')::int = 0, q::text);
   -- Un reembolso libera el lugar (si fue su única orden fundador pagada)

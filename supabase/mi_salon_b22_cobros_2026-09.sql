@@ -42,6 +42,13 @@
 --   8. Estado para la app: pago pendiente (OXXO con su referencia) y el aviso del día.
 --   9. Panel: precios, cupo fundador, pagos, métricas y listas de WhatsApp por segmento.
 --
+-- 10. delete_own_account: la versión FINAL (§13). ORDEN: va AL FINAL del orden de producción
+--     (interes, b16, b17, b18, b18a, b19, b19a, b20, b21, b22; b21b y b22_avisos_cron aparte).
+--
+-- Decisiones de Jorge (2026-09-26) sobre cobros: los compradores de la tienda con precio fundador
+-- NO ocupan lugar del cupo; en empate entre cupón y fundador gana el cupón; no se vende lo que no
+-- agrega periodos (la página lo explica).
+--
 -- Orden de despliegue: esta migración ANTES que las Edge Functions y el frontend.
 -- =============================================================================
 
@@ -232,7 +239,7 @@ $$;
     Ciclo completo: T1, T2 y T3 del ciclo de P.
   El producto debe estar activo en mi_salon_precios para el ciclo de P y, si tiene
   vende_hasta_periodo, la fecha no pasa del registro de calificaciones de ese periodo.
-  → { disponible, motivo?, producto, nombre, ciclo, periodo, fecha, cobertura: [{ciclo, periodos}],
+  → { disponible, motivo?, producto, nombre, ciclo, periodo, fecha, compra_tardia_desde, cobertura: [{ciclo, periodos}],
       compra_tardia, siguiente: {ciclo, periodo, cargado} | null, vence, provisional,
       precio_lista, precio_fundador, vende_hasta }
 */
@@ -255,7 +262,10 @@ begin
   if P.ciclo is null then
     return jsonb_build_object('disponible', false, 'motivo', 'sin_periodo', 'producto', p_producto, 'fecha', p_fecha);
   end if;
-  v_base := jsonb_build_object('producto', p_producto, 'ciclo', P.ciclo, 'periodo', P.periodo, 'fecha', p_fecha);
+  -- compra_tardia_desde: la página explica una opción que hoy no agrega nada ("desde el 23 de
+  -- octubre esta compra incluye también el segundo trimestre")
+  v_base := jsonb_build_object('producto', p_producto, 'ciclo', P.ciclo, 'periodo', P.periodo, 'fecha', p_fecha,
+    'compra_tardia_desde', P.compra_tardia_desde);
   select * into pr from public.mi_salon_precios where ciclo = P.ciclo and producto = p_producto;
   if pr.ciclo is null or not pr.activo or p_producto = 'paquete_tienda' then
     return v_base || jsonb_build_object('disponible', false, 'motivo', 'no_se_vende');
@@ -343,18 +353,20 @@ revoke all on function public.mi_salon_comprador_tienda(uuid) from public, anon,
 
 /*
   Lugares de precio fundador de un ciclo = cupo − DOCENTES distintos con un pago aprobado
-  (orden en 'pagado') a precio fundador en ese ciclo. Cuentan docentes y no pagos: una docente
-  que ya pagó a precio fundador conserva el precio en sus compras siguientes del ciclo sin
-  ocupar otro lugar (spec 3.2). Un reembolso libera el lugar (la orden deja de estar pagada).
-  Los compradores de la tienda que pagan a precio fundador también ocupan lugar (lectura
-  literal de "los primeros 100 docentes con pago aprobado"; ver el reporte).
+  (orden en 'pagado') a precio fundador en ese ciclo. Cuentan docentes y no pagos: quien ya pagó
+  a precio fundador conserva el precio en sus compras siguientes del ciclo sin ocupar otro lugar
+  (spec 3.2). Un reembolso libera el lugar (la orden deja de estar pagada).
+  Decisión de Jorge (2026-09-26): los compradores de la tienda (motivo 'tienda') NO ocupan lugar:
+  van aparte. "Quedan N lugares" solo baja con docentes que no compraron en la tienda y pagan a
+  precio fundador (motivo 'cupo', o 'previo' en su compra siguiente).
 */
 create or replace function public.mi_salon_fundador_usados(p_ciclo text)
 returns integer language sql stable security definer set search_path = public as $$
   select count(distinct m.docente_id)::int
     from public.mi_salon_ordenes m
     join public.marketplace_ordenes o on o.id = m.orden_id
-   where o.estado = 'pagado' and m.tipo_precio = 'fundador' and m.ciclo = p_ciclo;
+   where o.estado = 'pagado' and m.tipo_precio = 'fundador' and m.ciclo = p_ciclo
+     and m.motivo_fundador is distinct from 'tienda';
 $$;
 
 create or replace function public.mi_salon_lugares_fundador(p_ciclo text)
@@ -364,16 +376,18 @@ returns integer language sql stable security definer set search_path = public as
 $$;
 grant execute on function public.mi_salon_lugares_fundador(text) to anon, authenticated;
 
--- ¿Tiene derecho a precio fundador en el ciclo? → 'previo' | 'tienda' | 'cupo' | null
+-- ¿Tiene derecho a precio fundador en el ciclo? → 'tienda' | 'previo' | 'cupo' | null
+-- La tienda va primero: un comprador de la tienda siempre es 'tienda' (también en su segunda
+-- compra), así nunca ocupa un lugar del cupo (mi_salon_fundador_usados).
 create or replace function public.mi_salon_motivo_fundador(p_uid uuid, p_ciclo text)
 returns text language plpgsql stable security definer set search_path = public as $$
 begin
+  if p_uid is not null and public.mi_salon_comprador_tienda(p_uid) then return 'tienda'; end if;
   if p_uid is not null and exists (
        select 1 from public.mi_salon_ordenes m join public.marketplace_ordenes o on o.id = m.orden_id
         where m.docente_id = p_uid and m.ciclo = p_ciclo and m.tipo_precio = 'fundador' and o.estado = 'pagado') then
     return 'previo';
   end if;
-  if p_uid is not null and public.mi_salon_comprador_tienda(p_uid) then return 'tienda'; end if;
   if public.mi_salon_lugares_fundador(p_ciclo) > 0 then return 'cupo'; end if;
   return null;
 end $$;
@@ -401,8 +415,8 @@ revoke all on function public.mi_salon_vence_max(uuid) from public, anon, authen
     - Fundador si tiene derecho (mi_salon_motivo_fundador) y el producto tiene precio fundador.
     - Cupón de la tienda sobre el precio de LISTA (marketplace_cupon_evaluar, ámbito 'mi_salon':
       mismas reglas de vigencia, usos, "uno por cliente" y tope de comisión).
-    - Se cobra el más bajo de los dos, sin sumarlos. Empate: fundador (la comisión solo se
-      paga si el cupón fue el que se aplicó).
+    - Se cobra el más bajo de los dos, sin sumarlos. Empate: gana el CUPÓN (decisión de Jorge del
+      2026-09-26: así el creador cobra su comisión, que solo se paga si su cupón se aplicó).
     - No se vende lo que no agrega nada (todos los periodos ya los tiene): motivo 'ya_cubierto'.
   → mi_salon_cobertura(...) + { precio_final, tipo_precio, motivo_fundador, cupon: {...},
      cupon_codigo (el que se aplicó), cupon_referido, descuento, lugares_fundador,
@@ -457,13 +471,13 @@ begin
     v_cupon_msg := r ->> 'mensaje';
     if coalesce((r ->> 'aplicado')::boolean, false) then
       v_cupon_precio := (r ->> 'precio_final')::numeric;
-      if v_cupon_precio < v_final then
+      if v_cupon_precio < v_final or (v_cupon_precio = v_final and v_tipo = 'fundador') then
         v_final := v_cupon_precio;
         v_tipo := 'cupon';
         v_codigo := r ->> 'codigo';
       else
         v_cupon_motivo := 'fundador_mejor';
-        v_cupon_msg := 'Tu precio fundador ya es igual o más bajo que el de tu cupón. Te dejamos el más bajo y tu cupón sigue disponible para otra compra.';
+        v_cupon_msg := 'Tu precio fundador ya es más bajo que el de tu cupón. Te dejamos el más bajo y tu cupón sigue disponible para otra compra.';
       end if;
     end if;
     -- Cupón válido que no fue el que se aplicó: se atribuye al creador sin comisión
@@ -1470,6 +1484,144 @@ begin
 exception when undefined_function then
   raise notice 'admin_estado_cuenta_cupon no existe; nada que ajustar';
 end $$;
+
+
+-- ── 13. delete_own_account: la versión FINAL (b19a + b20 + b21 + b22) ─────────────────
+/*
+  ORDEN: va AL FINAL. Varias migraciones reemplazan delete_own_account completa (b10,
+  jissez_interes_secciones, b17, b18, b19, b19a, b20, b21 y esta). La que se aplica al último es la
+  que queda; esta es la de b21 (b19a completa: marketplace_busquedas_vacias y productos_finales; b20:
+  calificacion_directa y ponte_al_dia; b21: mi_salon_correos, mi_salon_accesos y la guarda de pagos
+  de Mi Salón) más mi_salon_ordenes de b22. Cada tabla nueva con guarda to_regclass. Borrar la cuenta
+  SIEMPRE se permite con o sin acceso vigente (security definer); una cuenta con compras de la
+  tienda o un pago de Mi Salón no se borra sola (se escribe a soporte). mi_salon_avisos,
+  mi_salon_precios y jissez_config son configuración (no son de la cuenta).
+  La prueba pruebas/migraciones-orden.test.js exige todo esto de la última del orden.
+*/
+-- @@delete_own_account inicio (b22: la versión FINAL)
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v uuid := auth.uid();
+begin
+  if v is null then
+    raise exception 'Sin sesión' using errcode = 'insufficient_privilege';
+  end if;
+
+  if exists (select 1 from public.marketplace_ordenes where user_id = v)
+     or exists (select 1 from public.marketplace_accesos where user_id = v)
+     or exists (select 1 from public.marketplace_pedidos where user_id = v) then
+    raise exception 'Tu cuenta tiene compras registradas en la tienda. Para eliminarla escribe a soporte@jissez.com.'
+      using errcode = 'check_violation';
+  end if;
+  -- Pagos de Mi Salón (b21)
+  if to_regclass('public.mi_salon_accesos') is not null then
+    if exists (select 1 from public.mi_salon_accesos where docente_id = v and origen = 'pago') then
+      raise exception 'Tu cuenta tiene pagos de Mi Salón registrados. Para eliminarla escribe a soporte@jissez.com.'
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  -- Datos de Mi salón que no se borran en cascada con la cuenta (primero los que dependen de otros)
+  delete from public.evaluacion_formativa where maestro_id = v;
+  delete from public.calificaciones where maestro_id = v;
+  delete from public.registro_diario where maestro_id = v;
+  delete from public.boleta_trimestral where maestro_id = v;
+  delete from public.evaluacion_diagnostica where maestro_id = v;
+  delete from public.tareas where maestro_id = v;
+  -- Para quién es cada producto (b17), antes que los productos
+  if to_regclass('public.producto_sesion_alumnos') is not null then
+    execute 'delete from public.producto_sesion_alumnos where maestro_id = $1' using v;
+  end if;
+  delete from public.productos_sesion where maestro_id = v;
+  delete from public.dias_no_habiles_extra where maestro_id = v;
+  delete from public.maestro_ajustes where maestro_id = v;
+  delete from public.zz_deprecated_diagnosticos where maestro_id = v;
+  -- Incidencias (b13)
+  if to_regclass('public.incidencia_alumnos') is not null then
+    execute 'delete from public.incidencia_alumnos where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.incidencias') is not null then
+    execute 'delete from public.incidencias where maestro_id = $1' using v;
+  end if;
+  -- Calendario del grupo y rol de aseo (b14)
+  if to_regclass('public.roles_aseo') is not null then
+    execute 'delete from public.roles_aseo where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.calendario_ajustes') is not null then
+    execute 'delete from public.calendario_ajustes where maestro_id = $1' using v;
+  end if;
+  -- Listas de cooperación y materiales (b15): valores, columnas y listas (también las cerradas)
+  if to_regclass('public.listas_valores') is not null then
+    execute 'delete from public.listas_valores where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.listas_columnas') is not null then
+    execute 'delete from public.listas_columnas where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.listas_grupo') is not null then
+    execute 'delete from public.listas_grupo where maestro_id = $1' using v;
+  end if;
+  -- Avisos de secciones por abrir (jissez_interes_secciones)
+  if to_regclass('public.interes_secciones') is not null then
+    execute 'delete from public.interes_secciones where usuario_id = $1' using v;
+  end if;
+  -- Exámenes de Mi Salón (b18 y b19): no presentó, respuestas, resultados, preguntas y exámenes
+  if to_regclass('public.examen_alumnos') is not null then
+    execute 'delete from public.examen_alumnos where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examen_respuestas') is not null then
+    execute 'delete from public.examen_respuestas where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examen_resultados') is not null then
+    execute 'delete from public.examen_resultados where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examen_preguntas') is not null then
+    execute 'delete from public.examen_preguntas where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.examenes_grupo') is not null then
+    execute 'delete from public.examenes_grupo where maestro_id = $1' using v;
+  end if;
+  -- Búsquedas sin resultados de la tienda (b19a: no se borraban; user_id sin llave foránea)
+  if to_regclass('public.marketplace_busquedas_vacias') is not null then
+    execute 'delete from public.marketplace_busquedas_vacias where user_id = $1' using v;
+  end if;
+  -- Productos finales (tabla legada, sin pantalla que la escriba; b19a): su llave a grupos no
+  -- tiene cascada y hacía fallar el borrado de la cuenta
+  if to_regclass('public.productos_finales') is not null then
+    execute 'delete from public.productos_finales where maestro_id = $1 or grupo_id in (select id from public.grupos where maestro_id = $1)' using v;
+  end if;
+  -- Ponte al día (b20, constructor AK; con guarda: la tabla puede no existir todavía)
+  if to_regclass('public.calificacion_directa') is not null then
+    execute 'delete from public.calificacion_directa where maestro_id = $1' using v;
+  end if;
+  if to_regclass('public.ponte_al_dia') is not null then
+    execute 'delete from public.ponte_al_dia where maestro_id = $1' using v;
+  end if;
+  -- Accesos y correos de Mi Salón (b21; también se irían en cascada con auth.users)
+  if to_regclass('public.mi_salon_correos') is not null then
+    execute 'delete from public.mi_salon_correos where docente_id = $1' using v;
+  end if;
+  if to_regclass('public.mi_salon_accesos') is not null then
+    execute 'delete from public.mi_salon_accesos where docente_id = $1' using v;
+  end if;
+
+  -- Órdenes de Mi Salón (b22). Una cuenta con órdenes ya se detiene arriba (toda orden de Mi
+  -- Salón vive también en marketplace_ordenes); esto queda por si se relaja esa regla. Se van
+  -- también en cascada con auth.users.
+  if to_regclass('public.mi_salon_ordenes') is not null then
+    execute 'delete from public.mi_salon_ordenes where docente_id = $1' using v;
+  end if;
+
+  delete from auth.users where id = v;
+end $$;
+
+revoke all on function public.delete_own_account() from public, anon;
+grant execute on function public.delete_own_account() to authenticated;
+-- @@delete_own_account fin
 
 -- PostgREST: que vea las tablas y funciones nuevas
 notify pgrst, 'reload schema';

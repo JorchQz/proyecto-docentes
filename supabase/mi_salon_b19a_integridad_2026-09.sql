@@ -7,11 +7,11 @@
 -- veces ("create or replace" / "drop ... if exists" solo sobre lo que crea este archivo).
 -- Aplicada SOLO en PRUEBAS (raoxdxwgsxbqlzdnndly). En producción, con la confirmación de Jorge.
 --
--- ORDEN: va AL FINAL, después de jissez_interes_secciones → b16 → b17 → b18 → b18a → b19. Usa las
--- tablas de b17 (proyectos.tipo, productos_sesion) y de b18/b19 (examen_*), y su delete_own_account
--- es la versión más completa: si después se volviera a correr interes, b17, b18 o b19, habría que
--- correr b19a otra vez (pruebas/migraciones-orden.test.js comprueba que la de b19a contiene todo lo
--- de las anteriores). No depende del frontend: se puede aplicar antes o después de publicarlo (el
+-- ORDEN: después de jissez_interes_secciones → b16 → b17 → b18 → b18a → b19, y ANTES de b20, b21 y
+-- b22 (orden completo en docs/PRODUCCION-MI-SALON.md). Usa las tablas de b17 (proyectos.tipo,
+-- productos_sesion) y de b18/b19 (examen_*). Su delete_own_account ya no es la última: b20, b21 y
+-- b22 la reemplazan con todo lo de esta más sus tablas; la que queda es la de b22
+-- (pruebas/migraciones-orden.test.js comprueba que la última contiene todo lo de las anteriores). No depende del frontend: se puede aplicar antes o después de publicarlo (el
 -- frontend de b4c6958 escribe filas coherentes y no mueve productos ni preguntas).
 --
 -- Consulta previa en producción (debe dar 0 en todo; una fila ya incoherente no se podría

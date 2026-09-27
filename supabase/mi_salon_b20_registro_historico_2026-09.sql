@@ -29,11 +29,12 @@
 --    ahora": ya se calificó en la cuadrícula del asistente; y sirve para medir su uso).
 --
 -- 2. calificacion_directa (spec §4.2): la calificación del trimestre por alumno y campo formativo,
---    capturada directamente (un concentrado en papel o Excel). Es una PROPUESTA que la boleta toma
---    EN LUGAR de la calculada con las actividades (el motor la aplica: js/motor-calificacion.js
---    aplicarDirectas). La calificación oficial sigue siendo la que el docente CONFIRMA en la boleta
---    (boleta_trimestral.calificacion_confirmada, art. 4 XI): nada cambia en el flujo de confirmar y
---    cerrar. Borrarla vuelve al cálculo automático. Aquí no hay porcentaje: es la calificación, y
+--    capturada directamente (un concentrado en papel o Excel). El motor la toma EN LUGAR de la
+--    calculada con las actividades (js/motor-calificacion.js aplicarDirectas) y, por decisión de
+--    Jorge del 2026-09-26, cuenta YA como la calificación CONFIRMADA de la boleta en ese campo
+--    (boleta_trimestral.calificacion_confirmada, art. 4 XI: el docente la eligió al capturarla; §2b):
+--    no se confirma otra vez. Se cambia o se borra mientras la boleta no esté cerrada; borrarla
+--    vuelve al cálculo automático (que el docente confirma en Reportes). Aquí no hay porcentaje: es la calificación, y
 --    se valida contra la escala del grado del alumno (piso_calificacion_boleta: 1° de 6 a 10; 2° a
 --    6° de 5 a 10). Con la boleta de ese trimestre y campo cerrada no se crea ni se cambia (lo
 --    entregado no se mueve). Siempre es registro histórico (es_historico = true).
@@ -47,7 +48,8 @@
 --
 -- 5. delete_own_account: la versión COMPLETA de b19a (b19 + marketplace_busquedas_vacias y
 --    productos_finales) más calificacion_directa y ponte_al_dia (con
---    guarda to_regclass). Aplicar b20 AL FINAL (después de b19 y b19a) para que quede esta.
+--    guarda to_regclass). Va después de b19 y b19a; b21 y b22 la vuelven a reemplazar con todo lo de
+--    esta más sus tablas (la que queda es la de b22).
 
 -- ── 1. Columnas es_historico y capturado_en ─────────────────────────────────
 alter table public.asistencias add column if not exists capturado_en timestamptz;
@@ -178,7 +180,7 @@ create table if not exists public.calificacion_directa (
 );
 
 comment on table public.calificacion_directa is
-  'Calificación del trimestre capturada directamente por el docente (registro histórico: un concentrado en papel o Excel). La boleta la toma como propuesta EN LUGAR de la calculada con las actividades; la oficial sigue siendo la confirmada en boleta_trimestral. Borrarla vuelve al cálculo automático. mi_salon_b20.';
+  'Calificación del trimestre capturada directamente por el docente (registro histórico: un concentrado en papel o Excel). Cuenta YA como la confirmada de boleta_trimestral en ese campo (decisión de Jorge del 2026-09-26; trigger calificacion_directa_a_boleta). Se cambia o se borra mientras la boleta no esté cerrada; borrarla vuelve al cálculo automático. mi_salon_b20.';
 
 create unique index if not exists calificacion_directa_uidx on public.calificacion_directa (maestro_id, alumno_id, ciclo, trimestre, campo);
 create index if not exists calificacion_directa_grupo_idx on public.calificacion_directa (grupo_id, trimestre);
@@ -273,6 +275,126 @@ begin
       for delete to authenticated using ((select auth.uid()) = maestro_id);
   end if;
 end $$;
+
+-- Candado de solo lectura de Mi Salón (b21) en la tabla nueva del SaaS. En el orden de producción
+-- b21 va DESPUÉS y la incluye en su lista; esto cubre volver a correr b20 con b21 ya aplicada.
+-- ponte_al_dia NO lleva candado a propósito: es el avance del asistente, no una captura (se puede
+-- ocultar o retomar aun en solo lectura).
+do $$
+begin
+  if to_regprocedure('public.mi_salon_candado(regclass)') is not null then
+    perform public.mi_salon_candado('public.calificacion_directa');
+  end if;
+end $$;
+
+-- ── 2b. La calificación directa cuenta YA como confirmada ─────────────────────
+/*
+  Decisión de Jorge (2026-09-26): la calificación que el docente captura directamente (Ponte al
+  día, paso 4) ES la calificación confirmada de la boleta en ese campo: no hay que confirmarla otra
+  vez. Se puede cambiar o borrar mientras la boleta no esté cerrada.
+    - Al crearla o cambiarla: boleta_trimestral de ese alumno, ciclo, trimestre y campo queda con
+      calificacion = la directa, calificacion_confirmada = true (el trigger de la boleta pone
+      confirmada_en), porcentaje null (no sale de las actividades) y nivel por los cortes de la
+      conversión (9-10 logrado, 7-8 en proceso, 5-6 requiere apoyo; igual que el motor).
+    - Al borrarla: si la boleta de ese campo sigue abierta y confirmada con ESE número, deja de
+      estar confirmada y su número se limpia (vuelve al cálculo automático, que el docente confirma
+      en Reportes). Una boleta cerrada no se toca (lo entregado no se mueve).
+    - Si el docente cambia en Reportes la confirmada de un campo con directa, la directa toma ese
+      número (espejo): así "Capturada directamente" nunca muestra otro número que el confirmado.
+  pg_trigger_depth() > 1: el espejo de un lado no vuelve a disparar el del otro, y un borrado en
+  cascada (alumno o grupo) no toca la boleta (se borra con ellos). SECURITY INVOKER: pasa por RLS y
+  por el candado de solo lectura (b21) como cualquier escritura del docente. Exportar, la junta y
+  la boleta leen la confirmada de boleta_trimestral, así que la directa ya sale en todas.
+*/
+create or replace function public.calificacion_directa_a_boleta()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if pg_trigger_depth() > 1 then
+    return null;
+  end if;
+  if tg_op = 'DELETE' then
+    update public.boleta_trimestral b
+       set calificacion_confirmada = false, calificacion = null, porcentaje = null, nivel = null
+     where b.maestro_id = old.maestro_id and b.alumno_id = old.alumno_id and b.ciclo = old.ciclo
+       and b.trimestre = old.trimestre and b.campo = old.campo
+       and not coalesce(b.cerrada, false) and b.calificacion_confirmada and b.calificacion = old.calificacion;
+    return null;
+  end if;
+  insert into public.boleta_trimestral
+    (maestro_id, alumno_id, ciclo, trimestre, campo, calificacion, porcentaje, nivel, calificacion_confirmada)
+  values (new.maestro_id, new.alumno_id, new.ciclo, new.trimestre, new.campo, new.calificacion, null,
+          case when new.calificacion >= 9 then 'logrado' when new.calificacion >= 7 then 'en_proceso' else 'requiere_apoyo' end,
+          true)
+  on conflict (maestro_id, alumno_id, ciclo, trimestre, campo) do update
+    set calificacion = excluded.calificacion, porcentaje = null, nivel = excluded.nivel, calificacion_confirmada = true
+    where not coalesce(public.boleta_trimestral.cerrada, false)
+      and (public.boleta_trimestral.calificacion is distinct from excluded.calificacion
+           or not coalesce(public.boleta_trimestral.calificacion_confirmada, false)
+           or public.boleta_trimestral.porcentaje is not null);
+  return null;
+end $$;
+
+comment on function public.calificacion_directa_a_boleta() is
+  'Mi salón B20: la calificación directa es la confirmada de boleta_trimestral en su campo (decisión de Jorge del 2026-09-26); borrarla vuelve al cálculo automático si la boleta sigue abierta.';
+revoke all on function public.calificacion_directa_a_boleta() from public, anon, authenticated;
+
+drop trigger if exists calificacion_directa_a_boleta on public.calificacion_directa;
+create trigger calificacion_directa_a_boleta
+  after insert or update of calificacion or delete on public.calificacion_directa
+  for each row execute function public.calificacion_directa_a_boleta();
+
+-- Espejo: la confirmada que el docente cambia en Reportes pasa a la directa de ese campo
+create or replace function public.boleta_a_calificacion_directa()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if pg_trigger_depth() > 1 then
+    return null;
+  end if;
+  if new.campo not in ('LEN', 'SAB', 'ETI', 'DHL') or not coalesce(new.calificacion_confirmada, false)
+     or new.calificacion is null or coalesce(new.cerrada, false) then
+    return null;
+  end if;
+  update public.calificacion_directa d
+     set calificacion = new.calificacion, updated_at = now()
+   where d.maestro_id = new.maestro_id and d.alumno_id = new.alumno_id and d.ciclo = new.ciclo
+     and d.trimestre = new.trimestre and d.campo = new.campo
+     and d.calificacion is distinct from new.calificacion;
+  return null;
+end $$;
+
+comment on function public.boleta_a_calificacion_directa() is
+  'Mi salón B20: la confirmada que cambia en la boleta pasa a la calificación directa del mismo campo (si existe).';
+revoke all on function public.boleta_a_calificacion_directa() from public, anon, authenticated;
+
+drop trigger if exists boleta_trimestral_a_directa on public.boleta_trimestral;
+create trigger boleta_trimestral_a_directa
+  after insert or update of calificacion, calificacion_confirmada on public.boleta_trimestral
+  for each row execute function public.boleta_a_calificacion_directa();
+
+-- Las directas que ya existían (solo en pruebas; en producción no hay): quedan confirmadas en su
+-- boleta abierta, si su número sigue en la escala del grado de hoy del alumno
+insert into public.boleta_trimestral
+  (maestro_id, alumno_id, ciclo, trimestre, campo, calificacion, porcentaje, nivel, calificacion_confirmada)
+select d.maestro_id, d.alumno_id, d.ciclo, d.trimestre, d.campo, d.calificacion, null,
+       case when d.calificacion >= 9 then 'logrado' when d.calificacion >= 7 then 'en_proceso' else 'requiere_apoyo' end,
+       true
+  from public.calificacion_directa d
+  join public.alumnos a on a.id = d.alumno_id
+ where d.calificacion >= coalesce(public.piso_calificacion_boleta(a.grado), 11)
+on conflict (maestro_id, alumno_id, ciclo, trimestre, campo) do update
+  set calificacion = excluded.calificacion, porcentaje = null, nivel = excluded.nivel, calificacion_confirmada = true
+  where not coalesce(public.boleta_trimestral.cerrada, false)
+    and (public.boleta_trimestral.calificacion is distinct from excluded.calificacion
+         or not coalesce(public.boleta_trimestral.calificacion_confirmada, false)
+         or public.boleta_trimestral.porcentaje is not null);
 
 -- ── 3. ponte_al_dia ─────────────────────────────────────────────────────────
 create table if not exists public.ponte_al_dia (
