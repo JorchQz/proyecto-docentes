@@ -753,6 +753,63 @@ Migración `supabase/mi_salon_b21_acceso_2026-09.sql`; pruebas SQL `pruebas/sql/
   `/tienda/conoce-mi-salon`, `/tienda/conoce-mi-salon.html` (y las de `conoce-sala`) de `/_headers`;
   ajustar `pruebas/presentaciones.test.js` §1 a "indexadas".
 
+### 6.6 Cobros de Mi Salón: precios, cobertura, Mercado Pago y avisos (b22, 2026-09-26)
+Spec de Jorge §3, §5.2, §6, §7 y §8 (sin prueba de 14 días). Migración
+`supabase/mi_salon_b22_cobros_2026-09.sql` (+ `mi_salon_b22_avisos_cron_2026-09.sql`, solo producción);
+pruebas SQL `pruebas/sql/mi-salon-cobros.sql` (fechas simuladas, dentro de `begin … rollback`); del
+cliente y del camino del pago `pruebas/mi-salon-cobros.test.js`.
+
+- **Precios:** `mi_salon_precios` (`ciclo`, `producto` ∈ trimestre · resto_ciclo · ciclo ·
+  paquete_tienda, `precio_lista`, `precio_fundador`, `activo`, `vende_hasta_periodo`), editable en el
+  panel (RLS: solo `es_admin()`). 2026-2027: Trimestre $199/$299, Resto del ciclo $399/$549 (se vende
+  hasta el registro del T2, 5-mar), Ciclo completo $549/$749 inactivo. `paquete_tienda` cabe en el
+  modelo y no se vende. La presentación lee la tabla (`mi_salon_precios_publicos()`, solo con Mi Salón
+  abierto); `PRECIOS_MI_SALON` queda en null como lo que se ve apagado.
+- **Precio fundador:** cupo en `jissez_config.mi_salon_cupo_fundador` (100). Lugares = cupo − DOCENTES
+  distintos con un pago aprobado a precio fundador en el ciclo (`mi_salon_lugares_fundador`). Tiene
+  fundador quien ya pagó a fundador en el ciclo ("previo", no ocupa otro lugar), un comprador de la tienda
+  (orden pagada de planeaciones antes de `mi_salon_fundador_tienda_hasta`, o de `mi_salon_abierto_desde`;
+  sin lanzamiento, cualquiera) aunque no queden lugares, o cualquiera mientras queden. Un reembolso libera.
+- **Cupones:** los de la tienda, sobre el precio de LISTA (`marketplace_cupon_evaluar` con el ámbito
+  `mi_salon`, que nunca lleva la oferta general). Se cobra el más bajo de fundador y cupón, sin sumar;
+  empate → fundador. `cupon_codigo` se sella solo si el cupón fue el aplicado (así cuentan usos y
+  comisión); si no, `cupon_referido`.
+- **Cobertura** (`mi_salon_cobertura(producto, fecha)`): P = periodo cuya ventana de venta contiene la
+  fecha. Trimestre: P, y el siguiente si fecha ≥ P.compra_tardia_desde (el T1 del ciclo siguiente aunque
+  no esté cargado: vence provisional con P y se extiende sola al cargarlo). Resto: P..T3. Ciclo: T1-T3.
+  No se vende lo que no agrega ningún periodo (`ya_cubierto`). Todo desde `mi_salon_periodos`.
+- **Orden y pago:** una compra es una fila de `marketplace_ordenes` (monto, estado, cupón, términos) con
+  su fila en `mi_salon_ordenes` (producto, cobertura cotizada, tipo de precio, datos del pago pendiente)
+  y SIN renglones en `marketplace_orden_items`. Edge `comprar-mi-salon` → `mi_salon_registrar_orden`
+  (cotiza en el servidor, reutiliza la pendiente sin pago, avisa si hay un OXXO pendiente) → preferencia
+  de Checkout Pro igual que la tienda (12 mensualidades, 7 días, `notification_url` =
+  webhook-mercadopago, regreso a `tienda/mi-salon-compra?orden=`). El webhook y confirmar-pago no
+  cambiaron: `procesarPago()` (`_shared/pagos.ts`) reconoce la orden de Mi Salón y la manda a
+  `procesarPagoMiSalon` → `mi_salon_aplicar_pago` (FOR UPDATE, idempotente con `(pago_id, ciclo)`):
+  aprobado → cobertura = cotizada ∪ la del día de aprobación, un acceso `pago` por ciclo SUMADO a lo
+  que haya, `precio_pagado`, `tipo_precio`, `producto`; pendiente → "Pago pendiente" con referencia y
+  ficha; reembolso → quita los accesos de ese pago. Correo de confirmación una vez por orden
+  (`mi_salon_correos` `pago:<orden>`). Mis compras de la tienda no lista las órdenes de Mi Salón.
+- **Avisos:** `mi_salon_avisos` (fechas relativas a los periodos, editables; audiencias
+  `gratis_vigentes`, `gratis_sin_renovar`, `pago`): T1 gratis 6-nov, 13-nov, 30-nov, 11-dic, 17-dic,
+  19-dic; con pago 21, 7 y 1 días antes y el día siguiente al vencimiento. `mi_salon_correos_pendientes`
+  junta además el recordatorio de OXXO a las 24 h, la vigencia extendida y el aviso de LANZAMIENTO (una
+  vez por cuenta que ya existía al abrir, con el T1 gratis; no piloto ni activo_saas). Edge
+  `avisos-mi-salon` (cron cada hora, 8:00-21:00, o el panel con la sesión del admin para el
+  lanzamiento); idempotente con `mi_salon_correos`; solo con Mi Salón abierto. En la app, el estado
+  (`perfiles.mi_salon`) trae `pago_pendiente` y `aviso` (banner de Inicio que se puede cerrar y Mi
+  cuenta).
+- **Panel** (`tienda/js/admin-mi-salon-cobros.js`): aviso de lanzamiento, precios, cupo y corte de la
+  tienda, pagos (con OXXO pendientes y "no agregó periodos"), métricas y listas de WhatsApp por
+  segmento con el texto listo (`admin_mi_salon_cobros`).
+- **Llegada con Mi Salón abierto** (decisión de Jorge): quien todavía no usa Mi Salón (sin activo_saas,
+  sin piloto, sin grupo ni última sección Mi Salón/Sala) entra a la tienda (catálogo) con un aviso
+  discreto; quien ya lo usa, a su última sección.
+- **Producción:** secretos `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `SITE_URL`, `RESEND_API_KEY`,
+  `MAIL_FROM`, `CRON_SECRET`; desplegar `comprar-mi-salon` y `avisos-mi-salon` y volver a desplegar
+  `webhook-mercadopago` y `confirmar-pago` (cambió `_shared/pagos.ts`); cron con
+  `mi_salon_b22_avisos_cron_2026-09.sql`. La URL del webhook no cambia.
+
 ---
 
 ## 7. Estado de los módulos

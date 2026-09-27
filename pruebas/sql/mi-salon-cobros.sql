@@ -573,7 +573,8 @@ begin
   update public.jissez_config set mi_salon_abierto = false where id;
 
   -- Panel (admin): pagos, segmentos y detalle de la orden en la lista de la tienda
-  admin_id := public.zz_b22_cuenta('soporte.jissez@gmail.com');
+  select id into admin_id from auth.users where email = 'soporte.jissez@gmail.com';
+  if admin_id is null then admin_id := public.zz_b22_cuenta('soporte.jissez@gmail.com'); end if;
   update public.perfiles set activo_saas = true where id = d;
   r := public.mi_salon_registrar_orden(d, 'trimestre', null, now(), false, '2026-10-23');
   perform public.zz_b22_como(admin_id, 'soporte.jissez@gmail.com');

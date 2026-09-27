@@ -136,7 +136,7 @@ var AdminMiSalonCobros = (function () {
 		$("msCorteTienda").value = c.fundador_tienda_hasta ? String(c.fundador_tienda_hasta).slice(0, 10) : "";
 		$("msLugaresTexto").textContent = datos.ciclo
 			? "Ciclo en venta: " + datos.ciclo + " (" + (datos.periodo || "") + "). Quedan " + (datos.lugares_fundador == null ? "—" : datos.lugares_fundador) +
-				" de " + (c.cupo_fundador == null ? "—" : c.cupo_fundador) + " lugares con precio fundador (" + (datos.fundador_usados || 0) + " docentes ya los usan)." +
+				" de " + (c.cupo_fundador == null ? "—" : c.cupo_fundador) + " lugares con precio fundador (ocupados: " + (datos.fundador_usados || 0) + ")." +
 				(c.corte_tienda ? " Compradores de la tienda: compras hasta el " + fecha(c.corte_tienda) + "." : " Compradores de la tienda: cualquier compra (Mi Salón no se ha abierto).")
 			: "No hay un periodo a la venta hoy.";
 		if (!precios.length) { $("msPreciosTabla").innerHTML = '<p class="text-sm text-mute">No hay precios cargados.</p>'; return; }
