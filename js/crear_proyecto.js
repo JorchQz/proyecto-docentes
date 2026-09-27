@@ -1708,9 +1708,16 @@ document.addEventListener("DOMContentLoaded", async function () {
       const savedCriterio = {};
       gradosSesion.forEach(function (grado) {
         const sel = sessionBody.querySelector(`select[name="pda_select_grado_${grado}"]`);
-        if (sel) savedPda[grado] = sel.value;
         const txt = sessionBody.querySelector(`textarea[name="criterio_grado_${grado}"]`);
+        if (sel) savedPda[grado] = sel.value;
         if (txt) savedCriterio[grado] = txt.value;
+        // Sin lista antes (el proyecto no traía PDA en el paso 2): la nueva empieza con el PDA
+        // guardado de la sesión, no vacía (vacía, guardar lo quitaba)
+        const guardados = window.ProyectoEdicion.pdaGuardadosDeGrado(block._pdaGuardado, grado);
+        if (!sel && guardados.length === 1) {
+          savedPda[grado] = String(guardados[0].pda_id || '');
+          savedCriterio[grado] = guardados[0].criterio_aplicado || '';
+        }
       });
 
       // Eliminar bloque PDA anterior
@@ -1764,6 +1771,45 @@ document.addEventListener("DOMContentLoaded", async function () {
       gradosSesion.forEach(function (grado) {
         conectarSelectorCriterios(pdaDiv, grado);
       });
+      mostrarPdaVarios(block);
+    });
+  }
+
+  /*
+    Un grado con 2 o más PDA guardados en la sesión (proyectos de la tienda: 940 de 1481 sesiones
+    del catálogo) no cabe en su lista de un PDA: antes se veía solo el último y guardar borraba los
+    demás (R30, 2026-09-27). Se muestra "N PDA de 1°" de solo lectura, con su criterio, y al
+    guardar se conservan tal cual (ProyectoEdicion.pdaSesionConservando).
+  */
+  function mostrarPdaVarios(block) {
+    const guardado = block._pdaGuardado;
+    if (!Array.isArray(guardado) || !guardado.length) return;
+    const grados = Array.from(new Set(guardado.map(function (p) { return p && Number(p.grado); }).filter(Boolean)));
+    grados.forEach(function (grado) {
+      const suyos = window.ProyectoEdicion.pdaGuardadosDeGrado(guardado, grado);
+      if (suyos.length < 2) return;
+      const select = block.querySelector(`.pda-block select[name="pda_select_grado_${grado}"]`);
+      if (!select) return;
+      const cont = select.parentElement;
+      if (!cont || cont.querySelector('.pda-varios')) return;
+      [select, cont.querySelector(`#sugerencia_grado_${grado}`), cont.querySelector(`[name="criterio_grado_${grado}"]`)].forEach(function (el) {
+        if (!el) return;
+        el.classList.add('hidden');
+        el.disabled = true;
+      });
+      const caja = document.createElement('div');
+      caja.className = 'pda-varios rounded-xl border border-gray-200 bg-white px-3 py-2';
+      caja.innerHTML =
+        `<p class="text-sm font-semibold text-gray-800">${suyos.length} PDA de ${grado}° en esta sesión</p>` +
+        '<ul class="mt-1 list-disc pl-5 text-sm text-gray-700 space-y-1.5">' + suyos.map(function (p) {
+          const cat = (catalogoPDA || []).find(function (c) { return String(c.id) === String(p.pda_id); });
+          const texto = p.pda_texto || (cat && cat.pda) || 'PDA sin texto';
+          return `<li class="break-words">${escapeHtml(texto)}` +
+            (p.criterio_aplicado ? `<span class="block text-xs text-gray-500">Criterio: ${escapeHtml(p.criterio_aplicado)}</span>` : '') +
+            '</li>';
+        }).join('') + '</ul>' +
+        `<p class="mt-2 text-xs text-gray-500">Aquí no se cambian uno por uno: al guardar, los ${suyos.length} se conservan tal como están.</p>`;
+      cont.appendChild(caja);
     });
   }
 
@@ -1778,6 +1824,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (!select || !sugerencia || !criterioTextarea) return;
 
     select.addEventListener('change', async function () {
+      // Al abrir un proyecto guardado (restoreSessionBlocks) se muestran las sugerencias, pero no
+      // se autollena el criterio: abrir y guardar sin cambios no escribe nada
+      const alAbrir = select.dataset.alAbrir === '1';
+      delete select.dataset.alAbrir;
       sugerencia.innerHTML = '';
       sugerencia.classList.add('hidden');
       const pdaId = select.value;
@@ -1807,8 +1857,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
       if (!variantes.length) return;
 
-      // Autollenar con la variante más usada solo si el maestro no ha escrito nada
-      if (!criterioTextarea.value.trim()) {
+      // Autollenar con la variante más usada solo si el maestro no ha escrito nada (y no al abrir)
+      if (!alAbrir && !criterioTextarea.value.trim()) {
         criterioTextarea.value = variantes[0].criterio_texto;
       }
 
@@ -2119,7 +2169,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (!blocks.length) return [];
     return Array.from(blocks).map(function (block) {
       const g = function (name) {
-        return block.querySelector('[name="' + name + '"]')?.value?.trim() || null;
+        return window.ProyectoEdicion.textoDeCampo(block.querySelector('[name="' + name + '"]')?.value);
       };
       const mode = function (key) {
         return block.querySelector('.didactic-section[data-section="' + key + '"]')
@@ -2129,7 +2179,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const obj = {};
         block.querySelectorAll('textarea[name^="' + key + '_grado_"]').forEach(function (ta) {
           const grado = ta.name.replace(key + '_grado_', '');
-          obj[grado] = ta.value.trim() || null;
+          obj[grado] = window.ProyectoEdicion.textoDeCampo(ta.value);
         });
         return Object.keys(obj).length > 0 ? obj : null;
       }
@@ -2603,13 +2653,20 @@ document.addEventListener("DOMContentLoaded", async function () {
       ponerMomento(block.querySelector('select[name="momento"]'), data.momento);
       updateLabel(block);
 
-      function restoreSection(key, sectionData, actData, tareasData) {
-        if (!sectionData && !actData) return;
+      /*
+        El texto común va a su caja SIEMPRE como texto y el texto por grado a las suyas
+        (ProyectoEdicion.seccionAlAbrir). Antes se pasaba "*_todos || *_diferenciado": con el modo
+        "todos" y solo texto por grado, el objeto caía en la caja común y al guardar quedaba
+        "[object Object]" (R30, 2026-09-27).
+      */
+      function restoreSection(key, textoTodos, textoDif, actData) {
+        if (!textoTodos && !textoDif && !actData) return;
         const section = block.querySelector(
           '.didactic-section[data-section="' + key + '"]');
         if (!section) return;
 
-        const mode = (actData && actData.mode) || 'todos';
+        const alAbrir = window.ProyectoEdicion.seccionAlAbrir(textoTodos, textoDif, actData);
+        const mode = alAbrir.modo;
         if (mode === 'diferenciado') {
           section.querySelector('.mode-btn-dif')?.click();
         } else {
@@ -2618,8 +2675,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         if (mode === 'todos') {
           const ta = section.querySelector('textarea[name="' + key + '_todos"]');
-          if (ta && sectionData) {
-            ta.value = sectionData;
+          if (ta && alAbrir.texto) {
+            ta.value = alAbrir.texto;
             ta.dispatchEvent(new Event('input'));
           }
           if (actData && actData.todos && actData.todos.length) {
@@ -2638,16 +2695,14 @@ document.addEventListener("DOMContentLoaded", async function () {
             }
           }
         } else {
-          if (sectionData && typeof sectionData === 'object') {
-            Object.entries(sectionData).forEach(function (entry) {
-              const ta = section.querySelector(
-                'textarea[name="' + key + '_grado_' + entry[0] + '"]');
-              if (ta && entry[1]) {
-                ta.value = entry[1];
-                ta.dispatchEvent(new Event('input'));
-              }
-            });
-          }
+          Object.entries(alAbrir.porGrado).forEach(function (entry) {
+            const ta = section.querySelector(
+              'textarea[name="' + key + '_grado_' + entry[0] + '"]');
+            if (ta && entry[1]) {
+              ta.value = entry[1];
+              ta.dispatchEvent(new Event('input'));
+            }
+          });
           if (actData && actData.diferenciado) {
             Object.entries(actData.diferenciado).forEach(function (entry) {
               const gr = entry[0];
@@ -2667,15 +2722,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         pintarGruposTrabajo(section, key, window.TextoSesion.gruposDe(actData));
       }
 
-      restoreSection('inicio',
-        data.inicio_todos || data.inicio_diferenciado,
-        data.inicio_actividades, null);
-      restoreSection('desarrollo',
-        data.desarrollo_todos || data.desarrollo_diferenciado,
-        data.desarrollo_actividades, null);
-      restoreSection('cierre',
-        data.cierre_todos || data.cierre_diferenciado,
-        data.cierre_actividades, null);
+      restoreSection('inicio', data.inicio_todos, data.inicio_diferenciado, data.inicio_actividades);
+      restoreSection('desarrollo', data.desarrollo_todos, data.desarrollo_diferenciado, data.desarrollo_actividades);
+      restoreSection('cierre', data.cierre_todos, data.cierre_diferenciado, data.cierre_actividades);
 
       if (data.cierre_tareas) {
         const tareasMode = data.cierre_tareas.mode || 'todos';
@@ -2715,10 +2764,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       if (data.pda_sesion && data.pda_sesion.length) {
         data.pda_sesion.forEach(function (item) {
+          // Un grado con 2 o más PDA no cabe en su lista (se veía solo el último y guardar borraba
+          // los demás): se muestra de solo lectura (mostrarPdaVarios) y al guardar se conserva
+          if (window.ProyectoEdicion.pdaGuardadosDeGrado(data.pda_sesion, item.grado).length > 1) return;
           const selectEl = block.querySelector(
             '[name="pda_select_grado_' + item.grado + '"]');
           if (selectEl && item.pda_id) {
             selectEl.value = item.pda_id;
+            // Al abrir no se autollena el criterio (abrir y guardar sin cambios no escribe nada)
+            selectEl.dataset.alAbrir = '1';
             selectEl.dispatchEvent(new Event('change'));
           }
           if (item.criterio_aplicado) {
@@ -2728,6 +2782,8 @@ document.addEventListener("DOMContentLoaded", async function () {
           }
         });
       }
+      block._pdaGuardado = Array.isArray(data.pda_sesion) ? data.pda_sesion : null;
+      mostrarPdaVarios(block);
 
       // Recursos: el borrador los trae como _archivos/_links; la sesión guardada, en recursos
       const recursos = data.recursos && typeof data.recursos === "object" && !Array.isArray(data.recursos) ? data.recursos : {};
@@ -2735,6 +2791,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       // "¿Para quién?" elegido en el borrador
       if (data._paraQuien) block._paraQuien = pqDesdeBorrador(data._paraQuien);
       if (block.dataset.trabajada === "1") bloquearSesionTrabajada(block);
+      // Lo que la pantalla arma de la sesión al abrirla: al guardar solo se escribe lo que la
+      // docente cambió respecto a esto (ProyectoEdicion.cambiosDeSesion, R30)
+      if (block.dataset.sesionId) block._alAbrir = payloadDeBloque(block, idx, null);
     });
     pqRefrescarTodos();
     // Llenar las listas enfoca su último renglón (y la página bajaba hasta ahí): se regresa arriba
@@ -2754,14 +2813,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // La fila de `sesiones` que dibuja un bloque del paso 3 (sin proyecto_id: lo pone quien guarda)
   function payloadDeBloque(block, idx, userId) {
-    const g    = name => block.querySelector(`[name="${name}"]`)?.value.trim() || null;
+    // Nunca "[object Object]" en un texto (ProyectoEdicion.textoDeCampo, R30)
+    const g    = name => window.ProyectoEdicion.textoDeCampo(block.querySelector(`[name="${name}"]`)?.value);
     const mode = key  => block.querySelector(`.didactic-section[data-section="${key}"]`)?.dataset.mode || 'todos';
 
     function getDifData(key) {
       const obj = {};
       block.querySelectorAll(`textarea[name^="${key}_grado_"]`).forEach(function (ta) {
         const grado = ta.name.replace(`${key}_grado_`, '');
-        obj[grado] = ta.value.trim() || null;
+        obj[grado] = window.ProyectoEdicion.textoDeCampo(ta.value);
       });
       return Object.keys(obj).length > 0 ? obj : null;
     }
@@ -3004,11 +3064,14 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
       const actual = existe[id];
       const trabajada = PE.sesionTrabajada(actual, conCal);
+      // Solo lo que la docente cambió en la pantalla desde que abrió (block._alAbrir): guardar sin
+      // tocar nada no escribe nada y un cambio de modo sí se guarda (R30)
+      const alAbrir = block._alAbrir || null;
       existentes.push({
         id: id,
         trabajada: trabajada,
-        completa: trabajada ? {} : PE.cambiosDeSesion(fila, actual),
-        texto: PE.cambiosDeSesion(PE.soloTexto(fila), actual),
+        completa: trabajada ? {} : PE.cambiosDeSesion(fila, actual, alAbrir),
+        texto: PE.cambiosDeSesion(PE.soloTexto(fila), actual, alAbrir ? PE.soloTexto(alAbrir) : null),
         actual: actual,
       });
     });
@@ -3160,6 +3223,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         es_multigrado:       (paso1Data.grados || []).length > 1,
         contenidos_pda:      collectContenidosData(),
       };
+      // Un proyecto sin contenidos (null, importado con el importador de antes) no pasa a {} al
+      // guardar sin cambios
+      if (proyectoOriginal && proyectoOriginal.contenidos_pda == null &&
+          window.ProyectoEdicion.sinContenido(proyectoPayload.contenidos_pda)) {
+        proyectoPayload.contenidos_pda = null;
+      }
 
       if (proyectoId) {
         await guardarEdicion(user, proyectoPayload, blocks);

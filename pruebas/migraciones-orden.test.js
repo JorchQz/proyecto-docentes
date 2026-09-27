@@ -15,7 +15,9 @@
 	en adelante) está en la lista de b21 o su migración llama a mi_salon_candado; las que no lo
 	llevan están en SIN_CANDADO con su razón.
 	Si otra migración nueva redefine delete_own_account, agrégala a ORDEN al final: la prueba exige
-	lo mismo de la última.
+	lo mismo de la última que la define. b24 (2026-09-27) va al final del orden, en la misma
+	transacción, y no la redefine; la prueba también revisa que la guía de producción aplique este
+	orden (b24 al final, b21b aparte) y que la función nueva de b24 no la ejecuten anon ni PUBLIC.
 
 	node pruebas/migraciones-orden.test.js
 */
@@ -35,6 +37,8 @@ function ok(nombre, bien, detalle) {
 	if (!bien) fallos++;
 	console.log((bien ? "OK   " : "FALLA ") + nombre + (detalle ? " → " + detalle : ""));
 }
+// igual(nombre, real, esperado): compara cualquier valor (JSON)
+function igual(nombre, real, esperado) { ok(nombre, [real], [esperado]); }
 
 // Orden recomendado en producción (docs/PROGRESO-PARTE-B.md); la ÚLTIMA manda
 const ORDEN = [
@@ -55,6 +59,9 @@ const ORDEN = [
 	"mi_salon_b22_cobros_2026-09.sql",
 	// Folio de incidencias y ajustes de R27a/R27b (2026-09-26): trae la versión FINAL
 	"mi_salon_b23_folio_incidencias_2026-09.sql",
+	// Evidencia de los incluidos de otro grado (PP-NIVELES, 2026-09-27): va al final, en la misma
+	// transacción, y NO redefine delete_own_account (la versión final sigue siendo la de b23)
+	"mi_salon_b24_evidencia_incluidos_2026-09.sql",
 ];
 
 // El cuerpo de delete_own_account de un archivo (la última definición, si hay varias)
@@ -77,11 +84,16 @@ const todas = fs.readdirSync(DIR).filter((f) => f.endsWith(".sql") && /create or
 const fuera = todas.filter((f) => ORDEN.indexOf(f) === -1);
 ok("cada migración que redefine delete_own_account está en el orden", fuera.length === 0, fuera.join(", "));
 
-const ultima = ORDEN[ORDEN.length - 1];
+// La que manda es la ÚLTIMA del orden que define delete_own_account (b23); las que van después
+// (b24) no la redefinen
+const definen = ORDEN.filter((f) => cuerpo(leer(f)).length > 0);
+const ultima = definen[definen.length - 1];
+const despues = ORDEN.slice(ORDEN.indexOf(ultima) + 1);
 const cu = cuerpo(leer(ultima));
 const tu = tablas(cu);
-ok("la última (" + ultima + ") define delete_own_account", cu.length > 0);
-ORDEN.slice(0, -1).forEach((f) => {
+ok("la última que define delete_own_account (" + ultima + ") la define", cu.length > 0);
+ok("las que van después de " + ultima + " no redefinen delete_own_account", despues.filter((f) => /delete_own_account/.test(leer(f).replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, ""))), []);
+ORDEN.slice(0, ORDEN.indexOf(ultima)).forEach((f) => {
 	const faltan = [...tablas(cuerpo(leer(f)))].filter((t) => !tu.has(t));
 	ok("la última borra todo lo que borra " + f, faltan.length === 0, faltan.join(", "));
 });
@@ -108,9 +120,35 @@ ok("las tablas nuevas van con guarda to_regclass", sinGuarda.length === 0, sinGu
 const guardas = (cu.match(/if to_regclass\('public\.([a-z_]+)'\) is not null then\s+execute 'delete from public\.([a-z_]+)/g) || [])
 	.map((g) => g.match(/public\.([a-z_]+)'\)[\s\S]*public\.([a-z_]+)/)).filter((x) => x[1] !== x[2]);
 ok("cada guarda revisa la misma tabla que borra", guardas.length === 0);
-ok("la última del orden es b23 (folio de incidencias)", ultima, "mi_salon_b23_folio_incidencias_2026-09.sql");
-ok("la cabecera de la última (" + ultima + ") dice que va al final", /ORDEN: va AL FINAL/.test(leer(ultima)));
-ok("solo la última dice que va al final", ORDEN.slice(0, -1).filter((f) => /ORDEN: va AL FINAL/.test(leer(f))), []);
+igual("la última que define delete_own_account es b23 (folio de incidencias)", ultima, "mi_salon_b23_folio_incidencias_2026-09.sql");
+ok("la cabecera de " + ultima + " dice que va al final (de las que la reemplazan)", /ORDEN: va AL FINAL/.test(leer(ultima)));
+igual("solo " + ultima + " dice que va al final", ORDEN.filter((f) => f !== ultima && /ORDEN: va AL FINAL/.test(leer(f))), []);
+igual("la última del orden es b24 (evidencia de los incluidos)", ORDEN[ORDEN.length - 1], "mi_salon_b24_evidencia_incluidos_2026-09.sql");
+igual("b24 dice que va después de b23 en la misma transacción", /ORDEN: va DESPUÉS de b23, en la MISMA transacción/.test(leer("mi_salon_b24_evidencia_incluidos_2026-09.sql")), true);
+
+// ── b24: la función nueva sin anon ni PUBLIC (como las admin_ de b23), sin romper los triggers ──
+const b24 = leer("mi_salon_b24_evidencia_incluidos_2026-09.sql");
+igual("b24: pda_de_alumno_en_producto sin EXECUTE para PUBLIC y anon",
+	/revoke all on function public\.pda_de_alumno_en_producto\(uuid, uuid\) from public, anon;/.test(b24), true);
+igual("b24: authenticated y service_role la conservan (los triggers corren con el rol de quien califica)",
+	/grant execute on function public\.pda_de_alumno_en_producto\(uuid, uuid\) to authenticated, service_role;/.test(b24), true);
+igual("b24: la función no es security definer (lee con las políticas de quien la llama)",
+	/security definer/i.test(b24.slice(b24.indexOf("create or replace function public.pda_de_alumno_en_producto"), b24.indexOf("$$;") + 3)), false);
+
+// ── La guía de producción aplica este mismo orden en UNA transacción, con b21b aparte después ──
+const guia = fs.readFileSync(path.join(__dirname, "..", "docs", "PRODUCCION-MI-SALON.md"), "utf8").replace(/\r\n/g, "\n");
+const comandos = guia.split("\n").filter((l) => l.startsWith("node scripts/aplicar-migraciones-prod.js "));
+const primera = (comandos[0] || "").split(/\s+/).slice(2).map((a) => a.replace(/^supabase\//, ""));
+const pendientes = ORDEN.slice(ORDEN.indexOf("jissez_interes_secciones_2026-09.sql"));
+igual("la guía: la primera transacción trae las de este orden desde jissez_interes_secciones, en el mismo orden, y termina en b24",
+	primera.filter((a) => pendientes.indexOf(a) !== -1), pendientes);
+igual("la guía: b24 es la última de esa transacción", primera[primera.length - 1], "mi_salon_b24_evidencia_incluidos_2026-09.sql");
+igual("la guía: b21b va aparte, después", [comandos.length, (comandos[1] || "").indexOf("mi_salon_b21b_piloto_produccion_2026-09.sql") !== -1], [2, true]);
+igual("la guía: la tabla numera b24 como la 12 y b21b como la 13",
+	[/\| 12 \| `supabase\/mi_salon_b24_evidencia_incluidos_2026-09\.sql` \|/.test(guia), /\| 13 \| `supabase\/mi_salon_b21b_piloto_produccion_2026-09\.sql` \|/.test(guia)], [true, true]);
+igual("la guía: la comprobación final confirma b24 (columna b24)", /as b24; -- true/.test(guia), true);
+igual("la guía: la carga de PP-NIVELES va después de las migraciones con b24 y del push a main, con --simular y --aplicar",
+	/## 5b\. Cargar PP-NIVELES/.test(guia) && /cargar-pp-niveles\.js --base prod --grupo \S+ --simular/.test(guia) && /cargar-pp-niveles\.js --base prod --grupo \S+ --aplicar/.test(guia), true);
 
 // ── Candado de solo lectura (b21) en cada tabla nueva del SaaS ──────────────────
 const b21 = leer("mi_salon_b21_acceso_2026-09.sql");

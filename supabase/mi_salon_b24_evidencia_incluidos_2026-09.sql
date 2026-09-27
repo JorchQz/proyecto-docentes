@@ -23,9 +23,17 @@
 -- suelta) sigue recalculando por el grado del alumno; una actividad suelta con un incluido de
 -- otro grado que se pasa a un proyecto no mueve esa evidencia (caso raro; se corrige si hace falta).
 --
--- Aditiva: create or replace de dos funciones de trigger y una función nueva. No cambia tablas
--- ni políticas. Se aplica SOLO en pruebas hasta que Jorge dé el visto bueno para producción
--- (va después de b23).
+-- Aditiva e idempotente: create or replace de dos funciones de trigger y una función nueva. No
+-- cambia tablas ni políticas.
+--
+-- ORDEN: va DESPUÉS de b23, en la MISMA transacción que las otras migraciones del lanzamiento
+-- (docs/PRODUCCION-MI-SALON.md, paso 1); no redefine delete_own_account (la versión final sigue
+-- siendo la de b23). Solo con el visto bueno de Jorge.
+--
+-- Permisos (como b23 con las admin_): pda_de_alumno_en_producto no se ejecuta por anon ni por
+-- PUBLIC. La llaman los triggers de calificaciones, que corren con el rol de quien califica
+-- (authenticated desde la app, service_role desde una función): esos dos la conservan. Es
+-- "security invoker": leída directo, solo ve lo que las políticas RLS le dejan ver a quien la llama.
 -- =============================================================================
 
 create or replace function public.pda_de_alumno_en_producto(p_alumno uuid, p_producto uuid)
@@ -53,6 +61,9 @@ as $$
 $$;
 comment on function public.pda_de_alumno_en_producto(uuid, uuid) is
   'Mi Salón b24: los PDA en que deja evidencia un alumno al calificarle un producto: los de su grado ligados al producto; si no hay y está incluido (¿Para quién?), los ligados al producto (los del grado con que trabaja).';
+-- Sin anon ni PUBLIC; los triggers de calificaciones corren como authenticated o service_role
+revoke all on function public.pda_de_alumno_en_producto(uuid, uuid) from public, anon;
+grant execute on function public.pda_de_alumno_en_producto(uuid, uuid) to authenticated, service_role;
 
 create or replace function public.propagar_calificacion_a_pda()
 returns trigger

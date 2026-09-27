@@ -152,13 +152,39 @@
 	/*
 		Un alumno incluido de otro grado "trabaja con" el grado de la actividad: → "2°" (o "2° y 3°")
 		si está incluido y su grado no es el de la actividad; "" si no.
+		gradosPda (opcional): los grados de los PDA ligados al producto. Si los hay, mandan ellos: es
+		donde el alumno deja su evidencia (b24). Así un trabajo sin grados (Morado de PP-NIVELES, con
+		uno de 1° y uno de 2°) dice "Trabaja con 1°" al de 2° si solo tiene PDA de 1°, y no dice nada
+		si también tiene los de su grado (Ética y De lo Humano: se evalúa con los de 2°). R30, 2026-09-27.
 	*/
-	function trabajaCon(alumno, producto, asignaciones) {
+	function gradosValidos(lista) {
+		var vistos = {};
+		return (lista || []).map(Number).filter(function (x) {
+			if (!(x >= 1 && x <= 6) || vistos[x]) return false;
+			vistos[x] = true;
+			return true;
+		}).sort(function (a, b) { return a - b; });
+	}
+	function trabajaCon(alumno, producto, asignaciones, gradosPda) {
 		if (modoDe(alumno, producto, asignaciones) !== "incluir") return "";
-		var g = (producto.grados || []).map(Number).filter(function (x) { return x >= 1 && x <= 6; }).sort(function (a, b) { return a - b; });
+		var dePda = gradosValidos(gradosPda);
+		var g = dePda.length ? dePda : gradosValidos(producto.grados);
 		if (!g.length || g.indexOf(Number(alumno.grado)) !== -1) return "";
 		var t = g.map(function (x) { return x + "°"; });
 		return t.length === 1 ? t[0] : t.slice(0, -1).join(", ") + " y " + t[t.length - 1];
+	}
+	// [{ producto_sesion_id, sesiones_pda: { grado } }] (producto_sesion_pda con su PDA) → { productoId: [grados] }
+	function gradosPdaPorProducto(filas) {
+		var out = {};
+		(filas || []).forEach(function (f) {
+			var sp = f && f.sesiones_pda;
+			var g = Number(sp && (Array.isArray(sp) ? sp[0] && sp[0].grado : sp.grado));
+			if (!f || !f.producto_sesion_id || !(g >= 1 && g <= 6)) return;
+			var l = out[f.producto_sesion_id] = out[f.producto_sesion_id] || [];
+			if (l.indexOf(g) === -1) l.push(g);
+		});
+		Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return a - b; }); });
+		return out;
 	}
 
 	/*
@@ -363,7 +389,7 @@
 		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre,
 		fechaAlta: fechaAlta, fechaProducto: fechaProducto, cuentaDesdeAlta: cuentaDesdeAlta,
 		examenCuentaDesdeAlta: examenCuentaDesdeAlta,
-		indiceAsignaciones: indiceAsignaciones, asignadoA: asignadoA, recibeProducto: recibeProducto, trabajaCon: trabajaCon,
+		indiceAsignaciones: indiceAsignaciones, asignadoA: asignadoA, recibeProducto: recibeProducto, trabajaCon: trabajaCon, gradosPdaPorProducto: gradosPdaPorProducto,
 		porCompletar: porCompletar, tocaRevisar: tocaRevisar, cambiosIncompleta: cambiosIncompleta,
 		esSueltas: esSueltas, TITULO_SUELTAS: TITULO_SUELTAS,
 	};

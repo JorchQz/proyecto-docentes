@@ -137,19 +137,35 @@ async function iniciarActividades() {
 		});
 	}
 
+	/*
+		Los primeros 3 pasos de la fase y "+ N más": al tocarlo se ven los demás, en su orden
+		(2026-09-27: el orden de la clase es el de la planeación; antes los pasos 4 en adelante solo
+		se leían en Crear proyecto).
+	*/
 	function bloqueActividades(titulo, lista) {
 		if (!lista.length) return "";
-		const items = lista.slice(0, 3).map(function (a) {
-			return '<li class="text-sm text-gray-700">' + esc(a) + '</li>';
+		const items = lista.map(function (a, i) {
+			return '<li class="text-sm text-gray-700' + (i >= 3 ? ' hidden paso-extra' : '') + '">' + esc(a) + '</li>';
 		}).join("");
 		const mas = lista.length > 3
-			? '<li class="text-xs text-gray-400">+ ' + (lista.length - 3) + ' más...</li>'
+			? '<li class="list-none"><button type="button" class="ver-mas-pasos inline-flex items-center min-h-[44px] text-xs font-semibold text-blue-700 hover:underline" aria-expanded="false">+ ' + (lista.length - 3) + ' más</button></li>'
 			: "";
 		return '<div class="mb-3">' +
 			'<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">' + titulo + '</p>' +
 			'<ul class="list-disc list-inside space-y-0.5">' + items + mas + '</ul>' +
 		'</div>';
 	}
+
+	// "+ N más" muestra (y vuelve a ocultar) los pasos que siguen, en el mismo lugar
+	gridEl.addEventListener("click", function (e) {
+		const btn = e.target.closest(".ver-mas-pasos");
+		if (!btn) return;
+		const lista = btn.closest("ul");
+		const abrir = btn.getAttribute("aria-expanded") !== "true";
+		lista.querySelectorAll(".paso-extra").forEach(function (li) { li.classList.toggle("hidden", !abrir); });
+		btn.setAttribute("aria-expanded", abrir ? "true" : "false");
+		btn.textContent = abrir ? "Ver menos" : "+ " + lista.querySelectorAll(".paso-extra").length + " más";
+	});
 
 	// Los pasos de todo el grupo y luego los de cada grado ("1°: …") o grupo de trabajo
 	// ("Morado: …"), con la misma regla que Inicio (js/texto-sesion.js). Antes, en "todos" se

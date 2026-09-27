@@ -40,6 +40,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// Para quién es cada producto además de sus grados (producto_sesion_alumnos, mi_salon_b17):
 	// { productoId: { alumnoId: "incluir" | "excluir" } } — regla única en AlcanceHoy.recibeProducto
 	var asignaciones = {};
+	// Grados de los PDA ligados a cada producto ({ productoId: [1, 2] }): de ellos sale la nota
+	// "Trabaja con 1°" de un alumno incluido de otro grado (AlcanceHoy.trabajaCon)
+	var gradosPda = {};
 	// "Pendientes de la clase anterior" que se revisaron en esta visita (siguen a la vista para
 	// poder corregir un toque): alumno|producto → true
 	var revisadosAqui = {};
@@ -701,6 +704,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		asignaciones = window.AlcanceHoy.indiceAsignaciones(filasAsig);
 
+		// Con qué grado trabaja un incluido de otro grado: el de los PDA ligados al producto (b24: ahí
+		// deja su evidencia). Un trabajo sin grados (Morado: uno de 1° y uno de 2°) no decía nada.
+		// lectura-opcional: solo la nota "Trabaja con"; nada se guarda con este dato y sin él la nota
+		// sale, como antes, de los grados del producto
+		try {
+			var ligasPda = await window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
+				return window.sb.from("producto_sesion_pda").select("producto_sesion_id, sesiones_pda(grado)")
+					.in("producto_sesion_id", lote).order("producto_sesion_id").order("sesion_pda_id");
+			});
+			gradosPda = window.AlcanceHoy.gradosPdaPorProducto(ligasPda);
+		} catch (e) {
+			gradosPda = {};
+		}
+
 		// Calificaciones ya capturadas de esos productos
 		function leerCalificaciones() {
 			return window.AlcanceHoy.leerPorLotes(idsRelevantes, function (lote) {
@@ -881,7 +898,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	// "Trabaja con 2°": un alumno incluido de otro grado (sigue en su grado para la boleta)
 	function notaTrabajaCon(alumno, producto) {
-		var g = window.AlcanceHoy.trabajaCon(alumno, producto, asignaciones);
+		var g = window.AlcanceHoy.trabajaCon(alumno, producto, asignaciones, gradosPda[producto.id]);
 		return g ? "Trabaja con " + g : "";
 	}
 

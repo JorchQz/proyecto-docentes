@@ -169,25 +169,78 @@
 		if (typeof v === "object") return Object.keys(v).every(function (k) { return k === "mode" || sinContenido(v[k]); });
 		return false;
 	}
+	/*
+		El modo ("todos" o "diferenciado") es lo único que guarda cómo se muestra una sección sin
+		pasos en lista: dos objetos vacíos con distinto modo NO son lo mismo (R30, 2026-09-27: pasar
+		el Cierre de "Diferenciado" a "Igual para todos" o el Desarrollo a "Diferenciado" sin pasos
+		no se guardaba; al volver a abrir, la tarea se borraba o el texto por grado se volvía
+		"[object Object]"). null sigue siendo igual a cualquier objeto vacío (el bot guarda null).
+	*/
+	function modoDe(v) { return v && typeof v === "object" && !Array.isArray(v) && "mode" in v ? (v.mode || "todos") : null; }
 	function mismoValor(a, b) {
 		if (vacio(a) && vacio(b)) return true;
-		if (a && typeof a === "object" && b && typeof b === "object" && sinContenido(a) && sinContenido(b)) return true;
+		if (a && typeof a === "object" && b && typeof b === "object" && sinContenido(a) && sinContenido(b)) {
+			var ma = modoDe(a), mb = modoDe(b);
+			return ma === null || mb === null || ma === mb;
+		}
 		if ((vacio(a) && b && typeof b === "object" && sinContenido(b)) || (vacio(b) && a && typeof a === "object" && sinContenido(a))) return true;
 		if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
 		return estable(a) === estable(b);
 	}
 	/*
-		cambiosDeSesion(fila, original) → solo las columnas que cambiaron respecto a lo guardado
-		(sin maestro_id ni proyecto_id). Sin original (no se sabe cómo estaba): la fila completa.
-		Así el guardado solo manda PATCH de las sesiones que la maestra cambió.
+		cambiosDeSesion(fila, original, alAbrir) → solo las columnas que cambiaron (sin maestro_id ni
+		proyecto_id). Así el guardado solo manda PATCH de lo que la docente cambió.
+		  alAbrir: la fila que armó la pantalla al abrir el proyecto (payloadDeBloque justo después
+		    de dibujar la sesión). Con ella, una columna cambia solo si la docente la cambió en la
+		    pantalla (comparación exacta con alAbrir): guardar sin tocar nada no escribe nada, ni
+		    siquiera lo que la pantalla no sabe mostrar tal cual (un grado con dos PDA, texto común
+		    con pasos por grado), y cualquier cambio en la pantalla (también solo el modo de una
+		    sección) sí se escribe. Es la regla que usa Crear proyecto (2026-09-27, R30).
+		  Sin alAbrir (una sesión recién insertada en un reintento): se compara con lo guardado
+		    (mismoValor: null y el objeto vacío son lo mismo; el modo cuenta). Sin original: la fila
+		    completa.
 	*/
-	function cambiosDeSesion(fila, original) {
+	function cambiosDeSesion(fila, original, alAbrir) {
 		var out = {};
+		var conPantalla = alAbrir && typeof alAbrir === "object";
 		Object.keys(fila || {}).forEach(function (k) {
 			if (k === "maestro_id" || k === "proyecto_id") return;
-			if (!original || !mismoValor(fila[k], original[k])) out[k] = fila[k];
+			var cambio = conPantalla && k in alAbrir
+				? estable(fila[k]) !== estable(alAbrir[k])
+				: !original || !mismoValor(fila[k], original[k]);
+			if (cambio) out[k] = fila[k];
 		});
 		return out;
+	}
+
+	/*
+		── Nunca "[object Object]" en un texto (R30, 2026-09-27) ──
+		seccionAlAbrir(textoTodos, textoDif, actividades) → { modo, texto, porGrado }: lo que la
+		pantalla pone en una sección al abrir. El texto común va SIEMPRE como texto (un objeto nunca
+		llega a la caja: así se guardaba "[object Object]") y el texto por grado, como objeto de
+		textos. Si la fila dice "todos" pero solo trae texto por grado (lo que dejaba el defecto de
+		R30), se abre como "Diferenciado" para que la docente vea su texto.
+		textoDeCampo(v) → el valor de una caja de texto para guardar: sin "[object Object]"; vacío → null.
+	*/
+	var OBJETO_COMO_TEXTO = /\[object Object\]/g;
+	function textoDeCampo(v) {
+		if (v === null || v === undefined) return null;
+		if (typeof v === "object") return null;
+		var t = String(v).replace(OBJETO_COMO_TEXTO, "").trim();
+		return t || null;
+	}
+	function seccionAlAbrir(textoTodos, textoDif, actividades) {
+		var texto = typeof textoTodos === "string" ? textoTodos : "";
+		var porGrado = {};
+		if (textoDif && typeof textoDif === "object" && !Array.isArray(textoDif)) {
+			Object.keys(textoDif).forEach(function (k) {
+				var v = textoDif[k];
+				if (typeof v === "string" && v.trim()) porGrado[k] = v;
+			});
+		}
+		var modo = actividades && typeof actividades === "object" && actividades.mode === "diferenciado" ? "diferenciado" : "todos";
+		if (modo === "todos" && !texto.trim() && Object.keys(porGrado).length) modo = "diferenciado";
+		return { modo: modo, texto: texto.replace(OBJETO_COMO_TEXTO, "").trim() ? texto : "", porGrado: porGrado };
 	}
 
 	/*
@@ -267,14 +320,20 @@
 		    esa lista lo ofrece; entrada = lo que dice la pantalla ({grado, pda_id, pda_texto,
 		    criterio_aplicado}) o null.
 		  Un grado que la pantalla no puede mostrar conserva lo guardado (antes se guardaba vacío y
-		  el materializador quitaba ese PDA de la sesión).
+		  el materializador quitaba ese PDA de la sesión). Tampoco puede mostrar un grado con 2 o más
+		  PDA guardados (su lista elige uno): se conservan todos, tal cual (R30, 2026-09-27: en los
+		  proyectos de la tienda importados con el importador nuevo, guardar sin cambios dejaba solo
+		  el último; sesiones_pda bajaba de 27 a 23, de 33 a 24 y de 20 a 10).
 	*/
+	function pdaGuardadosDeGrado(original, grado) {
+		return (Array.isArray(original) ? original : []).filter(function (p) { return p && Number(p.grado) === Number(grado); });
+	}
 	function pdaSesionConservando(leidas, original) {
-		var guardado = Array.isArray(original) ? original : [];
 		var out = [];
 		(leidas || []).forEach(function (l) {
-			if (l.representable) { if (l.entrada) out.push(l.entrada); return; }
-			guardado.forEach(function (p) { if (p && Number(p.grado) === Number(l.grado)) out.push(p); });
+			var suyos = pdaGuardadosDeGrado(original, l.grado);
+			if (l.representable && suyos.length < 2) { if (l.entrada) out.push(l.entrada); return; }
+			suyos.forEach(function (p) { out.push(p); });
 		});
 		return out.length ? out : null;
 	}
@@ -403,9 +462,10 @@
 		validarPaso1: validarPaso1, claveCatalogo: claveCatalogo,
 		sesionTrabajada: sesionTrabajada, CAMPOS_TEXTO_SESION: CAMPOS_TEXTO_SESION, soloTexto: soloTexto,
 		sesionesSinCampo: sesionesSinCampo, planGuardado: planGuardado,
-		cambiosDeSesion: cambiosDeSesion, sinContenido: sinContenido, borrarSinTrabajar: borrarSinTrabajar,
+		cambiosDeSesion: cambiosDeSesion, sinContenido: sinContenido, mismoValor: mismoValor, borrarSinTrabajar: borrarSinTrabajar,
+		textoDeCampo: textoDeCampo, seccionAlAbrir: seccionAlAbrir,
 		modoTareasAlAbrir: modoTareasAlAbrir, tareasDelCierre: tareasDelCierre,
-		actividadesDeSeccion: actividadesDeSeccion, pdaSesionConservando: pdaSesionConservando,
+		actividadesDeSeccion: actividadesDeSeccion, pdaSesionConservando: pdaSesionConservando, pdaGuardadosDeGrado: pdaGuardadosDeGrado,
 		actualizarSinTrabajar: actualizarSinTrabajar, guardarSesiones: guardarSesiones, avisoCarrera: avisoCarrera,
 		CAMPOS_PLAN_SESION: CAMPOS_PLAN_SESION, copiaDeSesion: copiaDeSesion, trimestreDeCopia: trimestreDeCopia,
 	};

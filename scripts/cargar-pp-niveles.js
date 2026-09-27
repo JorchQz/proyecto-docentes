@@ -14,8 +14,15 @@
 	    materializador los empareja con su hueco (trabajo de 1°, de 2°) y no crea el genérico;
 	    las tareas por grado las materializa él desde cierre_tareas;
 	  - "¿Para quién?" de cada trabajo (producto_sesion_alumnos, incluir / excluir) con la regla de
-	    Hoy (ProductosHoy.planAsignacion) y la liga producto-PDA del nivel (un alumno de 2° en Morado: PDA de 1°);
-	  - pasos de la sesión por grupo de trabajo (llaves "Morado", "Círculos"; js/texto-sesion.js);
+	    Hoy (ProductosHoy.planAsignacion) y la liga producto-PDA del nivel ("pda" del plan: un alumno
+	    de 2° en Morado de Lenguajes, PDA de 1°; un trabajo con "pda": [1, 2] se liga a los dos y cada
+	    alumno deja evidencia en los de su grado);
+	  - los pasos de cada fase, tal como vienen en la planeación y en su orden (2026-09-27, Jorge:
+	    la planeación es la fuente). El plan PUEDE mover un paso a un grupo de trabajo (texto.*,
+	    llaves "Morado"; js/texto-sesion.js), pero PP-NIVELES ya no lo hace: se mostraba al final
+	    de la fase y cambiaba el orden de la clase;
+	  - día, horario y bloque de la planeación en `duracion` (nunca `fecha`: marcaría la sesión como
+	    trabajada);
 	  - recursos: la carpeta de Drive de la sesión y cada PDF (en lugar de los enlaces de la
 	    tienda, que no abren para un personalizado); el producto final va en el propósito.
 
@@ -153,6 +160,13 @@ function recibenCon(grados, filas, alumnos) {
 	return alumnos.filter((a) => AlcanceHoy.asignadoA(a, { id: "_", grados: grados }, asig)).map((a) => a.id);
 }
 
+// JSON con las llaves ordenadas (jsonb no guarda el orden de las llaves)
+function estable(v) {
+	if (Array.isArray(v)) return "[" + v.map(estable).join(",") + "]";
+	if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + estable(v[k])).join(",") + "}";
+	return JSON.stringify(v === undefined ? null : v);
+}
+
 // Mayúscula inicial (sin tocar lo demás)
 function mayuscula(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function palabras(s) { return normal(s).filter((w) => w.length >= 3); }
@@ -210,6 +224,25 @@ function recursosDeSesion(recursos, numero, plan) {
 		links.push({ titulo: corto + " · " + anx.titulo, url: "https://drive.google.com/file/d/" + anx.id + "/view" });
 	});
 	return { links: links, archivos: base.archivos || [] };
+}
+
+/*
+	ajustarFila(fila, numero, plan, catalogo) → la fila de `sesiones` que arma el importador, con lo
+	del plan: pasos por grupo solo si el plan los pide (texto.*; PP-NIVELES no: los pasos se quedan
+	en su orden, como la planeación), recursos de Drive, el texto del catálogo en cada PDA y el día,
+	horario y bloque de la planeación en `duracion` ("Lunes 28 sep · 8:00 a 9:20 · Letras": se ve en
+	Actividades y en Crear proyecto). Nunca pone `fecha` (marcaría la sesión como trabajada).
+*/
+function ajustarFila(fila, numero, plan, catalogo) {
+	const ps = (plan.sesiones || {})[numero] || {};
+	["inicio", "desarrollo", "cierre"].forEach((fase) => {
+		fila[fase + "_actividades"] = textoPorGrupo(fila[fase + "_actividades"], (ps.texto || {})[fase], plan.orden_grupos, "Sesión " + numero + " (" + fase + ")");
+	});
+	fila.recursos = recursosDeSesion(fila.recursos, numero, plan);
+	fila.pda_sesion = (fila.pda_sesion || []).map((p) => Object.assign({}, p, { pda_texto: (catalogo || {})[p.pda_id] || p.pda_texto }));
+	if (ps.duracion) fila.duracion = String(ps.duracion);
+	delete fila.fecha;
+	return fila;
 }
 
 // ── Base de datos: el cliente de Supabase que usan importador y materializador, sobre pg ──
@@ -531,15 +564,7 @@ async function principal() {
 		const sesionPorNumero = {};
 		const proyectoId = await Importador.importarProyecto(dosProy.id, grupo.maestro_id, grupo.id, {
 			trimestre: plan.proyecto.trimestre, estado: plan.proyecto.estado,
-			ajustarSesion: function (fila, ds) {
-				const ps = plan.sesiones[ds.numero_sesion] || {};
-				["inicio", "desarrollo", "cierre"].forEach((fase) => {
-					fila[fase + "_actividades"] = textoPorGrupo(fila[fase + "_actividades"], (ps.texto || {})[fase], plan.orden_grupos, "Sesión " + ds.numero_sesion + " (" + fase + ")");
-				});
-				fila.recursos = recursosDeSesion(fila.recursos, ds.numero_sesion, plan);
-				fila.pda_sesion = (fila.pda_sesion || []).map((p) => Object.assign({}, p, { pda_texto: catalogo[p.pda_id] || p.pda_texto }));
-				return fila;
-			},
+			ajustarSesion: function (fila, ds) { return ajustarFila(fila, ds.numero_sesion, plan, catalogo); },
 			antesDeMaterializar: async function (sesiones) {
 				const base = Date.now();
 				let k = 0;
@@ -621,6 +646,14 @@ async function principal() {
 				if (grados !== p.pda.slice().sort().join(",")) fallas.push("Sesión " + n + " «" + p.nombre + "»: ligado a PDA de " + grados + " (esperado " + p.pda.join(",") + ")");
 			});
 			const ses = sesiones.find((x) => x.id === s.id);
+			const psn = plan.sesiones[n] || {};
+			if (psn.duracion && ses.duracion !== String(psn.duracion)) fallas.push("Sesión " + n + ": sin el horario de la planeación en duracion");
+			// Sin movimientos en el plan, los pasos de cada fase quedan tal como vienen, en su orden
+			const dsn = dos.dosificacion_sesiones.find((x) => Number(x.numero_sesion) === Number(n));
+			["inicio", "desarrollo", "cierre"].forEach((fase) => {
+				if ((psn.texto || {})[fase]) return;
+				if (estable(ses[fase + "_actividades"]) !== estable(dsn[fase + "_actividades"])) fallas.push("Sesión " + n + " (" + fase + "): los pasos no quedaron como en la planeación");
+			});
 			const links = (ses.recursos && ses.recursos.links) || [];
 			if (links.some((l) => /anexo\.html/.test(l.url))) fallas.push("Sesión " + n + ": quedó un enlace de la tienda");
 			if (plan.drive.carpetas_por_sesion[n] && !links.some((l) => /drive\.google\.com\/drive\/folders\//.test(l.url))) fallas.push("Sesión " + n + ": sin carpeta de Drive");
@@ -663,7 +696,7 @@ async function principal() {
 		console.log("\nConteos: " + JSON.stringify(conteo));
 		console.log("Proyecto: " + proyectoId + (aplicar ? "" : " (simulado: no existe)") + " · trimestre " + plan.proyecto.trimestre + " · " + plan.proyecto.estado);
 		if (fallas.length) throw new Error("La comprobación falló:\n  - " + fallas.join("\n  - "));
-		console.log("Comprobación: OK (asignación, ligas, 15 sesiones sin fecha, recursos de Drive, reedición sin cambios = 0 filas)");
+		console.log("Comprobación: OK (asignación, ligas, 15 sesiones sin fecha, horario y pasos como en la planeación, recursos de Drive, reedición sin cambios = 0 filas)");
 
 		if (aplicar) {
 			await c.query("commit");
@@ -681,7 +714,7 @@ async function principal() {
 	}
 }
 
-module.exports = { resolverAlumnos, miembrosDe, asignacionDe, recibenCon, textoPorGrupo, recursosDeSesion, sbDesdePg, normal };
+module.exports = { resolverAlumnos, miembrosDe, asignacionDe, recibenCon, textoPorGrupo, recursosDeSesion, ajustarFila, sbDesdePg, normal };
 
 if (require.main === module) {
 	principal().then((codigo) => { process.exitCode = codigo || 0; }).catch((e) => {
