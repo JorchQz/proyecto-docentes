@@ -28,7 +28,7 @@
 			throw new Error("Supabase no está inicializado.");
 		}
 		if (!dosProyectoId || !maestroId || !grupoId) {
-			throw new Error("Faltan datos para importar (proyecto, maestro o grupo).");
+			throw new Error("Faltan datos para importar (proyecto, docente o grupo).");
 		}
 
 		// 1. Leer dosificacion_proyecto

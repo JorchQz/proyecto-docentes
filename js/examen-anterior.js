@@ -434,7 +434,7 @@ async function iniciarExamenAnterior() {
 					'placeholder="0–' + ppp + '" inputmode="decimal" ' +
 					'class="w-24 min-h-[44px] px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none"></label>' +
 			'</div>' +
-			'<textarea data-obs rows="1" placeholder="Observación del maestro (opcional)..." ' +
+			'<textarea data-obs rows="1" placeholder="Tu observación (opcional)..." ' +
 				'class="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none focus:ring-2 focus:ring-blue-300 focus:outline-none placeholder-gray-400">' +
 				escapeHtml(r.observacion || "") + '</textarea>';
 		}

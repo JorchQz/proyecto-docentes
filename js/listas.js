@@ -639,7 +639,7 @@
 			}).join("") + "</tr>";
 		}).join("");
 		return "<div class='imp-hoja" + (cols.length > 4 ? " imp-ancha" : "") + "'>" +
-			"<p class='imp-solo'>Solo para la maestra · Uso interno. No se comparte con las familias.</p>" +
+			"<p class='imp-solo'>Solo para uso docente · Uso interno. No se comparte con las familias.</p>" +
 			"<p class='imp-etq'>Lista del grupo</p><h1 class='imp-titulo'>" + esc(meta.nombre) + "</h1>" +
 			"<p class='imp-sub'>" + esc([meta.grupo ? "Grupo: " + meta.grupo : "", meta.escuela, formatoFecha(meta.fecha), meta.estado === "cerrada" ? "Cerrada" : ""].filter(Boolean).join(" · ")) + "</p>" +
 			(limpiar(meta.descripcion) ? "<p class='imp-desc'>" + esc(limpiar(meta.descripcion)) + "</p>" : "") +

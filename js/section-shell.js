@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	var user = sessionResult.data.session.user;	
 	if (userEmailEl) {
-		userEmailEl.textContent = user.email || "Usuario autenticado";
+		userEmailEl.textContent = user.email || "Sesión iniciada";
 	}
 	if (userNameEl) {
 		userNameEl.textContent = getTeacherNameFromUser(user);

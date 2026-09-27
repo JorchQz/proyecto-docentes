@@ -71,7 +71,7 @@
 
 	/*
 		Modo "grupo nuevo" (onboarding.html?nuevo=1, desde Mi grupo → Crear otro grupo): una
-		maestra puede tener grupos en escuelas distintas (Jorge, 2026-09-26). Es la misma alta:
+		docente puede tener grupos en escuelas distintas (Jorge, 2026-09-26). Es la misma alta:
 		inserta un grupo NUEVO (nunca toca los que ya tiene), lo deja como grupo activo
 		(GrupoActivo.elegir) y al terminar abre Ponte al día (si el trimestre ya empezó) o Inicio. Solo cambian los textos y hay un
 		enlace para volver sin crear nada.
@@ -87,10 +87,10 @@
 	}
 
 	/*
-		Entidad de la maestra (decisión 21): se guarda en perfiles.estado. Si ya la había
+		Entidad del docente (decisión 21): se guarda en perfiles.estado. Si ya la había
 		elegido (un segundo grupo), queda propuesta.
 		lectura-opcional: solo propone lo que ya guardó; si falla, el selector queda en
-		"Elige tu estado", la maestra lo elige y se guarda lo que elija. No se afirma nada.
+		"Elige tu estado", el docente lo elige y se guarda lo que elija. No se afirma nada.
 	*/
 	var perfilEntidad = await window.sb.from("perfiles").select("estado").eq("id", userId).maybeSingle();
 	var entidadGuardada = perfilEntidad && !perfilEntidad.error && perfilEntidad.data ? (perfilEntidad.data.estado || "") : "";
@@ -100,7 +100,7 @@
 
 	var gradeMaxByType = { unitaria: 6, bidocente: 3, tridocente: 2, tetradocente: 3, pentadocente: 2, completa: 1 };
 	var gradeHelpByType = {
-		unitaria:     "Unitaria: un maestro atiende todos los grados, selecciona los que atiendes.",
+		unitaria:     "Unitaria: atiendes todos los grados; selecciona los que tienes.",
 		bidocente:    "Bidocente: selecciona hasta 3 grados.",
 		tridocente:   "Tridocente: selecciona hasta 2 grados.",
 		tetradocente: "Tetradocente: selecciona hasta 3 grados.",

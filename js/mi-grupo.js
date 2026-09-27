@@ -82,7 +82,7 @@
 	var userId = user.id;
 
 	if (emailEl) {
-		emailEl.textContent = user && user.email ? user.email : "Usuario autenticado";
+		emailEl.textContent = user && user.email ? user.email : "Sesión iniciada";
 	}
 
 	if (userNameEl) {
@@ -1388,12 +1388,12 @@
 		}
 
 		var messages = {
-			completa:     "En organización completa, cada maestro atiende un solo grado. Selecciona el grado que tú atiendes.",
-			bidocente:    "En escuelas bidocentes, generalmente cada maestro atiende 2 o 3 grados. Selecciona los grados que tú atiendes.",
-			tridocente:   "En escuelas tridocentes, generalmente cada maestro atiende 2 grados. Selecciona los grados que tú atiendes.",
-			tetradocente: "En escuelas tetradocentes, el maestro puede tener 1, 2 o más grados. Selecciona los grados que tú atiendes.",
-			pentadocente: "En escuelas pentadocentes, generalmente un maestro atiende 2 grados. Selecciona los grados que tú atiendes.",
-			unitaria:     "En escuelas unitarias, un solo maestro atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tú atiendes.",
+			completa:     "En organización completa, cada docente atiende un solo grado. Selecciona el grado que tú atiendes.",
+			bidocente:    "En escuelas bidocentes, generalmente cada docente atiende 2 o 3 grados. Selecciona los grados que tú atiendes.",
+			tridocente:   "En escuelas tridocentes, generalmente cada docente atiende 2 grados. Selecciona los grados que tú atiendes.",
+			tetradocente: "En escuelas tetradocentes, cada docente puede tener 1, 2 o más grados. Selecciona los grados que tú atiendes.",
+			pentadocente: "En escuelas pentadocentes, generalmente cada docente atiende 2 grados. Selecciona los grados que tú atiendes.",
+			unitaria:     "En escuelas unitarias, una sola persona docente atiende todos los grados (1\u00b0 al 6\u00b0). Selecciona los grados que tú atiendes.",
 		};
 
 		editGroupGradesHelp.textContent = messages[type] || "Selecciona los grados que atiendes.";

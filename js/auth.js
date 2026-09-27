@@ -102,7 +102,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			if (!teacherName || teacherName.length < 3) {
 				showMessage(
 					"error",
-					"Ingresa el nombre del profesor(a) con al menos 3 caracteres."
+					"Ingresa tu nombre con al menos 3 caracteres."
 				);
 				return;
 			}
@@ -110,7 +110,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\-\s]+$/.test(teacherName)) {
 				showMessage(
 					"error",
-					"El nombre del profesor(a) solo permite letras y espacios."
+					"Tu nombre solo puede llevar letras y espacios."
 				);
 				return;
 			}
