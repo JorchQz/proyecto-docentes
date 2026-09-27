@@ -523,14 +523,38 @@ lo que la docente revisa: la lista, la asistencia y la boleta siguen por grado.
   ("Morado: …"); primero los pasos de todo el grupo, luego los grados en orden y luego los grupos
   en el orden de `orden_grupos` (sin él, alfabético). Crear proyecto los muestra en el recuadro
   "Por grupo de trabajo" y los guarda igual (antes se perdían al guardar).
+- **Orden de la clase = orden de la planeación** (Jorge, 2026-09-27: "respeta siempre el orden de la
+  planeación, está estructurada por horarios"). Los pasos por grupo de arriba se leen DESPUÉS de los
+  de todo el grupo, así que sacar un paso de `todos` lo cambia de lugar (en PP-NIVELES, "Grupo Azul:
+  …" salía después de "Cierre del bloque" y de la "Actividad de reserva"). Por eso PP-NIVELES NO
+  mueve pasos: se quedan en `*_todos`, en su lugar y con su redacción ("Grupo Azul: además de su
+  tarjeta…", "Grupos Morado y Naranja, al regresar a su lugar: …"); el plan de carga ya no trae
+  `texto.*` y el script comprueba que cada fase quede igual que en la dosificación. Las llaves de grupo
+  siguen valiendo para otro proyecto que las traiga en `*_diferenciado`. Las sesiones de un día se
+  trabajan en el orden del horario (Letras, Números, Nuestro salón): Inicio y Hoy ofrecen siempre la
+  sesión pendiente siguiente por número (si el lunes no se trabajó la 3, el martes sigue con la 3).
+- **Horario de la planeación:** va en `sesiones.duracion` ("Lunes 28 sep · 8:00 a 9:20 · Letras"; se
+  ve en Actividades y en Crear proyecto). Nunca en `fecha`: `fecha` marca la sesión como trabajada.
 - **Tareas** (`cierre_tareas`): van **por grado** (las únicas que el materializador convierte en
   productos); con el cierre "igual para todos" se eligen "Tareas iguales para todos" o "Tareas por
   grado" (antes, guardar un proyecto con cierre común y tareas por grado las borraba).
 - **Productos:** un trabajo por grupo, con nombre que lo dice ("… · Naranja") y "¿Para quién?"
-  alumno por alumno (`producto_sesion_alumnos`); se ligan a los PDA del nivel (un alumno de 2° en
-  Morado se evalúa con los de 1°: b24, abajo). Se cargan con `scripts/cargar-pp-niveles.js` desde un
-  plan en JSON (con nombres de alumnos: vive en `docs/referencia/`, fuera de git); la tabla legible
-  de PP-NIVELES está en `docs/referencia/pp-niveles-asignacion.md`.
+  alumno por alumno (`producto_sesion_alumnos`); se ligan a los PDA del nivel (b24: un alumno incluido
+  de otro grado deja evidencia en los PDA del producto de SU grado si los hay y, si no, en los del grado
+  con que trabaja). En PP-NIVELES, como dice la planeación (anexo S15-02): el alumno de 2° que trabaja
+  en Morado y Triángulos se evalúa en Lenguajes y Saberes con los PDA de 1°; en Ética y De lo Humano
+  (sesiones 3, 6, 12 y 15) hace la hoja Morado con los de 1°, pero el trabajo Morado se liga a los PDA
+  de 1° y de 2° y él deja evidencia en los de 2° (el trabajo de 2° es solo de Azul). En Hoy, la nota
+  "Trabaja con 1°" sale de los grados de los PDA ligados al producto (`AlcanceHoy.trabajaCon`); sin
+  ellos, de los grados del producto. Se cargan con `scripts/cargar-pp-niveles.js` desde un plan en JSON
+  (con nombres de alumnos: vive en `docs/referencia/`, fuera de git); la tabla legible de PP-NIVELES
+  está en `docs/referencia/pp-niveles-asignacion.md`.
+- **Crear proyecto guarda solo lo que la docente cambió** (R30, 2026-09-27): al abrir, cada sesión
+  guarda la fila que armó la pantalla (`block._alAbrir`); al guardar se escriben solo las columnas
+  distintas de esa (`ProyectoEdicion.cambiosDeSesion`), también el modo de una sección sin pasos. Un
+  texto nunca se guarda como "[object Object]" (`seccionAlAbrir`, `textoDeCampo`). Un grado con 2 o
+  más PDA en una sesión (proyectos de la tienda) se muestra "N PDA de 1°" de solo lectura y se conserva
+  completo (`pdaSesionConservando`).
 
 ---
 

@@ -687,8 +687,11 @@
 				"<div>PDA</div><div class='text-center'>Evidencias</div><div>Por nivel</div><div>Nivel predominante</div><div>Tendencia</div></div>" +
 				cuerpo + "</div>";
 		}).join("");
-		return "<section class='mb-7' data-seccion='pda'>" + titulo(6, "Avance por PDA", "Procesos de desarrollo de aprendizaje de su grado") +
-			"<div class='bloque mb-3'>" + nota("Cada evidencia es un producto calificado que trabajó ese PDA. La tendencia compara las primeras " +
+		// "PDA trabajados" (R30, 2026-09-27): un alumno que trabaja con otro grado (b24) deja evidencia en
+		// los PDA de ese grado, así que la lista no es solo la de su grado
+		return "<section class='mb-7' data-seccion='pda'>" + titulo(6, "Avance por PDA", "Procesos de desarrollo de aprendizaje trabajados") +
+			"<div class='bloque mb-3'>" + nota("Cada evidencia es un producto calificado que trabajó ese PDA. Si trabajó con otro grado, " +
+				"también salen los PDA de ese grado con los que se evaluó. La tendencia compara las primeras " +
 				"evidencias con las últimas; con una sola evidencia todavía no hay tendencia (falta evidencia).") + "</div>" +
 			"<div class='space-y-3'>" + bloques + "</div></section>";
 	}

@@ -60,6 +60,8 @@ const cuerpo = [
 	"var calificaciones = CALIFICACIONES;",
 	"var detallesAbiertos = DETALLES;",
 	"var asignaciones = ASIGNACIONES || {};",
+	// Los grados de los PDA ligados a cada producto (nota "Trabaja con", R30)
+	"var gradosPda = {};",
 	"var proyectoPorId = {};",
 	extraerLista("NIVELES"),
 	extraerLista("RETRO_RAPIDA"),
