@@ -17,6 +17,12 @@ el maestro registra asistencia, tareas, actividades y calificaciones en segundos
   multigrado** (un solo grupo con alumnos de 3°, 4°, 5° y 6° a la vez en el mismo salón).
   El MVP se modela sobre una maestra rural multigrado, pero la arquitectura es
   **multi-tenant**: cualquier maestro se registra y gestiona solo sus datos.
+- **Lenguaje (regla de Jorge, 2026-09-26):** Mi Salón es para docentes, hombres y mujeres. En la app,
+  los correos, los avisos y la publicidad se dice "docente" o "docentes", nunca solo "maestra" o
+  "maestro"; se habla de "tú" y sin palabras con género sobre la persona ("Te damos la bienvenida",
+  no "Bienvenida"); tono claro, sin urgencia falsa. No cambian los nombres de tablas y columnas
+  (`maestro_id`), los textos legales con "usted" (salvo el género) ni las citas oficiales. "Sala de
+  Maestros" sigue como nombre propio (pregunta abierta). Lo vigila `pruebas/lenguaje-docente.test.js`.
 - **Hardware objetivo:** Samsung Galaxy Tab S9 FE+ (12.4", **landscape**, uso táctil).
   La UI debe ser táctil, con **botones grandes (≥ 44px)** y minimizar el teclado en
   pantalla: preferir botones de un toque (`[Asistió]`, `[Faltó]`, `[10]`, `[9]`, `[8]`).
@@ -177,7 +183,9 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
 > formal, son redes de seguridad para lo que ya se rompió una vez. Cada prueba **extrae
 > las funciones del archivo real** en lugar de copiarlas, así que si el código cambia de
 > forma la prueba truena.
-> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (72 suites al 2026-09-26).
+> Todas de una vez: `for t in pruebas/*.test.js; do node $t | tail -1; done` (76 suites al 2026-09-26).
+> - `lanzamiento-integracion` (2026-09-26) — decisiones de Jorge que cruzan b20, b21 y b22: la calificación directa ya confirmada (pantalla del asistente, Reportes, Qué le falta, Exportar y junta; la base, en `pruebas/sql/calificacion-directa.sql`), Ponte al día en un grupo adicional y "Sin clase" como suspensión en `calendario_ajustes`. `bandeja-salida` §13: `capturado_en` en la asistencia nueva de la cola.
+> - `lenguaje-docente` (2026-09-26) — ningún texto visible del SaaS, de la tienda de Mi Salón, de las Edge Functions ni de b20-b22 dice "maestra"/"maestro" ni usa palabras con género sobre la persona; lista blanca con su razón (Sala de Maestros, valores guardados, Director(a), etiquetas de archivos de la tienda).
 > - `registro-historico` (2026-09-26) — lista pegada (Excel, WhatsApp, compuestos, acentos), días de clase y cuadrícula de asistencia, captura en bloque, calificación directa en el motor y la boleta (escala por grado), reglas `es_historico` (Hoy, Inicio, Tareas, Qué le falta, cumpleaños) y `delete_own_account` de b20.
 > - `flujo-libre` (2026-09-26) — regla única de "¿Para quién?" (y el motor con ella), `planAsignacion`, `siguienteDiaDeClase` (CTE, festivos, vacaciones, ajustes, fin de ciclo), `venceTarea`, incompleta/pendiente/completada/sigue incompleta y su valor, sueltas y "Pasar a un proyecto", y los arreglos de R25a. `bandeja-salida` §10: la cola sin señal con las columnas nuevas.
 > - `motor-calificacion` — aritmética del motor y conteo de entrega aparte de la calidad;
@@ -421,17 +429,31 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   también en el alta: separa paterno, materno y nombre(s), detecta el grado y permite poner el
   mismo grado a varios); 2) **asistencia pasada** del inicio del trimestre a ayer con los días de
   clase del calendario SEP y los ajustes del grupo, "todos asistieron" y solo se tocan las faltas
-  (mismo modelo que Asistencia); 3) **actividades en bloque** como sueltas del trimestre
+  (mismo modelo que Asistencia); un día marcado **"Sin clase"** se guarda, con confirmación, como
+  suspensión en el calendario del grupo (`calendario_ajustes`, tipo `suspension`, motivo "Sin clase
+  (marcado en Ponte al día)", `Historico.filasSinClase`) ANTES que la asistencia, deja de contar como
+  día de clase en Asistencia, Qué le falta y el Excel, y se quita desde Calendario (decisión de Jorge
+  del 2026-09-26); 3) **actividades en bloque** como sueltas del trimestre
   (`agregar_actividades_historicas`, que usa `agregar_actividad_suelta`) y su semáforo en una
   cuadrícula alumno × actividad; exámenes por el camino de "Solo subir resultados"
   (`examen.html?nuevo=resultados&desde=ponte`); 4) **revisar la boleta** (motor y "cómo se calculó").
   **Calificación directa del trimestre** (`calificacion_directa`): por alumno y campo, en la escala
-  de su grado (la base la valida con `piso_calificacion_boleta`; no cambia una boleta cerrada). Es
-  una PROPUESTA que el motor pone en lugar de la calculada (`MotorCalificacion.aplicarDirectas`:
-  sin porcentaje; el de las actividades queda aparte); la oficial sigue siendo la que el docente
-  confirma. Se rotula "Capturada directamente" en Reportes, reporte detallado (solo en pantalla),
-  Qué le falta, Recrea/Concentrado y junta; la boleta imprimible no la lleva. "Usar el cálculo
-  automático" (Reportes → Boleta) o "Automática" (el asistente) la borran.
+  de su grado (la base la valida con `piso_calificacion_boleta`; no cambia una boleta cerrada). El
+  motor la pone en lugar de la calculada (`MotorCalificacion.aplicarDirectas`: sin porcentaje; el de
+  las actividades queda aparte) y **cuenta YA como la calificación CONFIRMADA** de la boleta en ese
+  campo (decisión de Jorge del 2026-09-26: el docente la eligió al capturarla; no se confirma otra
+  vez). Lo hace la base (b20 §2b, triggers SECURITY INVOKER): al crearla o cambiarla,
+  `boleta_trimestral` de ese alumno, ciclo, trimestre y campo queda con esa `calificacion`,
+  `calificacion_confirmada = true` (sella `confirmada_en`), `porcentaje` null y el `nivel` de sus
+  cortes; si el docente confirma otro número en Reportes, la directa lo toma (espejo); al borrarla
+  ("Usar el cálculo automático" en Reportes → Boleta o "Automática" en el asistente), la boleta de
+  ese campo deja de estar confirmada y vuelve a la propuesta calculada, que el docente confirma. Se
+  cambia o se borra mientras la boleta no esté cerrada (cerrada: la base la rechaza y lo entregado no
+  se mueve). Como Exportar, la junta y la boleta leen la confirmada de `boleta_trimestral`, la directa
+  sale en todas (Exportar solo exporta confirmadas). Se rotula "Capturada directamente" (en el
+  asistente, "capturada directamente · confirmada") en Reportes, reporte detallado (solo en
+  pantalla), Qué le falta, Recrea/Concentrado y junta; la boleta imprimible no la lleva. Prueba en la
+  base: `pruebas/sql/calificacion-directa.sql`.
   **es_historico**: una captura con fecha anterior al día (hora de México) en que se registra
   (`asistencias`, `calificaciones` con `capturado_en`; `productos_sesion` contra su creación),
   marcada por triggers. Con ella: "Incompleta" no pasa a la siguiente clase
@@ -440,7 +462,12 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
   para calificar lo del asistente (`desde_ponte_al_dia`), Qué le falta solo cuenta lo registrado
   (sin captura, lo histórico o anterior al alta del grupo no se pide), los cumpleaños de Inicio
   siguen siendo de hoy en adelante, la asistencia no genera avisos ni incidencias (no hay nada que
-  los genere) y la boleta impresa no muestra la marca.
+  los genere) y la boleta impresa no muestra la marca. La cola sin señal (`js/bandeja-salida.js`)
+  manda `capturado_en` (la hora del aparato) en cada fila NUEVA de asistencia: la lista de Hoy que
+  sale al día siguiente no queda como histórica; al editar una fila existente no se manda (la base
+  conserva la suya) y las marcas por campo no cambian. En calificaciones ya iba (`evaluado_en`).
+  "Ponte al día" también se ofrece al crear un grupo ADICIONAL con el trimestre empezado
+  (`onboarding.html?nuevo=1`: el grupo nuevo queda activo y abre el asistente).
 - **Campo sin evidencias:** sin propuesta; en la boleta se elige a mano (juicio docente)
   para poder confirmar y cerrar. Boleta cerrada: todo de solo lectura (ver arriba).
 - **Evidencia por PDA** (`recalcular_evidencia_pda`): con todas las calificaciones del
@@ -749,14 +776,21 @@ Migración `supabase/mi_salon_b21_acceso_2026-09.sql`; pruebas SQL `pruebas/sql/
 - **Solo lectura EN EL SERVIDOR:** políticas RESTRICTIVE `acceso_mi_salon_ins/upd/del` (helper
   `mi_salon_candado(tabla)`) en todas las tablas del SaaS que escribe el docente; sin acceso vigente,
   INSERT/UPDATE/DELETE fallan con 42501 y la pista `mi_salon_solo_lectura` (nunca un "0 filas"
-  silencioso). No llevan candado: `perfiles`, `interes_secciones`, la tienda, los catálogos y
-  `ponte_al_dia` (el estado del asistente, no es captura). **Una tabla nueva del SaaS debe llamar a
-  `select public.mi_salon_candado('public.tabla')` en su migración.** Los RPC que escriben son
+  silencioso). No llevan candado: `perfiles`, `interes_secciones`, la tienda, los catálogos,
+  `ponte_al_dia` (el estado del asistente, no es captura) y las tablas de configuración y cobro de
+  b21 y b22 (`jissez_config`, `mi_salon_periodos`, `mi_salon_accesos`, `mi_salon_correos`,
+  `mi_salon_precios`, `mi_salon_ordenes`, `mi_salon_avisos`: las escriben el admin, los triggers o
+  el service role). `calificacion_directa` (b20) sí: está en la lista de b21 y b20 también la llama
+  si b21 ya existe. **Una tabla nueva del SaaS debe llamar a
+  `select public.mi_salon_candado('public.tabla')` en su migración** (`pruebas/migraciones-orden.test.js`
+  lo exige de cada tabla nueva desde interes_secciones). Los RPC que escriben son
   security invoker (pasan por las políticas); `incrementar_uso_criterio` (definer) no cuenta sin
-  acceso; `delete_own_account` siempre funciona (salvo una cuenta con un PAGO de Mi Salón: soporte).
+  acceso; `delete_own_account` siempre funciona (salvo una cuenta con compras de la tienda o un PAGO
+  de Mi Salón: soporte). Su versión FINAL es la de b22 (§13; la última del orden de producción).
   Nunca se borran datos por falta de pago.
 - **Capturas sin señal:** la cola (`js/bandeja-salida.js`) manda en cada envío la cabecera
-  `x-capturado-en` con la hora del aparato. Sin acceso vigente, la base acepta la captura si esa hora
+  `x-capturado-en` con la hora del aparato (y, en la asistencia nueva, también la columna
+  `capturado_en` de b20, que decide `es_historico`). Sin acceso vigente, la base acepta la captura si esa hora
   cae dentro de un acceso y no han pasado 48 h desde que ese acceso venció; la hora se acota (no más
   de 10 min en el futuro ni de 30 días atrás), así que mentir con ella da a lo más 48 h. Lo que la base
   rechaza por solo lectura NO sale de la cola: estado `acceso`, aviso en Hoy/Exámenes/las demás
@@ -801,18 +835,24 @@ cliente y del camino del pago `pruebas/mi-salon-cobros.test.js`.
   modelo y no se vende. La presentación lee la tabla (`mi_salon_precios_publicos()`, solo con Mi Salón
   abierto); `PRECIOS_MI_SALON` queda en null como lo que se ve apagado.
 - **Precio fundador:** cupo en `jissez_config.mi_salon_cupo_fundador` (100). Lugares = cupo − DOCENTES
-  distintos con un pago aprobado a precio fundador en el ciclo (`mi_salon_lugares_fundador`). Tiene
-  fundador quien ya pagó a fundador en el ciclo ("previo", no ocupa otro lugar), un comprador de la tienda
-  (orden pagada de planeaciones antes de `mi_salon_fundador_tienda_hasta`, o de `mi_salon_abierto_desde`;
-  sin lanzamiento, cualquiera) aunque no queden lugares, o cualquiera mientras queden. Un reembolso libera.
+  distintos que NO son compradores de la tienda con un pago aprobado a precio fundador en el ciclo
+  (`mi_salon_lugares_fundador`; decisión de Jorge del 2026-09-26: **los compradores de la tienda no
+  ocupan lugar**, van aparte). Tiene fundador un comprador de la tienda (motivo `tienda`, se revisa
+  primero, también en su compra siguiente: orden pagada de planeaciones antes de
+  `mi_salon_fundador_tienda_hasta`, o de `mi_salon_abierto_desde`; sin lanzamiento, cualquiera) aunque
+  no queden lugares, quien ya pagó a fundador en el ciclo ("previo", no ocupa otro lugar), o cualquiera
+  mientras queden. Un reembolso libera.
 - **Cupones:** los de la tienda, sobre el precio de LISTA (`marketplace_cupon_evaluar` con el ámbito
   `mi_salon`, que nunca lleva la oferta general). Se cobra el más bajo de fundador y cupón, sin sumar;
-  empate → fundador. `cupon_codigo` se sella solo si el cupón fue el aplicado (así cuentan usos y
+  **empate → gana el cupón** (decisión de Jorge del 2026-09-26: así el creador cobra su comisión). `cupon_codigo` se sella solo si el cupón fue el aplicado (así cuentan usos y
   comisión); si no, `cupon_referido`.
 - **Cobertura** (`mi_salon_cobertura(producto, fecha)`): P = periodo cuya ventana de venta contiene la
   fecha. Trimestre: P, y el siguiente si fecha ≥ P.compra_tardia_desde (el T1 del ciclo siguiente aunque
   no esté cargado: vence provisional con P y se extiende sola al cargarlo). Resto: P..T3. Ciclo: T1-T3.
-  No se vende lo que no agrega ningún periodo (`ya_cubierto`). Todo desde `mi_salon_periodos`.
+  No se vende lo que no agrega ningún periodo (`ya_cubierto`) y la compra lo explica
+  (`MiSalonCompra.explicarNoDisponible`: "Ya tienes acceso hasta el 18 de diciembre de 2026; desde el
+  23 de octubre de 2026 esta compra incluye también el segundo trimestre", con `compra_tardia_desde`
+  de la cobertura). Todo desde `mi_salon_periodos`.
 - **Orden y pago:** una compra es una fila de `marketplace_ordenes` (monto, estado, cupón, términos) con
   su fila en `mi_salon_ordenes` (producto, cobertura cotizada, tipo de precio, datos del pago pendiente)
   y SIN renglones en `marketplace_orden_items`. Edge `comprar-mi-salon` → `mi_salon_registrar_orden`
@@ -840,10 +880,20 @@ cliente y del camino del pago `pruebas/mi-salon-cobros.test.js`.
 - **Llegada con Mi Salón abierto** (decisión de Jorge): quien todavía no usa Mi Salón (sin activo_saas,
   sin piloto, sin grupo ni última sección Mi Salón/Sala) entra a la tienda (catálogo) con un aviso
   discreto; quien ya lo usa, a su última sección.
-- **Producción:** secretos `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `SITE_URL`, `RESEND_API_KEY`,
-  `MAIL_FROM`, `CRON_SECRET`; desplegar `comprar-mi-salon` y `avisos-mi-salon` y volver a desplegar
-  `webhook-mercadopago` y `confirmar-pago` (cambió `_shared/pagos.ts`); cron con
-  `mi_salon_b22_avisos_cron_2026-09.sql`. La URL del webhook no cambia.
+- **Producción:** los pasos exactos, en orden (migraciones, secretos, Edge Functions, cron, frontend
+  e interruptor), están en `docs/PRODUCCION-MI-SALON.md`. La URL del webhook no cambia.
+- **Decisiones PENDIENTES de confirmar por Jorge** (quedaron con la opción conservadora del
+  constructor AM; se cambian en b22 si Jorge decide otra cosa):
+  1. La cobertura de una compra es la que se cotizó MÁS la del día en que se aprueba el pago (un OXXO
+     cotizado el 22-oct y pagado el 23-oct cubre también el T2; nunca menos de lo que vio).
+  2. El aviso "vence" (`pago_terminado`, `gratis_terminado`) sale al día siguiente del vencimiento.
+  3. Los avisos del 6 y del 13 de noviembre llegan a toda cuenta con el T1 gratis vigente (también a
+     quien ya pagó el T2).
+  4. Con el interruptor apagado, la compra solo la ven las cuentas piloto y con `activo_saas`.
+  5. No hay aviso de lanzamiento después del 18 de diciembre (el T1 gratis ya terminó).
+  Ya decididas por Jorge el 2026-09-26 (implementadas): los compradores de la tienda con precio
+  fundador NO ocupan lugar del cupo; no se vende lo que no agrega periodos y se explica; en empate
+  entre cupón y fundador gana el cupón.
 
 ---
 
@@ -866,7 +916,7 @@ cliente y del camino del pago `pruebas/mi-salon-cobros.test.js`.
 | Mi Grupo (CRUD grupo y alumnos; ficha del alumno con WhatsApp al tutor, escuela y director por grupo, niñas y niños en el resumen) | Completo (ficha y director: 2026-09-25, B13) | `mi-grupo.html`, `js/ficha-alumno.js` |
 | Incidencias (registro por grupo con alumnos involucrados, editar, eliminar con confirmación, documento imprimible con firmas de docente, director(a) y tutor) | Completo (2026-09-25, B13) | `incidencias.html`, `js/incidencias.js` |
 | Calendario escolar SEP 2026-2027 del grupo (vista de mes, hoy y próximo día sin clase, ajustes propios con confirmación, fuente DOF) y rol de aseo (reparto por días de clase, continuidad entre meses, cambios a mano, imagen PNG para WhatsApp, compartir, copiar texto e imprimir). No cambia la asistencia ni el trimestre; desde 2026-09-26 las tareas vencen y lo incompleto se revisa el siguiente día de clase (`siguienteDiaDeClase`, cabecera de `js/calendario-sep.js`) | Completo (2026-09-25, en pruebas) | `calendario.html`, `js/calendario.js`, `js/calendario-sep.js`, `js/rol-aseo.js` |
-| Listas de cooperación y materiales (columnas palomita, texto y monto en pesos; resumen y avance; imagen y texto para familias sin nombres; Recordar por WhatsApp; impresión solo para la maestra; cerrar como expediente, reabrir con confirmación; historial por alumno) | Completo (2026-09-26, b15) | `listas.html`, `js/listas.js` |
+| Listas de cooperación y materiales (columnas palomita, texto y monto en pesos; resumen y avance; imagen y texto para familias sin nombres; Recordar por WhatsApp; impresión solo para uso docente; cerrar como expediente, reabrir con confirmación; historial por alumno) | Completo (2026-09-26, b15) | `listas.html`, `js/listas.js` |
 | Crear Proyecto / Planeación (3 pasos con catálogo SEP) | Completo | `crear_proyecto.html` |
 | Planeación (lista de proyectos con filtros + acciones completas) | Completo | `planeacion.html` |
 | Actividades | Completo | `actividades.html` |
