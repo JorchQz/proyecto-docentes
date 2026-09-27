@@ -111,14 +111,15 @@ var ConoceMiSalon = (function () {
 		ofrece elegir y el título nombra solo ese plan; el otro sigue con "Precio por anunciar".
 		Sin ningún precio, el modelo decidido (trimestre o ciclo), sin "Elige": aún no hay qué elegir.
 	*/
-	var CUENTA_TIENDA = "Con tu suscripción entras con la misma cuenta de la tienda.";
+	// Sin suscripción recurrente: pago único por periodo escolar (spec de cobros; R27a, menor 4)
+	var CUENTA_TIENDA = "Pagas una sola vez por periodo escolar, sin cobro automático. Entras con la misma cuenta de la tienda.";
 	function encabezado(cfg) {
 		cfg = cfg || {};
 		var t = precioValido(cfg.trimestre), c = precioValido(cfg.ciclo);
-		if (t && c) return { titulo: "Suscripción por trimestre o por ciclo escolar.", texto: "Elige lo que te acomode. " + CUENTA_TIENDA };
-		if (t) return { titulo: "Suscripción por trimestre.", texto: CUENTA_TIENDA + " El precio por ciclo escolar se anunciará pronto." };
-		if (c) return { titulo: "Suscripción por ciclo escolar.", texto: CUENTA_TIENDA + " El precio por trimestre se anunciará pronto." };
-		return { titulo: "Suscripción por trimestre o por ciclo escolar.", texto: CUENTA_TIENDA };
+		if (t && c) return { titulo: "Pago por periodo escolar: por trimestre o por ciclo.", texto: "Elige lo que te acomode. " + CUENTA_TIENDA };
+		if (t) return { titulo: "Pago por periodo escolar: por trimestre.", texto: CUENTA_TIENDA + " El precio por ciclo escolar se anunciará pronto." };
+		if (c) return { titulo: "Pago por periodo escolar: por ciclo.", texto: CUENTA_TIENDA + " El precio por trimestre se anunciará pronto." };
+		return { titulo: "Pago por periodo escolar: por trimestre o por ciclo.", texto: CUENTA_TIENDA };
 	}
 
 	// ¿Se ofrece "Avísame cuando esté disponible"? Solo sin ningún precio y sin acceso.
@@ -187,7 +188,7 @@ var ConoceMiSalon = (function () {
 		if (!n) return null;
 		return {
 			titulo: n > 1 ? "Pago único por trimestre o por el resto del ciclo." : "Pago único por trimestre.",
-			texto: "Sin cobro automático: pagas con tarjeta, SPEI u OXXO y tu acceso vence en fechas fijas, tres semanas después de la entrega de boletas. " + CUENTA_TIENDA.replace("Con tu suscripción e", "E"),
+			texto: "Sin cobro automático: pagas con tarjeta, SPEI u OXXO y tu acceso vence en fechas fijas, tres semanas después de la entrega de boletas. Entras con la misma cuenta de la tienda.",
 		};
 	}
 	// "Quedan 37 lugares con precio fundador": contador real, nada de urgencia inventada
@@ -228,7 +229,7 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 				? '<p class="mt-5 text-[22px] font-extrabold ' + (destacado ? "text-white" : "text-ink") + '" data-precio="pendiente">' + esc(p.texto) + "</p>"
 				: '<p class="mt-5" data-precio="' + p.precio + '"><span class="text-[34px] font-black tracking-tight ' + (destacado ? "text-white" : "text-ink") + '">' + esc(p.texto) + '</span> <span class="' + sub + '">' + esc(p.periodo) + "</span></p>";
 			var boton = p.compra
-				? '<a href="' + esc(p.compra) + '" data-compra="' + p.clave + '" class="mt-6 inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-action hover:bg-action-dark text-white font-bold transition">Suscribirme ' + (p.clave === "ciclo" ? "por el ciclo" : "por trimestre") + ' <i data-lucide="arrow-right" class="w-5 h-5"></i></a>'
+				? '<a href="' + esc(p.compra) + '" data-compra="' + p.clave + '" class="mt-6 inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-action hover:bg-action-dark text-white font-bold transition">Adquirir ' + (p.clave === "ciclo" ? "el ciclo" : "un trimestre") + ' <i data-lucide="arrow-right" class="w-5 h-5"></i></a>'
 				: "";
 			return '<div class="reveal in lift rounded-3xl p-7 flex flex-col ' + fondo + '"' + (i ? ' style="transition-delay:.06s"' : "") + ">" +
 				'<h3 class="font-bold text-lg">' + esc(p.titulo) + "</h3>" +
@@ -314,7 +315,9 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 			var grid = document.getElementById("msIncluyeGrid");
 			if (grid) { grid.classList.add("sm:grid-cols-2", "max-w-3xl"); grid.classList.remove("max-w-xl"); }
 		}
-		var bloqueAcceso = document.querySelector("[data-ms=acceso]");
+		// El bloque "Ya tienes Mi Salón" de "Cómo adquirirlo", por su id: el primer [data-ms=acceso]
+		// de la página es el botón "Ir a Mi Salón" del encabezado y el enlace quedaba anidado en él (R27a)
+		var bloqueAcceso = document.getElementById("msAccesoBloque");
 		if (bloqueAcceso && !document.getElementById("msRenovarPres")) {
 			var a = document.createElement("a");
 			a.id = "msRenovarPres";

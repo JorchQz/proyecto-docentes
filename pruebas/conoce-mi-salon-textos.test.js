@@ -79,11 +79,13 @@ ok("respaldo: la cámara procesa todo en el aparato y no sube imágenes (sin Sto
 
 // ── 5. "Cómo adquirirlo" según cuántos precios hay ───────────────────────────
 const { ConoceMiSalon } = require(path.join(RAIZ, "tienda/js/conoce-mi-salon.js"));
-const CUENTA = "Con tu suscripción entras con la misma cuenta de la tienda.";
-ok("sin precios: el modelo, sin 'Elige'", ConoceMiSalon.encabezado({ trimestre: null, ciclo: null }), { titulo: "Suscripción por trimestre o por ciclo escolar.", texto: CUENTA });
-ok("solo trimestre: título de trimestre y el ciclo por anunciar", ConoceMiSalon.encabezado({ trimestre: 149, ciclo: null }), { titulo: "Suscripción por trimestre.", texto: CUENTA + " El precio por ciclo escolar se anunciará pronto." });
-ok("solo ciclo: título de ciclo y el trimestre por anunciar", ConoceMiSalon.encabezado({ trimestre: 0, ciclo: 399 }), { titulo: "Suscripción por ciclo escolar.", texto: CUENTA + " El precio por trimestre se anunciará pronto." });
-ok("los dos: 'Elige lo que te acomode'", ConoceMiSalon.encabezado({ trimestre: 149, ciclo: 399 }), { titulo: "Suscripción por trimestre o por ciclo escolar.", texto: "Elige lo que te acomode. " + CUENTA });
+// Sin suscripción recurrente: pago único por periodo escolar (R27a, menor 4)
+const CUENTA = "Pagas una sola vez por periodo escolar, sin cobro automático. Entras con la misma cuenta de la tienda.";
+ok("sin precios: el modelo, sin 'Elige'", ConoceMiSalon.encabezado({ trimestre: null, ciclo: null }), { titulo: "Pago por periodo escolar: por trimestre o por ciclo.", texto: CUENTA });
+ok("solo trimestre: título de trimestre y el ciclo por anunciar", ConoceMiSalon.encabezado({ trimestre: 149, ciclo: null }), { titulo: "Pago por periodo escolar: por trimestre.", texto: CUENTA + " El precio por ciclo escolar se anunciará pronto." });
+ok("solo ciclo: título de ciclo y el trimestre por anunciar", ConoceMiSalon.encabezado({ trimestre: 0, ciclo: 399 }), { titulo: "Pago por periodo escolar: por ciclo.", texto: CUENTA + " El precio por trimestre se anunciará pronto." });
+ok("los dos: 'Elige lo que te acomode'", ConoceMiSalon.encabezado({ trimestre: 149, ciclo: 399 }), { titulo: "Pago por periodo escolar: por trimestre o por ciclo.", texto: "Elige lo que te acomode. " + CUENTA });
+ok("la presentación no habla de suscripción (JS y HTML)", [/suscri/i.test(leer("tienda/js/conoce-mi-salon.js").replace(/\/\/.*$/gm, "")), /suscri/i.test(html)], [false, false]);
 ok("'Elige' solo con los dos precios", [null, { trimestre: 149 }, { ciclo: 399 }, { trimestre: "149", ciclo: 399 }].map((c) => /Elige/.test(ConoceMiSalon.encabezado(c).texto)), [false, false, false, false]);
 const inicial = ConoceMiSalon.encabezado(null);
 ok("el HTML inicial trae el título y el texto de 'sin precios' (lo mismo que pinta el JS)", [

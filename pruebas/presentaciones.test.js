@@ -142,6 +142,21 @@ ok("exámenes: crear el suyo o subir resultados; ya no se aplican los del catál
 ok("paso 'Crea tu grupo': estado, ciclo, trimestre y tipo de organización", ["tu estado", "ciclo escolar", "trimestre en curso", "tipo de organización"].every((t) => textoMs.split("Crea tu grupo")[1].split("Da de alta")[0].indexOf(t) !== -1), true);
 ok("privacidad: no dice que lo del grupo va sin nombres (el rol de aseo sí los lleva)", [/lo que es para todo el grupo no lleva nombres/.test(textoMs), /El rol de aseo sí lleva los nombres/.test(textoMs)], [false, true]);
 ok("con acceso: 'Ir a Mi Salón' lleva al panel", (htmlMs.match(/data-ms="acceso" href="\.\.\/dashboard\.html"[^>]*>\s*Ir a Mi Salón/g) || []).length, 2);
+// R27a: "Ver precios y renovar" quedaba DENTRO del botón "Ir a Mi Salón" del encabezado (el primer
+// [data-ms=acceso] de la página es un <a>). Ahora va en el bloque con id propio, que es un <div>.
+function enlacesAnidados(h) {
+	let dentro = 0, anidados = 0;
+	const re = /<(\/?)a\b[^>]*>/gi;
+	let m;
+	while ((m = re.exec(h))) { if (m[1]) dentro = Math.max(0, dentro - 1); else { if (dentro) anidados++; dentro++; } }
+	return anidados;
+}
+ok("sin enlaces anidados en las presentaciones", PAGINAS.map((p) => enlacesAnidados(leer(p))), [0, 0]);
+const jsMs = leer("tienda/js/conoce-mi-salon.js");
+ok("'Ver precios y renovar' va en el bloque #msAccesoBloque (un div), no en el primer [data-ms=acceso]", [
+	/<div id="msAccesoBloque" data-ms="acceso"/.test(htmlMs), (htmlMs.match(/id="msAccesoBloque"/g) || []).length,
+	/getElementById\("msAccesoBloque"\)/.test(jsMs), /querySelector\(["']\[data-ms=["']?acceso/.test(jsMs),
+], [true, 1, true, false]);
 
 // ── 4. "Avísame": regreso del login y secciones válidas ──────────────────────
 const InteresSeccion = require(path.join(RAIZ, "tienda/js/interes-seccion.js"));
