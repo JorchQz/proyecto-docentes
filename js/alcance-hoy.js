@@ -152,10 +152,12 @@
 	/*
 		Un alumno incluido de otro grado "trabaja con" el grado de la actividad: → "2°" (o "2° y 3°")
 		si está incluido y su grado no es el de la actividad; "" si no.
-		gradosPda (opcional): los grados de los PDA ligados al producto. Si los hay, mandan ellos: es
-		donde el alumno deja su evidencia (b24). Así un trabajo sin grados (Morado de PP-NIVELES, con
-		uno de 1° y uno de 2°) dice "Trabaja con 1°" al de 2° si solo tiene PDA de 1°, y no dice nada
-		si también tiene los de su grado (Ética y De lo Humano: se evalúa con los de 2°). R30, 2026-09-27.
+		gradosPda (opcional): los grados de los PDA ligados al producto. Si los hay, mandan ellos. El
+		alumno se evalúa siempre con los PDA de SU grado (decisión de Jorge del 2026-09-27; deja
+		evidencia solo en los de su grado, b5): un trabajo por nivel que incluye alumnos de otro grado
+		se liga también a los PDA de ese grado, y entonces no hay nota (Morado y Triángulos de
+		PP-NIVELES, con PDA de 1° y de 2°: el de 2° se evalúa con los de 2°). Si el producto no tiene
+		PDA de su grado, la nota dice con qué grado trabaja ("Trabaja con 1°"). R30, 2026-09-27.
 	*/
 	function gradosValidos(lista) {
 		var vistos = {};

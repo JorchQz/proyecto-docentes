@@ -704,8 +704,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		asignaciones = window.AlcanceHoy.indiceAsignaciones(filasAsig);
 
-		// Con qué grado trabaja un incluido de otro grado: el de los PDA ligados al producto (b24: ahí
-		// deja su evidencia). Un trabajo sin grados (Morado: uno de 1° y uno de 2°) no decía nada.
+		// Con qué grado trabaja un incluido de otro grado: el de los PDA ligados al producto. Si el
+		// producto también tiene PDA de su grado (ahí deja su evidencia), no hay nota; un trabajo sin
+		// grados y sin PDA de su grado ahora sí lo dice (antes no decía nada).
 		// lectura-opcional: solo la nota "Trabaja con"; nada se guarda con este dato y sin él la nota
 		// sale, como antes, de los grados del producto
 		try {

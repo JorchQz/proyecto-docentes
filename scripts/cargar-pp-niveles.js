@@ -14,9 +14,12 @@
 	    materializador los empareja con su hueco (trabajo de 1°, de 2°) y no crea el genérico;
 	    las tareas por grado las materializa él desde cierre_tareas;
 	  - "¿Para quién?" de cada trabajo (producto_sesion_alumnos, incluir / excluir) con la regla de
-	    Hoy (ProductosHoy.planAsignacion) y la liga producto-PDA del nivel ("pda" del plan: un alumno
-	    de 2° en Morado de Lenguajes, PDA de 1°; un trabajo con "pda": [1, 2] se liga a los dos y cada
-	    alumno deja evidencia en los de su grado);
+	    Hoy (ProductosHoy.planAsignacion) y la liga producto-PDA ("pda" del plan). Un alumno se
+	    evalúa SIEMPRE con los PDA de su grado (decisión de Jorge del 2026-09-27): un trabajo por
+	    nivel que incluye alumnos de otro grado se liga también a los PDA de ese grado (Morado y
+	    Triángulos, con uno de 2°: "pda": [1, 2]) y cada alumno deja evidencia en los de su grado
+	    (la regla de b5). El script lo exige: cada alumno recibe en cada sesión un trabajo ligado a
+	    un PDA de SU grado; si no, error y no se carga;
 	  - los pasos de cada fase, tal como vienen en la planeación y en su orden (2026-09-27, Jorge:
 	    la planeación es la fuente). El plan PUEDE mover un paso a un grupo de trabajo (texto.*,
 	    llaves "Morado"; js/texto-sesion.js), pero PP-NIVELES ya no lo hace: se mostraba al final
@@ -42,7 +45,9 @@
 	  --json <archivo>         lee la dosificación de un JSON exportado en vez de la base
 	  --exportar-json <archivo> solo exporta la dosificación de la base a un JSON (no escribe en la base)
 	--simular no escribe nada (transacción de solo lectura): imprime lo que va a escribir, con
-	conteos y la tabla por sesión. La cadena de conexión sale de PRUEBAS_DB_URL / PROD_DB_URL
+	conteos y la tabla por sesión. Antes de escribir revisa el plan (cada alumno recibe un trabajo
+	por sesión, ligado a un PDA de su grado) y al final lo comprueba otra vez con lo que quedó (con
+	--aplicar, también con la regla de SQL). La cadena de conexión sale de PRUEBAS_DB_URL / PROD_DB_URL
 	(variable de entorno) o de .env.local (el del repo o el de una carpeta superior); nunca se imprime.
 	Necesita el paquete "pg" (el de .qa/node_modules si existe).
 */
@@ -158,6 +163,52 @@ function recibenCon(grados, filas, alumnos) {
 	const asig = { _: {} };
 	filas.forEach((f) => { asig._[f.alumno_id] = f.modo; });
 	return alumnos.filter((a) => AlcanceHoy.asignadoA(a, { id: "_", grados: grados }, asig)).map((a) => a.id);
+}
+
+/*
+	productosDelPlan(plan, sesionesDos, alumnos, porClave, gradosGrupo) → { porNumero, errores }
+	Los trabajos de cada sesión del plan con su asignación y quién los recibe, sin escribir nada.
+	Reglas (con un error, no se carga):
+	  - cada alumno recibe exactamente un trabajo por sesión (el de su grupo de trabajo);
+	  - ese trabajo está ligado a un PDA de SU grado ("pda" del plan): el alumno se evalúa siempre
+	    con los PDA de su grado (decisión de Jorge del 2026-09-27). Un alumno de 2° en un trabajo
+	    ligado solo a los PDA de 1° no dejaría evidencia de PDA (b5).
+*/
+function productosDelPlan(plan, sesionesDos, alumnos, porClave, gradosGrupo) {
+	const claveDe = {};
+	Object.keys(porClave).forEach((k) => { claveDe[porClave[k].id] = k; });
+	const porNumero = {};
+	const errores = [];
+	sesionesDos.forEach((ds) => {
+		const n = ds.numero_sesion;
+		const ps = plan.sesiones[n];
+		if (!ps) { errores.push("Sesión " + n + ": no está en el plan"); return; }
+		const campo = CF.corto(ds.campo_formativo);
+		const recibe = {};
+		const suyo = {}; // alumno → el trabajo que recibe
+		const productos = ps.productos.map((p, i) => {
+			const asig = asignacionDe(p.para, plan, alumnos, porClave, gradosGrupo);
+			const reciben = recibenCon(asig.grados, asig.filas, alumnos);
+			const esperado = asig.miembros.slice().sort().join(",");
+			if (reciben.slice().sort().join(",") !== esperado) errores.push("Sesión " + n + ", «" + p.nombre + "»: la asignación no da exactamente sus alumnos");
+			reciben.forEach((id) => { recibe[id] = (recibe[id] || 0) + 1; suyo[id] = p; });
+			if (p.nombre.length > ProductosHoy.NOMBRE_MAX) errores.push("Sesión " + n + ": nombre de más de " + ProductosHoy.NOMBRE_MAX + " letras: " + p.nombre);
+			return { orden: i + 1, nombre: p.nombre, campo: campo, grados: asig.grados, filas: asig.filas, reciben: reciben, pda: p.pda, para: p.para };
+		});
+		alumnos.forEach((al) => {
+			const quien = claveDe[al.id] || "un alumno (lista " + (al.num_lista || "?") + ")";
+			// Cada alumno recibe exactamente un trabajo por sesión (el de su grupo)...
+			if (recibe[al.id] !== 1) { errores.push("Sesión " + n + ": " + quien + " recibe " + (recibe[al.id] || 0) + " trabajos"); return; }
+			// ...y ese trabajo está ligado a un PDA de su grado (ahí deja su evidencia)
+			const p = suyo[al.id];
+			if ((p.pda || []).map(Number).indexOf(Number(al.grado)) === -1) {
+				errores.push("Sesión " + n + ": " + quien + " (" + al.grado + "°) recibe «" + p.nombre + "», ligado a PDA de " +
+					(p.pda || []).map((g) => g + "°").join(" y ") + ": sin PDA de su grado");
+			}
+		});
+		porNumero[n] = { ds: ds, campo: campo, productos: productos };
+	});
+	return { porNumero: porNumero, errores: errores };
 }
 
 // JSON con las llaves ordenadas (jsonb no guarda el orden de las llaves)
@@ -486,13 +537,11 @@ async function principal() {
 		const alumnos = await q("select id, nombre_completo, grado, num_lista from public.alumnos where grupo_id = $1 and estatus = 'activo' order by grado, num_lista", [grupo.id]);
 		console.log("Grupo: «" + grupo.nombre + "» · grados " + (grupo.grados || []).join(", ") + " · " + alumnos.length + " alumnos activos");
 
-		// 3. Lo que hace falta en la base (b17: "¿Para quién?"; b24: evidencia de los incluidos). Se
-		// revisa aquí y se exige después de validar el plan (así una simulación antes de las
-		// migraciones ya comprueba alumnos, grupos y productos)
+		// 3. Lo que hace falta en la base (b17: "¿Para quién?"). Se revisa aquí y se exige después de
+		// validar el plan (así una simulación antes de las migraciones ya comprueba alumnos, grupos y
+		// productos)
 		const hay = (await q("select to_regclass('public.producto_sesion_alumnos') is not null as asignacion, " +
-			"exists (select 1 from pg_proc where proname = 'guardar_asignacion_producto') as rpc, " +
-			"exists (select 1 from pg_proc where proname = 'pda_de_alumno_en_producto') as b24"))[0];
-		if (!hay.b24) console.log("AVISO: la base no tiene b24 (mi_salon_b24_evidencia_incluidos): los trabajos de Morado y Triángulos de un alumno de 2° cuentan en su boleta, pero no dejan evidencia en los PDA de 1°.");
+			"exists (select 1 from pg_proc where proname = 'guardar_asignacion_producto') as rpc"))[0];
 
 		// 4. No duplicar
 		const ya = await q("select id, estado from public.proyectos where grupo_id = $1 and titulo = $2", [grupo.id, dosProy.nombre_proyecto]);
@@ -516,37 +565,14 @@ async function principal() {
 		const faltan = pdaIds.filter((id) => !catalogo[id]);
 		if (faltan.length) throw new Error(faltan.length + " PDA de la dosificación no están en el catálogo de esta base");
 
-		// 7. Plan de productos por sesión (sin escribir): asignación y quién lo recibe
-		const porNumero = {};
-		const errores = [];
-		dos.dosificacion_sesiones.forEach((ds) => {
-			const ps = plan.sesiones[ds.numero_sesion];
-			if (!ps) { errores.push("Sesión " + ds.numero_sesion + ": no está en el plan"); return; }
-			const campo = CF.corto(ds.campo_formativo);
-			const recibe = {};
-			const productos = ps.productos.map((p, i) => {
-				const asig = asignacionDe(p.para, plan, alumnos, res.porClave, gradosGrupo);
-				const reciben = recibenCon(asig.grados, asig.filas, alumnos);
-				const esperado = asig.miembros.slice().sort().join(",");
-				if (reciben.slice().sort().join(",") !== esperado) errores.push("Sesión " + ds.numero_sesion + ", «" + p.nombre + "»: la asignación no da exactamente sus alumnos");
-				reciben.forEach((id) => { recibe[id] = (recibe[id] || 0) + 1; });
-				if (p.nombre.length > ProductosHoy.NOMBRE_MAX) errores.push("Sesión " + ds.numero_sesion + ": nombre de más de " + ProductosHoy.NOMBRE_MAX + " letras: " + p.nombre);
-				return { orden: i + 1, nombre: p.nombre, campo: campo, grados: asig.grados, filas: asig.filas, reciben: reciben, pda: p.pda, para: p.para };
-			});
-			// Cada alumno recibe exactamente un trabajo por sesión (el de su grupo)
-			alumnos.forEach((al) => { if (recibe[al.id] !== 1) errores.push("Sesión " + ds.numero_sesion + ": " + claveDe[al.id] + " recibe " + (recibe[al.id] || 0) + " trabajos"); });
-			porNumero[ds.numero_sesion] = { ds: ds, campo: campo, productos: productos };
-		});
+		// 7. Plan de productos por sesión (sin escribir): asignación, quién lo recibe y que cada alumno
+		// reciba un trabajo por sesión ligado a un PDA de su grado
+		const { porNumero, errores } = productosDelPlan(plan, dos.dosificacion_sesiones, alumnos, res.porClave, gradosGrupo);
 		if (errores.length) throw new Error("El plan no cuadra:\n  - " + errores.join("\n  - "));
-		console.log("Plan: alumnos del grupo resueltos (" + Object.keys(res.porClave).length + ") y cada uno recibe un trabajo por sesión.");
+		console.log("Plan: alumnos del grupo resueltos (" + Object.keys(res.porClave).length + "); cada uno recibe un trabajo por sesión, ligado a un PDA de su grado.");
 
 		if (!hay.asignacion || !hay.rpc) {
 			if (aplicar) throw new Error("La base no tiene «¿Para quién?» (migración b17): aplica las migraciones antes de cargar.");
-		}
-		// Sin b24 lo calificado de un alumno de 2° en Morado y Triángulos no deja evidencia en los PDA
-		// de 1°, y aplicar b24 después no la recupera: no se carga (R31)
-		if (aplicar && !hay.b24) throw new Error("La base no tiene b24 (mi_salon_b24_evidencia_incluidos): aplícala antes de cargar.");
-		if (!hay.asignacion || !hay.rpc) {
 			console.log("\nLa base aún no tiene «¿Para quién?» (migración b17): el plan cuadra con el grupo, pero la escritura " +
 				"solo se puede simular después de aplicar las migraciones. Nada se escribió.");
 			Object.keys(porNumero).map(Number).sort((x, y) => x - y).forEach((n) => porNumero[n].productos.forEach((p) => {
@@ -593,7 +619,7 @@ async function principal() {
 		});
 		if (!resumenMat) throw new Error("No se materializó");
 
-		// 9. Ligas producto-PDA del nivel y "¿Para quién?" alumno por alumno
+		// 9. Ligas producto-PDA del plan (los PDA de cada grado que recibe el trabajo) y "¿Para quién?" alumno por alumno
 		const spda = (await sb.from("sesiones_pda").select("id, sesion_id, pda_id, grado").in("sesion_id", Object.values(sesionPorNumero).map((s) => s.id))).data;
 		let ligasNuevas = 0, asignados = 0;
 		for (const n of Object.keys(porNumero)) {
@@ -662,6 +688,15 @@ async function principal() {
 			const links = (ses.recursos && ses.recursos.links) || [];
 			if (links.some((l) => /anexo\.html/.test(l.url))) fallas.push("Sesión " + n + ": quedó un enlace de la tienda");
 			if (plan.drive.carpetas_por_sesion[n] && !links.some((l) => /drive\.google\.com\/drive\/folders\//.test(l.url))) fallas.push("Sesión " + n + ": sin carpeta de Drive");
+			// Con lo que quedó: cada alumno recibe un trabajo en la sesión, ligado a un PDA de su grado
+			const trabajosSesion = trabajos.filter((t) => t.sesion_id === s.id);
+			alumnos.forEach((al) => {
+				const suyos = trabajosSesion.filter((t) => AlcanceHoy.asignadoA(al, t, indice));
+				if (suyos.length !== 1) { fallas.push("Sesión " + n + ": " + claveDe[al.id] + " recibe " + suyos.length + " trabajos"); return; }
+				const gradosPda = ligas.filter((l) => l.producto_sesion_id === suyos[0].id).map((l) => spdaFin.find((r) => r.id === l.sesion_pda_id))
+					.filter((r) => r && r.sesion_id === s.id).map((r) => Number(r.grado));
+				if (gradosPda.indexOf(Number(al.grado)) === -1) fallas.push("Sesión " + n + ": " + claveDe[al.id] + " (" + al.grado + "°) recibe «" + suyos[0].nombre + "» sin PDA de su grado");
+			});
 		});
 		// Guardar sin cambios en Crear proyecto (reedición con la fila de siempre): no borra ni crea nada
 		const reedicion = SM.planificar(sesiones, { spda: spdaFin, productos: prods.slice().sort((x, y) => String(x.created_at).localeCompare(String(y.created_at))) }, {
@@ -678,6 +713,18 @@ async function principal() {
 				let p = null;
 				Object.values(porNumero).forEach((x) => x.productos.forEach((y) => { if (y.id === r.id) p = y; }));
 				if (p && (r.reciben || []).slice().sort().join(",") !== p.reciben.slice().sort().join(",")) fallas.push("alumno_recibe_producto no coincide en «" + p.nombre + "»");
+			});
+			// ...y en cada sesión cada alumno recibe un trabajo ligado a un PDA de SU grado (donde deja
+			// su evidencia, b5)
+			const porAlumno = await q("select s.numero_sesion, a.id as alumno_id, count(distinct ps.id)::int as trabajos, " +
+				"count(distinct ps.id) filter (where exists (select 1 from public.producto_sesion_pda l join public.sesiones_pda sp on sp.id = l.sesion_pda_id " +
+				"where l.producto_sesion_id = ps.id and sp.grado = a.grado))::int as con_su_pda " +
+				"from public.sesiones s join public.productos_sesion ps on ps.sesion_id = s.id and ps.tipo = 'trabajo' " +
+				"cross join public.alumnos a where s.id = any($1) and a.grupo_id = $2 and a.estatus = 'activo' " +
+				"and public.alumno_recibe_producto(a.id, ps.id) group by s.numero_sesion, a.id", [sesionIds, grupo.id]);
+			if (porAlumno.length !== sesionIds.length * alumnos.length) fallas.push("SQL: " + porAlumno.length + " pares sesión-alumno con trabajo (esperados " + sesionIds.length * alumnos.length + ")");
+			porAlumno.forEach((r) => {
+				if (r.trabajos !== 1 || r.con_su_pda !== 1) fallas.push("SQL, sesión " + r.numero_sesion + ": " + claveDe[r.alumno_id] + " recibe " + r.trabajos + " trabajos, " + r.con_su_pda + " con PDA de su grado");
 			});
 		}
 
@@ -701,7 +748,7 @@ async function principal() {
 		console.log("\nConteos: " + JSON.stringify(conteo));
 		console.log("Proyecto: " + proyectoId + (aplicar ? "" : " (simulado: no existe)") + " · trimestre " + plan.proyecto.trimestre + " · " + plan.proyecto.estado);
 		if (fallas.length) throw new Error("La comprobación falló:\n  - " + fallas.join("\n  - "));
-		console.log("Comprobación: OK (asignación, ligas, 15 sesiones sin fecha, horario y pasos como en la planeación, recursos de Drive, reedición sin cambios = 0 filas)");
+		console.log("Comprobación: OK (asignación, ligas, cada alumno con un trabajo por sesión ligado a un PDA de su grado, 15 sesiones sin fecha, horario y pasos como en la planeación, recursos de Drive, reedición sin cambios = 0 filas)");
 
 		if (aplicar) {
 			await c.query("commit");
@@ -719,7 +766,7 @@ async function principal() {
 	}
 }
 
-module.exports = { resolverAlumnos, miembrosDe, asignacionDe, recibenCon, textoPorGrupo, recursosDeSesion, ajustarFila, sbDesdePg, normal };
+module.exports = { resolverAlumnos, miembrosDe, asignacionDe, recibenCon, productosDelPlan, textoPorGrupo, recursosDeSesion, ajustarFila, sbDesdePg, normal };
 
 if (require.main === module) {
 	principal().then((codigo) => { process.exitCode = codigo || 0; }).catch((e) => {
