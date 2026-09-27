@@ -38,7 +38,8 @@ ok("con SaaS, primera vez con grupo → panel", L.porPerfil(conSaas, S.destinoLo
 ok("con SaaS, primera vez sin grupo → alta", L.porPerfil(conSaas, S.destinoLogin(null, sinGrupo)), "../onboarding.html");
 ok("con SaaS, última Mi Salón, grupos fallidos → panel", L.porPerfil(conSaas, S.destinoLogin("salon", { data: null, error: { message: "x" } })), "../dashboard.html");
 ok("con SaaS, última Tienda → portada de la tienda", L.porPerfil(conSaas, S.destinoLogin("tienda", null)), "index.html");
-ok("con SaaS, última Sala → Sala de Maestros", L.porPerfil(conSaas, S.destinoLogin("sala", null)), "../sala-maestros.html");
+// Sala de Maestros oculta hasta que exista (Jorge, 2026-09-26; SALA_ABIERTA en js/secciones.js)
+ok("con SaaS, 'sala' guardada (Sala oculta) → Mi Salón", L.porPerfil(conSaas, S.destinoLogin("sala", null)), "../dashboard.html");
 ok("con SaaS sin destino (no cargó el selector) → panel", L.porPerfil(conSaas), "../dashboard.html");
 ok("sin SaaS → catálogo", L.porPerfil({ data: { activo_saas: false }, error: null }), "catalogo.html");
 ok("sin SaaS no importa la última sección → catálogo", L.porPerfil({ data: { activo_saas: false }, error: null }, "sala-maestros.html"), "catalogo.html");
@@ -65,7 +66,7 @@ const P = require("../js/portal.js");
 ok("portal: primera vez → Mi Salón", P.destino(null), "dashboard.html");
 ok("portal: última Mi Salón → panel", P.destino("salon"), "dashboard.html");
 ok("portal: última Tienda → portada (no el catálogo)", P.destino("tienda"), "tienda/index.html");
-ok("portal: última Sala → Sala de Maestros", P.destino("sala"), "sala-maestros.html");
+ok("portal: 'sala' guardada (Sala oculta) → Mi Salón", P.destino("sala"), "dashboard.html");
 ok("portal: valor raro → Mi Salón", P.destino("admin"), "dashboard.html");
 
 // ── Tienda: ¿se ofrece el selector? ──────────────────────────────────────────

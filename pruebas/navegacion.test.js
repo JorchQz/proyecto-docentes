@@ -145,9 +145,9 @@ ok("la marca y las imágenes también resuelven bajo /salon/ (la app sirve los m
 	/src="tienda\/assets\/jissez-wordmark-white\.png"/.test(htmlSalon), true);
 ok("Tienda desde /salon/: sale de la app y, en la app instalada, se abre en el navegador",
 	S.destinoPestana("tienda", "https://jissez.com/salon/", true), { href: "https://jissez.com/tienda/index.html", fuera: true });
-ok("Mi Salón y Sala desde /salon/ se quedan en /salon/",
+ok("Mi Salón desde /salon/ se queda en /salon/ (la Sala, oculta, también lleva a Mi Salón)",
 	["salon", "sala"].map((c) => S.destinoPestana(c, "https://jissez.com/salon/", true)),
-	[{ href: "https://jissez.com/salon/dashboard.html", fuera: false }, { href: "https://jissez.com/salon/sala-maestros.html", fuera: false }]);
+	[{ href: "https://jissez.com/salon/dashboard.html", fuera: false }, { href: "https://jissez.com/salon/dashboard.html", fuera: false }]);
 
 // ── Selector de secciones solo con acceso ────────────────────────────────────
 ok("la barra no trae el selector de secciones: solo su lugar apartado",
@@ -156,9 +156,12 @@ ok("el selector se pinta solo dentro de saasAcceso.then (y solo si existe el can
 	/if \(window\.saasAcceso && window\.Secciones\) \{\s*window\.saasAcceso\.then\(function \(\) \{[\s\S]{0,300}selectorNav\(SECCION\)/.test(fuente) &&
 	(fuente.match(/selectorNav\(/g) || []).length === 1, true); // y en ningún otro lugar
 const sel = S.selectorNav("salon");
-ok("selectorNav: tres secciones, la actual marcada, con nombre accesible",
-	[(sel.match(/class="jz-sel-op"/g) || []).length, (sel.match(/aria-current="true"/g) || []).length, /aria-label="Mi Salón"[^>]*aria-current="true"/.test(sel), /aria-label="Sala de Maestros"/.test(sel), /aria-label="Secciones de Jissez"/.test(sel)],
-	[3, 1, true, true, true]);
+// Sala de Maestros oculta hasta que exista (Jorge, 2026-09-26): solo Tienda y Mi Salón
+ok("selectorNav: Tienda y Mi Salón (sin Sala), la actual marcada, con nombre accesible y rejilla de 2",
+	[(sel.match(/class="jz-sel-op"/g) || []).length, (sel.match(/aria-current="true"/g) || []).length, /aria-label="Mi Salón"[^>]*aria-current="true"/.test(sel), /Sala/.test(sel), /aria-label="Secciones de Jissez"/.test(sel), /--jz-sel-n:2/.test(sel)],
+	[2, 1, true, false, true, true]);
+ok("selectorNav en sala-maestros.html (abierta por su dirección): sin Sala y ninguna pestaña marcada", [/Sala/.test(S.selectorNav("sala")), /aria-current/.test(S.selectorNav("sala"))], [false, false]);
+ok("la rejilla del selector usa el número de pestañas", /\.jz-sel\{display:grid;grid-template-columns:repeat\(var\(--jz-sel-n,3\),minmax\(0,1fr\)\)/.test(N.CSS), true);
 ok("selectorNav: sección inválida → Mi Salón", /aria-label="Mi Salón"[^>]*aria-current="true"/.test(S.selectorNav("x")), true);
 ok("las páginas con la barra cargan el candado (que decide el acceso) antes del selector",
 	fs.readdirSync(RAIZ).filter((f) => f.endsWith(".html") && /src="js\/navbar\.js"/.test(leer(f)))

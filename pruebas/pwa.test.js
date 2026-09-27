@@ -148,8 +148,9 @@ const S = require("../js/secciones.js");
 ok("Tienda bajo /salon/: a la tienda de siempre; en la app, en el navegador",
 	[S.destinoPestana("tienda", "https://jissez.com/salon/", false), S.destinoPestana("tienda", "https://jissez.com/salon/", true)],
 	[{ href: "https://jissez.com/tienda/index.html", fuera: false }, { href: "https://jissez.com/tienda/index.html", fuera: true }]);
-ok("Mi Salón y Sala se quedan en /salon/", [S.destinoPestana("salon", "https://jissez.com/salon/", true), S.destinoPestana("sala", "https://jissez.com/salon/", true)],
-	[{ href: "https://jissez.com/salon/dashboard.html", fuera: false }, { href: "https://jissez.com/salon/sala-maestros.html", fuera: false }]);
+// (Sala de Maestros oculta hasta que exista: su destino es Mi Salón, también bajo /salon/)
+ok("Mi Salón (y la Sala oculta) se quedan en /salon/", [S.destinoPestana("salon", "https://jissez.com/salon/", true), S.destinoPestana("sala", "https://jissez.com/salon/", true)],
+	[{ href: "https://jissez.com/salon/dashboard.html", fuera: false }, { href: "https://jissez.com/salon/dashboard.html", fuera: false }]);
 ok("fuera de /salon/ la pestaña Tienda no cambia", S.destinoPestana("tienda", "https://jissez.com/", true), { href: "https://jissez.com/tienda/index.html", fuera: false });
 const L = require("../tienda/js/login.js");
 ok("login: reconoce /salon/", [L.enSalon("/salon/tienda/login"), L.enSalon("/tienda/login")], [true, false]);

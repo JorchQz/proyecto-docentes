@@ -316,7 +316,7 @@ var Navegacion = (function () {
 		".jz-lat-cuerpo{flex:1;min-height:0;overflow-y:auto;padding:2px 12px 12px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}" +
 		// Selector de secciones (js/secciones.js, selectorNav)
 		".jz-secciones-slot{min-height:58px;margin-bottom:14px}" +
-		".jz-sel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;padding:3px;border-radius:14px;background:rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
+		".jz-sel{display:grid;grid-template-columns:repeat(var(--jz-sel-n,3),minmax(0,1fr));gap:2px;padding:3px;border-radius:14px;background:rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}" +
 		".jz-sel li{display:flex}" +
 		".jz-sel-op{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;padding:4px 2px;border-radius:11px;color:rgba(255,255,255,.72);text-decoration:none;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background-color .15s ease,color .15s ease}" +
 		".jz-sel-op:hover{color:#fff;background:rgba(255,255,255,.08)}" +
