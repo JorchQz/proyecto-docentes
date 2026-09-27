@@ -542,6 +542,11 @@ async function principal() {
 
 		if (!hay.asignacion || !hay.rpc) {
 			if (aplicar) throw new Error("La base no tiene «¿Para quién?» (migración b17): aplica las migraciones antes de cargar.");
+		}
+		// Sin b24 lo calificado de un alumno de 2° en Morado y Triángulos no deja evidencia en los PDA
+		// de 1°, y aplicar b24 después no la recupera: no se carga (R31)
+		if (aplicar && !hay.b24) throw new Error("La base no tiene b24 (mi_salon_b24_evidencia_incluidos): aplícala antes de cargar.");
+		if (!hay.asignacion || !hay.rpc) {
 			console.log("\nLa base aún no tiene «¿Para quién?» (migración b17): el plan cuadra con el grupo, pero la escritura " +
 				"solo se puede simular después de aplicar las migraciones. Nada se escribió.");
 			Object.keys(porNumero).map(Number).sort((x, y) => x - y).forEach((n) => porNumero[n].productos.forEach((p) => {

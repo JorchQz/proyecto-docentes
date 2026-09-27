@@ -138,12 +138,19 @@ igual("b24: la función no es security definer (lee con las políticas de quien 
 // ── La guía de producción aplica este mismo orden en UNA transacción, con b21b aparte después ──
 const guia = fs.readFileSync(path.join(__dirname, "..", "docs", "PRODUCCION-MI-SALON.md"), "utf8").replace(/\r\n/g, "\n");
 const comandos = guia.split("\n").filter((l) => l.startsWith("node scripts/aplicar-migraciones-prod.js "));
-const primera = (comandos[0] || "").split(/\s+/).slice(2).map((a) => a.replace(/^supabase\//, ""));
+const archivosDe = (l) => (l || "").split(/\s+/).slice(2).map((a) => a.replace(/^supabase\//, ""));
+// Desde el 2026-09-27 la guía trae primero lo que falta en producción (las once ya se aplicaron:
+// b24 sola y luego b21b) y después la cadena completa para una base sin ninguna
+const iCadena = comandos.findIndex((l) => l.indexOf("jissez_interes_secciones_2026-09.sql") !== -1);
+const primera = archivosDe(comandos[iCadena]);
 const pendientes = ORDEN.slice(ORDEN.indexOf("jissez_interes_secciones_2026-09.sql"));
-igual("la guía: la primera transacción trae las de este orden desde jissez_interes_secciones, en el mismo orden, y termina en b24",
+igual("la guía: la cadena completa trae las de este orden desde jissez_interes_secciones, en el mismo orden, y termina en b24",
 	primera.filter((a) => pendientes.indexOf(a) !== -1), pendientes);
 igual("la guía: b24 es la última de esa transacción", primera[primera.length - 1], "mi_salon_b24_evidencia_incluidos_2026-09.sql");
-igual("la guía: b21b va aparte, después", [comandos.length, (comandos[1] || "").indexOf("mi_salon_b21b_piloto_produccion_2026-09.sql") !== -1], [2, true]);
+igual("la guía: b21b va aparte, después de la cadena", (comandos[iCadena + 1] || "").indexOf("mi_salon_b21b_piloto_produccion_2026-09.sql") !== -1, true);
+igual("la guía: lo que falta en producción es b24 sola y después b21b, antes de la cadena completa",
+	[iCadena, archivosDe(comandos[0]), archivosDe(comandos[1])],
+	[2, ["mi_salon_b24_evidencia_incluidos_2026-09.sql"], ["mi_salon_b21b_piloto_produccion_2026-09.sql"]]);
 igual("la guía: la tabla numera b24 como la 12 y b21b como la 13",
 	[/\| 12 \| `supabase\/mi_salon_b24_evidencia_incluidos_2026-09\.sql` \|/.test(guia), /\| 13 \| `supabase\/mi_salon_b21b_piloto_produccion_2026-09\.sql` \|/.test(guia)], [true, true]);
 igual("la guía: la comprobación final confirma b24 (columna b24)", /as b24; -- true/.test(guia), true);

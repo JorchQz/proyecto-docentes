@@ -100,17 +100,24 @@ igual a producción, en una transacción revertida):
 Cómo aplicarlas (una sola transacción con `lock_timeout` de 5 s: si una falla, no queda nada a
 medias). El script versionado es `scripts/aplicar-migraciones-prod.js` (copia del de `.qa/`, que no
 está en git); toma `PROD_DB_URL` de la variable de entorno o de `.env.local` y el paquete `pg` de
-`.qa/node_modules` (o de un `npm install pg`):
+`.qa/node_modules` (o de un `npm install pg`).
+
+**Estado real (2026-09-27, 03:45 del centro):** las once (de `interes_secciones` a b23) YA están
+aplicadas en producción, en una transacción, con la comprobación final correcta. NO volver a correr el
+bloque de abajo: falta solo b24 (sola, también en una transacción; es idempotente) y después b21b:
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b24_evidencia_incluidos_2026-09.sql
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
+```
+
+La comprobación final debe dar `b24 = true` y `piloto = 2`. Para una base sin ninguna de las
+migraciones, la cadena completa es:
 
 ```
 node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql supabase/mi_salon_b23_folio_incidencias_2026-09.sql supabase/mi_salon_b24_evidencia_incluidos_2026-09.sql
 node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
-
-Si las once ya se aplicaron antes sin b24 (la lectura del 2026-09-27 en la noche encontró b17 en
-producción y no b24), b24 va sola, también en una transacción y es idempotente:
-`node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b24_evidencia_incluidos_2026-09.sql`; la
-comprobación final debe dar `b24 = true`.
 
 Si no se puede usar el script: pegarlas una por una, en ese orden, en el editor SQL de producción,
 empezando cada una con `begin; set local lock_timeout = '5s';` y terminando con `commit;` (el editor
@@ -270,8 +277,8 @@ node scripts/cargar-pp-niveles.js --base prod --grupo 34fc6a07-ec93-449f-8c73-e6
 
 - `--simular` no escribe nada (transacción de solo lectura). Debe terminar con "Comprobación: OK" y
   "Simulación: no se escribió nada." (código 0). Antes de las migraciones se detiene con código 3
-  ("La base aún no tiene «¿Para quién?» (migración b17)"). Sin b24 avisa que un alumno de 2° en un
-  trabajo con los PDA de 1° no dejaría evidencia en ellos: no aplicar así.
+  ("La base aún no tiene «¿Para quién?» (migración b17)"). Sin b24 la simulación avisa que un alumno
+  de 2° en un trabajo con los PDA de 1° no dejaría evidencia en ellos, y `--aplicar` se niega a cargar.
 - `--aplicar` solo después de una simulación limpia. Termina con "COMMIT: cargado." Si el proyecto
   ya está en el grupo, no hace nada (código 2): no se carga dos veces.
 - Comprobar con la cuenta de soporte o la de Fanny: Inicio muestra la sesión 1 como siguiente, Hoy
