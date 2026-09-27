@@ -294,6 +294,18 @@ async function candado(respuestas, pathname) {
 	const captura = ["hoy", "ponte-al-dia", "asistencia", "mi-grupo", "onboarding", "actividades", "examen", "listas", "incidencias", "calendario", "ajustes", "evaluacion_diagnostica", "evaluacion_formativa", "reportes", "planeacion", "crear_proyecto", "tareas"];
 	ok("las páginas de captura marcan sus controles (data-captura)", captura.filter((p) => !/data-captura/.test(leer(p + ".html"))), []);
 	ok("Ajustes: borrar la cuenta NO queda bloqueado", /id="(showDeleteFormBtn|confirmDeleteBtn)"[^>]*data-captura/.test(leer("ajustes.html")), false);
+	// R27a: el selector de trimestre de Mi grupo en solo lectura se ve deshabilitado, dice por qué y
+	// no ofrece "Intenta de nuevo" (reintentar no sirve)
+	const mg = leer("js/mi-grupo.js");
+	ok("Mi grupo: el trimestre en solo lectura queda deshabilitado, con explicación y sin 'Intenta de nuevo'", [
+		/<select id="trimestreActualSelect" data-captura/.test(leer("mi-grupo.html")),
+		/trimestreSelect\.disabled = guardandoTrimestre \|\| solo;/.test(mg),
+		/if \(solo\) mensajeTrimestre\("lectura", TEXTO_TRIMESTRE_SOLO_LECTURA\)/.test(mg),
+		/TEXTO_TRIMESTRE_SOLO_LECTURA = "Solo lectura:[^"]*no se puede cambiar/.test(mg) && !/TEXTO_TRIMESTRE_SOLO_LECTURA = "[^"]*Intenta/.test(mg),
+		/esErrorSoloLectura\(error\)\) \{[\s\S]{0,200}return;/.test(mg),
+		/window\.saasEstado\.then\(function \(\) \{ renderTrimestreActual\(\); \}/.test(mg),
+		/if \(t !== sug\.trimestre && !solo\)/.test(mg),
+	], [true, true, true, true, true, true, true]);
 	const rep = leer("js/reportes.js");
 	const guardarTextos = (rep.match(/\n\tasync function guardarTextosPropuestos\([\s\S]*?\n\t\}/) || [""])[0];
 	ok("Boleta: la propuesta no se guarda en solo lectura (se ve e imprime)",

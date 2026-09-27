@@ -94,6 +94,15 @@ console.log("\n1. Lista pegada");
 	ok("un solo grado en el grupo: todos van a ese grado", H.parsearLista("PÉREZ LÓPEZ JUAN\nRUIZ ANA", { grados: [5] }).filas.map((f) => f.grado), [5, 5]);
 	ok("un solo nombre: pide apellido", H.parsearLista("PEDRO", { grados: [1] }).filas[0].error, "Falta el apellido paterno o el nombre");
 	ok("muy largo: se marca para revisar cómo se separó", H.parsearLista("GARCÍA LÓPEZ MARÍA FERNANDA GUADALUPE ISABEL", { grados: [1] }).filas[0].dudoso, true);
+	// R27a: apellidos compuestos con la partícula en medio (MONTES DE OCA, PONCE DE LEÓN)
+	const sep = (t, o) => { const f = H.parsearLista(t, Object.assign({ grados: [1] }, o || {})).filas[0]; return [f.apellido1, f.apellido2, f.nombres, f.dudoso]; };
+	ok("MONTES DE OCA es un solo apellido (paterno)", sep("MONTES DE OCA LÓPEZ ANA SOFÍA"), ["MONTES DE OCA", "LÓPEZ", "ANA SOFÍA", false]);
+	ok("PONCE DE LEÓN (con acento) es un solo apellido", sep("PONCE DE LEÓN GARCÍA JUAN"), ["PONCE DE LEÓN", "GARCÍA", "JUAN", false]);
+	ok("MONTES DE OCA como materno", sep("PÉREZ MONTES DE OCA LUIS"), ["PÉREZ", "MONTES DE OCA", "LUIS", false]);
+	ok("MONTES DE OCA con coma y en una lista que empieza por el nombre", [sep("MONTES DE OCA LÓPEZ, ANA"), sep("ANA SOFÍA LÓPEZ MONTES DE OCA", { orden: "nombre" })],
+		[["MONTES DE OCA", "LÓPEZ", "ANA", false], ["LÓPEZ", "MONTES DE OCA", "ANA SOFÍA", false]]);
+	ok("DE LA CRUZ como materno sigue sin marcarse (el nombre de pila lo delimita)", sep("PÉREZ DE LA CRUZ JUAN CARLOS"), ["PÉREZ", "DE LA CRUZ", "JUAN CARLOS", false]);
+	ok("partícula en medio de un compuesto que no está en la lista: se marca para revisar", sep("RUIZ DE ALDANA PÉREZ LUCÍA")[3], true);
 	ok("gradoDeTexto: 3°, 3er grado, TERCERO, 3° A; un 3 suelto solo en columna", ["3°", "3er grado", "TERCERO", "3° A", "3"].map((t) => H.gradoDeTexto(t)).concat([H.gradoDeTexto("3", true)]), [3, 3, 3, 3, null, 3]);
 	const f = { apellido1: "pérez", apellido2: "", nombres: "ana", grado: 3 };
 	H.revisarFila(f, {});

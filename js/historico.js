@@ -48,6 +48,15 @@
 
 	// Partículas de apellidos compuestos: van pegadas a la palabra que sigue ("DE LA CRUZ")
 	var PARTICULAS = ["DE", "DEL", "LA", "LAS", "LOS", "Y", "SAN", "SANTA", "MC", "MAC", "VAN", "VON", "DA", "DI", "DOS"];
+	// Apellidos compuestos con la partícula EN MEDIO (R27a): "MONTES DE OCA" es UN apellido, no
+	// "MONTES" y "DE OCA". Se comparan sin acentos. Los que no están aquí y quedan ambiguos se marcan
+	// para revisar (separar: una partícula en medio sin un nombre de pila que la delimite).
+	var COMPUESTOS = ["MONTES DE OCA", "PONCE DE LEON", "DIAZ DE LEON", "PEREZ DE LEON", "GARCIA DE LEON",
+		"RUIZ DE VELASCO", "RUIZ DE CHAVEZ", "FERNANDEZ DE LARA", "FERNANDEZ DE CORDOBA", "GARCIA DE ALBA",
+		"LOPEZ DE NAVA", "SANCHEZ DE TAGLE", "PEREZ DE TAGLE", "GOMEZ DE PARADA", "VAZQUEZ DE MERCADO",
+		"GUTIERREZ DE VELASCO", "MARTINEZ DE ESCOBAR", "SUAREZ DEL REAL", "ALVAREZ DEL CASTILLO",
+		"ALVAREZ DEL VILLAR", "FERNANDEZ DEL CASTILLO", "GONZALEZ DE COSSIO", "ESPINOSA DE LOS MONTEROS",
+		"ESPINOSA DE LOS REYES", "PEREZ DE LA TORRE"];
 
 	// Nombres de pila frecuentes en México (para adivinar si la lista empieza por el nombre)
 	var NOMBRES_COMUNES = ("JOSE JUAN LUIS CARLOS JORGE MIGUEL ANGEL JESUS FRANCISCO ANTONIO ALEJANDRO PEDRO " +
@@ -125,10 +134,17 @@
 			if (salida.length) salida[salida.length - 1] += " " + pendiente.join(" ");
 			else salida.push(pendiente.join(" "));
 		}
+		// "MONTES" + "DE OCA" → "MONTES DE OCA" (apellido compuesto conocido)
+		for (var i = 0; i < salida.length - 1; i++) {
+			if (COMPUESTOS.indexOf(sinAcentos(salida[i] + " " + salida[i + 1]).toUpperCase()) !== -1) {
+				salida.splice(i, 2, salida[i] + " " + salida[i + 1]);
+			}
+		}
 		return salida;
 	}
 
 	function primeraPalabra(g) { return sinAcentos(String(g || "").split(" ")[0]).toUpperCase(); }
+	function empiezaConParticula(g) { return PARTICULAS.indexOf(primeraPalabra(g)) !== -1; }
 
 	/*
 		Separar un nombre completo (una sola celda) en partes, según el orden de la lista:
@@ -151,6 +167,13 @@
 		}
 		// Muy largo (¿un apellido compuesto sin partícula?): que el docente lo revise
 		if (g.length >= 5) r.dudoso = true;
+		// Partícula EN MEDIO de los apellidos que no delimita un nombre de pila conocido (R27a):
+		// "XXX DE YYY LÓPEZ ANA" puede ser el apellido compuesto "XXX DE YYY" (como "MONTES DE OCA")
+		// y no "XXX" + "DE YYY"; "PÉREZ DE LA CRUZ JUAN" no se marca (JUAN es un nombre).
+		if (g.length >= 4) {
+			if (orden === "nombre" ? empiezaConParticula(g[g.length - 1]) && !ES_NOMBRE[primeraPalabra(g[g.length - 3])]
+				: empiezaConParticula(g[1]) && !ES_NOMBRE[primeraPalabra(g[2])]) r.dudoso = true;
+		}
 		return r;
 	}
 
