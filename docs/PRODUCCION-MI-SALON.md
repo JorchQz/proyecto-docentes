@@ -107,6 +107,11 @@ node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-
 node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
 
+Si las once ya se aplicaron antes sin b24 (la lectura del 2026-09-27 en la noche encontró b17 en
+producción y no b24), b24 va sola, también en una transacción y es idempotente:
+`node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b24_evidencia_incluidos_2026-09.sql`; la
+comprobación final debe dar `b24 = true`.
+
 Si no se puede usar el script: pegarlas una por una, en ese orden, en el editor SQL de producción,
 empezando cada una con `begin; set local lock_timeout = '5s';` y terminando con `commit;` (el editor
 corre cada pegada como un bloque). La consulta final de b21b debe devolver dos filas, origen
