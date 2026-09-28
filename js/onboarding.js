@@ -29,7 +29,10 @@
 	var studentLastName2Input = document.getElementById("studentLastName2");
 	var studentFirstNamesInput = document.getElementById("studentFirstNames");
 	var studentGradeWrapper = document.getElementById("studentGradeWrapper");
-	var studentGradeSelect = document.getElementById("studentGrade");
+	var studentGradeButtons = document.getElementById("studentGradeButtons");
+	var studentSubmitBtn = document.getElementById("studentSubmit");
+	var studentCancelEditBtn = document.getElementById("studentCancelEdit");
+	var studentFormTitle = document.getElementById("studentFormTitle");
 
 	var cicloInicioSelect = document.getElementById("cicloInicio");
 	var cicloFinSelect = document.getElementById("cicloFin");
@@ -41,6 +44,25 @@
 	var currentGroupType = "";
 	var currentGroupGrades = [];
 	var students = [];
+	/*
+		Formulario "Uno por uno" (Jorge, 2026-09-27):
+		  - gradoElegido: el grado marcado en los botones. Después de agregar a un alumno se queda
+		    (la docente puede registrar por grado sin cambiarlo cada vez).
+		  - editando: el alumno de la lista que se está corrigiendo (lápiz); al guardar se actualiza
+		    en su lugar y la lista se reordena. gradoAntesDeEditar: el grado que estaba elegido antes
+		    de editar, para volver a él al terminar.
+		  - ultimoKey: el alumno recién agregado o corregido, resaltado en la lista (se ordena sola
+		    y así se ve dónde quedó).
+	*/
+	var gradoElegido = null;
+	var editando = null;
+	var gradoAntesDeEditar = null;
+	var ultimoKey = null;
+	// Íconos de la lista (SVG en línea, trazo estilo Lucide: pencil y trash-2)
+	var ICONO_LAPIZ = "<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>" +
+		"<path d='M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'/><path d='m15 5 4 4'/></svg>";
+	var ICONO_BASURA = "<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>" +
+		"<path d='M3 6h18'/><path d='M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'/><path d='M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'/><line x1='10' x2='10' y1='11' y2='17'/><line x1='14' x2='14' y1='11' y2='17'/></svg>";
 
 	// Poblar selects de ciclo escolar
 	var currentYear = new Date().getFullYear();
@@ -182,9 +204,13 @@
 					var grado = shouldCaptureStudentGrade() ? f.grado : (currentGroupGrades[0] || null);
 					var key = normalizeName(f.nombre_completo) + "|" + String(grado || "");
 					if (students.some(function (s) { return s.key === key; })) return;
-					students.push({ nombre_completo: f.nombre_completo, grado: grado, key: key });
+					// Las partes que la docente revisó al pegar: con ellas se edita con el lápiz
+					var partes = f.apellido1 !== undefined || f.nombres !== undefined
+						? { apellido1: f.apellido1 || "", apellido2: f.apellido2 || "", nombres: f.nombres || "" } : null;
+					students.push({ nombre_completo: f.nombre_completo, grado: grado, key: key, partes: partes });
 					nuevos++;
 				});
+				ultimoKey = null;
 				updateStudentsList();
 				lista.limpiar();
 				showMessage("studentsMessage", "success", nuevos + (nuevos === 1 ? " alumno agregado" : " alumnos agregados") +
@@ -341,7 +367,7 @@
 		var lastName1 = normalizeSpaces(document.getElementById("studentLastName1").value).toUpperCase();
 		var lastName2 = normalizeSpaces(document.getElementById("studentLastName2").value).toUpperCase();
 		var firstNames = normalizeSpaces(document.getElementById("studentFirstNames").value).toUpperCase();
-		var selectedGrade = studentGradeSelect ? parseInt(studentGradeSelect.value, 10) : null;
+		var selectedGrade = gradoElegido === null ? NaN : Number(gradoElegido);
 
 		if (!lastName1 || !firstNames) {
 			showMessage(
@@ -385,8 +411,9 @@
 		var studentGrade = shouldCaptureStudentGrade() ? selectedGrade : currentGroupGrades[0] || null;
 		var key = normalizeName(fullName) + "|" + String(studentGrade || "");
 
+		// Al editar, el propio alumno no cuenta como duplicado
 		var alreadyExists = students.some(function (s) {
-			return s.key === key;
+			return s !== editando && s.key === key;
 		});
 
 		if (alreadyExists) {
@@ -398,20 +425,102 @@
 			return;
 		}
 
-		students.push({
-			nombre_completo: fullName,
-			grado: studentGrade,
-			key: key,
-		});
-
-		clearMessage("studentsMessage");
-		updateStudentsList();
-		studentForm.reset();
-		if (studentGradeSelect && studentGradeSelect.options.length > 0) {
-			studentGradeSelect.value = studentGradeSelect.options[0].value;
+		var partes = { apellido1: lastName1, apellido2: lastName2, nombres: firstNames };
+		if (editando) {
+			// Se corrige en su lugar; la lista se reordena sola al pintarse
+			editando.nombre_completo = fullName;
+			editando.grado = studentGrade;
+			editando.key = key;
+			editando.partes = partes;
+			terminarEdicion();
+			ultimoKey = key;
+			showMessage("studentsMessage", "success", "Cambios guardados en la lista.");
+		} else {
+			students.push({
+				nombre_completo: fullName,
+				grado: studentGrade,
+				key: key,
+				partes: partes,
+			});
+			ultimoKey = key;
+			clearMessage("studentsMessage");
 		}
+
+		updateStudentsList();
+		// Se limpian los nombres; el grado se queda para el siguiente alumno
+		limpiarNombresFormulario();
 		document.getElementById("studentLastName1").focus();
 	});
+
+	// ── Grado con botones, editar y cancelar (formulario "Uno por uno") ──────────
+	if (studentGradeButtons) {
+		studentGradeButtons.addEventListener("click", function (e) {
+			var btn = e.target.closest("button[data-grado]");
+			if (!btn) return;
+			gradoElegido = Number(btn.dataset.grado);
+			pintarBotonesGrado();
+		});
+	}
+	if (studentCancelEditBtn) {
+		studentCancelEditBtn.addEventListener("click", function () {
+			terminarEdicion();
+			limpiarNombresFormulario();
+			clearMessage("studentsMessage");
+			updateStudentsList();
+			document.getElementById("studentLastName1").focus();
+		});
+	}
+
+	function limpiarNombresFormulario() {
+		[studentLastName1Input, studentLastName2Input, studentFirstNamesInput].forEach(function (input) {
+			if (input) input.value = "";
+		});
+	}
+
+	// Las partes del nombre para el formulario: las que se capturaron (o se revisaron al pegar);
+	// si no las hay (una lista recuperada del borrador), se separan con la regla de la lista
+	// pegada (js/historico.js: "DE LA CRUZ" es un apellido)
+	function partesDe(student) {
+		if (student.partes) return student.partes;
+		if (window.Historico && window.Historico.separar) return window.Historico.separar(student.nombre_completo || "", "apellidos");
+		var p = normalizeSpaces(student.nombre_completo).split(" ");
+		return p.length < 3
+			? { apellido1: p[0] || "", apellido2: "", nombres: p.slice(1).join(" ") }
+			: { apellido1: p[0], apellido2: p[1], nombres: p.slice(2).join(" ") };
+	}
+
+	function empezarEdicion(student) {
+		// El formulario vive en "Uno por uno": también se editan los que llegaron pegados
+		modoAlta(false);
+		if (!editando) gradoAntesDeEditar = gradoElegido;
+		editando = student;
+		ultimoKey = null; // solo se resalta el que se está editando
+		var p = partesDe(student);
+		studentLastName1Input.value = normalizeSpaces(p.apellido1);
+		studentLastName2Input.value = normalizeSpaces(p.apellido2);
+		studentFirstNamesInput.value = normalizeSpaces(p.nombres);
+		if (currentGroupGrades.indexOf(Number(student.grado)) !== -1) gradoElegido = Number(student.grado);
+		pintarBotonesGrado();
+		if (studentSubmitBtn) studentSubmitBtn.textContent = "Guardar cambios";
+		if (studentCancelEditBtn) studentCancelEditBtn.classList.remove("hidden");
+		if (studentFormTitle) studentFormTitle.textContent = "Editar alumno";
+		showMessage("studentsMessage", "success", "Corrige lo que haga falta y presiona «Guardar cambios».");
+		updateStudentsList();
+		if (panelUno && panelUno.scrollIntoView) panelUno.scrollIntoView({ behavior: "smooth", block: "start" });
+		studentLastName1Input.focus({ preventScroll: true });
+	}
+
+	function terminarEdicion() {
+		if (editando && gradoAntesDeEditar !== null && currentGroupGrades.indexOf(Number(gradoAntesDeEditar)) !== -1) {
+			gradoElegido = gradoAntesDeEditar;
+		}
+		editando = null;
+		gradoAntesDeEditar = null;
+		pintarBotonesGrado();
+		if (studentSubmitBtn) studentSubmitBtn.textContent = "+ Agregar alumno";
+		if (studentCancelEditBtn) studentCancelEditBtn.classList.add("hidden");
+		if (studentFormTitle) studentFormTitle.textContent = "Agregar Alumno Individual";
+	}
 
 	completeBtn.addEventListener("click", async function () {
 		if (students.length === 0) {
@@ -423,28 +532,15 @@
 		completeBtn.classList.add("opacity-50", "cursor-not-allowed");
 
 		try {
-			var orderedStudents = students.slice().sort(function (a, b) {
-				var byName = (a.nombre_completo || "").localeCompare(
-					b.nombre_completo || "",
-					"es",
-					{ sensitivity: "base" }
-				);
-				if (byName !== 0) {
-					return byName;
-				}
-
-				var aGrade = typeof a.grado === "number" ? a.grado : 999;
-				var bGrade = typeof b.grado === "number" ? b.grado : 999;
-				return aGrade - bGrade;
-			});
-
-			var studentsForDB = orderedStudents.map(function (s, index) {
+			// Número de lista con la regla única (js/orden-lista.js): por grado y, dentro, orden
+			// alfabético; corre 1..N sobre todo el grupo (el mismo que se ve en la lista)
+			var studentsForDB = window.OrdenLista.numerar(students).map(function (s) {
 				return {
 					maestro_id: userId,
 					grupo_id: currentGroupId,
 					nombre_completo: s.nombre_completo,
 					grado: s.grado,
-					num_lista: index + 1,
+					num_lista: s.num_lista,
 					estatus: "activo",
 				};
 			});
@@ -526,35 +622,56 @@
 		container.innerHTML = "";
 		count.textContent = students.length;
 
+		// Se ordena sola con la regla única (js/orden-lista.js): por grado y orden alfabético; el
+		// número de la izquierda es el número de lista que se guardará (1..N en todo el grupo)
+		if (window.OrdenLista) students = window.OrdenLista.ordenar(students);
+		var multigrado = shouldCaptureStudentGrade();
+
 		students.forEach(function (student, index) {
 			var div = document.createElement("div");
-			div.className = "flex items-center justify-between gap-3 p-4 bg-white border border-gray-200 rounded-2xl shadow-sm";
-			var gradeText =
-				typeof student.grado === "number"
-					? "<span class='inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 mr-2'>" +
-					  student.grado +
-					  "</span>"
-					: "";
+			var resalte = student === editando ? "border-blue-400 ring-2 ring-blue-200 bg-white"
+				: (student.key === ultimoKey ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white");
+			div.className = "flex items-center gap-2 sm:gap-3 pl-3 pr-1 py-1 border rounded-2xl shadow-sm " + resalte;
+
+			var numSpan = document.createElement("span");
+			numSpan.className = "w-7 shrink-0 text-right text-base font-semibold text-gray-900 tabular-nums";
+			numSpan.textContent = String(index + 1);
 			// El nombre va por textContent (no innerHTML) para no ejecutar HTML
 			// aunque el nombre lo escriba el usuario.
 			var nombreSpan = document.createElement("span");
-			nombreSpan.className = "text-gray-800";
-			nombreSpan.innerHTML = gradeText; // gradeText es solo marcado estático (grado numérico)
-			nombreSpan.appendChild(document.createTextNode(student.nombre_completo || ""));
-			var eliminarBtn = document.createElement("button");
-			eliminarBtn.type = "button";
-			eliminarBtn.className = "shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-3 -my-2 rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 font-medium";
-			eliminarBtn.setAttribute("data-index", index);
-			eliminarBtn.textContent = "Eliminar";
+			nombreSpan.className = "min-w-0 flex-1 break-words text-gray-800";
+			nombreSpan.textContent = student.nombre_completo || "";
+			div.appendChild(numSpan);
 			div.appendChild(nombreSpan);
-			div.appendChild(eliminarBtn);
+			if (multigrado && typeof student.grado === "number") {
+				var gradoSpan = document.createElement("span");
+				gradoSpan.className = "shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700";
+				gradoSpan.textContent = student.grado + "°";
+				div.appendChild(gradoSpan);
+			}
 
-			var deleteBtn = div.querySelector("button");
-			deleteBtn.addEventListener("click", function (e) {
+			var nombre = student.nombre_completo || "este alumno";
+			var editarBtn = botonIcono("Editar", "Editar a " + nombre, ICONO_LAPIZ,
+				"text-blue-700 hover:bg-blue-50 focus:ring-blue-500");
+			editarBtn.addEventListener("click", function (e) {
 				e.preventDefault();
-				students.splice(index, 1);
+				empezarEdicion(student);
+			});
+			var quitarBtn = botonIcono("Quitar", "Quitar a " + nombre, ICONO_BASURA,
+				"text-red-600 hover:bg-red-50 focus:ring-red-500");
+			quitarBtn.addEventListener("click", function (e) {
+				e.preventDefault();
+				var i = students.indexOf(student);
+				if (i !== -1) students.splice(i, 1);
+				if (student === editando) {
+					terminarEdicion();
+					limpiarNombresFormulario();
+					clearMessage("studentsMessage");
+				}
 				updateStudentsList();
 			});
+			div.appendChild(editarBtn);
+			div.appendChild(quitarBtn);
 
 			container.appendChild(div);
 		});
@@ -673,26 +790,55 @@
 			: "Recuperamos los datos de tu grupo. Revísalos y presiona \"Crear grupo\".");
 	}
 
+	// Botón de solo ícono de 44x44 (el ícono es marcado fijo; el nombre va en aria-label)
+	function botonIcono(titulo, etiqueta, icono, colores) {
+		var b = document.createElement("button");
+		b.type = "button";
+		b.className = "shrink-0 inline-flex items-center justify-center h-11 w-11 min-h-[44px] min-w-[44px] rounded-xl transition-colors focus:outline-none focus:ring-2 " + colores;
+		b.title = titulo;
+		b.setAttribute("aria-label", etiqueta);
+		b.innerHTML = icono;
+		return b;
+	}
+
+	// Grado del alumno: un botón por grado del grupo (sin lista desplegable)
 	function configureStudentGradeSelector() {
-		if (!studentGradeWrapper || !studentGradeSelect) {
+		if (!studentGradeWrapper || !studentGradeButtons) {
 			return;
 		}
 
-		studentGradeSelect.innerHTML = "";
+		studentGradeButtons.innerHTML = "";
 
 		if (!shouldCaptureStudentGrade()) {
+			gradoElegido = currentGroupGrades[0] || null;
 			studentGradeWrapper.classList.add("hidden");
 			return;
 		}
 
+		// El grado que ya estaba elegido se respeta si sigue en el grupo; si no, el primero
+		if (currentGroupGrades.indexOf(Number(gradoElegido)) === -1) gradoElegido = currentGroupGrades[0];
+
 		currentGroupGrades.forEach(function (grade) {
-			var option = document.createElement("option");
-			option.value = String(grade);
-			option.textContent = String(grade);
-			studentGradeSelect.appendChild(option);
+			var b = document.createElement("button");
+			b.type = "button";
+			b.dataset.grado = String(grade);
+			b.textContent = grade + "°";
+			b.setAttribute("aria-label", grade + "° grado");
+			studentGradeButtons.appendChild(b);
 		});
+		pintarBotonesGrado();
 
 		studentGradeWrapper.classList.remove("hidden");
+	}
+
+	function pintarBotonesGrado() {
+		if (!studentGradeButtons || !studentGradeButtons.querySelectorAll) return;
+		studentGradeButtons.querySelectorAll("button[data-grado]").forEach(function (b) {
+			var activo = Number(b.dataset.grado) === Number(gradoElegido);
+			b.setAttribute("aria-pressed", activo ? "true" : "false");
+			b.className = "min-h-[44px] min-w-[52px] px-4 rounded-xl border text-base font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 " +
+				(activo ? "bg-blue-700 border-blue-700 text-white" : "bg-white border-gray-300 text-gray-800 hover:bg-gray-50");
+		});
 	}
 
 	function shouldCaptureStudentGrade() {

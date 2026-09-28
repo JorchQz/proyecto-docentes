@@ -853,7 +853,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// nota: texto chico bajo el nombre (por ejemplo "Trabaja con 2°" o "Se revisa el 29 sep")
-	function filaAlumno(alumno, controles, nota) {
+	// opciones.numeroAlInicio (solo Asistencia, Jorge 2026-09-27): el número de lista va al
+	// inicio, visible y en columna fija (nombres alineados), sin el grado (lo dice el título de
+	// la sub-tarjeta). Tareas, Trabajos, Pendientes y Cierre siguen como siempre.
+	function filaAlumno(alumno, controles, nota, opciones) {
+		if (opciones && opciones.numeroAlInicio) {
+			return "<div class='flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-gray-100 last:border-0'>" +
+				"<div class='sm:w-64 shrink-0 flex items-baseline gap-2'>" +
+				"<span class='w-7 shrink-0 text-right text-sm font-bold text-gray-900 tabular-nums' data-num-lista>" + esc(alumno.num_lista || "") + "</span>" +
+				"<span class='min-w-0 text-sm font-medium text-gray-800 break-words'>" + esc(alumno.nombre_completo) + "</span>" +
+				"</div><div class='flex flex-wrap gap-2 pl-9 sm:pl-0'>" + controles + "</div></div>";
+		}
 		return "<div class='flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-gray-100 last:border-0'>" +
 			"<div class='sm:w-56 shrink-0'>" +
 			"<span class='text-sm font-medium text-gray-800'>" + esc(alumno.nombre_completo) + "</span>" +
@@ -920,14 +930,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// ── 1. Asistencia ─────────────────────────────────────────────────────────
+	/*
+		Una sub-tarjeta por grado (en orden de grado; con un solo grado también lleva su título) y,
+		dentro, los alumnos en orden alfabético (la regla única de js/orden-lista.js; sin ella, el
+		orden de la lectura: grado y número de lista). El número de lista va al inicio de la fila.
+	*/
 	function renderAsistencia() {
 		var cont = document.getElementById("asistenciaLista");
-		cont.innerHTML = alumnos.map(function (al) {
-			var controles = ASISTENCIA.map(function (op) {
-				return chip(op.etiqueta, asistencia[al.id] === op.valor, op.activo,
-					"data-asistencia='" + al.id + "' data-valor='" + op.valor + "'");
+		var ordenados = window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos;
+		cont.innerHTML = agruparPorGrado(ordenados).map(function (g) {
+			var n = g.alumnos.length;
+			var filas = g.alumnos.map(function (al) {
+				var controles = ASISTENCIA.map(function (op) {
+					return chip(op.etiqueta, asistencia[al.id] === op.valor, op.activo,
+						"data-asistencia='" + al.id + "' data-valor='" + op.valor + "'");
+				}).join("");
+				return filaAlumno(al, controles, "", { numeroAlInicio: true });
 			}).join("");
-			return filaAlumno(al, controles);
+			return "<div class='rounded-xl border border-gray-200 px-3 sm:px-4 pt-3 pb-1' data-asistencia-grado='" + esc(g.grado) + "'>" +
+				"<div class='flex items-center justify-between gap-2 pb-1 border-b border-gray-100'>" +
+				"<h3 class='text-sm font-bold text-gray-800'>" + esc(g.grado) + "° grado</h3>" +
+				"<span class='text-xs text-gray-500'>" + n + (n === 1 ? " alumno" : " alumnos") + "</span></div>" +
+				filas + "</div>";
 		}).join("");
 		resumenAsistencia();
 	}

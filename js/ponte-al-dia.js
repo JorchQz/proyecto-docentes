@@ -225,14 +225,29 @@ document.addEventListener("DOMContentLoaded", function () {
 			existentes: function () { return alumnos.map(function (a) { return a.nombre_completo; }); },
 			textoBoton: function (n) { return "Guardar " + n + (n === 1 ? " alumno" : " alumnos"); },
 			alConfirmar: async function (filas) {
+				// Número provisional (después del último) por si no se pudiera ordenar enseguida
 				var siguiente = alumnos.reduce(function (m, a) { return Math.max(m, Number(a.num_lista) || 0); }, 0);
 				var nuevos = filas.map(function (f, i) {
 					return { maestro_id: userId, grupo_id: grupo.id, nombre_completo: f.nombre_completo, grado: f.grado, num_lista: siguiente + i + 1, estatus: "activo" };
 				});
 				var res = await window.sb.from("alumnos").insert(nuevos).select("id");
 				if (res.error) throw res.error;
+				// Número de lista con la regla única (js/orden-lista.js): por grado y orden
+				// alfabético, 1..N sobre todo el grupo (como Mi grupo: todos sus alumnos)
+				var ordenado = true;
+				try {
+					var todos = await window.Lectura.uno(window.sb.from("alumnos").select("id, nombre_completo, grado, num_lista")
+						.eq("maestro_id", userId).eq("grupo_id", grupo.id)
+						.order("num_lista", { ascending: true }).order("nombre_completo", { ascending: true })) || [];
+					await window.OrdenLista.renumerar(window.sb, { maestroId: userId, grupoId: grupo.id }, todos);
+				} catch (e) {
+					console.error("ponte al día: número de lista", e);
+					ordenado = false;
+				}
 				await paso1();
-				mensaje("ok", nuevos.length + (nuevos.length === 1 ? " alumno guardado." : " alumnos guardados.") + " Su número de lista sigue al del último; puedes reordenarlo en Mi grupo.");
+				mensaje("ok", nuevos.length + (nuevos.length === 1 ? " alumno guardado." : " alumnos guardados.") +
+					(ordenado ? " La lista quedó por grado y en orden alfabético."
+						: " El número de lista se ordena por grado y en orden alfabético al abrir Mi grupo."));
 			},
 		});
 		conectarPie(1, async function () {

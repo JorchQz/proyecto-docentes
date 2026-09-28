@@ -16,7 +16,7 @@
 	  alConfirmar: async function (filas) → lo que hace el que llama (agregar o guardar); si lanza,
 	               se avisa y la lista se queda como está
 	}
-	filas: [{ nombre_completo, grado }]
+	filas: [{ nombre_completo, grado, apellido1, apellido2, nombres }]
 */
 
 (function () {
@@ -231,7 +231,11 @@
 				b.textContent = "Guardando...";
 				try {
 					await opciones.alConfirmar(filas.map(function (f) {
-						return { nombre_completo: f.nombreCompleto, grado: multigrado ? Number(f.grado) : (grados[0] || null) };
+						return {
+							nombre_completo: f.nombreCompleto, grado: multigrado ? Number(f.grado) : (grados[0] || null),
+							// Las partes revisadas (el alta las usa para editar después con el lápiz)
+							apellido1: f.apellido1 || "", apellido2: f.apellido2 || "", nombres: f.nombres || "",
+						};
 					}));
 				} catch (err) {
 					console.error("lista pegada:", err);

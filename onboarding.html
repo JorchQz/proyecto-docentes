@@ -165,9 +165,9 @@
 			</div>
 
 			<!-- Formulario para un alumno -->
-			<div id="panelUno" role="tabpanel" class="hidden mb-6 p-6 bg-white border border-gray-200 rounded-2xl shadow-sm">
-				<h3 class="font-semibold text-gray-800 mb-3">Agregar Alumno Individual</h3>
-				<form id="studentForm" class="space-y-3">
+			<div id="panelUno" role="tabpanel" class="hidden mb-6 p-4 sm:p-6 bg-white border border-gray-200 rounded-2xl shadow-sm">
+				<h3 id="studentFormTitle" class="font-semibold text-gray-800 mb-3">Agregar Alumno Individual</h3>
+				<form id="studentForm" class="space-y-4">
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
 							<label class="block text-sm font-medium text-gray-800">Apellido Paterno</label>
@@ -186,26 +186,27 @@
 								<p class="text-xs text-gray-500 mt-1">Aqui si puedes escribir uno o varios nombres.</p>
 							</div>
 						</div>
+						<!-- Grado: botones pegados a su etiqueta. La lista desplegable se separaba de la
+						     casilla en la tablet con el teclado abierto (Jorge, 2026-09-27). Solo los
+						     grados del grupo; el elegido se queda para el siguiente alumno -->
 						<div id="studentGradeWrapper" class="hidden">
-							<label for="studentGrade" class="block text-sm font-medium text-gray-800">Grado del alumno</label>
-							<select id="studentGrade" class="mt-1 block w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"></select>
-							<p class="text-xs text-gray-500 mt-1">Selecciona el grado correspondiente.</p>
+							<p id="studentGradeLabel" class="block text-sm font-medium text-gray-800">Grado del alumno</p>
+							<div id="studentGradeButtons" role="group" aria-labelledby="studentGradeLabel" class="mt-1 flex flex-wrap gap-2"></div>
+							<p class="text-xs text-gray-500 mt-1">Se queda elegido para el siguiente alumno.</p>
 						</div>
-						<div>
-							<label class="block text-sm font-medium text-transparent select-none">Acci&oacute;n</label>
-							<div class="mt-1">
-								<button type="submit" class="w-full h-11 inline-flex items-center justify-center px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">
-									+ Agregar Alumno
-								</button>
-							</div>
-						</div>
+					</div>
+					<!-- Agregar (o Guardar cambios al editar): a la derecha, debajo del grado -->
+					<div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+						<button type="button" id="studentCancelEdit" class="hidden w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center px-5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors">Cancelar</button>
+						<button type="submit" id="studentSubmit" class="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center px-5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">+ Agregar alumno</button>
 					</div>
 				</form>
 			</div>
 
 			<!-- Lista de alumnos agregados -->
 			<div id="studentsList" class="mb-6">
-				<h3 class="font-semibold text-gray-800 mb-3">Alumnos Agregados (<span id="studentCount">0</span>)</h3>
+				<h3 class="font-semibold text-gray-800">Alumnos Agregados (<span id="studentCount">0</span>)</h3>
+				<p class="text-xs text-gray-500 mt-1 mb-3">Se ordenan solos por grado y por orden alfabético. El número es su número de lista.</p>
 				<div id="studentsContainer" class="space-y-2"></div>
 			</div>
 
@@ -246,6 +247,8 @@
 	<script src="js/productos-hoy.js"></script>
 	<script src="js/historico.js"></script>
 	<script src="js/lista-pegada.js"></script>
+	<!-- Número de lista: por grado y orden alfabético, 1..N en todo el grupo (regla única) -->
+	<script src="js/orden-lista.js"></script>
 	<script src="js/onboarding.js"></script>
 </body>
 </html>
