@@ -67,6 +67,8 @@ require("../js/campos-formativos.js");
 require("../js/grupo-activo.js");
 require("../js/alcance-hoy.js");
 require("../js/productos-hoy.js");
+// Orden de la tarjeta de Asistencia (hoy.html la carga antes que hoy.js)
+require("../js/orden-lista.js");
 // La bandeja de salida (en node no hay IndexedDB: la cola vive en memoria, como sin él)
 require("../js/bandeja-salida.js");
 
@@ -212,6 +214,7 @@ new Function(codigo)();
 	ok("1. asistencia dibuja a los dos alumnos",
 		asistencia.indexOf("ALUMNO DE SEGUNDO") !== -1 && asistencia.indexOf("ALUMNO DE TERCERO") !== -1, true);
 	ok("1. la asistencia guardada queda marcada", asistencia.indexOf("bg-emerald-500 text-white") !== -1, true);
+	ok("1. asistencia: una sub-tarjeta por grado (2° y 3°)", (asistencia.match(/data-asistencia-grado='(\d)'/g) || []).join(","), "data-asistencia-grado='2',data-asistencia-grado='3'");
 
 	ok("2. la tarea del día aparece", tareas.indexOf("Leer en casa") !== -1, true);
 	ok("2. la tarea ofrece los cuatro estados de entrega",

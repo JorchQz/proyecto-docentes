@@ -37,7 +37,8 @@
 					<h2 class="font-bold text-gray-800">1. Asistencia</h2>
 					<span id="asistenciaResumen" class="text-xs text-gray-500"></span>
 				</div>
-				<div id="asistenciaLista" class="flex flex-col gap-2"></div>
+				<!-- Una sub-tarjeta por grado (js/hoy.js, renderAsistencia) -->
+				<div id="asistenciaLista" class="flex flex-col gap-3"></div>
 			</section>
 
 			<!-- 2. Tareas por revisar -->
@@ -101,6 +102,8 @@
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/productos-hoy.js"></script>
 	<script src="js/pasar-a-proyecto.js"></script>
+	<!-- Orden de la tarjeta de Asistencia: por grado y orden alfabético (regla única) -->
+	<script src="js/orden-lista.js"></script>
 	<script src="js/hoy.js"></script>
 </body>
 </html>

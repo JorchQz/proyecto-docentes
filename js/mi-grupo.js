@@ -439,7 +439,9 @@
 					});
 					showStudentsMessage("success", "Alumno actualizado correctamente.");
 				} else {
-					var nextListNumber = getNextListNumber();
+					// Entra ya en su lugar (grado y orden alfabético, js/orden-lista.js); los demás
+					// se recorren con recalculateAndPersistListOrder
+					var nextListNumber = window.OrdenLista.posicion(students, { nombre_completo: studentName, grado: studentGrade });
 					var insertResult = await window.sb
 						.from("alumnos")
 						.insert([
@@ -651,7 +653,7 @@
 		} catch (error) {
 			showStudentsMessage(
 				"error",
-				"No se pudo actualizar el No. de lista alfabético: " +
+				"No se pudo actualizar el número de lista (por grado y orden alfabético): " +
 					(error.message || "Error desconocido")
 			);
 		}
@@ -919,14 +921,6 @@
 		studentsCountBadgeEl.textContent = formatStudentCount(students.length);
 	}
 
-	function sortStudents() {
-		students.sort(function (a, b) {
-			return (a.nombre_completo || "").localeCompare(b.nombre_completo || "", "es", {
-				sensitivity: "base",
-			});
-		});
-	}
-
 	function beginEditStudent(student) {
 		if (!student) {
 			return;
@@ -1111,41 +1105,13 @@
 		}
 	}
 
+	/*
+		Número de lista: la regla única de js/orden-lista.js (por grado y, dentro, orden
+		alfabético; corre 1..N sobre todo el grupo, no por grado). Ordena `students` en su lugar y
+		guarda solo los números que cambiaron. Se llama al abrir, al agregar, al editar y al borrar.
+	*/
 	async function recalculateAndPersistListOrder() {
-		sortStudents();
-
-		for (var i = 0; i < students.length; i += 1) {
-			var expectedNumber = i + 1;
-			if (students[i].num_lista === expectedNumber) {
-				continue;
-			}
-
-			var updateResult = await window.sb
-				.from("alumnos")
-				.update({ num_lista: expectedNumber })
-				.eq("id", students[i].id)
-				.eq("maestro_id", userId)
-				.eq("grupo_id", currentGroup.id);
-
-			if (updateResult.error) {
-				throw updateResult.error;
-			}
-
-			students[i].num_lista = expectedNumber;
-		}
-	}
-
-	function getNextListNumber() {
-		if (!students.length) {
-			return 1;
-		}
-
-		var max = students.reduce(function (acc, student) {
-			var value = typeof student.num_lista === "number" ? student.num_lista : 0;
-			return Math.max(acc, value);
-		}, 0);
-
-		return max + 1;
+		await window.OrdenLista.renumerar(window.sb, { maestroId: userId, grupoId: currentGroup.id }, students);
 	}
 
 	function normalizeSpaces(text) {

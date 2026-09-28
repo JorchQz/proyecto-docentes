@@ -37,7 +37,10 @@ ok("Hoy: los chips (0/1/2 del cierre y demás) miden al menos 44 de ancho", /fun
 
 const ob = leer("onboarding.html"), obj = leer("js/onboarding.js");
 ok("onboarding: las 6 casillas de grado con ancho de 44", (ob.match(/<label class="flex items-center gap-2 min-h-\[44px\] min-w-\[44px\] pr-2 select-none cursor-pointer">/g) || []).length, 6);
-ok("onboarding: Eliminar alumno de 44x44", /eliminarBtn\.className = "shrink-0 inline-flex items-center justify-center min-h-\[44px\] min-w-\[44px\]/.test(obj), true);
+// Desde 2026-09-27 (Jorge) "Eliminar" es un bote de basura rojo y hay un lápiz azul para editar:
+// los dos son botones de solo ícono de 44x44 (botonIcono)
+ok("onboarding: lápiz y bote de basura de 44x44", /function botonIcono\([^)]*\) \{[\s\S]{0,200}b\.className = "shrink-0 inline-flex items-center justify-center h-11 w-11 min-h-\[44px\] min-w-\[44px\]/.test(obj), true);
+ok("onboarding: botones de grado de al menos 44 de alto y de ancho", /"min-h-\[44px\] min-w-\[52px\] px-4 rounded-xl border/.test(obj), true);
 
 ok("exámenes: 'Volver a Inicio' del estado vacío con alto de 44", leer("js/examen.js").includes('<a href="dashboard.html" class="inline-flex items-center justify-center min-h-[44px] px-3 mt-4'), true);
 
