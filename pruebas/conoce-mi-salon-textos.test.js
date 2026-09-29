@@ -117,7 +117,7 @@ ok("la página nombra cada atajo como el manifest y dice qué abre", [
 ], [true, true, true]);
 const hoyHtml = leer("hoy.html");
 ok("respaldo: Hoy salta a #asistencia y #sesiones (irASeccion) y esas secciones son Asistencia y Sesiones de hoy", [
-	/\["asistencia", "tareas", "sesiones", "cierre"\]/.test(leer("js/hoy.js")),
+	/\["asistencia", "tareas", "sesiones", "cierre", "siguientes"\]/.test(leer("js/hoy.js")),
 	/id="asistencia"[\s\S]{0,300}Asistencia<\/h2>/.test(hoyHtml),
 	/id="sesiones"[\s\S]{0,300}Sesiones de hoy<\/h2>/.test(hoyHtml),
 ], [true, true, true]);

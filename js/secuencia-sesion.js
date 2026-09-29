@@ -136,6 +136,46 @@
 		}).filter(Boolean);
 	}
 
+	/*
+		Menciones a libros en el texto ("... de Múltiples Lenguajes de 1° (p. 100) ..."): se vuelven enlace
+		al visor SOLO si la sesión ya trae ese libro entre sus enlaces y la página coincide: el enlace debe
+		ser de CONALITEG, su título decir "<libro> <grado>°, p.N" y su dirección terminar en #page/N (con el
+		mismo N que la mención). Sin coincidencia exacta (libro, grado y página) no se enlaza nada.
+	*/
+	function librosDe(sesion) {
+		var salida = [];
+		recursos(sesion).forEach(function (r) {
+			if (r.tipo !== "libro") return;
+			var mu = r.url.match(/#page\/(\d+)\s*$/);
+			var mt = String(r.titulo).split("— ").pop().match(/^(.+?) (\d)°, ?p\.? ?(\d+)\s*$/);
+			if (!mu || !mt || mu[1] !== mt[3]) return;
+			var nombres = [mt[1]];
+			if (mt[1].indexOf(": ") !== -1) nombres.push(mt[1].split(": ").pop());
+			salida.push({ nombres: nombres, grado: mt[2], pagina: mt[3], url: r.url, titulo: r.titulo });
+		});
+		return salida;
+	}
+	function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+	// `htmlEscapado`: texto ya escapado (esc). Devuelve el mismo texto con los enlaces puestos
+	function conEnlaces(htmlEscapado, sesion) {
+		var libros = librosDe(sesion);
+		if (!libros.length || !htmlEscapado) return htmlEscapado;
+		var frases = libros.map(function (l) {
+			return { re: new RegExp("^(?:" + l.nombres.map(function (n) { return escRe(esc(n)); }).join("|") + ") de " + l.grado + "° \\(p\\. ?" + l.pagina + "\\)$"), libro: l };
+		});
+		var todos = new RegExp("(?:" + libros.map(function (l) {
+			return "(?:" + l.nombres.map(function (n) { return escRe(esc(n)); }).join("|") + ") de " + l.grado + "° \\(p\\. ?" + l.pagina + "\\)";
+		}).join("|") + ")", "g");
+		return htmlEscapado.replace(todos, function (m) {
+			var f = frases.filter(function (x) { return x.re.test(m); })[0];
+			if (!f) return m;
+			return "<a href='" + esc(f.libro.url) + "' target='_blank' rel='noopener noreferrer' data-secuencia-libro " +
+				"data-visor-url='" + esc(f.libro.url) + "' data-visor-titulo='" + esc(f.libro.titulo) + "' " +
+				"class='text-blue-700 underline underline-offset-2 hover:text-blue-900'>" + m + "</a>";
+		});
+	}
+
 	function hayContenido(sesion) {
 		if (!sesion) return false;
 		return FASES.some(function (f) { return !!textoFase(sesion, f.clave) || actividadesFase(sesion, f.clave).length > 0; }) ||
@@ -151,10 +191,10 @@
 		if (!t && !acts.length) {
 			html += "<p class='text-sm text-gray-500'>Sin información registrada.</p>";
 		} else {
-			if (t) html += "<p class='text-sm text-gray-600 whitespace-pre-line mb-2'>" + esc(t) + "</p>";
+			if (t) html += "<p class='text-sm text-gray-600 whitespace-pre-line mb-2'>" + conEnlaces(esc(t), sesion) + "</p>";
 			if (acts.length) {
 				html += "<ul class='list-disc pl-5 text-sm text-gray-600 mb-2'>" +
-					acts.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("") + "</ul>";
+					acts.map(function (a) { return "<li>" + conEnlaces(esc(a), sesion) + "</li>"; }).join("") + "</ul>";
 			}
 		}
 		if (tareas.length) {
@@ -169,8 +209,10 @@
 		if (!lista.length) return "";
 		return "<div class='mb-2'><p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>" + titulo + "</p>" +
 			"<div class='flex flex-wrap gap-2'>" + lista.map(function (r) {
-				// Por ahora se abren en otra pestaña (rel noopener); relativo no aplica: son enlaces externos
+				// Con js/visor-recursos.js un toque normal lo abre en el visor (data-visor-url); sin él, o con
+				// Ctrl/Cmd, se abre en otra pestaña (rel noopener). Son enlaces externos: no aplica lo relativo
 				return "<a href='" + esc(r.url) + "' target='_blank' rel='noopener noreferrer' data-secuencia-enlace='" + r.tipo + "' " +
+					"data-visor-url='" + esc(r.url) + "' data-visor-titulo='" + esc(r.titulo) + "' " +
 					"class='inline-flex items-center min-h-[44px] text-sm border border-amber-300 text-amber-800 px-3 rounded-lg hover:bg-amber-50'>" +
 					esc(r.titulo) + "</a>";
 			}).join("") + "</div></div>";
@@ -193,7 +235,7 @@
 
 	var api = {
 		COLUMNAS: COLUMNAS, textoFase: textoFase, actividadesFase: actividadesFase, tareasCierre: tareasCierre,
-		recursos: recursos, hayContenido: hayContenido, html: html,
+		recursos: recursos, hayContenido: hayContenido, html: html, librosDe: librosDe, conEnlaces: conEnlaces,
 	};
 	if (typeof window !== "undefined") window.SecuenciaSesion = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

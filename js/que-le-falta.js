@@ -181,9 +181,16 @@
 		productos.forEach(function (p) {
 			var cal = (det.calificaciones || {})[p.id] || null;
 			var estado = cal ? cal.estado_entrega : null;
+			/*
+				Faltas (js/alcance-hoy.js, "Faltas"; el motor las deriva en det.porFalta y solo para lo que no
+				tiene calificación del docente): una falta sin justificar vale No entregó; una justificada es
+				pendiente del alumno con su plazo. Lo mismo que ven Hoy e Inicio.
+			*/
+			var pf = (det.porFalta || {})[p.id] || null;
+			if (pf && pf.estado === "ausente") estado = "no_entregado";
 			var valorP = M ? M.puntajeProducto(cal) : (cal && (cal.nivel || !vacio(cal.puntaje)) ? 1 : null);
 			situacion[p.id] = estado === "justificado" || estado === "no_aplica" ? "fuera"
-				: (estado === "no_entregado" || estado === "incompleto" ? "falta" : (valorP !== null ? "revisado" : "sin_revisar"));
+				: (estado === "no_entregado" || estado === "incompleto" || (pf && pf.estado === "justificada") ? "falta" : (valorP !== null ? "revisado" : "sin_revisar"));
 			var rubro = M ? M.rubroDeProducto(p.tipo) : (p.tipo === "tarea" ? "tareas" : "trabajos");
 			var c = codigoCampo(p.campo);
 			if (!rubro || !campos[c]) return; // un "examen" como producto no es de este rubro (motor)
@@ -195,7 +202,22 @@
 				suelta: !!s.suelta,
 			};
 			if (estado === "justificado" || estado === "no_aplica") return; // fuera del máximo, como en el motor
-			if (estado === "no_entregado") { campos[c].productos.push(Object.assign(item, { estado: "no_entregado" })); return; }
+			if (estado === "no_entregado") {
+				// Un No entregó en clase que se revisa el siguiente día de clase (decisión del 2026-09-29):
+				// aún puede entregarla; faltó ese día sin justificar: "faltó"
+				var pendienteNE = cal && cal.estado_en_clase === "incompleta";
+				campos[c].productos.push(Object.assign(item, pendienteNE
+					? { estado: "por_entregar", revisarEn: cal.revisar_en ? String(cal.revisar_en).slice(0, 10) : null }
+					: { estado: "no_entregado", falto: pf && pf.estado === "ausente" ? pf.fecha : null }));
+				return;
+			}
+			// Falta justificada: todo lo de ese día queda pendiente, con su plazo (regreso + 3 días de clase)
+			if (pf && pf.estado === "justificada") {
+				campos[c].productos.push(Object.assign(item, {
+					estado: "por_falta", faltoEl: pf.fecha, vence: pf.vence || null, vencido: !!(pf.vence && hoy && pf.vence < hoy),
+				}));
+				return;
+			}
 			if (estado === "incompleto") {
 				// Actividad en clase que quedó incompleta y se revisa el siguiente día de clase: aún
 				// puede completarla ("Por completar: se revisa el {fecha}"); revisada y sigue
@@ -344,6 +366,14 @@
 		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
 		return m ? Number(m[3]) + " de " + MESES[Number(m[2]) - 1] : "";
 	}
+	// "2026-10-05" → "lunes 5 de octubre"
+	var DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+	function fechaConDia(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		if (!m) return "";
+		var dia = DIAS_SEMANA[new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay()];
+		return dia + " " + fechaTexto(iso);
+	}
 	function sesionesTexto(lista) {
 		if (!lista || !lista.length) return "";
 		if (lista.length === 1) return "la sesión " + lista[0];
@@ -385,7 +415,15 @@
 		}
 		x.productos.forEach(function (p) {
 			var que = (p.tarea ? "la tarea " : "") + "«" + p.nombre + "»";
-			salida.push(p.estado === "por_completar"
+			salida.push(p.estado === "por_falta"
+				? { tipo: "por_falta", docente: false, texto: "Entregar " + que + sesionTexto(p) + ": faltó el " + fechaTexto(p.faltoEl) + " con justificante; " +
+					(!p.vence ? "se entrega a su regreso, con 3 días de clase." : (p.vencido ? "el plazo era el " : "entrega a más tardar el ") + fechaConDia(p.vence) + ".") }
+				: p.estado === "por_entregar"
+				? { tipo: "por_entregar", docente: false, texto: "Entregar " + que + sesionTexto(p) + ": no la entregó en clase" +
+					(p.revisarEn ? "; se revisa el " + fechaTexto(p.revisarEn) : "") + "." }
+				: p.estado === "no_entregado" && p.falto
+				? { tipo: "entregar", docente: false, texto: "Entregar " + que + sesionTexto(p) + ": faltó ese día (" + fechaTexto(p.falto) + ")." }
+				: p.estado === "por_completar"
 				? { tipo: "por_completar", docente: false, texto: "Completar " + que + sesionTexto(p) + ": quedó incompleta en clase" +
 					(p.revisarEn ? "; se revisa el " + fechaTexto(p.revisarEn) : "") + "." }
 				: p.estado === "incompleto"

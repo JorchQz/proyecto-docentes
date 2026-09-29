@@ -211,6 +211,19 @@
 		if (accion === "marcar" && ctx.historico) {
 			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: null, revisar_en: null, completado_en: null };
 		}
+		/*
+			"No entregó" en una actividad en clase (decisión de Jorge del 2026-09-29): también pasa a
+			revisión el siguiente día de clase, como Incompleta. Vale 0 (no_entregado) mientras no se
+			revise. En el registro histórico no hay revisión: queda como No entregó definitivo.
+			(La tarea que se revisa en "Tareas por revisar" no pasa por aquí: ya venció.)
+		*/
+		if (accion === "no_entregado") {
+			if (ctx.historico) {
+				return { estado_entrega: "no_entregado", nivel: null, estado_en_clase: null, revisar_en: null, completado_en: null };
+			}
+			return { estado_entrega: "no_entregado", nivel: null, estado_en_clase: "incompleta",
+				revisar_en: siguienteDiaDeClase(ctx.hoy, ctx.ajustes), completado_en: null };
+		}
 		if (accion === "marcar") {
 			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "incompleta",
 				revisar_en: siguienteDiaDeClase(ctx.hoy, ctx.ajustes), completado_en: null };
@@ -221,8 +234,15 @@
 		if (accion === "sigue") {
 			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "sigue_incompleta", completado_en: ctx.hoy };
 		}
+		// "Sigue sin entregar": lo que era No entregó sigue valiendo 0 (no pasa a incompleto: 0.5)
+		if (accion === "sigue_sin_entregar") {
+			return { estado_entrega: "no_entregado", nivel: null, estado_en_clase: "sigue_incompleta", completado_en: ctx.hoy };
+		}
 		if (accion === "pendiente") { // deshacer la revisión: vuelve a pendiente
 			return { estado_entrega: "incompleto", nivel: null, estado_en_clase: "incompleta", completado_en: null };
+		}
+		if (accion === "pendiente_no_entregado") { // lo mismo, de algo que era No entregó
+			return { estado_entrega: "no_entregado", nivel: null, estado_en_clase: "incompleta", completado_en: null };
 		}
 		// "quitar": sin la marca de incompleta (lo demás lo decide quien llama)
 		return { estado_en_clase: null, revisar_en: null, completado_en: null };
@@ -382,8 +402,174 @@
 		return !(producto && producto.desde_ponte_al_dia === true);
 	}
 
+	/*
+		── Faltas (decisiones de Jorge del 2026-09-29) ──
+		Todo se DERIVA de la asistencia y de las calificaciones que ya existen; no se guarda nada.
+		  - Falta sin justificar (asistencia "ausente"): sus actividades y tareas de ese día cuentan
+		    como No entregó (vale 0), mientras el docente no le ponga una calificación. Si después
+		    la falta se cambia a Justificada, lo de ese día pasa a pendiente.
+		  - Justificada: todo lo de ese día queda pendiente, con 3 días de clase completos desde que
+		    regresa (el primer Presente posterior): si regresa el miércoles trabaja miércoles, jueves
+		    y viernes y se revisa el lunes (venceFalta). Si se justificó DESPUÉS del regreso, el plazo
+		    cuenta desde el día de la justificación (asistencias.updated_at, que la base actualiza al
+		    cambiar el estado). Cuenta con el calendario SEP y los ajustes del grupo.
+		  - Plazo vencido: sigue pendiente ("venció el…") hasta que el docente califique; no pasa
+		    sola a No entregó.
+		  - Una calificación del docente siempre manda (sinCalificar). Lo histórico (Ponte al día)
+		    no se deriva: solo cuenta lo que el docente capturó (esHistorico).
+		"Lo de ese día" de un producto (fechasDeProducto): el día de su sesión (o su fecha de
+		entrega, si la sesión no tiene fecha) y, si es una tarea, el día que vence.
+		Las asistencias van indexadas (indiceAsistencias): { alumnoId: { "AAAA-MM-DD": { estado,
+		actualizada } } }, "actualizada" es el día (hora de México) de asistencias.updated_at.
+	*/
+	var DIAS_PLAZO_FALTA = 3;
+
+	function indiceAsistencias(filas) {
+		var idx = {};
+		(filas || []).forEach(function (f) {
+			if (!f || !f.alumno_id || !f.fecha) return;
+			(idx[f.alumno_id] = idx[f.alumno_id] || {})[String(f.fecha).slice(0, 10)] = {
+				estado: f.asistencia_estado || null,
+				actualizada: f.updated_at ? diaMexico(f.updated_at) : null,
+			};
+		});
+		return idx;
+	}
+
+	// "presente" | "ausente" | "justificada" | null (sin lista ese día) de un alumno ya indexado
+	function estadoAsistencia(asisAlumno, fecha) {
+		var x = asisAlumno ? asisAlumno[String(fecha || "").slice(0, 10)] : null;
+		if (!x) return null;
+		return typeof x === "string" ? x : (x.estado || null);
+	}
+
+	// El primer Presente DESPUÉS de la falta; null si aún no regresa (o no se pasó lista)
+	function regresoDe(asisAlumno, fechaFalta) {
+		var falta = String(fechaFalta || "").slice(0, 10);
+		var fechas = Object.keys(asisAlumno || {}).sort();
+		for (var i = 0; i < fechas.length; i++) {
+			if (fechas[i] > falta && estadoAsistencia(asisAlumno, fechas[i]) === "presente") return fechas[i];
+		}
+		return null;
+	}
+
+	// El día desde el que cuenta el plazo si se justificó después de la falta (o el de la falta)
+	function diaDeJustificacion(asisAlumno, fechaFalta) {
+		var falta = String(fechaFalta || "").slice(0, 10);
+		var x = asisAlumno ? asisAlumno[falta] : null;
+		if (x && typeof x === "object" && x.estado === "justificada" && x.actualizada && x.actualizada > falta) return x.actualizada;
+		return falta;
+	}
+
+	/*
+		venceFalta(asisAlumno, fechaFalta, ajustes) → "AAAA-MM-DD": el día de clase en que se revisa
+		lo de una falta justificada: 3 días de clase después de max(regreso, justificación). Con el
+		regreso el miércoles: jueves, viernes y lunes → "lunes". null si aún no regresa.
+	*/
+	function venceFalta(asisAlumno, fechaFalta, ajustes) {
+		var regreso = regresoDe(asisAlumno, fechaFalta);
+		if (!regreso) return null;
+		var base = regreso;
+		var just = diaDeJustificacion(asisAlumno, fechaFalta);
+		if (just > base) base = just;
+		var C = calendario();
+		if (C) return C.diaDeClaseN(base, DIAS_PLAZO_FALTA, ajustes || []);
+		var d = base;
+		for (var i = 0; i < DIAS_PLAZO_FALTA; i++) d = siguienteHabil(d);
+		return d;
+	}
+
+	// ¿Sin calificación del docente? (semáforo, estado de entrega o puntaje: lo mismo que "calificado" en Hoy)
+	function sinCalificar(cal) {
+		return !(cal && (cal.nivel || cal.estado_entrega || (cal.puntaje !== null && cal.puntaje !== undefined && cal.puntaje !== "")));
+	}
+
+	// Los días a los que pertenece un producto: el de su sesión (o su entrega) y, si es tarea, el que vence
+	function fechasDeProducto(producto, fechaSesion, ajustes) {
+		if (!producto) return [];
+		var f0 = fechaProducto(fechaSesion || null, producto.fecha_entrega || null);
+		var salida = f0 ? [String(f0).slice(0, 10)] : [];
+		if (producto.tipo === "tarea") {
+			var v = venceTarea(producto.fecha_entrega || null, fechaSesion || null, ajustes);
+			if (v && salida.indexOf(String(v).slice(0, 10)) === -1) salida.push(String(v).slice(0, 10));
+		}
+		return salida;
+	}
+
+	/*
+		estadoPorAsistencia(producto, fechaSesion, asisAlumno, ajustes) → { estado, fecha } | null
+		"ausente" (Falta sin justificar: cuenta como No entregó) o "justificada" (pendiente), y el día
+		de esa falta. Si el producto toca dos días con estados distintos, la justificada manda (no se
+		castiga con un cero lo que también tiene una falta justificada). null: sin falta en esos días.
+		No mira la calificación: quien llama decide con sinCalificar.
+	*/
+	function estadoPorAsistencia(producto, fechaSesion, asisAlumno, ajustes) {
+		var fechas = fechasDeProducto(producto, fechaSesion, ajustes);
+		var ausente = null;
+		for (var i = 0; i < fechas.length; i++) {
+			var e = estadoAsistencia(asisAlumno, fechas[i]);
+			if (e === "justificada") return { estado: "justificada", fecha: fechas[i] };
+			if (e === "ausente" && !ausente) ausente = { estado: "ausente", fecha: fechas[i] };
+		}
+		return ausente;
+	}
+
+	/*
+		pendientesPorFalta(d) → [{ alumno, producto, fechaFalta, regreso, vence }]
+		Lo que se le debe a cada alumno por una falta JUSTIFICADA: los trabajos de las sesiones de ese
+		día, las tareas que se dejaron y las que vencían ese día; solo lo que recibe (recibeProducto),
+		sin calificación y no histórico. vence: venceFalta (null si aún no regresa).
+		d = { alumnos: [{id, grado, num_lista, alta}], productos: [{id, tipo, sesion_id, fecha_entrega, grados,
+		      sesion: {fecha}, ...}], fechaSesion: { sesionId: fecha } (opcional: por omisión, producto.sesion.fecha),
+		      calificaciones: { "alumnoId|productoId": fila }, asignaciones: indiceAsignaciones,
+		      asistencias: indiceAsistencias, ajustes: [...] }
+	*/
+	function pendientesPorFalta(d) {
+		d = d || {};
+		var salida = [];
+		var asis = d.asistencias || {};
+		var califs = d.calificaciones || {};
+		(d.alumnos || []).forEach(function (a) {
+			var suya = asis[a.id];
+			if (!suya) return;
+			var hayJustificada = Object.keys(suya).some(function (f) { return estadoAsistencia(suya, f) === "justificada"; });
+			if (!hayJustificada) return;
+			(d.productos || []).forEach(function (p) {
+				var fechaSes = (d.fechaSesion && d.fechaSesion[p.sesion_id]) || (p.sesion && p.sesion.fecha) || null;
+				var cal = califs[a.id + "|" + p.id];
+				if (!sinCalificar(cal)) return;
+				if (esHistorico(p, fechaSes)) return;
+				var est = estadoPorAsistencia(p, fechaSes, suya, d.ajustes);
+				if (!est || est.estado !== "justificada") return;
+				if (!recibeProducto(a, p, d.asignaciones || {}, fechaSes, cal)) return;
+				salida.push({ alumno: a, producto: p, fechaFalta: est.fecha, regreso: regresoDe(suya, est.fecha), vence: venceFalta(suya, est.fecha, d.ajustes) });
+			});
+		});
+		return salida;
+	}
+
+	// "sin_regreso" (aún no vuelve) | "vigente" (le queda plazo, incluido el día que vence) | "vencido"
+	function estadoPlazo(vence, hoyISO) {
+		if (!vence) return "sin_regreso";
+		return vence < hoyISO ? "vencido" : "vigente";
+	}
+
+	// Las asistencias del grupo desde una fecha (con updated_at para saber cuándo se justificó). Sin el tope de
+	// 1000 filas (por páginas). Lanza el error: quien llama decide (Hoy e Inicio siguen sin esta parte).
+	async function leerAsistencias(sb, maestroId, grupoId, desde) {
+		return leerPorLotes([grupoId], function (lote) {
+			return sb.from("asistencias").select("alumno_id, fecha, asistencia_estado, updated_at")
+				.eq("maestro_id", maestroId).eq("grupo_id", lote[0]).gte("fecha", desde || "2000-01-01")
+				.order("fecha").order("id");
+		});
+	}
+
 	var api = {
-		DIAS_RECIENTES: DIAS_RECIENTES, PAGINA: PAGINA, LOTE: LOTE,
+		DIAS_RECIENTES: DIAS_RECIENTES, PAGINA: PAGINA, LOTE: LOTE, DIAS_PLAZO_FALTA: DIAS_PLAZO_FALTA,
+		indiceAsistencias: indiceAsistencias, estadoAsistencia: estadoAsistencia, regresoDe: regresoDe,
+		diaDeJustificacion: diaDeJustificacion, venceFalta: venceFalta, sinCalificar: sinCalificar,
+		fechasDeProducto: fechasDeProducto, estadoPorAsistencia: estadoPorAsistencia,
+		pendientesPorFalta: pendientesPorFalta, estadoPlazo: estadoPlazo, leerAsistencias: leerAsistencias,
 		diaMexico: diaMexico, esFechaHistorica: esFechaHistorica, esHistorico: esHistorico,
 		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,

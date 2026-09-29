@@ -462,7 +462,7 @@ var BandejaSalida = (function () {
 			var enClase = g("estado_en_clase");
 			if (enClase === "incompleta") partes.push(g("revisar_en") ? "se revisa el " + fechaTexto(g("revisar_en")) : "por completar");
 			if (enClase === "completada") partes.push("la completó");
-			if (enClase === "sigue_incompleta") partes.push("sigue incompleta");
+			if (enClase === "sigue_incompleta") partes.push(entrega === "no_entregado" ? "sigue sin entregar" : "sigue incompleta");
 			if (puntaje !== null) partes.push("puntaje " + puntaje);
 			if (retro) partes.push("retroalimentación “" + (retro.length > 60 ? retro.slice(0, 57) + "..." : retro) + "”");
 			if (partes.length) return partes.join(", ");

@@ -22,17 +22,18 @@ function ok(nombre, real, esperado) {
 global.window = global.window || {};
 require("../js/texto-sesion.js");
 
-const fuente = fs.readFileSync(path.join(__dirname, "..", "js", "dashboard.js"), "utf8");
-function fn(nombre) {
-	const m = fuente.match(new RegExp("\\nfunction " + nombre + "\\([\\s\\S]*?\\n\\}"));
-	if (!m) { console.log("FALLA no se encontró " + nombre + " en js/dashboard.js"); process.exit(1); }
-	return m[0];
-}
+// Desde la Fase 2 (2026-09-29) Inicio muestra la secuencia con js/secuencia-sesion.js, la misma de Hoy: las
+// reglas de texto son las mismas de antes, ahora con la sesión como parámetro
+const S = require("../js/secuencia-sesion.js");
+const dashboard = fs.readFileSync(path.join(__dirname, "..", "js", "dashboard.js"), "utf8");
 function crear(sesion) {
-	return new Function("sesionActiva",
-		fn("textoActividad") + fn("getActividadesFase") + fn("getTextoFase") + fn("extraerTareasCierre") + fn("getTareasCierreTexto") +
-		"\nreturn { actividades: getActividadesFase, texto: getTextoFase, tareas: getTareasCierreTexto };")(sesion);
+	return {
+		actividades: (fase) => S.actividadesFase(sesion, fase),
+		texto: (fase) => S.textoFase(sesion, fase) || "Sin información registrada.",
+		tareas: () => S.tareasCierre(sesion),
+	};
 }
+ok("Inicio usa SecuenciaSesion.html y ya no tiene sus propios ayudantes", /SecuenciaSesion\.html\(sesion\)/.test(dashboard) && !/function getTextoFase|function extraerTareasCierre/.test(dashboard), true);
 
 let p = crear({ inicio_actividades: { mode: "todos", todos: [], diferenciado: null }, inicio_todos: "" });
 ok("objeto vacío de Crear proyecto: sin 'todos' ni 'null'", p.actividades("inicio"), []);

@@ -131,7 +131,9 @@ ok("filtro: la regla recibeProducto (js/alcance-hoy.js) no menciona la asistenci
 const cuerpoFiltro = [
 	"var window = { AlcanceHoy: A, ProductosHoy: P };",
 	"var alumnos = ALUMNOS; var asignaciones = {}; var asistencia = ASIST; var calificaciones = CALIF; var hoy = '2026-09-29';",
-	extraerFuncion("faltoHoy"), extraerFuncion("alumnosDeProducto"), extraerFuncion("alumnosParaCalificar"),
+	"var asisPasadas = {}; var ajustesCal = []; var proyectoPorId = {};",
+	extraerFuncion("faltoHoy"), extraerFuncion("asisDe"), extraerFuncion("faltoEnDia"), extraerFuncion("cubiertoPorJustificada"), extraerFuncion("esEnCurso"),
+	extraerFuncion("alumnosDeProducto"), extraerFuncion("alumnosParaCalificar"),
 	"return { para: alumnosParaCalificar, todos: alumnosDeProducto };",
 ].join("\n");
 const fabricaFiltro = (asist, calif) => new Function("A", "P", "ALUMNOS", "ASIST", "CALIF", cuerpoFiltro)(ALCANCE, PH, alumnos, asist, calif);
@@ -173,6 +175,7 @@ const cuerpoFilas = [
 	"var window = {}; var secuenciasAbiertas = ABIERTAS; var restantesAbiertas = {}; var siguientes = SIG; var sesionesHoy = [];",
 	extraerFuncion("esc"), extraerFuncion("vacio"), extraerFuncion("chevron"), extraerFuncion("iconoOjo"), extraerFuncion("iconoLapiz"),
 	"function cuerpoSecuencia() { return '<p>CUERPO</p>'; }",
+	"var todasLasSesiones = [];", extraerFuncion("avisoBloqueo"),
 	extraerFuncion("filaSiguiente"), extraerFuncion("bloqueSiguientes"),
 	"return { bloque: bloqueSiguientes, fila: filaSiguiente };",
 ].join("\n");

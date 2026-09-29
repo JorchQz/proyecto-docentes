@@ -55,6 +55,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// "Pendientes de la clase anterior" que se revisaron en esta visita (siguen a la vista para
 	// poder corregir un toque): alumno|producto → true
 	var revisadosAqui = {};
+	// Faltas (decisiones de Jorge del 2026-09-29; js/alcance-hoy.js, "Faltas"). asisPasadas: las asistencias
+	// del grupo desde el primer día trabajado, { alumnoId: { fecha: { estado, actualizada } } }; la de hoy se
+	// toma de `asistencia` (asisDe). faltasFalla: la lectura falló (Hoy sigue, sin esa parte).
+	var asisPasadas = {};
+	var faltasFalla = false;
+	var todasLasSesiones = [];      // todas las sesiones de los proyectos que mira Hoy (bloqueo de "Trabajar hoy")
+	var faltaVistos = {};           // "Por falta justificada" que se calificaron en esta visita (siguen a la vista para corregir)
+	var esperandoTerminar = false;  // se está terminando una sesión
 	// Los campos de una calificación que captura Hoy (los mismos de la bandeja)
 	var CAMPOS_CAL = ["estado_entrega", "nivel", "puntaje", "retroalimentacion", "revisar_en", "estado_en_clase", "completado_en"];
 	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { marcas, valor }
@@ -694,7 +702,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
 		// Con varios proyectos activos, las de hoy van por proyecto y luego por número
 		// Las actividades sueltas van al final de las del día
-		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy; });
+		todasLasSesiones = sesiones;
+		// Las de hoy y las que se empezaron otro día y siguen sin terminar (sesión en curso: sigue en
+		// Hoy hasta darle "Terminar sesión"; SesionTerminar.enCurso, con su corte)
+		sesionesHoy = sesiones.filter(function (s) { return s.fecha === hoy || esEnCurso(s); });
 
 		/*
 			Las sesiones de una planeación no traen fecha: el maestro decide qué trabaja
@@ -748,7 +759,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		sesionesHoy.sort(function (a, b) {
 			var pa = proyectoPorId[a.proyecto_id] || {}, pb = proyectoPorId[b.proyecto_id] || {};
 			var sa = window.AlcanceHoy.esSueltas(pa) ? 1 : 0, sb = window.AlcanceHoy.esSueltas(pb) ? 1 : 0;
-			var da = a.fecha === hoy ? 0 : 1, db = b.fecha === hoy ? 0 : 1;
+			var da = a.fecha === hoy || esEnCurso(a) ? 0 : 1, db = b.fecha === hoy || esEnCurso(b) ? 0 : 1;
 			var ta = pa.titulo || "", tb = pb.titulo || "";
 			return sa - sb || da - db || String(a.fecha || "").localeCompare(String(b.fecha || "")) ||
 				ta.localeCompare(tb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
@@ -814,6 +825,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 			});
 		});
 
+		/*
+			Las asistencias de los días trabajados: quien faltó no aparece para calificar lo de ese día y lo
+			de una falta justificada queda pendiente con su plazo (AlcanceHoy, "Faltas"). Lectura opcional: si
+			falla, Hoy sigue sin esa parte y lo dice en su bloque.
+		*/
+		var fechasTrab = sesiones.map(function (s) { return s.fecha; }).filter(Boolean).sort();
+		if (fechasTrab.length) {
+			try {
+				// lectura-opcional: solo alimenta "Por falta justificada" y quién no aparece para calificar en un día
+				// anterior; nada se guarda con ella y, si falla, se dice en pantalla y se sigue calificando
+				var filasAsis = await window.AlcanceHoy.leerAsistencias(window.sb, user.id, grupo.id, fechasTrab[0]);
+				asisPasadas = window.AlcanceHoy.indiceAsistencias(filasAsis);
+			} catch (e) {
+				console.warn("hoy: no se pudieron leer las asistencias anteriores", e);
+				faltasFalla = true;
+			}
+		}
+
 		// De las vencidas, solo quedan las de hoy y las que tienen algún alumno sin
 		// revisar: una tarea de hace dos semanas ya revisada no es trabajo pendiente.
 		tareas = tareas.filter(function (t) {
@@ -846,6 +875,38 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function faltoHoy(alumnoId) {
 		return asistencia[alumnoId] === "ausente" || asistencia[alumnoId] === "justificada";
+	}
+
+	// Las asistencias de un alumno: las leídas de la base y la de hoy tal como está en pantalla
+	function asisDe(alumnoId) {
+		var base = asisPasadas[alumnoId] || {};
+		var hoyEstado = asistencia[alumnoId];
+		if (!hoyEstado) return base;
+		var copia = Object.assign({}, base);
+		copia[hoy] = { estado: hoyEstado, actualizada: null };
+		return copia;
+	}
+	function asisTodas() {
+		var idx = {};
+		alumnos.forEach(function (a) { idx[a.id] = asisDe(a.id); });
+		return idx;
+	}
+	// ¿Faltó (o tuvo justificada) ese día? Hoy, con lo de pantalla; otro día, con lo leído
+	function faltoEnDia(alumnoId, fecha) {
+		if (fecha === hoy) return faltoHoy(alumnoId);
+		var e = window.AlcanceHoy.estadoAsistencia(asisDe(alumnoId), fecha);
+		return e === "ausente" || e === "justificada";
+	}
+	// ¿Su falta justificada deja pendiente este producto? (entonces se ve en "Por falta justificada")
+	function cubiertoPorJustificada(alumno, producto) {
+		var est = window.AlcanceHoy.estadoPorAsistencia(producto, producto.sesion && producto.sesion.fecha, asisDe(alumno.id), ajustesCal);
+		return !!(est && est.estado === "justificada");
+	}
+	// Una sesión de un proyecto (no una actividad suelta) empezada y sin terminar (js/sesion-terminar.js)
+	function esEnCurso(s) {
+		if (!s || !window.SesionTerminar) return false;
+		if (window.AlcanceHoy.esSueltas(proyectoPorId[s.proyecto_id])) return false;
+		return window.SesionTerminar.enCurso(s);
 	}
 
 	/*
@@ -988,10 +1049,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 	*/
 	function alumnosParaCalificar(producto) {
 		var lista = alumnosDeProducto(producto);
-		var delDia = producto.tipo === "tarea" || !!(producto.sesion && producto.sesion.fecha === hoy);
+		var fechaSes = producto.sesion && producto.sesion.fecha;
+		// Lo de hoy, las tareas que se revisan hoy y las sesiones en curso (con la asistencia de SU día)
+		var delDia = producto.tipo === "tarea" || fechaSes === hoy || esEnCurso(producto.sesion);
 		if (!delDia) return lista;
+		var diaFalta = producto.tipo === "tarea" ? hoy : (fechaSes || hoy);
 		return lista.filter(function (a) {
-			return !faltoHoy(a.id) || window.ProductosHoy.tieneCaptura(calificaciones[a.id + "|" + producto.id]);
+			if (window.ProductosHoy.tieneCaptura(calificaciones[a.id + "|" + producto.id])) return true;
+			// Faltó ese día, o su falta justificada lo deja pendiente (se ve en "Por falta justificada")
+			return !faltoEnDia(a.id, diaFalta) && !cubiertoPorJustificada(a, producto);
 		});
 	}
 
@@ -1001,10 +1067,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// "Faltaron hoy: Ana, Luis" (quien faltó o tiene justificada); "" si nadie faltó
-	function lineaFaltaron() {
-		var ausentes = (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).filter(function (a) { return faltoHoy(a.id); });
+	function lineaFaltaron(fecha) {
+		var dia = fecha || hoy;
+		var ausentes = (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).filter(function (a) { return faltoEnDia(a.id, dia); });
 		if (!ausentes.length) return "";
-		return "<p class='text-xs text-gray-600 mb-2' data-faltaron-hoy>" + (ausentes.length === 1 ? "Faltó hoy: " : "Faltaron hoy: ") +
+		var cuando = dia === hoy ? "hoy" : "el " + fechaCorta(dia);
+		return "<p class='text-xs text-gray-600 mb-2' data-faltaron-hoy>" + (ausentes.length === 1 ? "Faltó " : "Faltaron ") + cuando + ": " +
 			"<span class='font-medium'>" + ausentes.map(function (a) { return esc(a.nombre_completo); }).join(", ") + "</span>" +
 			" · no aparecen para calificar</p>";
 	}
@@ -1241,43 +1309,121 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	/*
+		"Por falta justificada" (decisiones de Jorge del 2026-09-29; AlcanceHoy.pendientesPorFalta): lo que se
+		trabajó o se dejó el día que el alumno faltó CON justificante. Tiene 3 días de clase desde que regresa
+		(o desde que se justificó, si fue después). Si el plazo pasa, sigue pendiente ("venció el…") hasta que se
+		califique: no pasa sola a No entregó. Lo que se califica en esta visita sigue a la vista para corregir.
+	*/
+	function itemsPorFalta() {
+		if (!window.AlcanceHoy.pendientesPorFalta) return [];
+		var productos = [];
+		Object.keys(productosPorSesion).forEach(function (s) { productos = productos.concat(productosPorSesion[s] || []); });
+		var lista = window.AlcanceHoy.pendientesPorFalta({
+			alumnos: alumnos, productos: productos, calificaciones: calificaciones, asignaciones: asignaciones,
+			asistencias: asisTodas(), ajustes: ajustesCal,
+		});
+		var claves = {};
+		lista.forEach(function (x) {
+			var k = x.alumno.id + "|" + x.producto.id;
+			claves[k] = true;
+			faltaVistos[k] = x;
+		});
+		Object.keys(faltaVistos).forEach(function (k) {
+			if (!claves[k] && !window.AlcanceHoy.sinCalificar(calificaciones[k])) lista.push(faltaVistos[k]);
+		});
+		return lista.sort(function (a, b) {
+			return String(a.fechaFalta).localeCompare(String(b.fechaFalta)) || (Number(a.alumno.grado) - Number(b.alumno.grado)) ||
+				((a.alumno.num_lista || 0) - (b.alumno.num_lista || 0)) || String(a.producto.nombre || "").localeCompare(String(b.producto.nombre || ""), "es");
+		});
+	}
+
+	function fechaConDia(iso) {
+		return window.CalendarioSEP ? window.CalendarioSEP.fechaLarga(iso, false) : fechaCorta(iso);
+	}
+
+	function filaFalta(x) {
+		var al = x.alumno, p = x.producto;
+		var cal = calificaciones[al.id + "|" + p.id] || {};
+		var hecho = !window.AlcanceHoy.sinCalificar(cal);
+		var plazo = window.AlcanceHoy.estadoPlazo(x.vence, hoy);
+		var datos = "data-falta-producto='" + esc(p.id) + "' data-alumno='" + esc(al.id) + "'";
+		var controles;
+		if (!hecho && faltoHoy(al.id)) {
+			controles = "<span class='text-xs text-gray-500 self-center'>Faltó hoy: sigue pendiente para su regreso.</span>";
+		} else if (!hecho && plazo === "sin_regreso") {
+			controles = "<span class='text-xs text-gray-500 self-center'>Aún no regresa: se le califica a su regreso.</span>";
+		} else {
+			controles = NIVELES.map(function (op) {
+				return chip(op.etiqueta, cal.nivel === op.valor, op.activo, datos + " data-nivel-falta='" + op.valor + "'");
+			}).join("") + chip("No entregó", cal.estado_entrega === "no_entregado", "bg-red-500 text-white", datos + " data-estado-falta='no_entregado'");
+		}
+		var textoPlazo = plazo === "sin_regreso" ? "se entrega a su regreso (3 días de clase)"
+			: (plazo === "vencido" ? "venció el " : "entrega a más tardar el ") + (plazo === "sin_regreso" ? "" : fechaConDia(x.vence));
+		var sesion = p.sesion || {};
+		var nota = (p.nombre || "Actividad") + " · " + (window.CamposFormativos ? window.CamposFormativos.largo(p.campo) : p.campo) +
+			" · faltó el " + fechaCorta(x.fechaFalta) + (hecho ? "" : " · " + textoPlazo);
+		return "<div data-fila-falta='" + esc(al.id + "|" + p.id) + "' data-plazo='" + plazo + "'>" + filaAlumno(al, controles, nota) + "</div>";
+	}
+
 	function renderPendientes() {
 		var seccion = document.getElementById("pendientes");
+		var bloqueClase = document.getElementById("pendientesClase");
+		var bloqueFalta = document.getElementById("pendientesFalta");
 		var cont = document.getElementById("pendientesLista");
+		var contFalta = document.getElementById("pendientesFaltaLista");
 		if (!cont) return;
 		var lista = pendientesDeRevisar();
-		if (seccion && seccion.classList) seccion.classList.toggle("hidden", !lista.length);
-		if (!lista.length) {
-			cont.innerHTML = "";
-			var r0 = document.getElementById("pendientesResumen");
-			if (r0) r0.textContent = "";
-			return;
+		var porFalta = itemsPorFalta();
+		var hayFalta = porFalta.length > 0 || faltasFalla;
+		if (seccion && seccion.classList) seccion.classList.toggle("hidden", !lista.length && !hayFalta);
+		if (bloqueClase && bloqueClase.classList) bloqueClase.classList.toggle("hidden", !lista.length);
+		if (bloqueFalta && bloqueFalta.classList) bloqueFalta.classList.toggle("hidden", !hayFalta);
+		var resumen = document.getElementById("pendientesResumen");
+		if (contFalta) {
+			contFalta.innerHTML = porFalta.length
+				? porFalta.map(filaFalta).join("")
+				: (faltasFalla ? "<p class='text-sm text-red-700'>No se pudieron leer las faltas anteriores; lo de una falta justificada no se muestra por ahora. Recarga la página para intentarlo de nuevo.</p>" : "");
 		}
 		var sinRevisar = 0;
-		cont.innerHTML = lista.map(function (x) {
-			var c = x.cal, al = x.alumno, p = x.producto;
-			var falto = faltoHoy(al.id);
-			var pendiente = c.estado_en_clase === "incompleta";
-			if (pendiente) sinRevisar++;
-			var datos = "data-revisar-producto='" + p.id + "' data-alumno='" + al.id + "'";
-			var controles = "";
-			if (falto && pendiente) {
-				controles = "<span class='text-xs text-gray-500 self-center'>Faltó hoy: queda pendiente para su siguiente clase.</span>";
-			} else {
-				controles = "<span class='text-xs text-gray-500 self-center mr-1'>Lo completó:</span>" +
-					NIVELES.map(function (op) {
-						return chip(op.etiqueta, c.estado_en_clase === "completada" && c.nivel === op.valor, op.activo,
-							datos + " data-accion='completo' data-nivel-revision='" + op.valor + "'");
-					}).join("") +
-					chip("Sigue incompleta", c.estado_en_clase === "sigue_incompleta", "bg-amber-500 text-white", datos + " data-accion='sigue'");
-			}
-			var sesion = p.sesion || {};
-			var nota = (p.nombre || "Actividad") + " · " + (window.CamposFormativos ? window.CamposFormativos.largo(p.campo) : p.campo) +
-				(sesion.fecha ? " · incompleta el " + fechaCorta(sesion.fecha) : "");
-			return filaAlumno(al, controles, nota);
-		}).join("");
-		var r = document.getElementById("pendientesResumen");
-		if (r) r.textContent = sinRevisar ? sinRevisar + (sinRevisar === 1 ? " por revisar" : " por revisar") : "todas revisadas";
+		if (!lista.length) {
+			cont.innerHTML = "";
+		} else {
+			cont.innerHTML = lista.map(function (x) {
+				var c = x.cal, al = x.alumno, p = x.producto;
+				var falto = faltoHoy(al.id);
+				var pendiente = c.estado_en_clase === "incompleta";
+				// De dónde viene: sin entregar (No entregó en clase) o incompleta. Ya revisada como completada
+				// no se sabe: se ofrecen las dos salidas por si hay que corregir
+				var sinEntregar = c.estado_entrega === "no_entregado";
+				var origenIncierto = c.estado_en_clase === "completada";
+				if (pendiente) sinRevisar++;
+				var datos = "data-revisar-producto='" + p.id + "' data-alumno='" + al.id + "'";
+				var controles = "";
+				if (falto && pendiente) {
+					controles = "<span class='text-xs text-gray-500 self-center'>Faltó hoy: queda pendiente para su siguiente clase.</span>";
+				} else {
+					controles = "<span class='text-xs text-gray-500 self-center mr-1'>" + (sinEntregar ? "La entregó:" : "Lo completó:") + "</span>" +
+						NIVELES.map(function (op) {
+							return chip(op.etiqueta, c.estado_en_clase === "completada" && c.nivel === op.valor, op.activo,
+								datos + " data-accion='completo' data-nivel-revision='" + op.valor + "'");
+						}).join("") +
+						(sinEntregar || origenIncierto
+							? chip("Sigue sin entregar", c.estado_en_clase === "sigue_incompleta" && sinEntregar, "bg-red-500 text-white", datos + " data-accion='sigue_sin_entregar'")
+							: "") +
+						(!sinEntregar
+							? chip("Sigue incompleta", c.estado_en_clase === "sigue_incompleta", "bg-amber-500 text-white", datos + " data-accion='sigue'")
+							: "");
+				}
+				var sesion = p.sesion || {};
+				var nota = (p.nombre || "Actividad") + " · " + (window.CamposFormativos ? window.CamposFormativos.largo(p.campo) : p.campo) +
+					(sesion.fecha ? " · " + (sinEntregar ? "sin entregar" : "incompleta") + " el " + fechaCorta(sesion.fecha) : "");
+				return filaAlumno(al, controles, nota);
+			}).join("");
+		}
+		var pendientesFalta = porFalta.filter(function (x) { return window.AlcanceHoy.sinCalificar(calificaciones[x.alumno.id + "|" + x.producto.id]); }).length;
+		var total = sinRevisar + pendientesFalta;
+		if (resumen) resumen.textContent = total ? total + " por revisar" : ((lista.length || porFalta.length) ? "todas revisadas" : "");
 	}
 
 	var pendientesCont = document.getElementById("pendientesLista");
@@ -1291,14 +1437,41 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var k = alumno.id + "|" + producto.id;
 			var c = calificaciones[k] || {};
 			var accion = btn.dataset.accion;
-			var yaEsa = accion === "sigue" ? c.estado_en_clase === "sigue_incompleta"
-				: c.estado_en_clase === "completada" && c.nivel === btn.dataset.nivelRevision;
-			// Tocar otra vez lo elegido lo regresa a pendiente (para corregir un toque)
+			var sinEntregar = c.estado_entrega === "no_entregado";
+			var yaEsa = accion === "completo"
+				? c.estado_en_clase === "completada" && c.nivel === btn.dataset.nivelRevision
+				: c.estado_en_clase === "sigue_incompleta" && (accion === "sigue_sin_entregar") === sinEntregar;
+			// Tocar otra vez lo elegido lo regresa a pendiente (para corregir un toque); lo que era No
+			// entregó vuelve a No entregó (vale 0), no a incompleta
 			guardarCalificacion(alumno, producto, yaEsa
-				? window.AlcanceHoy.cambiosIncompleta("pendiente", { hoy: hoy })
+				? window.AlcanceHoy.cambiosIncompleta(accion === "sigue_sin_entregar" ? "pendiente_no_entregado" : "pendiente", { hoy: hoy })
 				: window.AlcanceHoy.cambiosIncompleta(accion, { hoy: hoy, nivel: btn.dataset.nivelRevision }));
 			revisadosAqui[k] = true;
 			renderPendientes();
+			repintarSesiones();
+		});
+	}
+
+	// "Por falta justificada": el nivel o "No entregó" de lo que se debe por la falta; tocar otra vez lo quita
+	var pendientesFaltaCont = document.getElementById("pendientesFaltaLista");
+	if (pendientesFaltaCont && pendientesFaltaCont.addEventListener) {
+		pendientesFaltaCont.addEventListener("click", function (e) {
+			var btn = e.target.closest("button[data-falta-producto]");
+			if (!btn) return;
+			var producto = productoPorId(btn.dataset.faltaProducto);
+			var alumno = alumnos.find(function (a) { return a.id === btn.dataset.alumno; });
+			if (!producto || !alumno) return;
+			var c = calificaciones[alumno.id + "|" + producto.id] || {};
+			var sinMarca = window.AlcanceHoy.cambiosIncompleta("quitar");
+			if (btn.dataset.nivelFalta) {
+				var nuevo = c.nivel === btn.dataset.nivelFalta ? null : btn.dataset.nivelFalta;
+				guardarCalificacion(alumno, producto, Object.assign({ nivel: nuevo, estado_entrega: nuevo ? "entregado" : null }, sinMarca));
+			} else if (btn.dataset.estadoFalta) {
+				var noEnt = c.estado_entrega === btn.dataset.estadoFalta ? null : btn.dataset.estadoFalta;
+				guardarCalificacion(alumno, producto, Object.assign({ estado_entrega: noEnt, nivel: null }, sinMarca));
+			}
+			renderPendientes();
+			renderTareas();
 			repintarSesiones();
 		});
 	}
@@ -1344,11 +1517,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// "Trabajar hoy": la siguiente de CADA proyecto activo, agrupadas, y las demás a un toque
+	// "Termina la sesión 4 para empezar otra": una sesión empezada bloquea la siguiente del proyecto
+	function avisoBloqueo(bloqueo) {
+		if (!bloqueo.length) return "";
+		var nums = bloqueo.map(function (x) { return x.numero_sesion; }).join(", ");
+		return "<p class='mt-2 text-xs text-gray-600' data-bloqueo-siguiente>Termina la sesión " + esc(nums) + " (arriba, en «Terminar sesión») para empezar la siguiente.</p>";
+	}
+
 	function bloqueSiguientes() {
 		if (!siguientes.length) {
 			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en tus proyectos activos. Inicia un proyecto desde Proyectos o agrega una actividad suelta.");
 		}
-		return "<div class='rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
+		return "<div id='siguientes' class='scroll-mt-32 rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
 			"<p class='text-sm font-semibold text-gray-800 mb-1'>" +
 			(sesionesHoy.length ? "¿Trabajarás otra sesión hoy?" : "¿Qué sesión trabajas hoy?") + "</p>" +
 			"<p class='text-xs text-gray-500 mb-2'>Las sesiones se trabajan en orden: toca «Trabajar hoy» en la siguiente y sus actividades aparecen aquí para calificarlas. Con el ojo ves la secuencia de una sesión y con el lápiz la editas en el proyecto." +
@@ -1356,6 +1536,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<div class='flex flex-col gap-3'>" +
 			siguientes.map(function (g) {
 				var abiertas = !!restantesAbiertas[g.proyecto.id];
+					// Una sesión de este proyecto empezada y sin terminar: no se puede empezar otra
+					var bloqueo = window.SesionTerminar ? window.SesionTerminar.enCursoDe(todasLasSesiones.filter(function (x) { return !esSuelta(x); }), g.proyecto.id) : [];
 				var otras = g.otras.length
 					? "<button type='button' data-abrir-restantes='" + esc(g.proyecto.id) + "' aria-expanded='" + (abiertas ? "true" : "false") + "' " +
 						"class='mt-2 min-h-[44px] flex items-center gap-2 text-sm text-blue-700 font-medium'>" + chevron(abiertas) +
@@ -1365,7 +1547,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					: "";
 				return "<section class='rounded-lg bg-white/60 p-2' aria-label='" + esc(g.proyecto.titulo || "Proyecto") + "'>" +
 					"<p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>" + esc(g.proyecto.titulo || "Proyecto sin título") + "</p>" +
-					filaSiguiente(g.siguiente, true) + otras + "</section>";
+					filaSiguiente(g.siguiente, !bloqueo.length) + avisoBloqueo(bloqueo) + otras + "</section>";
 			}).join("") +
 			"</div></div>";
 	}
@@ -1466,17 +1648,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 							: "Actividades sin proyecto de hoy. Puedes pasarlas a un proyecto cuando quieras.") + "</span></p>"
 					: "<p class='font-semibold text-gray-800 text-sm'>Sesión " + (ses.numero_sesion || "") +
 						" · " + esc(ses.campo_formativo || "") +
-						(proyecto && proyecto.titulo ? "<span class='block text-xs font-normal text-gray-500'>" + esc(proyecto.titulo) + "</span>" : "") + "</p>") +
+						(proyecto && proyecto.titulo ? "<span class='block text-xs font-normal text-gray-500'>" + esc(proyecto.titulo) + "</span>" : "") +
+						// Una sesión que se empezó otro día y sigue sin terminar
+						(esEnCurso(ses) && ses.fecha < hoy && window.SesionTerminar
+							? "<span class='block text-xs font-semibold text-blue-700' data-empezo>" + esc(window.SesionTerminar.etiquetaEmpezo(ses.fecha, hoy)) + " · sigue en curso</span>" : "") + "</p>") +
 				"<span class='flex flex-wrap gap-2 shrink-0'>" +
 				// Una sesión con calificaciones o ya terminada no se quita de hoy (volvería a "pendiente");
 				// las sueltas no se quitan de hoy (son de hoy)
-				(suelta || sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" ? "" :
+				(suelta || sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" || ses.fecha < hoy ? "" :
 					"<button type='button' data-quitar-hoy='" + ses.id + "' " +
 					"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-500 hover:bg-gray-50'>Quitar de hoy</button>") +
 				"<button type='button' data-agregar-producto='" + ses.id + "' " +
 				"class='min-h-[44px] px-3 rounded-lg border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50'>Agregar actividad o tarea</button>" +
 				"</span>" +
-				"</div>" + (ses.fecha === hoy ? lineaFaltaron() : "") + panelSecuencia(ses) + cuerpo + bloqueTareasDeSesion(tareasSesion) + "</div>";
+				"</div>" + (ses.fecha === hoy || esEnCurso(ses) ? lineaFaltaron(ses.fecha) : "") + panelSecuencia(ses) + cuerpo + bloqueTareasDeSesion(tareasSesion) + pieSesion(ses) + "</div>";
 		}).join("") + bloqueSiguientes();
 		var sinCalificar = 0;
 		sesionesHoy.forEach(function (ses) {
@@ -1489,6 +1674,79 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		document.getElementById("sesionesResumen").textContent = sinCalificar
 			? sinCalificar + " sin calificar" : "todo calificado";
+	}
+
+	// Cuántas actividades (no tareas) de la sesión siguen sin calificar, de quienes aparecen para calificar
+	function sinCalificarDeSesion(ses) {
+		var n = 0;
+		(productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea"; }).forEach(function (p) {
+			alumnosParaCalificar(p).forEach(function (al) {
+				if (!estaCalificado(calificaciones[al.id + "|" + p.id])) n++;
+			});
+		});
+		return n;
+	}
+
+	// Al pie de cada sesión de un proyecto: "Terminar sesión N" (o que ya está terminada)
+	function pieSesion(ses) {
+		if (esSuelta(ses) || !window.SesionTerminar) return "";
+		if (ses.estado_sesion === "completada") {
+			return "<p class='mt-3 pt-3 border-t border-gray-100 text-sm font-medium text-emerald-700' data-sesion-terminada>Sesión " + (ses.numero_sesion || "") + " terminada.</p>";
+		}
+		return "<div class='mt-3 pt-3 border-t border-gray-100 flex justify-end'>" +
+			"<button type='button' data-terminar-sesion='" + esc(ses.id) + "' class='min-h-[44px] px-5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700'>Terminar sesión " + (ses.numero_sesion || "") + "</button></div>";
+	}
+
+	/*
+		"Terminar sesión N": espera a que se envíe lo capturado (sin eso, "quedan N sin calificar" mentiría
+		y lo capturado podría quedarse en la cola), dice cuántos quedan sin calificar, deja escribir notas,
+		la marca completada (js/sesion-terminar.js) y recarga con la tarjeta azul de la siguiente a la vista.
+	*/
+	async function terminarSesion(btn) {
+		var ses = todasLasSesiones.filter(function (s) { return s.id === btn.dataset.terminarSesion; })[0];
+		if (!ses || esperandoTerminar) return;
+		esperandoTerminar = true;
+		var etiqueta = btn.textContent;
+		try {
+			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
+			if (sinSenal()) {
+				mensaje("error", "Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+				return;
+			}
+			if (bandeja && bandeja.pendientes()) {
+				btn.disabled = true;
+				btn.textContent = "Guardando lo capturado...";
+				var envio = await bandeja.esperarEnvio();
+				btn.disabled = false;
+				btn.textContent = etiqueta;
+				if (envio !== "ok") {
+					mensaje("error", envio === "red" || envio === "servidor"
+						? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
+						: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+					return;
+				}
+			}
+			mensaje("", "");
+			window.SesionTerminar.abrirModal({
+				titulo: "Terminar la sesión " + (ses.numero_sesion || ""),
+				sinCalificar: sinCalificarDeSesion(ses),
+				etiquetaBoton: "Terminar sesión " + (ses.numero_sesion || ""),
+				origen: btn,
+				alConfirmar: async function (notas) {
+					try {
+						await window.SesionTerminar.terminar(window.sb, { sesionId: ses.id, notas: notas, proyectoId: ses.proyecto_id, maestroId: user.id, hoy: hoy });
+					} catch (e) {
+						throw new Error("No se pudo terminar la sesión: " + textoError(e) + ".");
+					}
+					// Recarga con la tarjeta azul de la siguiente sesión a la vista
+					if (window.history && window.history.replaceState) window.history.replaceState(null, "", window.location.pathname + "#siguientes");
+					window.location.reload();
+				},
+			});
+		} finally {
+			esperandoTerminar = false;
+			if (btn && !btn.disabled) btn.textContent = etiqueta;
+		}
 	}
 
 	// Repintar sesiones sin tirar lo que la maestra está escribiendo en una retroalimentación:
@@ -1506,9 +1764,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// "Incompleta: se revisa el 29 sep" (o "La completó el 29 sep" / "Sigue incompleta")
 	function notaIncompleta(cal) {
 		if (!cal) return "";
-		if (cal.estado_en_clase === "incompleta") return cal.revisar_en ? "Incompleta: se revisa el " + fechaCorta(cal.revisar_en) : "Incompleta";
-		if (cal.estado_en_clase === "completada") return "Quedó incompleta; la completó" + (cal.completado_en ? " el " + fechaCorta(cal.completado_en) : "");
-		if (cal.estado_en_clase === "sigue_incompleta") return "Sigue incompleta";
+		// No entregó en clase también se revisa el siguiente día de clase (vale 0 mientras tanto)
+		var sinEntregar = cal.estado_entrega === "no_entregado";
+		if (cal.estado_en_clase === "incompleta") {
+			var quien = sinEntregar ? "No entregó" : "Incompleta";
+			return cal.revisar_en ? quien + ": se revisa el " + fechaCorta(cal.revisar_en) : quien;
+		}
+		if (cal.estado_en_clase === "completada") return "Quedó pendiente; la completó" + (cal.completado_en ? " el " + fechaCorta(cal.completado_en) : "");
+		if (cal.estado_en_clase === "sigue_incompleta") return sinEntregar ? "Sigue sin entregar" : "Sigue incompleta";
 		return "";
 	}
 
@@ -1668,6 +1931,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var btnHoy = e.target.closest("button[data-trabajar-hoy], button[data-quitar-hoy]");
 		if (btnHoy) { await fecharSesion(btnHoy); return; }
 
+		var btnTerminar = e.target.closest("button[data-terminar-sesion]");
+		if (btnTerminar) { await terminarSesion(btnTerminar); return; }
+
 		// Abrir o cerrar una actividad: se cambia lo que se ve sin volver a dibujar (el foco y el
 		// desplazamiento se quedan) y se recuerda en productosAbiertos para el siguiente dibujo
 		var btnAbrir = e.target.closest("button[data-abrir-producto]");
@@ -1765,6 +2031,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 				: window.AlcanceHoy.cambiosIncompleta("marcar", { hoy: hoy, ajustes: ajustesCal,
 					// Actividad histórica (de un día anterior al de su creación): no pasa a la siguiente clase
 					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion && producto.sesion.fecha) }));
+		} else if (btn.dataset.estado === "no_entregado") {
+			// No entregó en clase (decisión del 2026-09-29): vale 0 y pasa a revisión el siguiente día de
+			// clase, como Incompleta; tocarlo otra vez lo quita. En una actividad histórica no hay revisión.
+			guardarCalificacion(alumno, producto, cal.estado_entrega === "no_entregado"
+				? Object.assign({ estado_entrega: null, nivel: null }, sinIncompleta)
+				: window.AlcanceHoy.cambiosIncompleta("no_entregado", { hoy: hoy, ajustes: ajustesCal,
+					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion && producto.sesion.fecha) }));
 		} else if (btn.dataset.estado) {
 			var nuevoEstado = cal.estado_entrega === btn.dataset.estado ? null : btn.dataset.estado;
 			guardarCalificacion(alumno, producto, Object.assign({ estado_entrega: nuevoEstado, nivel: null }, sinIncompleta));
@@ -1824,6 +2097,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 	async function fecharSesion(btn) {
 		var poner = !!btn.dataset.trabajarHoy;
 		var sesionId = poner ? btn.dataset.trabajarHoy : btn.dataset.quitarHoy;
+		if (poner && window.SesionTerminar) {
+			var destino = todasLasSesiones.filter(function (s) { return s.id === sesionId; })[0];
+			var abierta = destino ? window.SesionTerminar.enCursoDe(todasLasSesiones.filter(function (x) { return !esSuelta(x); }), destino.proyecto_id) : [];
+			if (abierta.length) {
+				mensaje("error", "Primero termina la sesión " + abierta.map(function (x) { return x.numero_sesion; }).join(", ") + " de este proyecto; después empiezas la siguiente.");
+				return;
+			}
+		}
 		btn.disabled = true;
 		try {
 			// La pantalla se recarga al final: primero debe quedar guardado todo lo que ya
@@ -2879,7 +3160,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var ses = document.getElementById("ses-" + sesionPedida);
 			if (ses && ses.scrollIntoView) { ses.scrollIntoView({ block: "start" }); return; }
 		}
-		if (["asistencia", "tareas", "sesiones", "cierre"].indexOf(id) === -1) return;
+		if (["asistencia", "tareas", "sesiones", "cierre", "siguientes"].indexOf(id) === -1) return;
 		var el = document.getElementById(id);
 		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });
 	}

@@ -442,6 +442,23 @@
 		return siguienteHabil(f);
 	}
 
+	/*
+		diaDeClaseN(fecha, n, ajustes) → "AAAA-MM-DD": el día de clase número `n` DESPUÉS de `fecha`
+		(la fecha misma no cuenta, sea o no de clase). Con n = 3 desde el miércoles: jueves (1),
+		viernes (2) y lunes (3). Salta CTE, suspensiones, vacaciones y los días sin clase del grupo,
+		con el mismo calendario y el mismo recurso de siempre fuera de los ciclos cargados
+		(siguienteDiaDeClase). n <= 0 devuelve la fecha. null si la fecha no es válida.
+		Lo usa el plazo de lo que se debe por una falta justificada (js/alcance-hoy.js, venceFalta).
+	*/
+	function diaDeClaseN(fecha, n, ajustes) {
+		var f = fechaISO(fecha);
+		if (!f) return null;
+		var m = mapaAjustes(ajustes);
+		var total = Math.floor(Number(n)) || 0;
+		for (var i = 0; i < total; i++) f = siguienteDiaDeClase(f, m);
+		return f;
+	}
+
 	// Leyenda para la pantalla: los tipos que aparecen en un ciclo (en orden fijo)
 	var ORDEN_LEYENDA = ["clase", "cte", "festivo", "vacaciones", "registro", "formacion", "otro", "entrega", "jornada", "preinscripcion", "propio_sin_clase", "propio_con_clase", "fin_semana"];
 
@@ -456,7 +473,7 @@
 		cicloDe: cicloDe, cicloPorNombre: cicloPorNombre, cicloVigente: cicloVigente, mesesDelCiclo: mesesDelCiclo,
 		infoOficial: infoOficial, tipoDeDia: tipoDeDia, esDiaDeClase: esDiaDeClase,
 		diasDeClase: diasDeClase, diasSinClase: diasSinClase, proximoSinClase: proximoSinClase,
-		siguienteDiaDeClase: siguienteDiaDeClase,
+		siguienteDiaDeClase: siguienteDiaDeClase, diaDeClaseN: diaDeClaseN,
 		ajustePermitido: ajustePermitido, mapaAjustes: mapaAjustes, ajusteEnPeriodo: ajusteEnPeriodo, ajustesVigentes: ajustesVigentes,
 		fechaISO: fechaISO, sumarDias: sumarDias, diaSemana: diaSemana, esFinDeSemana: esFinDeSemana,
 		hoyLocal: hoyLocal, diasDelMes: diasDelMes, mesSiguiente: mesSiguiente,

@@ -67,8 +67,18 @@
 					<h2 class="font-bold text-gray-800">Pendientes de la clase anterior</h2>
 					<span id="pendientesResumen" class="text-xs text-gray-500"></span>
 				</div>
-				<p class="text-xs text-gray-500 mb-3">Actividades que quedaron incompletas. Si ya la completó, elige el nivel que logró; si no, «Sigue incompleta». Se revisa una sola vez.</p>
-				<div id="pendientesLista" class="flex flex-col gap-2"></div>
+				<!-- Bloque 1: De la clase anterior (Incompleta y No entregó en clase) -->
+				<div id="pendientesClase" class="hidden">
+					<h3 class="text-sm font-semibold text-gray-700 mb-1">De la clase anterior</h3>
+					<p class="text-xs text-gray-500 mb-3">Actividades que quedaron incompletas o sin entregar. Si ya la completó o la entregó, elige el nivel que logró; si no, «Sigue incompleta» o «Sigue sin entregar». Se revisa una sola vez.</p>
+					<div id="pendientesLista" class="flex flex-col gap-2"></div>
+				</div>
+				<!-- Bloque 2: Por falta justificada (lo del día que faltó, con su plazo) -->
+				<div id="pendientesFalta" class="hidden mt-4 pt-4 border-t border-gray-100 first:mt-0 first:pt-0 first:border-0">
+					<h3 class="text-sm font-semibold text-gray-700 mb-1">Por falta justificada</h3>
+					<p class="text-xs text-gray-500 mb-3">Lo que se trabajó o se dejó el día que faltaron con justificante. Tienen 3 días de clase desde que regresan; si el plazo pasa, sigue pendiente hasta que lo califiques.</p>
+					<div id="pendientesFaltaLista" class="flex flex-col gap-2"></div>
+				</div>
 			</section>
 
 			<!-- 3. Sesiones de hoy -->
@@ -123,6 +133,9 @@
 	<!-- Secuencia de la sesión (inicio, desarrollo, cierre, anexos y libros): lectura opcional -->
 	<script src="js/texto-sesion.js"></script>
 	<script src="js/secuencia-sesion.js"></script>
+	<!-- Terminar sesión y sesión en curso; visor de anexos y libros (pantalla dividida) -->
+	<script src="js/sesion-terminar.js"></script>
+	<script src="js/visor-recursos.js"></script>
 	<script src="js/hoy.js"></script>
 </body>
 </html>

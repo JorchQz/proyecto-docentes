@@ -132,7 +132,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var activos = {};
 		alumnos.forEach(function (a) { activos[a.id] = true; });
 		var pendientes = await window.AlcanceHoy.leerPorLotes([grupo.id], function (lote) {
-			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, revisar_en")
+			return window.sb.from("calificaciones").select("alumno_id, producto_sesion_id, revisar_en, estado_entrega")
 				.eq("maestro_id", maestroId).eq("grupo_id", lote[0]).eq("estado_en_clase", "incompleta").order("id");
 		});
 		pendientes = pendientes.filter(function (c) { return activos[c.alumno_id]; });
@@ -147,6 +147,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var revisar = suyos.map(function (c) { return String(c.revisar_en || "").slice(0, 10); }).filter(Boolean).sort()[0] || null;
 			tareas.push(Object.assign({}, p, {
 				porCompletar: suyos.map(function (c) { return c.alumno_id; }),
+				// De ellos, cuántos no la entregaron en clase (No entregó también se revisa el siguiente día de clase)
+				porCompletarSinEntregar: suyos.filter(function (c) { return c.estado_entrega === "no_entregado"; }).length,
 				sesion: s, proyecto: proyPorId[s.proyecto_id] || {}, vence: revisar,
 			}));
 		});
@@ -273,7 +275,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "<span class='text-xs text-gray-500'>" + (t.vence < hoy ? "Venció el " : t.vence === hoy ? "Vence hoy, " : "Vence el ") + formatFecha(t.vence) + "</span>"
 				: "<span class='text-xs text-gray-500'>Toma fecha cuando trabajes la sesión " + esc(t.sesion.numero_sesion || "") + " en Hoy</span>";
 			var avance = t.porCompletar
-				? "<p class='text-sm text-gray-700'><b>" + s.total + "</b> " + (s.total === 1 ? "alumno la dejó incompleta en clase" : "alumnos la dejaron incompleta en clase") + "</p>"
+				? "<p class='text-sm text-gray-700'><b>" + s.total + "</b> " + (t.porCompletarSinEntregar === s.total
+					? (s.total === 1 ? "alumno no la entregó en clase" : "alumnos no la entregaron en clase")
+					: t.porCompletarSinEntregar
+					? (s.total === 1 ? "alumno la dejó pendiente en clase" : "alumnos la dejaron pendiente en clase") + " <span class='text-xs text-gray-500'>(" + t.porCompletarSinEntregar + " sin entregar)</span>"
+					: (s.total === 1 ? "alumno la dejó incompleta en clase" : "alumnos la dejaron incompleta en clase")) + "</p>"
 				: s.total
 				? "<p class='text-sm text-gray-700'><b>" + s.revisados + " de " + s.total + "</b> alumnos revisados" +
 					(s.revisados ? " <span class='text-xs text-gray-500'>(" + detalleConteo(s.conteo) + ")</span>" : "") + "</p>"
