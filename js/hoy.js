@@ -1172,6 +1172,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var btn = e.target.closest("button[data-asistencia]");
 		if (!btn) return;
 		var alumnoId = btn.dataset.asistencia;
+		// Tocar el chip que ya está activo no escribe nada: la base movería asistencias.updated_at y con él el plazo de
+		// una Justificada (AlcanceHoy.venceFalta) sin que haya cambiado nada
+		if (asistencia[alumnoId] === btn.dataset.valor) return;
 		var estabaCompleta = asistenciaCompleta();
 		asistencia[alumnoId] = btn.dataset.valor;
 		guardarAsistencia(alumnoId, btn.dataset.valor);
@@ -1441,7 +1444,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var yaEsa = accion === "completo"
 				? c.estado_en_clase === "completada" && c.nivel === btn.dataset.nivelRevision
 				: c.estado_en_clase === "sigue_incompleta" && (accion === "sigue_sin_entregar") === sinEntregar;
-			// Tocar otra vez lo elegido lo regresa a pendiente (para corregir un toque); lo que era No
+			// Ya "La entregó" con ese nivel: no se ofrece deshacer. Al completarse se pierde si venía de No
+			// entregó (0) o de Incompleta (0.5), y deshacer lo regresaría al valor equivocado; para corregir
+			// se elige otro nivel, «Sigue incompleta» o «Sigue sin entregar».
+			if (accion === "completo" && yaEsa) return;
+			// Tocar otra vez «Sigue…» lo regresa a pendiente (para corregir un toque); lo que era No
 			// entregó vuelve a No entregó (vale 0), no a incompleta
 			guardarCalificacion(alumno, producto, yaEsa
 				? window.AlcanceHoy.cambiosIncompleta(accion === "sigue_sin_entregar" ? "pendiente_no_entregado" : "pendiente", { hoy: hoy })
@@ -1739,7 +1746,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 						throw new Error("No se pudo terminar la sesión: " + textoError(e) + ".");
 					}
 					// Recarga con la tarjeta azul de la siguiente sesión a la vista
-					if (window.history && window.history.replaceState) window.history.replaceState(null, "", window.location.pathname + "#siguientes");
+					if (window.history) {
+						try { window.history.scrollRestoration = "manual"; } catch (_) { /* sin esa opción */ }
+						if (window.history.replaceState) window.history.replaceState(null, "", window.location.pathname + "#siguientes");
+					}
 					window.location.reload();
 				},
 			});
@@ -3101,6 +3111,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!btn) return;
 		var alumnoId = btn.dataset.alumno;
 		var actual = registro[alumnoId] || { participacion: 1, conducta: 1 };
+		// Igual que en Asistencia: volver a tocar el valor ya guardado no escribe nada
+		if (registroGuardado[alumnoId] && actual[btn.dataset.cierre] === Number(btn.dataset.valor)) return;
 		actual[btn.dataset.cierre] = Number(btn.dataset.valor);
 		registro[alumnoId] = actual;
 		guardarRegistro(alumnoId, btn.dataset.cierre);
@@ -3163,6 +3175,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (["asistencia", "tareas", "sesiones", "cierre", "siguientes"].indexOf(id) === -1) return;
 		var el = document.getElementById(id);
 		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });
+		// Tras "Terminar sesión" la página se recarga con el scroll donde estaba (al fondo): el navegador lo restaura
+		// DESPUÉS de pintar y taparía la tarjeta azul. Se vuelve a poner a la vista un momento después.
+		if (id === "siguientes") {
+			[250, 900].forEach(function (ms) {
+				setTimeout(function () { var e2 = document.getElementById(id); if (e2 && e2.scrollIntoView) e2.scrollIntoView({ block: "start" }); }, ms);
+			});
+		}
 	}
 
 	// "Actividad suelta": una actividad o tarea sin proyecto, en cualquier momento (guiar sin obligar)

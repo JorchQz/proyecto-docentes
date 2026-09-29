@@ -564,7 +564,12 @@
 		});
 	}
 
+	// ¿Está el calendario SEP? (el motor de calificación lo EXIGE: sin él, el vencimiento de las tareas cambiaría y la
+	// calificación dependería de la pantalla)
+	function calendarioDisponible() { return !!calendario(); }
+
 	var api = {
+		calendarioDisponible: calendarioDisponible,
 		DIAS_RECIENTES: DIAS_RECIENTES, PAGINA: PAGINA, LOTE: LOTE, DIAS_PLAZO_FALTA: DIAS_PLAZO_FALTA,
 		indiceAsistencias: indiceAsistencias, estadoAsistencia: estadoAsistencia, regresoDe: regresoDe,
 		diaDeJustificacion: diaDeJustificacion, venceFalta: venceFalta, sinCalificar: sinCalificar,

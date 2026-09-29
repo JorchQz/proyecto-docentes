@@ -271,11 +271,11 @@ const fila = (fecha, estado, upd) => ({ alumno_id: "x", fecha: fecha, asistencia
 	ok("textoSinCalificar", [ST.textoSinCalificar(0), ST.textoSinCalificar(1), ST.textoSinCalificar(3), ST.textoSinCalificar(null)],
 		["Todo lo de esta sesión está calificado.", "Queda 1 sin calificar. Puedes terminar la sesión y calificarlas después.", "Quedan 3 sin calificar. Puedes terminar la sesión y calificarlas después.", ""]);
 	// terminar(): marca completada y, si ya no quedan, completa el proyecto
-	const escrito = [];
+	const escrito = [], filtros = [];
 	function sbT(quedan) {
 		return { from(t) {
 			const q = {
-				update(x) { escrito.push([t, x]); return q; }, select() { return q; }, eq() { return q; }, neq() { return q; },
+				update(x) { escrito.push([t, x]); return q; }, select() { return q; }, eq() { return q; }, neq() { return q; }, or(f) { filtros.push(f); return q; },
 				then(a, b) { return Promise.resolve(t === "sesiones" && escrito.length && !q.contando ? { error: null, data: null, count: quedan } : { error: null, count: quedan }).then(a, b); },
 			};
 			return q;
@@ -286,6 +286,8 @@ const fila = (fecha, estado, upd) => ({ alumno_id: "x", fecha: fecha, asistencia
 	escrito.length = 0;
 	t = await ST.terminar(sbT(2), { sesionId: "s", notas: "", proyectoId: "p", maestroId: "m", hoy: "2026-10-01" });
 	ok("terminar: si quedan sesiones, el proyecto no se toca", [t.proyectoCompletado, escrito.map((e) => e[0])], [false, ["sesiones"]]);
+
+	ok("terminar: la cuenta de sesiones por terminar excluye las anteriores al corte (activas de Fanny) sin escribir en ellas", [filtros[0], escrito.every((e) => e[1].estado_sesion === "completada" || e[1].estado === "completado")], ["fecha.is.null,fecha.gte.2026-09-30", true]);
 
 	// Hoy usa el módulo
 	const h = leer("js/hoy.js"), hh = leer("hoy.html");
@@ -338,6 +340,40 @@ const fila = (fecha, estado, upd) => ({ alumno_id: "x", fecha: fecha, asistencia
 	ok("libros: si el grado no coincide, no se enlaza", (S.html(sesionOtroGrado).match(/data-secuencia-libro/g) || []).length, 1);
 	ok("libros: los anexos y libros de «Anexos y libros» también abren el visor", /data-secuencia-enlace='libro'[^>]*data-visor-url=/.test(hs), true);
 	ok("libros: un texto con HTML se sigue escapando", S.html({ inicio_todos: "<b>x</b> Múltiples Lenguajes de 1° (p. 100)", recursos: sesion1.recursos }).indexOf("<b>x</b>"), -1);
+
+	// ── 8. R33: el motor NO depende de una global opcional; una sola respuesta por alumno en todas las pantallas ──
+	{
+		const raiz = path.join(__dirname, "..");
+		fs.readdirSync(raiz).filter((f) => f.endsWith(".html")).forEach((f) => {
+			const html = fs.readFileSync(path.join(raiz, f), "utf8");
+			const motorPos = html.indexOf("js/motor-calificacion.js");
+			if (motorPos === -1) return;
+			const cal = html.indexOf("js/calendario-sep.js"), alc = html.indexOf("js/alcance-hoy.js"), cam = html.indexOf("js/campos-formativos.js");
+			ok(f + ": carga campos-formativos.js, calendario-sep.js y alcance-hoy.js antes del motor", cam !== -1 && cal !== -1 && alc !== -1 && cam < motorPos && cal < alc && alc < motorPos, true);
+		});
+		// Sin calendario (en el navegador sin el script; aquí, un contexto sin require) el motor FALLA a la vista
+		const vm = require("vm");
+		const ctx = { window: {}, console: console, Intl: Intl, Date: Date, Math: Math, JSON: JSON, Object: Object, Array: Array, Promise: Promise, Number: Number, String: String, Error: Error };
+		vm.createContext(ctx);
+		vm.runInContext(leer("js/campos-formativos.js"), ctx);
+		vm.runInContext(leer("js/alcance-hoy.js"), ctx);
+		vm.runInContext(leer("js/motor-calificacion.js"), ctx);
+		ok("sin CalendarioSEP AlcanceHoy.calendarioDisponible() es falso", ctx.window.AlcanceHoy.calendarioDisponible(), false);
+		let mensajeError = null;
+		try { await ctx.window.MotorCalificacion.cargarYCalcularGrupo(fabricarSb(BASE()), { maestroId: "m", grupoId: "g", trimestre: 1, alumnos: [{ id: "x", grado: 1 }] }); } catch (e) { mensajeError = e.message; }
+		ok("sin calendario el motor lanza un error que lo dice (no calcula otra cosa)", /falta js\/calendario-sep\.js/.test(mensajeError || ""), true);
+		ok("con el calendario disponible el motor calcula", (await motor(BASE(), [{ id: "x", grado: 1, created_at: "2026-08-01T15:00:00+00:00" }])).sinProyectos, false);
+	}
+
+	// ── 9. R33: correcciones de la Fase 2 ──
+	{
+		const hj = leer("js/hoy.js"), vs2 = leer("js/visor-recursos.js");
+		ok("deshacer «La entregó»: tocar el mismo nivel ya no escribe (no pierde el origen)", /if \(accion === "completo" && yaEsa\) return;/.test(hj), true);
+		ok("la tarjeta azul se vuelve a poner a la vista tras la recarga (scroll manual y reintentos)", /scrollRestoration = "manual"/.test(hj) && /\[250, 900\]\.forEach/.test(hj), true);
+		ok("tocar el chip de asistencia ya activo no escribe nada", /if \(asistencia\[alumnoId\] === btn\.dataset\.valor\) return;/.test(hj), true);
+		ok("tocar el valor del Cierre ya guardado no escribe nada", /if \(registroGuardado\[alumnoId\] && actual\[btn\.dataset\.cierre\] === Number\(btn\.dataset\.valor\)\) return;/.test(hj), true);
+		ok("visor: en Drive el aviso «¿No se ve?» está a la vista desde el principio y avisa que Esc no funciona dentro del anexo", /aviso\.hidden = !esDrive;/.test(vs2) && /if \(!esDrive\) aviso\.hidden = true;/.test(vs2) && /Esc solo funciona fuera del anexo/.test(vs2), true);
+	}
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

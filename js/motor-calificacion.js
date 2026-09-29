@@ -344,6 +344,15 @@
 		    pesos, sinProyectos }
 	*/
 	async function cargarYCalcularGrupo(sb, ctx) {
+		// Una sola respuesta por alumno en todas las pantallas: el vencimiento de las tareas (y con él las faltas
+		// derivadas) usa el calendario SEP. Sin js/calendario-sep.js NO se calcula otra cosa: falla a la vista.
+		if (typeof window === "undefined" || !window.CamposFormativos) {
+			throw new Error("motor-calificacion: falta js/campos-formativos.js en esta página; sin él la participación y la conducta no se repartirían a los campos y la calificación saldría distinta según la pantalla");
+		}
+		var AC = alcance();
+		if (!AC || !AC.calendarioDisponible || !AC.calendarioDisponible()) {
+			throw new Error("motor-calificacion: falta js/calendario-sep.js (y js/alcance-hoy.js) en esta página; sin el calendario la calificación saldría distinta según la pantalla");
+		}
 		var campos = ctx.campos || ["LEN", "SAB", "ETI", "DHL"];
 		var alumnos = (ctx.alumnos || []).map(function (a) { return { id: a.id, grado: Number(a.grado), created_at: a.created_at }; });
 		var ids = alumnos.map(function (a) { return a.id; });

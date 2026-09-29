@@ -72,7 +72,8 @@
 			".jz-visor-btn:hover{background:rgba(255,255,255,.14)}" +
 			".jz-visor-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}" +
 			".jz-visor-aviso{padding:8px 12px;background:#fef3c7;color:#78350f;font-size:13px;border-bottom:1px solid #fcd34d}" +
-			".jz-visor-aviso a{color:#78350f;font-weight:700;text-decoration:underline}" +
+			".jz-visor-aviso a{display:inline-flex;align-items:center;min-height:44px;padding:0 4px;color:#78350f;font-weight:700;text-decoration:underline}" +
+			".jz-visor-pista{padding:4px 12px;background:#eff6ff;color:#1e3a8a;font-size:12px;border-bottom:1px solid #bfdbfe}" +
 			".jz-visor-cuerpo{position:relative;flex:1;min-height:0;background:#f3f4f6}" +
 			".jz-visor-cuerpo iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}" +
 			"@media (min-width:1024px){" +
@@ -97,6 +98,7 @@
 			"<a class='jz-visor-btn' data-visor-aparte target='_blank' rel='noopener noreferrer'>Abrir aparte</a>" +
 			"<button type='button' class='jz-visor-btn' data-visor-cerrar>Cerrar</button>" +
 			"</div>" +
+			"<p class='jz-visor-pista' data-visor-pista>Para volver a Hoy usa «Cerrar». La tecla Esc solo funciona fuera del anexo.</p>" +
 			"<div class='jz-visor-aviso' data-visor-aviso hidden role='status'>¿No se ve? <a data-visor-aparte-2 target='_blank' rel='noopener noreferrer'>Ábrelo aparte</a></div>" +
 			"<div class='jz-visor-cuerpo'></div>";
 		document.body.appendChild(panel);
@@ -136,7 +138,10 @@
 		panel.querySelector("[data-visor-titulo]").textContent = op.titulo || "Recurso de la sesión";
 		panel.querySelector("[data-visor-aparte]").setAttribute("href", r.aparte);
 		panel.querySelector("[data-visor-aparte-2]").setAttribute("href", r.aparte);
-		aviso.hidden = true;
+		// Drive: el aviso está a la vista desde el principio (el login de Google también dispara "load", así que
+		// por tiempo nunca saldría); los libros lo muestran solo si a los 8 s no cargó
+		var esDrive = r.tipo.indexOf("drive") === 0;
+		aviso.hidden = !esDrive;
 		marco = document.createElement("iframe");
 		marco.title = op.titulo || "Recurso de la sesión";
 		marco.setAttribute("loading", "eager");
@@ -149,7 +154,7 @@
 		marco.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
 		marco.addEventListener("load", function () {
 			if (temporizador) { clearTimeout(temporizador); temporizador = null; }
-			aviso.hidden = true;
+			if (!esDrive) aviso.hidden = true;
 			panel.setAttribute("data-visor-cargado", "1");
 		});
 		panel.removeAttribute("data-visor-cargado");

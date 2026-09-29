@@ -170,7 +170,10 @@
 			.eq("id", d.sesionId).eq("maestro_id", d.maestroId);
 		if (r.error) throw r.error;
 		var consulta = sb.from("sesiones").select("id", { count: "exact", head: true })
-			.eq("proyecto_id", d.proyectoId).neq("estado_sesion", "completada");
+			// Las anteriores al corte cuentan como terminadas (Fanny nunca les dio "Terminar": siguen `activa`);
+			// sin esto el proyecto no pasaría a completado al terminar la última. No se escribe nada en esas filas.
+			.eq("proyecto_id", d.proyectoId).neq("estado_sesion", "completada")
+			.or("fecha.is.null,fecha.gte." + dia(d.corte || CORTE_EN_CURSO));
 		var quedan = await Lectura.contar(consulta);
 		var completado = quedan === 0;
 		if (completado) {
