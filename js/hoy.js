@@ -232,8 +232,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			el.setAttribute("role", "status");
 			pila.appendChild(el);
 		}
-		el.className = "pointer-events-none w-full max-w-2xl text-center rounded-2xl border px-4 py-2 text-sm font-medium shadow-lg " +
-			(tipo === "red" ? "bg-amber-100 text-amber-900 border-amber-300" : "bg-red-50 text-red-800 border-red-300");
+		el.className = "pointer-events-none w-full max-w-2xl text-center rounded-xl border px-3 py-1 text-xs font-medium shadow backdrop-blur-sm " +
+			(tipo === "red" ? "bg-amber-100/80 text-amber-900 border-amber-300/70" : "bg-red-50 text-red-800 border-red-300");
 		el.textContent = texto;
 		reservarEspacio();
 	}
@@ -2767,11 +2767,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function filaCierre(al) {
 		var v = registro[al.id];
 		var falto = faltoHoy(al.id);
-		var estado = falto
-			? "<div class='mt-2 md:mt-0 md:col-span-2 md:px-2 md:py-2'><span data-cierre-falto class='inline-flex items-center rounded-lg bg-gray-100 px-3 min-h-[36px] text-sm font-semibold text-gray-600'>" +
-				(asistencia[al.id] === "justificada" ? "Faltó · justificada" : "Faltó") + "</span></div>"
+		// Quien faltó y ya tiene una fila con valores distintos de 1 y 1 (la capturó antes de marcarle la
+		// falta): se ve "Faltó" CON sus chips, para corregirla, y un botón para quitarla del cierre
+		var conFila = falto && !!registroGuardado[al.id] && !!v && (v.participacion !== 1 || v.conducta !== 1);
+		var etiquetaFalto = "<span data-cierre-falto class='inline-flex items-center rounded-lg bg-gray-100 px-3 min-h-[36px] text-sm font-semibold text-gray-600'>" +
+			(asistencia[al.id] === "justificada" ? "Faltó · justificada" : "Faltó") + "</span>";
+		var estado = falto && !conFila
+			? "<div class='mt-2 md:mt-0 md:col-span-2 md:px-2 md:py-2'>" + etiquetaFalto + "</div>"
 			: celdaCierre(al, "participacion", "Participación", v ? v.participacion : 1, "text-violet-800", "bg-violet-600 text-white") +
-				celdaCierre(al, "conducta", "Conducta", v ? v.conducta : 1, "text-teal-800", "bg-teal-600 text-white");
+				celdaCierre(al, "conducta", "Conducta", v ? v.conducta : 1, "text-teal-800", "bg-teal-600 text-white") +
+				(conFila ? "<div class='mt-2 flex flex-wrap items-center gap-2 md:col-span-5 md:px-2 md:pb-2'>" + etiquetaFalto +
+					"<span class='text-xs text-gray-500'>Tiene un cierre capturado.</span>" +
+					"<button type='button' data-cierre-quitar='" + esc(al.id) + "' class='min-h-[44px] px-4 rounded-xl border border-red-200 text-sm font-semibold text-red-700 hover:bg-red-50'>Quitar del cierre</button></div>" : "");
 		return "<div data-cierre-fila='" + esc(al.id) + "' class='mb-2 rounded-xl border border-gray-200 p-3 md:mb-0 md:grid " + columnasCierre() +
 			" md:items-center md:rounded-none md:border-0 md:border-b md:border-gray-100 md:p-0'>" +
 			"<div class='flex items-baseline gap-2 md:contents'>" +
@@ -2799,6 +2806,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	document.getElementById("cierreLista").addEventListener("click", function (e) {
+		// "Quitar del cierre": borra la fila de quien faltó (por la cola, como retirarCierreSiFalto)
+		var quitar = e.target.closest("button[data-cierre-quitar]");
+		if (quitar && quitar.dataset.cierreQuitar) {
+			var idQuitar = quitar.dataset.cierreQuitar;
+			delete registro[idQuitar];
+			registroGuardado[idQuitar] = false;
+			guardar("registro_borrar", { alumno_id: idQuitar, fecha: hoy }, "Cierre del día de " + nombreDe(idQuitar));
+			renderCierre();
+			return;
+		}
 		var btn = e.target.closest("button[data-cierre]");
 		if (!btn) return;
 		var alumnoId = btn.dataset.alumno;

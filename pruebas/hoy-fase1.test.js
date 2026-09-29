@@ -59,14 +59,14 @@ const alumnos = [
 ];
 const cuerpoCierre = [
 	"var window = { OrdenLista: O };",
-	"var alumnos = ALUMNOS; var registro = REGISTRO; var asistencia = ASISTENCIA_HOY;",
+	"var alumnos = ALUMNOS; var registro = REGISTRO; var asistencia = ASISTENCIA_HOY; var registroGuardado = GUARDADO;",
 	extraerLista("NIVELES"),
 	extraerFuncion("esc"), extraerFuncion("chip"), extraerFuncion("faltoHoy"),
 	extraerFuncion("columnasCierre"), extraerFuncion("encabezadoCierre"), extraerFuncion("celdaCierre"), extraerFuncion("filaCierre"),
 	"return { encabezadoCierre: encabezadoCierre, filaCierre: filaCierre, ordenar: function () { return O.ordenar(alumnos).map(filaCierre).join(''); } };",
 ].join("\n");
-const cierre = new Function("O", "ALUMNOS", "REGISTRO", "ASISTENCIA_HOY", cuerpoCierre)(ORDEN, alumnos,
-	{ a1: { participacion: 2, conducta: 0 } }, { a2: "ausente", a4: "justificada" });
+const fabricaCierre = (registro, asis, guardado) => new Function("O", "ALUMNOS", "REGISTRO", "ASISTENCIA_HOY", "GUARDADO", cuerpoCierre)(ORDEN, alumnos, registro, asis, guardado);
+const cierre = fabricaCierre({ a1: { participacion: 2, conducta: 0 } }, { a2: "ausente", a4: "justificada" }, { a1: true });
 const encabezado = cierre.encabezadoCierre();
 ok("cierre: encabezado fijo (sticky top-14) solo desde md", /class='hidden md:grid [^']*sticky top-14/.test(encabezado), true);
 ok("cierre: las cinco columnas, en orden", ["No.", "Grado", "Nombre", "Participación", "Conducta"].map((t) => encabezado.indexOf(">" + t + "<")).every((n, i, a) => n !== -1 && (i === 0 || n > a[i - 1])), true);
@@ -86,6 +86,18 @@ const filaJustificada = filas.split("data-cierre-fila='a4'")[1].split("data-cier
 ok("cierre: la justificada dice «Faltó · justificada», también sin chips", />Faltó · justificada</.test(filaJustificada) && !/data-cierre='/.test(filaJustificada), true);
 ok("cierre: a 390 px es una tarjeta por alumno (borde y esquinas hasta md) y tabla desde md", /class='mb-2 rounded-xl border border-gray-200 p-3 md:mb-0 md:grid md:grid-cols-\[/.test(filas), true);
 ok("cierre: los chips miden al menos 44 px", /data-cierre='participacion'[^>]*>|min-h-\[44px\] min-w-\[44px\]/.test(filas) && (filas.match(/min-h-\[44px\] min-w-\[44px\]/g) || []).length === 12, true);
+
+// R32 R-1: quien faltó pero ya tiene una fila distinta de 1 y 1 se ve CON chips y "Quitar del cierre"
+const conFila = fabricaCierre({ a2: { participacion: 2, conducta: 1 }, a4: { participacion: 1, conducta: 1 } }, { a2: "ausente", a4: "justificada" }, { a2: true, a4: true }).ordenar();
+const fA2 = conFila.split("data-cierre-fila='a2'")[1].split("data-cierre-fila=")[0];
+const fA4 = conFila.split("data-cierre-fila='a4'")[1].split("data-cierre-fila=")[0];
+ok("R-1: faltó con fila 2/1: dice «Faltó» y conserva sus 6 chips", />Faltó</.test(fA2) && (fA2.match(/data-cierre='(participacion|conducta)'/g) || []).length === 6, true);
+ok("R-1: su participación 2 sigue marcada (para corregirla)", /data-cierre='participacion' data-alumno='a2' data-valor='2' class='[^']*bg-violet-600 text-white/.test(fA2), true);
+ok("R-1: ofrece «Quitar del cierre» (44 px)", /data-cierre-quitar='a2'[^>]*min-h-\[44px\][^>]*>Quitar del cierre</.test(fA2), true);
+ok("R-1: con fila 1/1 queda como antes: «Faltó · justificada» sin chips ni botón", />Faltó · justificada</.test(fA4) && !/data-cierre='/.test(fA4) && fA4.indexOf("Quitar del cierre") === -1, true);
+ok("R-1: sin fila guardada tampoco hay botón", filas.indexOf("Quitar del cierre") === -1, true);
+ok("R-1: el botón borra la fila por la cola (registro_borrar) y la quita de la pantalla",
+	/var quitar = e\.target\.closest\("button\[data-cierre-quitar\]"\);[\s\S]{0,400}registroGuardado\[idQuitar\] = false;\s*guardar\("registro_borrar"/.test(fuente), true);
 
 // La leyenda del 0, 1 y 2 (texto que aprobó Jorge el 2026-09-29)
 const leyenda = pagina.replace(/\s+/g, " ");
@@ -148,7 +160,7 @@ ok("guardado: #hoyEstadoGuardado está dentro del encabezado azul", encabezadoPa
 ok("guardado: la línea reserva su alto (no mueve nada al aparecer) y nace escondida", /id="hoyEstadoLinea" class="invisible [^"]*min-h-\[20px\]/.test(pagina), true);
 ok("guardado: ya no hay pastilla verde ni fija en la página", pagina.indexOf("emerald-600") === -1 && !/id="hoyEstadoGuardado"[^>]*fixed/.test(pagina), true);
 ok("guardado: el JS no pinta verde el aviso de guardado", !/bg-emerald-600/.test(fuente), true);
-ok("guardado: abajo flota solo lo de sin señal (ámbar) y lo de error (rojo)", /tipo === "red" \? "bg-amber-100 text-amber-900 border-amber-300" : "bg-red-50 text-red-800 border-red-300"/.test(fuente), true);
+ok("guardado: abajo flota solo lo de sin señal (ámbar) y lo de error (rojo)", /tipo === "red" \? "bg-amber-100\/80 text-amber-900 border-amber-300\/70" : "bg-red-50 text-red-800 border-red-300"/.test(fuente), true);
 ok("guardado: lo que flota no recibe toques (pointer-events-none) y el aviso de lo no guardado solo en sus botones",
 	/pila\.className = "fixed inset-x-4 bottom-4 z-40 flex flex-col items-center gap-2 pointer-events-none"/.test(fuente) &&
 	/caja\.className = "pointer-events-none /.test(fuente) && !/pointer-events-auto max-w-full/.test(fuente) &&

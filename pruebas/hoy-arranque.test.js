@@ -316,8 +316,9 @@ new Function(codigo)();
 		/data-cierre-encabezado[^>]*sticky top-14/.test(cierre) && ["No.", "Grado", "Nombre", "Participación", "Conducta"].every((t) => cierre.indexOf(">" + t + "</span>") !== -1), true);
 	ok("4. cierre: Participación y Conducta con colores distintos", cierre.indexOf("bg-violet-100") !== -1 && cierre.indexOf("bg-teal-100") !== -1, true);
 	ok("4. cierre: en el orden de la lista (2° antes que 3°) y con su número", cierre.indexOf("ALUMNO DE SEGUNDO") < cierre.indexOf("ALUMNO DE TERCERO") && /data-num-lista[^>]*>1</.test(cierre), true);
-	ok("4. cierre: a quien faltó se le pone «Faltó» y no se le dan chips",
-		/data-cierre-fila='al-3'[\s\S]*data-cierre-falto[^>]*>Faltó</.test(cierreDespues) && cierreDespues.indexOf("data-cierre='participacion' data-alumno='al-3'") === -1, true);
+	// al-3 ya tenía un cierre 2/1: al marcarle la falta se ve «Faltó» CON sus chips y «Quitar del cierre» (R32 R-1)
+	ok("4. cierre: quien faltó pero ya tenía un cierre distinto de 1/1 se ve «Faltó» con chips y «Quitar del cierre»",
+		/data-cierre-fila='al-3'[\s\S]*data-cierre-falto[^>]*>Faltó<[\s\S]*data-cierre-quitar='al-3'/.test(cierreDespues) && cierreDespues.indexOf("data-cierre='participacion' data-alumno='al-3'") !== -1, true);
 	ok("4. cierre: quien asistió conserva sus chips", cierreDespues.indexOf("data-cierre='participacion' data-alumno='al-2'") !== -1, true);
 	// Quien faltó no aparece para calificar: ni en la sesión ni en Tareas; arriba de la sesión, quién faltó
 	const cartel = sesionesDespues.split("data-bloque-producto='pr1'")[1].split("data-bloque-producto=")[0].split("id='ses-")[0];
