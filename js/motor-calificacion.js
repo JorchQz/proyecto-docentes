@@ -344,6 +344,15 @@
 		    pesos, sinProyectos }
 	*/
 	async function cargarYCalcularGrupo(sb, ctx) {
+		// Una sola respuesta por alumno en todas las pantallas: el vencimiento de las tareas (y con él las faltas
+		// derivadas) usa el calendario SEP. Sin js/calendario-sep.js NO se calcula otra cosa: falla a la vista.
+		if (typeof window === "undefined" || !window.CamposFormativos) {
+			throw new Error("motor-calificacion: falta js/campos-formativos.js en esta página; sin él la participación y la conducta no se repartirían a los campos y la calificación saldría distinta según la pantalla");
+		}
+		var AC = alcance();
+		if (!AC || !AC.calendarioDisponible || !AC.calendarioDisponible()) {
+			throw new Error("motor-calificacion: falta js/calendario-sep.js (y js/alcance-hoy.js) en esta página; sin el calendario la calificación saldría distinta según la pantalla");
+		}
 		var campos = ctx.campos || ["LEN", "SAB", "ETI", "DHL"];
 		var alumnos = (ctx.alumnos || []).map(function (a) { return { id: a.id, grado: Number(a.grado), created_at: a.created_at }; });
 		var ids = alumnos.map(function (a) { return a.id; });
@@ -389,7 +398,7 @@
 		var productos = [];
 		if (sesionIds.length) {
 			productos = await todas(function () {
-				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo" + (detalle ? ", nombre, orden, created_at, es_historico" : ""))
+				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo, created_at, es_historico" + (detalle ? ", nombre, orden" : ""))
 					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
@@ -424,12 +433,29 @@
 					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids)
 					.gte("fecha", fechas[0]).lte("fecha", fechas[fechas.length - 1]).order("id");
 			});
+			// Sin tope superior: para saber cuándo regresó quien faltó (faltas derivadas, más abajo) se
+			// necesitan también los días posteriores; la asistencia de REFERENCIA sigue contando solo
+			// el rango de las sesiones (ultimaFecha)
 			asistencias = await todas(function () {
-				return sb.from("asistencias").select("alumno_id, asistencia_estado")
+				return sb.from("asistencias").select("alumno_id, fecha, asistencia_estado, updated_at")
 					.eq("maestro_id", ctx.maestroId).in("alumno_id", ids)
-					.gte("fecha", fechas[0]).lte("fecha", fechas[fechas.length - 1]).order("id");
+					.gte("fecha", fechas[0]).order("id");
 			});
 		}
+		var ultimaFecha = fechas.length ? fechas[fechas.length - 1] : null;
+
+		/*
+			Faltas (decisión de Jorge del 2026-09-29; js/alcance-hoy.js, "Faltas"): un producto no
+			histórico y sin calificación del docente, de un día en que el alumno tiene FALTA sin
+			justificar, vale como No entregó (0). Con Justificada no cuenta mientras esté pendiente
+			(ya no entraba al máximo: sin calificación). Una calificación del docente siempre manda.
+			Los datos que se derivan (porFalta) también salen en el detalle, para "Qué le falta".
+		*/
+		var AF = alcance();
+		var asistIdx = AF && AF.indiceAsistencias ? AF.indiceAsistencias(asistencias) : {};
+		var hayFaltas = !!AF && asistencias.some(function (x) { return x.asistencia_estado === "ausente" || x.asistencia_estado === "justificada"; });
+		var ajustesCal = [];
+		if (hayFaltas) ajustesCal = await AF.leerAjustesCalendario(sb, ctx.maestroId, ctx.grupoId);
 
 		var examenes = await examenesPorGrado(sb, ctx, alumnos, ids, campos, alta, altaInstante);
 		var directas = await leerDirectas(sb, ctx, ids, campos);
@@ -460,8 +486,26 @@
 			var misRegistros = registros.filter(function (r) { return r.alumno_id === a.id; });
 			var examen = examenes[a.id] || { porCampo: {}, aproximado: false };
 
+			// Faltas derivadas: sin calificación del docente, un día con falta sin justificar = No entregó (0)
+			var porFalta = {}, paraCalcular = calificaciones;
+			if (hayFaltas && asistIdx[a.id]) {
+				misProductos.forEach(function (p) {
+					var cal = calificaciones[p.id];
+					if (!AF.sinCalificar(cal)) return;
+					var fechaSes = fechaSesion[p.sesion_id] || null;
+					if (AF.esHistorico(p, fechaSes)) return;
+					var est = AF.estadoPorAsistencia(p, fechaSes, asistIdx[a.id], ajustesCal);
+					if (!est) return;
+					porFalta[p.id] = { estado: est.estado, fecha: est.fecha, regreso: AF.regresoDe(asistIdx[a.id], est.fecha), vence: AF.venceFalta(asistIdx[a.id], est.fecha, ajustesCal) };
+					if (est.estado === "ausente") {
+						if (paraCalcular === calificaciones) paraCalcular = Object.assign({}, calificaciones);
+						paraCalcular[p.id] = { estado_entrega: "no_entregado", derivada: "falta", fecha: est.fecha };
+					}
+				});
+			}
+
 			var porCampo = calcularPorcentajes({
-				campos: campos, productos: misProductos, calificaciones: calificaciones,
+				campos: campos, productos: misProductos, calificaciones: paraCalcular,
 				registros: misRegistros, camposPorFecha: camposPorFecha,
 				examenPorCampo: examen.porCampo, legacy: legacy, pesos: pesos,
 			});
@@ -484,7 +528,7 @@
 			// Asistencia: SOLO referencia, nunca entra a la fórmula (art. 7 I d)
 			var presentes = 0, total = 0;
 			asistencias.forEach(function (x) {
-				if (x.alumno_id !== a.id) return;
+				if (x.alumno_id !== a.id || (ultimaFecha && String(x.fecha).slice(0, 10) > ultimaFecha)) return;
 				total++;
 				if (x.asistencia_estado === "presente" || x.asistencia_estado === "justificada") presentes++;
 			});
@@ -496,7 +540,7 @@
 				examenAproximado: examen.aproximado,
 			};
 			// Lo que entró al cálculo de este alumno (sus productos, sus capturas y su alta)
-			if (detalle) porAlumno[a.id].detalle = { productos: misProductos, calificaciones: calificaciones, alta: alta[a.id] || null };
+			if (detalle) porAlumno[a.id].detalle = { productos: misProductos, calificaciones: calificaciones, alta: alta[a.id] || null, porFalta: porFalta };
 		});
 
 		// Calificación propuesta: SIEMPRE la función SQL (piso por grado), en un solo viaje

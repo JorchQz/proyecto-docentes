@@ -178,7 +178,7 @@ intentar("incompleta", function () {
 			/cambiosIncompleta\("marcar", \{ hoy: hoy, ajustes: ajustesCal,[\s\S]{0,200}historico: window\.AlcanceHoy\.esHistorico\(producto/.test(h)], [true, true, true, true]);
 	ok("Hoy: quien faltó hoy sigue pendiente", /if \(falto && pendiente\)/.test(h) && /Faltó hoy: queda pendiente para su siguiente clase\./.test(h), true);
 	ok("Tareas: estado «Por completar» e Inicio: su conteo", [/por_completar: "<span/.test(leer("js/tareas.js")), /value="por_completar">Por completar</.test(leer("tareas.html")),
-		/Por completar de la clase anterior/.test(leer("js/dashboard.js"))], [true, true, true]);
+		/Pendientes de la clase anterior/.test(leer("js/dashboard.js"))], [true, true, true]);
 	ok("la cola (bandeja) lleva las columnas nuevas en el grupo del semáforo",
 		/\["captura_semaforo", \["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"\]\]/.test(leer("js/bandeja-salida.js")), true);
 	ok("SQL: columnas aditivas, CHECK y marca del semáforo con ellas", [

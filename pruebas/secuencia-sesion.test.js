@@ -96,7 +96,11 @@ ok("hoy.html carga texto-sesion.js y secuencia-sesion.js antes de hoy.js", (() =
 	const a = h.indexOf('src="js/texto-sesion.js"'), b = h.indexOf('src="js/secuencia-sesion.js"'), c = h.indexOf('src="js/hoy.js"');
 	return a !== -1 && a < b && b < c;
 })(), true);
-ok("dashboard.js sigue como estaba (la Fase 2 lo pasa a este módulo)", /function getTextoFase\(fase\)/.test(fs.readFileSync(path.join(__dirname, "..", "js", "dashboard.js"), "utf8")), true);
+ok("dashboard.js (Inicio) usa este módulo: lo pintado sale de SecuenciaSesion.html", (() => {
+	const d = fs.readFileSync(path.join(__dirname, "..", "js", "dashboard.js"), "utf8");
+	const h = fs.readFileSync(path.join(__dirname, "..", "dashboard.html"), "utf8");
+	return /SecuenciaSesion\.html\(sesion\)/.test(d) && h.indexOf('src="js/texto-sesion.js"') < h.indexOf('src="js/secuencia-sesion.js"') && h.indexOf('src="js/secuencia-sesion.js"') < h.indexOf('src="js/dashboard.js"');
+})(), true);
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

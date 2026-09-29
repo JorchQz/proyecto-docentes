@@ -25,7 +25,6 @@ let grupo = null;
 let grupoId = null;
 let alumnos = [];
 let proyectosActivos = []; // puede haber varios a la vez (uno por campo formativo, por ejemplo)
-let sesionActiva = null; // la que se está mostrando (los ayudantes de render la leen)
 
 // Arranque común (js/lectura.js): si la lista de alumnos o los proyectos activos no se
 // pudieron leer, la página se detiene con el aviso "No se pudo cargar". Antes, con el
@@ -238,6 +237,8 @@ async function crearCardHoy() {
 	let tareasPorRevisar = 0;
 	// Actividades en clase que quedaron incompletas y hoy (o antes) toca revisar (una por alumno)
 	let porCompletar = 0;
+	// Lo de una falta justificada que aún no se califica, y cuántos ya pasaron su plazo
+	let porFalta = 0, porFaltaVencidas = 0;
 	// Si una lectura falla, Inicio sigue en pie: esos conteos dicen que no se pudieron leer
 	let sinLeer = false;
 	try {
@@ -275,6 +276,41 @@ async function crearCardHoy() {
 					.eq("maestro_id", user.id).eq("estado_en_clase", "incompleta").in("producto_sesion_id", lote).order("id"));
 				porCompletar = incompletas.filter((c) => activosIds.has(c.alumno_id) &&
 					window.AlcanceHoy.tocaRevisar(Object.assign({ estado_en_clase: "incompleta" }, c), hoy)).length;
+				/*
+					Por falta justificada (AlcanceHoy.pendientesPorFalta: lo mismo que muestra "Hoy" y "Qué le
+					falta"): lo de los días que faltaron con justificante y aún no se califica. Solo se leen
+					las calificaciones y las asignaciones de los productos que tocan a esas faltas.
+				*/
+				const A = window.AlcanceHoy;
+				const fechasTrab = ses.map((s) => s.fecha).filter(Boolean).sort();
+				if (fechasTrab.length) {
+					const asisIdx = A.indiceAsistencias(await A.leerAsistencias(window.sb, user.id, grupoId, fechasTrab[0]));
+					const conJust = alumnos.filter((a) => asisIdx[a.id] &&
+						Object.keys(asisIdx[a.id]).some((f) => A.estadoAsistencia(asisIdx[a.id], f) === "justificada"));
+					if (conJust.length) {
+						const candidatos = prods.filter((p) => conJust.some((a) => {
+							const e = A.estadoPorAsistencia(p, fechaSesion[p.sesion_id], asisIdx[a.id], ajustes);
+							return e && e.estado === "justificada";
+						}));
+						if (candidatos.length) {
+							const idsC = candidatos.map((p) => p.id);
+							const asigF = A.indiceAsignaciones(await leer(idsC, (lote) => window.sb
+								.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")
+								.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id")));
+							const calsF = await leer(idsC, (lote) => window.sb.from("calificaciones")
+								.select("alumno_id, producto_sesion_id, nivel, estado_entrega, puntaje, fecha")
+								.eq("maestro_id", user.id).in("producto_sesion_id", lote).order("id"));
+							const mapaF = {};
+							calsF.forEach((c) => { mapaF[c.alumno_id + "|" + c.producto_sesion_id] = c; });
+							const pend = A.pendientesPorFalta({
+								alumnos: conJust, productos: candidatos, fechaSesion: fechaSesion, calificaciones: mapaF,
+								asignaciones: asigF, asistencias: asisIdx, ajustes: ajustes,
+							});
+							porFalta = pend.length;
+							porFaltaVencidas = pend.filter((x) => x.vence && x.vence < hoy).length;
+						}
+					}
+				}
 				if (revisar.length) {
 					// Para quién es cada producto además de sus grados (regla única: js/alcance-hoy.js)
 					const asignaciones = window.AlcanceHoy.indiceAsignaciones(await leer(revisar.map((p) => p.id), (lote) => window.sb
@@ -325,7 +361,8 @@ async function crearCardHoy() {
 		(sinLeer
 			? fila("Tareas y productos", "no se pudieron leer; ábrelos en Hoy", false)
 			: fila("Tareas por revisar", String(tareasPorRevisar), tareasPorRevisar === 0) +
-			(porCompletar ? fila("Por completar de la clase anterior", String(porCompletar), false) : "") +
+			(porCompletar ? fila("Pendientes de la clase anterior", String(porCompletar), false) : "") +
+			(porFalta ? fila("Por falta justificada", porFalta + (porFaltaVencidas ? " (" + porFaltaVencidas + (porFaltaVencidas === 1 ? " venció)" : " vencieron)") : ""), false) : "") +
 			fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 			fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0)) +
 		(sinLeerDia ? "" : fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo));
@@ -389,13 +426,22 @@ function crearCardProyecto(proyecto, sesiones, hoy, planAbierto) {
 		(campos.length ? "<p class='text-sm text-gray-500'>" + escapeHtml(campos.join(" · ")) + "</p>" : "");
 	card.appendChild(cabecera);
 
+	/*
+		Las sesiones de hoy y las EMPEZADAS otro día que siguen sin terminar (sesión en curso: no se puede
+		empezar otra hasta terminarla, js/sesion-terminar.js). "Trabajar hoy" solo se ofrece sobre la siguiente
+		sesión (la de menor número sin fecha) y solo si no hay una sin terminar.
+	*/
+	const ST = window.SesionTerminar;
 	const deHoy = sesiones.filter((s) => s.fecha === hoy);
+	const enCurso = ST ? ST.enCursoDe(sesiones, proyecto.id) : [];
+	const visibles = deHoy.concat(enCurso.filter((s) => deHoy.indexOf(s) === -1))
+		.sort((a, b) => (a.numero_sesion || 0) - (b.numero_sesion || 0));
+	const sinTerminar = visibles.some((s) => s.estado_sesion !== "completada");
 	const siguiente = sesiones.find((s) => !s.fecha && s.estado_sesion !== "completada");
-	if (deHoy.length) {
-		deHoy.forEach((s) => card.appendChild(crearCardSesion(s, true, proyecto, planAbierto)));
-	} else if (siguiente) {
-		card.appendChild(crearCardSesion(siguiente, false, proyecto, planAbierto));
-	} else {
+	visibles.forEach((s) => card.appendChild(crearCardSesion(s, true, proyecto, planAbierto, hoy)));
+	if (!sinTerminar && siguiente) {
+		card.appendChild(crearCardSesion(siguiente, false, proyecto, planAbierto, hoy));
+	} else if (!visibles.length) {
 		const p = document.createElement("p");
 		p.className = "text-sm text-gray-600";
 		p.textContent = "Todas las sesiones de este proyecto ya se trabajaron.";
@@ -404,17 +450,18 @@ function crearCardProyecto(proyecto, sesiones, hoy, planAbierto) {
 	return card;
 }
 
-function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto) {
-	sesionActiva = sesion; // los ayudantes de render leen esta variable
+function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto, hoy) {
 	const card = document.createElement("div");
 	card.className = "rounded-xl border border-gray-200 border-l-4 p-4 " + (esDeHoy ? "border-l-violet-500" : "border-l-gray-300");
 
 	const titulo = "Sesión " + (sesion.numero_sesion || "-") + (sesion.campo_formativo ? " · " + sesion.campo_formativo : "");
+	// De otro día y sin terminar: "Empezó el 29 sep · en curso"
+	const empezo = esDeHoy && sesion.fecha !== hoy && window.SesionTerminar ? window.SesionTerminar.etiquetaEmpezo(sesion.fecha, hoy) : "";
 	const cabecera = document.createElement("div");
 	cabecera.className = "mb-3";
 	cabecera.innerHTML =
 		"<p class='text-xs font-semibold uppercase tracking-wide " + (esDeHoy ? "text-violet-600" : "text-gray-400") + "'>" +
-		(esDeHoy ? (sesion.estado_sesion === "completada" ? "Hoy · terminada" : "Hoy") : "Siguiente sesión") + "</p>" +
+		(esDeHoy ? (sesion.estado_sesion === "completada" ? "Hoy · terminada" : (empezo ? escapeHtml(empezo) + " · en curso" : "Hoy")) : "Siguiente sesión") + "</p>" +
 		"<h3 class='text-base font-bold text-gray-800'>" + escapeHtml(titulo) + "</h3>" +
 		(sesion.momento ? "<p class='text-sm text-gray-500'>" + escapeHtml(sesion.momento) + "</p>" : "");
 	card.appendChild(cabecera);
@@ -461,11 +508,17 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto) {
 			const btnTerminar = document.createElement("button");
 			btnTerminar.type = "button";
 			btnTerminar.className = "min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
-			btnTerminar.textContent = "Marcar sesión como terminada";
-			btnTerminar.setAttribute("aria-label", "Marcar como terminada la sesión " + (sesion.numero_sesion || "") + " de " + (proyecto.titulo || "este proyecto"));
+			btnTerminar.textContent = "Terminar sesión " + (sesion.numero_sesion || "");
+			btnTerminar.setAttribute("aria-label", "Terminar la sesión " + (sesion.numero_sesion || "") + " de " + (proyecto.titulo || "este proyecto"));
 			btnTerminar.addEventListener("click", function () {
-				abrirModalCierre(async function (notas) {
-					await terminarSesion(idSesion, notas, proyecto);
+				window.SesionTerminar.abrirModal({
+					titulo: "Terminar la sesión " + (sesion.numero_sesion || ""),
+					sinCalificar: null,
+					etiquetaBoton: "Terminar sesión " + (sesion.numero_sesion || ""),
+					origen: btnTerminar,
+					alConfirmar: async function (notas) {
+						await terminarSesion(idSesion, notas, proyecto);
+					},
 				});
 			});
 			acciones.appendChild(btnTerminar);
@@ -473,7 +526,8 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto) {
 	}
 	card.appendChild(acciones);
 
-	// El plan de la sesión: se abre a pedido (abierto de entrada con un solo proyecto)
+	// El plan de la sesión: se abre a pedido (abierto de entrada con un solo proyecto). Es la misma secuencia
+	// que muestra Hoy (js/secuencia-sesion.js), con sus anexos y libros en el visor (js/visor-recursos.js)
 	const plan = document.createElement("details");
 	plan.className = "mt-3 group";
 	if (planAbierto) plan.open = true;
@@ -483,30 +537,10 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto) {
 	plan.appendChild(resumen);
 	const cuerpo = document.createElement("div");
 	cuerpo.className = "pt-2";
-	cuerpo.appendChild(renderBloqueSesion("Inicio", "border-l-blue-500", getTextoFase("inicio"), getActividadesFase("inicio")));
-	cuerpo.appendChild(renderBloqueSesion("Desarrollo", "border-l-violet-500", getTextoFase("desarrollo"), getActividadesFase("desarrollo")));
-	cuerpo.appendChild(renderBloqueSesion("Cierre", "border-l-emerald-500", getTextoFase("cierre"), getActividadesFase("cierre"), getTareasCierreTexto()));
-
-	const recursos = normalizarRecursos(sesion.recursos);
-	if (recursos.length) {
-		const bloque = document.createElement("section");
-		bloque.className = "border-l-4 border-l-amber-500 pl-4 py-2 mb-3";
-		bloque.innerHTML = "<h4 class='font-semibold text-gray-800 mb-2'>Recursos</h4>";
-		const wrap = document.createElement("div");
-		wrap.className = "flex flex-wrap gap-2";
-		recursos.forEach((r) => {
-			if (!/^https?:\/\//i.test(String(r.url || ""))) return; // solo http(s)
-			const a = document.createElement("a");
-			a.target = "_blank";
-			a.rel = "noopener noreferrer";
-			a.href = r.url;
-			a.className = "inline-flex items-center min-h-[44px] text-sm border border-amber-300 text-amber-700 px-3 rounded-lg hover:bg-amber-50";
-			a.textContent = r.titulo;
-			wrap.appendChild(a);
-		});
-		bloque.appendChild(wrap);
-		cuerpo.appendChild(bloque);
-	}
+	const secuencia = document.createElement("div");
+	secuencia.setAttribute("data-secuencia-inicio", "1");
+	secuencia.innerHTML = window.SecuenciaSesion ? window.SecuenciaSesion.html(sesion) : "";
+	cuerpo.appendChild(secuencia);
 
 	const pdaHtml = renderPdaSesion(sesion.pda_sesion);
 	if (pdaHtml) {
@@ -520,120 +554,17 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto) {
 	return card;
 }
 
-// ── 3. Terminar la sesión (de SU proyecto) ──────────────────────────────────
+// ── 3. Terminar la sesión (de SU proyecto): js/sesion-terminar.js, el mismo de Hoy ──
 async function terminarSesion(sesionId, notasCierre, proyecto) {
 	clearError();
 	try {
-		const { error: updateError } = await window.sb
-			.from("sesiones")
-			.update({ estado_sesion: "completada", notas_cierre: notasCierre || null })
-			.eq("id", sesionId)
-			.eq("maestro_id", user.id);
-		if (updateError) throw updateError;
-
-		// Si a ESE proyecto ya no le queda ninguna por trabajar, se da por completado (los
-		// demás proyectos activos no se tocan)
-		const count = await window.Lectura.contar(window.sb
-			.from("sesiones")
-			.select("id", { count: "exact", head: true })
-			.eq("proyecto_id", proyecto.id)
-			.neq("estado_sesion", "completada"));
-		if (count === 0) {
-			const { error: proyectoError } = await window.sb
-				.from("proyectos")
-				.update({ estado: "completado", fecha_final: getLocalDateISO() })
-				.eq("id", proyecto.id);
-			if (proyectoError) throw proyectoError;
-		}
-		cerrarModalCierre();
-		window.location.reload();
+		await window.SesionTerminar.terminar(window.sb, {
+			sesionId: sesionId, notas: notasCierre, proyectoId: proyecto.id, maestroId: user.id, hoy: getLocalDateISO(),
+		});
 	} catch (error) {
-		showError("No se pudo terminar la sesión: " + error.message);
+		throw new Error("No se pudo terminar la sesión: " + ((error && error.message) || "error desconocido"));
 	}
-}
-
-// ── Ayudantes de render del plan de la sesión ───────────────────────────────
-function getTextoFase(fase) {
-	const todos = sesionActiva && sesionActiva[fase + "_todos"] ? sesionActiva[fase + "_todos"] : "";
-	const diferenciado = sesionActiva && sesionActiva[fase + "_diferenciado"] ? sesionActiva[fase + "_diferenciado"] : "";
-	if (typeof todos === "string" && todos.trim()) return todos;
-	if (typeof diferenciado === "string" && diferenciado.trim()) return diferenciado;
-	if (typeof diferenciado === "object" && diferenciado !== null) {
-		// Llave de grado → "Grado 1:"; de grupo de trabajo ("Morado") → tal cual (js/texto-sesion.js)
-		const lineas = window.TextoSesion.lineas(diferenciado, null, "texto", textoActividad);
-		if (lineas.length) return lineas.join("\n");
-	}
-	return "Sin información registrada.";
-}
-
-// Texto legible de una actividad guardada como texto, objeto o lista; nunca JSON crudo
-function textoActividad(x) {
-	if (x === null || x === undefined) return "";
-	if (typeof x === "string") return x.trim();
-	if (Array.isArray(x)) return x.map(textoActividad).filter(Boolean).join("; ");
-	if (typeof x === "object") return textoActividad(x.descripcion || x.texto || x.actividad || x.nombre || "");
-	return String(x);
-}
-
-/*
-	Las actividades llegan en varias formas: lista, texto, o el objeto de "Crear
-	proyecto" { mode, todos: [...], diferenciado: { "1": [...] } }. Antes ese objeto se
-	pintaba tal cual y salía "• todos • null". Las llaves de grupo de trabajo ("Morado",
-	"Círculos") se rotulan tal cual, después de los pasos de todo el grupo (js/texto-sesion.js).
-*/
-function getActividadesFase(fase) {
-	const raw = sesionActiva ? sesionActiva[fase + "_actividades"] : null;
-	return window.TextoSesion.lineasActividades(raw, textoActividad);
-}
-
-function getTareasCierreTexto() {
-	return extraerTareasCierre().map((t) => (t.grado != null ? window.TextoSesion.rotulo(t.grado, "corto") + ": " + t.descripcion : t.descripcion));
-}
-
-function extraerTareasCierre() {
-	const raw = sesionActiva ? sesionActiva.cierre_tareas : null;
-	if (!raw) return [];
-	if (Array.isArray(raw)) {
-		return raw.map((x) => ({ descripcion: typeof x === "string" ? x : x.descripcion || "Tarea", grado: x.grado ?? null }));
-	}
-	if (typeof raw === "object") {
-		const mode = raw.mode || "todos";
-		// Modo diferenciado: { diferenciado: { "4": [...] } }; "por_grado" es alias antiguo
-		const porGrado = raw.diferenciado || raw.por_grado;
-		if (mode === "diferenciado" && porGrado && typeof porGrado === "object") {
-			// El bot guarda cada grado como texto ("1": "Platica en casa…"), Crear proyecto como lista
-			const out = [];
-			window.TextoSesion.llavesEnOrden(porGrado, raw.orden_grupos).forEach((grado) => {
-				const lista = porGrado[grado];
-				(Array.isArray(lista) ? lista : lista ? [lista] : []).forEach((t) => {
-					out.push({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: grado });
-				});
-			});
-			return out;
-		}
-		const lista = raw.todos || raw.items || raw.tareas || [];
-		return (Array.isArray(lista) ? lista : [lista]).map((t) => ({ descripcion: typeof t === "string" ? t : t.descripcion || "Tarea", grado: null }));
-	}
-	return [];
-}
-
-function renderBloqueSesion(titulo, borde, texto, actividades, tareas) {
-	const box = document.createElement("section");
-	box.className = "border-l-4 " + borde + " pl-4 py-2 mb-3";
-	let html =
-		"<h4 class='font-semibold text-gray-800 mb-1'>" + titulo + "</h4>" +
-		"<p class='text-sm text-gray-600 whitespace-pre-line mb-2'>" + escapeHtml(texto || "") + "</p>";
-	if (actividades && actividades.length) {
-		html += "<ul class='list-disc pl-5 text-sm text-gray-600 mb-2'>" +
-			actividades.map((a) => "<li>" + escapeHtml(a) + "</li>").join("") + "</ul>";
-	}
-	if (tareas && tareas.length) {
-		html += "<p class='text-sm font-medium text-gray-700'>Tareas del cierre:</p>" +
-			"<ul class='list-disc pl-5 text-sm text-gray-600'>" +
-			tareas.map((t) => "<li>" + escapeHtml(t) + "</li>").join("") + "</ul>";
-	}
-	box.innerHTML = html;
-	return box;
+	window.location.reload();
 }
 
 function renderPdaSesion(rawPda) {
@@ -659,56 +590,6 @@ function renderPdaSesion(rawPda) {
 		"<p><span class='font-semibold'>" + escapeHtml(it.grado) + "°:</span> " + escapeHtml(it.texto) + "</p>" +
 		(it.criterio ? "<p class='text-gray-500'>Criterio: " + escapeHtml(it.criterio) + "</p>" : "") +
 		"</div>").join("");
-}
-
-function normalizarRecursos(raw) {
-	if (!raw) return [];
-	let recursos = raw;
-	if (typeof recursos === "string") {
-		try { recursos = JSON.parse(recursos); } catch (_) { return []; }
-	}
-	// El jsonb puede venir como {links: [...], archivos: [...]} o como arreglo
-	if (!Array.isArray(recursos)) {
-		recursos = [].concat(recursos.links || [], recursos.archivos || [], (recursos.url || recursos.link) ? [recursos] : []);
-	}
-	return recursos
-		.map((r) => {
-			const url = r && (r.url || r.link || r.href) || null;
-			if (!url) return null;
-			// SEGURIDAD: solo http(s). Un esquema como javascript: en un <a href> ejecutaría código.
-			if (!/^https?:\/\//i.test(String(url))) return null;
-			return { titulo: r.nombre || r.titulo || "Abrir recurso", url: url };
-		})
-		.filter(Boolean);
-}
-
-function abrirModalCierre(onConfirm) {
-	let modal = document.getElementById("modal-cierre-sesion");
-	if (modal) modal.remove();
-	modal = document.createElement("div");
-	modal.id = "modal-cierre-sesion";
-	modal.className = "fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4";
-	modal.innerHTML =
-		"<div class='bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]'>" +
-		"<div class='p-5 border-b'><h3 class='text-lg font-bold text-gray-800'>Terminar la sesión</h3>" +
-		"<p class='text-sm text-gray-500 mt-1'>Las calificaciones y el cierre del día se capturan en Hoy; aquí solo se marca la sesión como trabajada.</p></div>" +
-		"<div class='p-5'><label for='notasCierreInput' class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
-		"<textarea id='notasCierreInput' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea></div>" +
-		"<div class='p-5 border-t flex justify-end gap-2'>" +
-		"<button type='button' id='cancelarCierreBtn' class='min-h-[44px] border border-gray-300 text-gray-600 px-4 rounded-xl'>Cancelar</button>" +
-		"<button type='button' id='confirmarCierreBtn' class='min-h-[44px] bg-green-600 text-white px-5 rounded-xl font-semibold'>Marcar como terminada</button>" +
-		"</div></div>";
-	document.body.appendChild(modal);
-	document.getElementById("cancelarCierreBtn").addEventListener("click", cerrarModalCierre);
-	document.getElementById("confirmarCierreBtn").addEventListener("click", async function () {
-		const notas = document.getElementById("notasCierreInput").value.trim();
-		await onConfirm(notas);
-	});
-}
-
-function cerrarModalCierre() {
-	const modal = document.getElementById("modal-cierre-sesion");
-	if (modal) modal.remove();
 }
 
 function showError(msg) {
