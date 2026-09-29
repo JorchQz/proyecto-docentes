@@ -145,9 +145,9 @@ new Function(fs.readFileSync(archivo, "utf8"))();
 	await dormir(20);
 
 	const cierre = elementos.cierreLista.innerHTML;
-	const activo = (campo, v) => new RegExp("data-cierre='" + campo + "' data-alumno='dani' data-valor='" + v + "' class='[^']*bg-blue-600 text-white").test(cierre);
+	const activo = (campo, v) => new RegExp("data-cierre='" + campo + "' data-alumno='dani' data-valor='" + v + "' class='[^']*bg-(?:violet|teal)-600 text-white").test(cierre);
 	ok("la pantalla muestra lo más nuevo de Dani (2 y 2), no la lectura tardía (1 y 1)", [activo("participacion", 2), activo("conducta", 2)], [true, true]);
-	ok("Ana (sin versión nueva) queda como la leyó", new RegExp("data-cierre='conducta' data-alumno='ana' data-valor='1' class='[^']*bg-blue-600").test(cierre), true);
+	ok("Ana (sin versión nueva) queda como la leyó", new RegExp("data-cierre='conducta' data-alumno='ana' data-valor='1' class='[^']*bg-teal-600").test(cierre), true);
 
 	// La maestra toca conducta 0 a Dani: se escribe sobre la marca nueva de la conducta
 	(elementos.cierreLista._listeners.click || []).forEach((fn) => fn({ target: { closest: () => ({ dataset: { cierre: "conducta", alumno: "dani", valor: "0" } }) } }));

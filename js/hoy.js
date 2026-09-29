@@ -34,6 +34,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var siguientes = [];
 	var proyectoPorId = {};    // proyectos que mira Hoy (título, grados y tipo)
 	var detallesAbiertos = {}; // qué paneles de detalle quedan abiertos entre renders
+	// Hoy se vuelve a dibujar en cada toque: lo que el docente desplegó se recuerda aquí (en memoria)
+	var productosAbiertos = {};   // producto_id -> true: la actividad está abierta para calificar
+	var secuenciasAbiertas = {};  // sesion_id -> true: la secuencia de la sesión está desplegada
+	var restantesAbiertas = {};   // proyecto_id -> true: la lista de sesiones restantes está abierta
+	var secuencias = {};          // sesion_id -> fila de `sesiones` con su secuencia (lectura opcional)
+	var secuenciaCargando = {};   // sesion_id -> true mientras se lee
+	var secuenciaFalla = {};      // sesion_id -> true si no se pudo leer
+	var asistenciaPlegada = false; // la tarjeta de Asistencia está plegada (con todo capturado)
+	var plegarAsistenciaTimer = null;
 	// Días sin clase (o con clase) del grupo sobre el calendario SEP (calendario_ajustes): con ellos
 	// vencen las tareas y se revisa lo incompleto el siguiente día de clase (js/alcance-hoy.js)
 	var ajustesCal = [];
@@ -150,8 +159,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var avisosBandeja = [];
 
 	/*
-		Pila fija abajo (a la vista donde esté la maestra, también en el Cierre del día): el
-		estado de la cola y el aviso de lo que no se guardó, uno sobre otro, sin encimarse.
+		Aviso de guardado (Fanny, 2026-09-29: la pastilla verde de abajo se confundía con el chip
+		Presente y lo tapaba). Ahora:
+		  - "Guardando…" y "Todo guardado" son una línea discreta en el encabezado azul (#hoyEstadoLinea,
+		    con el texto en #hoyEstadoGuardado): sin verde y sin flotar;
+		  - abajo solo flotan "Sin señal" (ámbar) y los errores (rojo), anchos y con
+		    pointer-events-none, para que nunca estorben un toque; la página aparta espacio al final
+		    (reservarEspacio) y no tapan la última fila.
+	*/
+	var ICONOS_ESTADO = {
+		ok: "<svg xmlns='http://www.w3.org/2000/svg' class='h-3.5 w-3.5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6 9 17l-5-5'/></svg>",
+		guardando: "<svg xmlns='http://www.w3.org/2000/svg' class='h-3.5 w-3.5 motion-safe:animate-spin' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 12a9 9 0 1 1-6.219-8.56'/></svg>",
+		pendiente: "<svg xmlns='http://www.w3.org/2000/svg' class='h-3.5 w-3.5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 8v4'/><path d='M12 16h.01'/></svg>",
+	};
+
+	/*
+		Pila fija abajo (a la vista donde esté el docente, también en el Cierre del día): el aviso
+		de "Sin señal" o de error de la cola y el aviso de lo que no se guardó, uno sobre otro, sin
+		encimarse. Todo es pointer-events-none salvo los botones del aviso de lo que no se guardó.
 	*/
 	function pilaFija() {
 		if (typeof document.createElement !== "function" || !document.body) return null;
@@ -161,30 +186,64 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pila.id = "hoyAvisosFijos";
 		pila.className = "fixed inset-x-4 bottom-4 z-40 flex flex-col items-center gap-2 pointer-events-none";
 		document.body.appendChild(pila);
-		var pastilla = document.getElementById("hoyEstadoGuardado");
-		if (pastilla && pastilla.parentNode) pila.appendChild(pastilla);
 		return pila;
 	}
 
+	// Aparta al final de la página lo que mide la pila (más su margen), para que lo que flota nunca
+	// tape la última fila. Sin nada flotando, no aparta nada.
+	function reservarEspacio() {
+		var reserva = document.getElementById("hoyReserva");
+		var pila = document.getElementById("hoyAvisosFijos");
+		if (!reserva || !reserva.style || !pila || pila.offsetHeight === undefined) return;
+		var hayAlgo = pila.children && pila.children.length > 0;
+		reserva.style.height = hayAlgo ? (pila.offsetHeight + 24) + "px" : "0px";
+	}
+	if (typeof window.addEventListener === "function") window.addEventListener("resize", reservarEspacio);
+
+	// La línea del encabezado: tipo "ok" | "guardando" | "pendiente"; sin texto, se esconde
+	// (ocupa su lugar: no mueve nada al aparecer)
 	function estadoGuardado(texto, tipo) {
 		var el = document.getElementById("hoyEstadoGuardado");
+		var linea = document.getElementById("hoyEstadoLinea");
+		var icono = document.getElementById("hoyEstadoIcono");
 		if (!el) return;
-		if (!texto) { el.classList.add("hidden"); return; }
-		var enPila = !!(el.parentNode && el.parentNode.id === "hoyAvisosFijos");
-		el.className = (enPila ? "pointer-events-auto max-w-full " : "fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100%-2rem)] ") +
-			"text-center rounded-2xl px-4 py-2 text-sm font-medium shadow-lg " +
-			(tipo === "error" ? "bg-red-600 text-white"
-			 : tipo === "ok"  ? "bg-emerald-600 text-white" : "bg-gray-800 text-white");
+		if (!texto) { if (linea && linea.classList) linea.classList.add("invisible"); return; }
 		el.textContent = texto;
-		el.classList.remove("hidden");
-		if (tipo === "ok") setTimeout(function () { if (!(bandeja && bandeja.pendientes())) el.classList.add("hidden"); }, 1500);
+		if (icono) icono.innerHTML = ICONOS_ESTADO[tipo] || "";
+		if (linea) {
+			if (linea.classList) linea.classList.remove("invisible");
+			linea.className = "mt-1 min-h-[20px] flex items-center gap-1.5 text-xs " + (tipo === "pendiente" ? "text-amber-200 font-semibold" : "text-blue-200");
+		}
 	}
 
-	// El aviso visible de la cola: "N capturas pendientes de enviar" mientras haya algo;
-	// "Todo guardado" cuando se vacía
+	// "Sin señal" (tipo "red", ámbar) o un error (rojo) flotando abajo; sin texto, se quita
+	function avisoFlotante(texto, tipo) {
+		var pila = pilaFija();
+		if (!pila) return;
+		var el = document.getElementById("hoyEstadoFlotante");
+		if (!texto) {
+			if (el && el.parentNode) el.parentNode.removeChild(el);
+			reservarEspacio();
+			return;
+		}
+		if (!el || el.parentNode !== pila) {
+			el = document.createElement("div");
+			el.id = "hoyEstadoFlotante";
+			el.setAttribute("role", "status");
+			pila.appendChild(el);
+		}
+		el.className = "pointer-events-none w-full max-w-2xl text-center rounded-2xl border px-4 py-2 text-sm font-medium shadow-lg " +
+			(tipo === "red" ? "bg-amber-100 text-amber-900 border-amber-300" : "bg-red-50 text-red-800 border-red-300");
+		el.textContent = texto;
+		reservarEspacio();
+	}
+
+	// El aviso visible de la cola: "Guardando…" mientras haya algo y "Todo guardado" cuando se vacía;
+	// sin señal o con un error, la línea de arriba dice "Pendiente de enviar" y abajo flota el aviso
 	function pintarBandeja(e) {
 		if (!e.pendientes) {
-			// Si algo no se guardó, lo dice el aviso de arriba: no se anuncia "Todo guardado"
+			// Si algo no se guardó, lo dice el aviso de abajo: no se anuncia "Todo guardado"
+			avisoFlotante("");
 			if (huboPendientes) {
 				if (avisosBandeja.length) estadoGuardado("");
 				else estadoGuardado("Todo guardado", "ok");
@@ -198,22 +257,28 @@ document.addEventListener("DOMContentLoaded", async function () {
 			? (e.pendientes === 1 ? ", guardada en este dispositivo." : ", guardadas en este dispositivo.")
 			: ". No cierres esta página.";
 		if (e.estado === "red") {
-			estadoGuardado("Sin señal: " + n + resguardo, "error");
+			estadoGuardado("Pendiente de enviar", "pendiente");
+			avisoFlotante("Sin señal: " + n + resguardo, "red");
 		} else if (e.estado === "servidor") {
 			// Hubo respuesta (un error del servidor): no es falta de señal
-			estadoGuardado("No se pudo guardar por ahora; se reintentará. " + n.charAt(0).toUpperCase() + n.slice(1) + resguardo, "error");
+			estadoGuardado("Pendiente de enviar", "pendiente");
+			avisoFlotante("No se pudo guardar por ahora; se reintentará. " + n.charAt(0).toUpperCase() + n.slice(1) + resguardo, "error");
 		} else if (e.estado === "cuenta") {
-			estadoGuardado("En este dispositivo entró otra cuenta. " + (e.pendientes === 1
+			estadoGuardado("Pendiente de enviar", "pendiente");
+			avisoFlotante("En este dispositivo entró otra cuenta. " + (e.pendientes === 1
 				? "1 captura pendiente de la cuenta anterior sigue guardada aquí y se enviará"
 				: e.pendientes + " capturas pendientes de la cuenta anterior siguen guardadas aquí y se enviarán") +
 				" cuando ella vuelva a entrar y abra Hoy.", "error");
 		} else if (e.estado === "sesion") {
-			estadoGuardado("Tu sesión se cerró: " + n + ". Siguen en este dispositivo; vuelve a iniciar sesión para enviarlas.", "error");
+			estadoGuardado("Pendiente de enviar", "pendiente");
+			avisoFlotante("Tu sesión se cerró: " + n + ". Siguen en este dispositivo; vuelve a iniciar sesión para enviarlas.", "error");
 		} else if (e.estado === "acceso") {
 			// Solo lectura de Mi Salón (b21): la base ya no las acepta; no se descartan
-			estadoGuardado(n.charAt(0).toUpperCase() + n.slice(1) + ". " + window.BandejaSalida.TEXTO_ACCESO_PANTALLA, "error");
+			estadoGuardado("Pendiente de enviar", "pendiente");
+			avisoFlotante(n.charAt(0).toUpperCase() + n.slice(1) + ". " + window.BandejaSalida.TEXTO_ACCESO_PANTALLA, "error");
 		} else {
-			estadoGuardado(n, "info");
+			avisoFlotante("");
+			estadoGuardado(e.persistente ? "Guardando…" : "Guardando… no cierres esta página.", "guardando");
 		}
 	}
 
@@ -231,6 +296,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (el) { el.textContent = ""; el.classList.add("hidden"); }
 		var fijo = document.getElementById("hoyAvisoFijo");
 		if (fijo && fijo.parentNode) fijo.parentNode.removeChild(fijo);
+		reservarEspacio();
 	}
 
 	// El aviso fijo (role="alert": un lector de pantalla lo anuncia): el último dato que no se
@@ -243,7 +309,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var caja = document.createElement("div");
 		caja.id = "hoyAvisoFijo";
 		caja.setAttribute("role", "alert");
-		caja.className = "pointer-events-auto w-full max-w-lg rounded-2xl border border-red-200 bg-white shadow-xl p-4 text-sm text-red-800";
+		// La caja no recibe toques (lo de abajo se sigue tocando); solo sus botones
+		caja.className = "pointer-events-none w-full max-w-lg rounded-2xl border border-red-200 bg-white shadow-xl p-4 text-sm text-red-800";
 		var n = avisosBandeja.length;
 		var titulo = document.createElement("p");
 		titulo.className = "font-semibold";
@@ -255,10 +322,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 		acciones.className = "flex flex-wrap gap-2 mt-3";
 		var ver = document.createElement("button");
 		ver.type = "button";
-		ver.className = "min-h-[44px] px-4 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700";
+		ver.className = "pointer-events-auto min-h-[44px] px-4 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700";
 		ver.textContent = "Ver detalle";
 		ver.addEventListener("click", function () {
 			if (caja.parentNode) caja.parentNode.removeChild(caja);
+			reservarEspacio();
 			var el = document.getElementById("hoyMensaje");
 			if (!el || !el.scrollIntoView) return;
 			el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
@@ -268,15 +336,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 		var cerrar = document.createElement("button");
 		cerrar.type = "button";
-		cerrar.className = "min-h-[44px] px-4 rounded-lg border border-red-200 bg-white text-sm font-semibold text-red-700 hover:bg-red-50";
+		cerrar.className = "pointer-events-auto min-h-[44px] px-4 rounded-lg border border-red-200 bg-white text-sm font-semibold text-red-700 hover:bg-red-50";
 		cerrar.textContent = "Cerrar";
-		cerrar.addEventListener("click", function () { if (caja.parentNode) caja.parentNode.removeChild(caja); });
+		cerrar.addEventListener("click", function () { if (caja.parentNode) caja.parentNode.removeChild(caja); reservarEspacio(); });
 		acciones.appendChild(ver);
 		acciones.appendChild(cerrar);
 		caja.appendChild(titulo);
 		caja.appendChild(ultimo);
 		caja.appendChild(acciones);
 		pila.insertBefore(caja, pila.firstChild);
+		reservarEspacio();
 	}
 
 	function pintarAvisosBandeja() {
@@ -333,7 +402,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				if (v && v.estado) asistencia[d.alumno_id] = v.estado; else delete asistencia[d.alumno_id];
 				if (!pintado) return;
 				renderAsistencia();
+				renderTareas();
 				renderPendientes();
+				repintarSesiones(); // quien faltó no aparece para calificar
 				renderCierre();
 			} else if (it.tipo === "registro" || it.tipo === "registro_borrar") {
 				if (d.fecha !== hoy) return;
@@ -668,7 +739,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			// Las del asistente Ponte al día ya se calificaron en su cuadrícula: no llenan Hoy (b20)
 			if (p.id !== pedida && !window.AlcanceHoy.abrirParaCalificar(p)) return;
 			if (sesionesHoy.indexOf(s) === -1) sesionesHoy.push(s);
-			if (p.id === pedida) sesionPedida = s.id;
+			if (p.id === pedida) { sesionPedida = s.id; productosAbiertos[p.id] = true; } // la que se abrió para calificar sale abierta
 		});
 		if (pedida && !sesionPedida) {
 			mensaje("info", "Esa actividad no está en el trimestre que mira Hoy (o ya no existe). Revísala en Proyectos, en Actividades del trimestre.");
@@ -907,6 +978,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	/*
+		Quien faltó hoy no aparece para calificar (Fanny, 2026-09-29). Es un filtro de PANTALLA sobre
+		alumnosDeProducto: la regla de a quién le toca un producto (AlcanceHoy.recibeProducto) no
+		cambia, y Inicio, Tareas, el motor y Qué le falta siguen igual. Si ya tiene una calificación,
+		sí se muestra (para poder corregirla). Solo aplica a lo que se califica hoy: las tareas que se
+		revisan hoy y las actividades de una sesión de hoy; una actividad suelta de un día que ya
+		pasó se califica con lo que pasó ese día, no con la asistencia de hoy.
+	*/
+	function alumnosParaCalificar(producto) {
+		var lista = alumnosDeProducto(producto);
+		var delDia = producto.tipo === "tarea" || !!(producto.sesion && producto.sesion.fecha === hoy);
+		if (!delDia) return lista;
+		return lista.filter(function (a) {
+			return !faltoHoy(a.id) || window.ProductosHoy.tieneCaptura(calificaciones[a.id + "|" + producto.id]);
+		});
+	}
+
+	// Calificado = semáforo, estado de entrega o puntaje (el motor cuenta el puntaje solo)
+	function estaCalificado(cal) {
+		return !!(cal && (cal.nivel || cal.estado_entrega || (cal.puntaje !== null && cal.puntaje !== undefined)));
+	}
+
+	// "Faltaron hoy: Ana, Luis" (quien faltó o tiene justificada); "" si nadie faltó
+	function lineaFaltaron() {
+		var ausentes = (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).filter(function (a) { return faltoHoy(a.id); });
+		if (!ausentes.length) return "";
+		return "<p class='text-xs text-gray-600 mb-2' data-faltaron-hoy>" + (ausentes.length === 1 ? "Faltó hoy: " : "Faltaron hoy: ") +
+			"<span class='font-medium'>" + ausentes.map(function (a) { return esc(a.nombre_completo); }).join(", ") + "</span>" +
+			" · no aparecen para calificar</p>";
+	}
+
 	// "Trabaja con 2°": un alumno incluido de otro grado (sigue en su grado para la boleta)
 	function notaTrabajaCon(alumno, producto) {
 		var g = window.AlcanceHoy.trabajaCon(alumno, producto, asignaciones, gradosPda[producto.id]);
@@ -956,22 +1058,93 @@ document.addEventListener("DOMContentLoaded", async function () {
 		resumenAsistencia();
 	}
 
+	function asistenciaCompleta() {
+		return alumnos.length > 0 && alumnos.every(function (a) { return !!asistencia[a.id]; });
+	}
+
+	/*
+		La tarjeta de Asistencia se pliega cuando ya está todo capturado (Fanny, 2026-09-29): se
+		pliega sola unos 0.7 s después de marcar al último alumno, y también aparece plegada si ya
+		estaba completa al abrir Hoy. Queda un resumen ("16 de 16 · 14 presentes · Falta: Ana ·
+		Justificada: Luis") y "Cambiar asistencia" la vuelve a abrir (con "Listo" se pliega otra vez).
+	*/
+	function textoResumenAsistencia() {
+		var ordenados = window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos;
+		var capturados = alumnos.filter(function (a) { return asistencia[a.id]; }).length;
+		var presentes = alumnos.filter(function (a) { return asistencia[a.id] === "presente"; }).length;
+		function nombres(estado) {
+			return ordenados.filter(function (a) { return asistencia[a.id] === estado; }).map(function (a) { return a.nombre_completo; });
+		}
+		var faltas = nombres("ausente"), justificadas = nombres("justificada");
+		var partes = [capturados + " de " + alumnos.length, presentes + (presentes === 1 ? " presente" : " presentes")];
+		if (faltas.length) partes.push((faltas.length === 1 ? "Falta: " : "Faltan: ") + faltas.join(", "));
+		if (justificadas.length) partes.push((justificadas.length === 1 ? "Justificada: " : "Justificadas: ") + justificadas.join(", "));
+		return partes.join(" · ");
+	}
+
 	function resumenAsistencia() {
 		var capturados = alumnos.filter(function (a) { return asistencia[a.id]; }).length;
-		document.getElementById("asistenciaResumen").textContent = capturados + " de " + alumnos.length + " capturados";
+		var completa = asistenciaCompleta();
+		var plegada = asistenciaPlegada && completa;
+		var lista = document.getElementById("asistenciaLista");
+		var bloque = document.getElementById("asistenciaPlegada");
+		var texto = document.getElementById("asistenciaTextoPlegada");
+		var cambiar = document.getElementById("asistenciaCambiar");
+		var listo = document.getElementById("asistenciaListo");
+		if (lista && lista.classList) lista.classList.toggle("hidden", plegada);
+		if (bloque && bloque.classList) bloque.classList.toggle("hidden", !plegada);
+		if (listo && listo.classList) listo.classList.toggle("hidden", plegada || !completa);
+		if (texto) texto.textContent = plegada ? textoResumenAsistencia() : "";
+		if (cambiar && cambiar.setAttribute) cambiar.setAttribute("aria-expanded", plegada ? "false" : "true");
+		// Plegada, el resumen ya dice cuántos hay: el contador de arriba sobra
+		document.getElementById("asistenciaResumen").textContent = plegada ? "" : capturados + " de " + alumnos.length + " capturados";
 	}
 
 	document.getElementById("asistenciaLista").addEventListener("click", function (e) {
 		var btn = e.target.closest("button[data-asistencia]");
 		if (!btn) return;
 		var alumnoId = btn.dataset.asistencia;
+		var estabaCompleta = asistenciaCompleta();
 		asistencia[alumnoId] = btn.dataset.valor;
 		guardarAsistencia(alumnoId, btn.dataset.valor);
 		retirarCierreSiFalto(alumnoId);
 		renderAsistencia();
+		renderTareas(); // quien faltó hoy no aparece para calificar
 		renderPendientes(); // quien faltó hoy sigue pendiente
+		repintarSesiones();
 		renderCierre();
+		// El último alumno marcado: se pliega solo tras una pausa (si ya estaba completa y se
+		// reabrió para corregir, se queda abierta hasta "Listo")
+		if (!estabaCompleta && asistenciaCompleta()) {
+			clearTimeout(plegarAsistenciaTimer);
+			plegarAsistenciaTimer = setTimeout(function () {
+				if (!asistenciaCompleta()) return;
+				asistenciaPlegada = true;
+				resumenAsistencia();
+			}, 700);
+		}
 	});
+
+	var asistenciaCambiarBtn = document.getElementById("asistenciaCambiar");
+	if (asistenciaCambiarBtn && asistenciaCambiarBtn.addEventListener) {
+		asistenciaCambiarBtn.addEventListener("click", function () {
+			clearTimeout(plegarAsistenciaTimer);
+			asistenciaPlegada = false;
+			resumenAsistencia();
+			var primero = document.querySelector("#asistenciaLista button[data-asistencia]");
+			if (primero && primero.focus) primero.focus();
+		});
+	}
+	var asistenciaListoBtn = document.getElementById("asistenciaListo");
+	if (asistenciaListoBtn && asistenciaListoBtn.addEventListener) {
+		asistenciaListoBtn.addEventListener("click", function () {
+			clearTimeout(plegarAsistenciaTimer);
+			asistenciaPlegada = true;
+			resumenAsistencia();
+			var cambiar = document.getElementById("asistenciaCambiar");
+			if (cambiar && cambiar.focus) cambiar.focus();
+		});
+	}
 
 	// "2026-09-14" → "14 sep" (como lo lee el maestro, no en formato ISO)
 	function fechaCorta(iso) {
@@ -991,7 +1164,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cont.innerHTML = tareas.map(function (t) {
 			var vence = venceDe(t);
 			var atrasada = vence && vence < hoy;
-			var porGrado = agruparPorGrado(alumnosDeProducto(t));
+			var porGrado = agruparPorGrado(alumnosParaCalificar(t));
 			var filas = porGrado.map(function (g) {
 				var encabezado = porGrado.length > 1
 					? "<p class='text-xs font-semibold text-gray-500 mt-2 mb-1'>" + g.grado + "° grado</p>" : "";
@@ -1009,11 +1182,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"<p class='font-semibold text-gray-800 text-sm'>" + esc(t.nombre) +
 				"<span class='text-blue-700'> · " + esc(paraQuien(t)) + "</span></p>" +
 				(atrasada ? "<span class='text-xs text-amber-600 shrink-0'>vencía el " + esc(fechaCorta(vence)) + "</span>" : "") +
-				"</div>" + filas + "</div>";
+				"</div>" + (filas || vacio("Nadie por revisar en esta tarea: quienes faltaron hoy no aparecen aquí.")) + "</div>";
 		}).join("");
+		cont.innerHTML = lineaFaltaron() + cont.innerHTML;
 		var pendientesTareas = 0;
 		tareas.forEach(function (t) {
-			alumnosDeProducto(t).forEach(function (al) {
+			alumnosParaCalificar(t).forEach(function (al) {
 				if (!(calificaciones[al.id + "|" + t.id] || {}).estado_entrega) pendientesTareas++;
 			});
 		});
@@ -1132,12 +1306,40 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── 3. Sesiones de hoy ────────────────────────────────────────────────────
 	// Bloque "Trabajar hoy": las siguientes sesiones pendientes del proyecto activo
 	// Una sesión pendiente con su botón "Trabajar hoy"
-	function filaSiguiente(s) {
-		return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg bg-white border border-gray-200 px-3 py-2'>" +
-			"<span class='text-sm text-gray-700'>Sesión " + (s.numero_sesion || "") + " · " + esc(s.campo_formativo || "Sin campo formativo") +
+	/*
+		Una sesión que falta, con su ojo (despliega ahí su secuencia) y su lápiz (la abre en Crear
+		proyecto, ya en esa sesión). "Trabajar hoy" solo lo ofrece la SIGUIENTE de cada proyecto
+		(ofreceTrabajar): las demás se ven y se editan, pero no se saltan.
+	*/
+	function iconoOjo() {
+		return "<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0'/><circle cx='12' cy='12' r='3'/></svg>";
+	}
+	function iconoLapiz() {
+		return "<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'/><path d='m15 5 4 4'/></svg>";
+	}
+
+	function filaSiguiente(s, ofreceTrabajar) {
+		var num = s.numero_sesion || "";
+		var abierta = !!secuenciasAbiertas[s.id];
+		return "<div class='rounded-lg bg-white border border-gray-200' data-fila-sesion='" + esc(s.id) + "'>" +
+			"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2'>" +
+			"<span class='min-w-0 text-sm text-gray-700'>Sesión " + num + " · " + esc(s.campo_formativo || "Sin campo formativo") +
 			(s.momento ? "<span class='block text-xs text-gray-400'>" + esc(s.momento) + "</span>" : "") + "</span>" +
-			"<button type='button' data-trabajar-hoy='" + s.id + "' aria-label='Trabajar hoy la sesión " + (s.numero_sesion || "") + " de " + esc(s.proyectoTitulo || "") + "' " +
-			"class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shrink-0'>Trabajar hoy</button>" +
+			"<span class='flex items-center gap-2 shrink-0'>" +
+			(ofreceTrabajar
+				? "<button type='button' data-trabajar-hoy='" + s.id + "' aria-label='Trabajar hoy la sesión " + num + " de " + esc(s.proyectoTitulo || "") + "' " +
+					"class='min-h-[44px] px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700'>Trabajar hoy</button>"
+				: "") +
+			// Ojo gris: la secuencia de esa sesión, aquí mismo
+			"<button type='button' data-ver-secuencia='" + s.id + "' aria-expanded='" + (abierta ? "true" : "false") + "' " +
+			"aria-label='Ver la secuencia de la sesión " + num + "' title='Ver la secuencia' " +
+			"class='inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg " + (abierta ? "bg-gray-200 text-gray-700" : "text-gray-500 hover:bg-gray-100") + "'>" + iconoOjo() + "</button>" +
+			// Lápiz azul: editar esa sesión en Crear proyecto (enlace relativo: en la app instalada no sale de /salon/)
+			"<a href='crear_proyecto.html?id=" + encodeURIComponent(s.proyecto_id || "") + "&sesion=" + encodeURIComponent(s.id) + "' data-editar-sesion='" + s.id + "' " +
+			"aria-label='Editar la sesión " + num + " en el proyecto' title='Editar en el proyecto' " +
+			"class='inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-blue-700 hover:bg-blue-50'>" + iconoLapiz() + "</a>" +
+			"</span></div>" +
+			(abierta ? "<div class='px-3 pb-3 border-t border-gray-100 pt-2'>" + cuerpoSecuencia(s) + "</div>" : "") +
 			"</div>";
 	}
 
@@ -1149,18 +1351,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return "<div class='rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
 			"<p class='text-sm font-semibold text-gray-800 mb-1'>" +
 			(sesionesHoy.length ? "¿Trabajarás otra sesión hoy?" : "¿Qué sesión trabajas hoy?") + "</p>" +
-			"<p class='text-xs text-gray-500 mb-2'>Las sesiones de tu planeación no traen fecha: elige la que vas a trabajar y sus productos aparecen aquí para calificarlos." +
+			"<p class='text-xs text-gray-500 mb-2'>Las sesiones se trabajan en orden: toca «Trabajar hoy» en la siguiente y sus actividades aparecen aquí para calificarlas. Con el ojo ves la secuencia de una sesión y con el lápiz la editas en el proyecto." +
 			(siguientes.length > 1 ? " Tienes " + siguientes.length + " proyectos activos." : "") + "</p>" +
 			"<div class='flex flex-col gap-3'>" +
 			siguientes.map(function (g) {
+				var abiertas = !!restantesAbiertas[g.proyecto.id];
 				var otras = g.otras.length
-					? "<details class='mt-2'><summary class='min-h-[44px] flex items-center cursor-pointer text-sm text-blue-700 font-medium'>Elegir otra sesión (" +
-						g.otras.length + (g.otras.length === 1 ? " pendiente" : " pendientes") + ")</summary>" +
-						"<div class='flex flex-col gap-2 mt-1'>" + g.otras.map(filaSiguiente).join("") + "</div></details>"
+					? "<button type='button' data-abrir-restantes='" + esc(g.proyecto.id) + "' aria-expanded='" + (abiertas ? "true" : "false") + "' " +
+						"class='mt-2 min-h-[44px] flex items-center gap-2 text-sm text-blue-700 font-medium'>" + chevron(abiertas) +
+						g.otras.length + (g.otras.length === 1 ? " sesión restante" : " sesiones restantes") + "</button>" +
+						"<div class='" + (abiertas ? "" : "hidden ") + "flex flex-col gap-2 mt-1' data-restantes='" + esc(g.proyecto.id) + "'>" +
+						g.otras.map(function (o) { return filaSiguiente(o, false); }).join("") + "</div>"
 					: "";
 				return "<section class='rounded-lg bg-white/60 p-2' aria-label='" + esc(g.proyecto.titulo || "Proyecto") + "'>" +
 					"<p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>" + esc(g.proyecto.titulo || "Proyecto sin título") + "</p>" +
-					filaSiguiente(g.siguiente) + otras + "</section>";
+					filaSiguiente(g.siguiente, true) + otras + "</section>";
 			}).join("") +
 			"</div></div>";
 	}
@@ -1172,6 +1377,67 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return c && (c.nivel || c.estado_entrega || c.puntaje !== null && c.puntaje !== undefined);
 			});
 		});
+	}
+
+	/*
+		La secuencia de la sesión (inicio, desarrollo, cierre, tareas y enlaces a anexos y libros:
+		js/secuencia-sesion.js), a la vista en Hoy sin ir a Inicio. Es una LECTURA OPCIONAL: si no se
+		puede leer, se dice y se sigue calificando. Se lee al abrirla, una vez por sesión.
+	*/
+	function cuerpoSecuencia(ses) {
+		if (!window.SecuenciaSesion) return "";
+		var fila = secuencias[ses.id];
+		if (fila) {
+			return window.SecuenciaSesion.hayContenido(fila)
+				? window.SecuenciaSesion.html(fila)
+				: "<p class='text-sm text-gray-500'>Esta sesión no trae secuencia registrada.</p>";
+		}
+		if (secuenciaFalla[ses.id]) {
+			return "<p class='text-sm text-red-700'>No se pudo cargar la secuencia. Puedes seguir calificando.</p>" +
+				"<button type='button' data-ver-secuencia='" + esc(ses.id) + "' data-reintentar='1' " +
+				"class='mt-2 min-h-[44px] px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50'>Reintentar</button>";
+		}
+		return "<p class='text-sm text-gray-500'>Cargando la secuencia...</p>";
+	}
+
+	// El panel plegable de una sesión de hoy (las actividades sueltas no traen secuencia)
+	function panelSecuencia(ses) {
+		if (!window.SecuenciaSesion || esSuelta(ses)) return "";
+		var abierta = !!secuenciasAbiertas[ses.id];
+		return "<div class='mb-2 rounded-xl border border-gray-200' data-panel-secuencia='" + esc(ses.id) + "'>" +
+			"<button type='button' data-secuencia='" + esc(ses.id) + "' aria-expanded='" + (abierta ? "true" : "false") + "' " +
+			"class='w-full min-h-[44px] flex items-center gap-2 px-3 py-2 text-left rounded-xl hover:bg-gray-50 text-sm font-semibold text-blue-700'>" +
+			chevron(abierta) + "Secuencia de la sesión</button>" +
+			"<div class='" + (abierta ? "" : "hidden ") + "px-3 pb-3 border-t border-gray-100 pt-2'>" + (abierta ? cuerpoSecuencia(ses) : "") + "</div></div>";
+	}
+
+	async function cargarSecuencia(sesionId) {
+		if (!window.SecuenciaSesion || secuencias[sesionId] || secuenciaCargando[sesionId]) return;
+		secuenciaCargando[sesionId] = true;
+		delete secuenciaFalla[sesionId];
+		try {
+			// lectura-opcional: la secuencia solo se muestra para leerla; nada se guarda con ella y sin ella
+			// se sigue calificando (si falla, la pantalla lo dice y ofrece reintentar)
+			var res = await window.sb.from("sesiones").select(window.SecuenciaSesion.COLUMNAS)
+				.eq("id", sesionId).eq("maestro_id", user.id).maybeSingle();
+			if (res.error || !res.data) secuenciaFalla[sesionId] = true;
+			else secuencias[sesionId] = res.data;
+		} catch (e) {
+			console.warn("hoy: no se pudo leer la secuencia", e);
+			secuenciaFalla[sesionId] = true;
+		}
+		delete secuenciaCargando[sesionId];
+	}
+
+	async function alternarSecuencia(sesionId, reintentar) {
+		if (!window.SecuenciaSesion) return;
+		var abrir = reintentar ? true : !secuenciasAbiertas[sesionId];
+		secuenciasAbiertas[sesionId] = abrir;
+		if (abrir && !secuencias[sesionId]) {
+			repintarSesiones(); // "Cargando la secuencia..."
+			await cargarSecuencia(sesionId);
+		}
+		repintarSesiones();
 	}
 
 	function renderSesiones() {
@@ -1210,15 +1476,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 				"<button type='button' data-agregar-producto='" + ses.id + "' " +
 				"class='min-h-[44px] px-3 rounded-lg border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50'>Agregar actividad o tarea</button>" +
 				"</span>" +
-				"</div>" + cuerpo + bloqueTareasDeSesion(tareasSesion) + "</div>";
+				"</div>" + (ses.fecha === hoy ? lineaFaltaron() : "") + panelSecuencia(ses) + cuerpo + bloqueTareasDeSesion(tareasSesion) + "</div>";
 		}).join("") + bloqueSiguientes();
 		var sinCalificar = 0;
 		sesionesHoy.forEach(function (ses) {
 			(productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea"; }).forEach(function (p) {
-				alumnosDeProducto(p).forEach(function (al) {
-					var cal = calificaciones[al.id + "|" + p.id] || {};
-					// Calificado = semáforo, estado de entrega o puntaje (el motor cuenta el puntaje solo)
-					if (!cal.nivel && !cal.estado_entrega && (cal.puntaje === null || cal.puntaje === undefined)) sinCalificar++;
+				// Quien faltó hoy y no tiene calificación no cuenta: no aparece para calificar
+				alumnosParaCalificar(p).forEach(function (al) {
+					if (!estaCalificado(calificaciones[al.id + "|" + p.id])) sinCalificar++;
 				});
 			});
 		});
@@ -1247,8 +1512,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return "";
 	}
 
+	/*
+		Cada actividad es un renglón (nombre, para quién y "N de M calificados") que se abre para
+		calificar (Fanny, 2026-09-29). Qué está abierto se recuerda en `productosAbiertos`: Hoy se
+		vuelve a dibujar en cada toque. Lo que el docente ve no cambia: en el cuerpo van los mismos
+		botones de siempre (Para quién, Renombrar, Quitar y el semáforo de cada alumno).
+	*/
+	function chevron(abierto) {
+		return "<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0 text-gray-400 transition-transform" + (abierto ? " rotate-90" : "") +
+			"' data-chevron viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='m9 6 6 6-6 6'/></svg>";
+	}
+
+	// "3 de 8 calificados" (quien no aparece para calificar no cuenta)
+	function resumenCalificados(producto) {
+		var lista = alumnosParaCalificar(producto);
+		var hechos = lista.filter(function (al) { return estaCalificado(calificaciones[al.id + "|" + producto.id]); }).length;
+		return { hechos: hechos, total: lista.length };
+	}
+
 	function bloqueProducto(producto) {
-		var porGrado = agruparPorGrado(alumnosDeProducto(producto));
+		var paraCalificar = alumnosParaCalificar(producto);
+		var porGrado = agruparPorGrado(paraCalificar);
+		var abierto = !!productosAbiertos[producto.id];
+		var conteo = resumenCalificados(producto);
 		var filas = porGrado.map(function (g) {
 			var encabezado = porGrado.length > 1
 				? "<p class='text-xs font-semibold text-gray-500 mt-2 mb-1'>" + g.grado + "° grado</p>" : "";
@@ -1273,15 +1559,29 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return filaAlumno(al, controles, nota) + detalleProducto(producto, al, cal);
 			}).join("");
 		}).join("");
-		return "<div class='mb-3'>" +
-			"<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2'>" +
-			"<p class='text-sm font-medium text-gray-700'>" + esc(producto.nombre) +
+		var sinFilas = alumnosDeProducto(producto).length
+			? "Quienes reciben esta actividad faltaron hoy: no aparecen para calificar."
+			: "Nadie recibe esta actividad todavía. Usa «Para quién» para elegir a los alumnos.";
+		// Sin nadie que calificar: o nadie la recibe, o todos los que la reciben faltaron hoy
+		var etiquetaConteo = conteo.total ? conteo.hechos + " de " + conteo.total + " calificados"
+			: alumnosDeProducto(producto).length ? "Faltaron hoy" : "Sin alumnos";
+		var terminada = conteo.total > 0 && conteo.hechos === conteo.total;
+		return "<div class='mb-3 rounded-xl border border-gray-200' data-bloque-producto='" + esc(producto.id) + "'>" +
+			// El renglón: se toca para abrir o cerrar (aria-expanded); no lleva data-producto, que es del semáforo
+			"<button type='button' data-abrir-producto='" + esc(producto.id) + "' aria-expanded='" + (abierto ? "true" : "false") + "' " +
+			"aria-controls='cuerpo-prod-" + esc(producto.id) + "' class='w-full min-h-[44px] flex items-center gap-2 px-3 py-2 text-left rounded-xl hover:bg-gray-50'>" +
+			chevron(abierto) +
+			"<span class='min-w-0 flex-1 text-sm font-medium text-gray-700 break-words'>" + esc(producto.nombre) +
 			// Para quién: sus grados (en multigrado salían bloques iguales sin decir de qué grado
 			// eran) y los alumnos incluidos o excluidos
 			"<span class='text-sm font-semibold text-blue-700'> · " + esc(paraQuien(producto)) + "</span>" +
-			"<span class='text-xs text-gray-400 ml-2'>" + esc(producto.campo || "") + "</span></p>" +
-			botonesProducto(producto) + "</div>" +
-			(filas || vacio("Nadie recibe esta actividad todavía. Usa «Para quién» para elegir a los alumnos.")) + "</div>";
+			"<span class='text-xs text-gray-400 ml-2'>" + esc(producto.campo || "") + "</span></span>" +
+			"<span data-conteo-calificados class='shrink-0 text-xs font-semibold rounded-full px-2.5 py-1 " +
+			(terminada ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600") + "'>" + etiquetaConteo + "</span>" +
+			"</button>" +
+			"<div id='cuerpo-prod-" + esc(producto.id) + "' class='" + (abierto ? "" : "hidden ") + "px-3 pb-2'>" +
+			"<div class='flex sm:justify-end'>" + botonesProducto(producto) + "</div>" +
+			(filas || vacio(sinFilas)) + "</div></div>";
 	}
 
 	// Para quién, renombrar y quitar un producto (quitar solo si no tiene calificaciones: lo revisa
@@ -1314,6 +1614,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 					(vence ? "<span class='block text-xs text-gray-500'>" + (vence === hoy ? "Se revisa hoy, arriba en Tareas por revisar" : "Se revisa el " + esc(fechaCorta(vence))) + "</span>" : "") +
 					"</p>" + botonesProducto(t) + "</div>";
 			}).join("") + "</div>";
+	}
+
+	/*
+		Una frase sugerida ("No trajo material") se AGREGA al final de la retroalimentación que ya
+		estaba escrita ("Le faltó color. No trajo material"); antes la reemplazaba y se perdía lo
+		escrito. Si esa frase ya está, no se repite (sin importar mayúsculas ni el punto final).
+	*/
+	function agregarFrase(actual, frase) {
+		var texto = String(actual === null || actual === undefined ? "" : actual).replace(/\s+$/, "");
+		var nueva = String(frase === null || frase === undefined ? "" : frase).trim();
+		if (!nueva) return texto;
+		if (!texto) return nueva;
+		function limpio(t) { return t.toLowerCase().replace(/[\s.,;:!?…]+/g, " ").trim(); }
+		if ((" " + limpio(texto) + " ").indexOf(" " + limpio(nueva) + " ") !== -1) return String(actual);
+		return texto + (/[.!?…]$/.test(texto) ? " " : ". ") + nueva;
 	}
 
 	function detalleProducto(producto, alumno, cal) {
@@ -1353,6 +1668,37 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var btnHoy = e.target.closest("button[data-trabajar-hoy], button[data-quitar-hoy]");
 		if (btnHoy) { await fecharSesion(btnHoy); return; }
 
+		// Abrir o cerrar una actividad: se cambia lo que se ve sin volver a dibujar (el foco y el
+		// desplazamiento se quedan) y se recuerda en productosAbiertos para el siguiente dibujo
+		var btnAbrir = e.target.closest("button[data-abrir-producto]");
+		if (btnAbrir) {
+			var idProd = btnAbrir.dataset.abrirProducto;
+			var seAbreProd = !productosAbiertos[idProd];
+			productosAbiertos[idProd] = seAbreProd;
+			var cuerpoProd = document.getElementById("cuerpo-prod-" + idProd);
+			if (cuerpoProd) cuerpoProd.classList.toggle("hidden", !seAbreProd);
+			btnAbrir.setAttribute("aria-expanded", seAbreProd ? "true" : "false");
+			var flecha = btnAbrir.querySelector("[data-chevron]");
+			if (flecha) flecha.classList.toggle("rotate-90", seAbreProd);
+			return;
+		}
+
+		// La secuencia de una sesión (panel de las de hoy, ojo de las que faltan)
+		var btnSecuencia = e.target.closest("button[data-secuencia], button[data-ver-secuencia]");
+		if (btnSecuencia) {
+			await alternarSecuencia(btnSecuencia.dataset.secuencia || btnSecuencia.dataset.verSecuencia, !!btnSecuencia.dataset.reintentar);
+			return;
+		}
+
+		// "N sesiones restantes" de un proyecto
+		var btnRestantes = e.target.closest("button[data-abrir-restantes]");
+		if (btnRestantes) {
+			var idProy = btnRestantes.dataset.abrirRestantes;
+			restantesAbiertas[idProy] = !restantesAbiertas[idProy];
+			repintarSesiones();
+			return;
+		}
+
 		var btnAgregar = e.target.closest("button[data-agregar-producto]");
 		if (btnAgregar) { agregarProducto(btnAgregar.dataset.agregarProducto, btnAgregar); return; }
 
@@ -1383,7 +1729,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var btnRetro = e.target.closest("button[data-retro]");
 		if (btnRetro) {
 			var ta = document.querySelector("#" + btnRetro.dataset.retro + " textarea[data-retroalimentacion]");
-			if (ta) { ta.value = btnRetro.dataset.texto; ta.dispatchEvent(new Event("change", { bubbles: true })); }
+			// La frase se agrega al final de lo ya escrito (antes lo reemplazaba) y no se repite
+			if (ta) {
+				var conFrase = agregarFrase(ta.value, btnRetro.dataset.texto);
+				if (conFrase !== ta.value) {
+					ta.value = conFrase;
+					ta.dispatchEvent(new Event("change", { bubbles: true }));
+				}
+			}
 			return;
 		}
 
@@ -2116,7 +2469,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				if (suelta) ses = incorporarSesionSuelta(res.data);
 				if (!nuevo || !nuevo.id) { avisar("No se pudo agregar: la base no devolvió la actividad."); return false; }
 				nuevo.sesion = ses;
-				asignaciones[nuevo.id] = window.AlcanceHoy.indiceAsignaciones(plan.filas.map(function (f) {
+				productosAbiertos[nuevo.id] = true; // la que se acaba de agregar se ve abierta, lista para calificar
+				asignaciones[nuevo.id] =window.AlcanceHoy.indiceAsignaciones(plan.filas.map(function (f) {
 					return { producto_sesion_id: nuevo.id, alumno_id: f.alumno_id, modo: f.modo };
 				}))[nuevo.id] || {};
 				if (ses) {
@@ -2383,24 +2737,53 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// ── 4. Cierre del día ─────────────────────────────────────────────────────
+	/*
+		Una tabla con encabezado fijo (sticky top-14: se queda a la vista al bajar por la lista) y una
+		columna por cosa, cada una de su color: No., Grado, Nombre, Participación y Conducta, en el
+		orden de la lista (OrdenLista). A quien faltó se le pone "Faltó" y no se le muestran chips. Desde
+		md (768 px) es tabla; abajo de eso, una tarjeta por alumno con las mismas cosas. El significado
+		del 0, 1 y 2 está en la leyenda de hoy.html.
+	*/
+	function columnasCierre() { return "md:grid-cols-[2.75rem_3.25rem_minmax(0,1fr)_10.5rem_10.5rem]"; }
+
+	function encabezadoCierre() {
+		return "<div data-cierre-encabezado class='hidden md:grid " + columnasCierre() + " sticky top-14 z-20 mb-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm text-xs font-semibold'>" +
+			"<span class='bg-gray-100 px-2 py-2 text-right text-gray-600'>No.</span>" +
+			"<span class='bg-gray-100 px-2 py-2 text-gray-600'>Grado</span>" +
+			"<span class='bg-gray-100 px-2 py-2 text-gray-600'>Nombre</span>" +
+			"<span class='bg-violet-100 px-2 py-2 text-center text-violet-800'>Participación</span>" +
+			"<span class='bg-teal-100 px-2 py-2 text-center text-teal-800'>Conducta</span></div>";
+	}
+
+	function celdaCierre(alumno, campo, etiqueta, valor, colorTexto, colorActivo) {
+		return "<div class='flex items-center gap-2 mt-2 md:mt-0 md:justify-center md:px-2 md:py-1.5' data-cierre-columna='" + campo + "'>" +
+			"<span class='md:hidden w-28 shrink-0 text-xs font-semibold " + colorTexto + "'>" + etiqueta + "</span>" +
+			"<div class='flex gap-2'>" + [0, 1, 2].map(function (n) {
+				return chip(String(n), valor === n, colorActivo,
+					"data-cierre='" + campo + "' data-alumno='" + alumno.id + "' data-valor='" + n + "'");
+			}).join("") + "</div></div>";
+	}
+
+	function filaCierre(al) {
+		var v = registro[al.id];
+		var falto = faltoHoy(al.id);
+		var estado = falto
+			? "<div class='mt-2 md:mt-0 md:col-span-2 md:px-2 md:py-2'><span data-cierre-falto class='inline-flex items-center rounded-lg bg-gray-100 px-3 min-h-[36px] text-sm font-semibold text-gray-600'>" +
+				(asistencia[al.id] === "justificada" ? "Faltó · justificada" : "Faltó") + "</span></div>"
+			: celdaCierre(al, "participacion", "Participación", v ? v.participacion : 1, "text-violet-800", "bg-violet-600 text-white") +
+				celdaCierre(al, "conducta", "Conducta", v ? v.conducta : 1, "text-teal-800", "bg-teal-600 text-white");
+		return "<div data-cierre-fila='" + esc(al.id) + "' class='mb-2 rounded-xl border border-gray-200 p-3 md:mb-0 md:grid " + columnasCierre() +
+			" md:items-center md:rounded-none md:border-0 md:border-b md:border-gray-100 md:p-0'>" +
+			"<div class='flex items-baseline gap-2 md:contents'>" +
+			"<span data-num-lista class='text-sm font-bold text-gray-900 tabular-nums md:px-2 md:text-right'>" + esc(al.num_lista || "") + "</span>" +
+			"<span class='order-last text-xs text-gray-500 md:order-none md:px-2' data-cierre-grado>" + esc(al.grado) + "°</span>" +
+			"<span class='min-w-0 break-words text-sm font-medium text-gray-800 md:px-2 md:py-2'>" + esc(al.nombre_completo) + "</span></div>" +
+			estado + "</div>";
+	}
+
 	function renderCierre() {
 		var cont = document.getElementById("cierreLista");
-		cont.innerHTML = alumnos.map(function (al) {
-			var v = registro[al.id];
-			var part = v ? v.participacion : 1;
-			var cond = v ? v.conducta : 1;
-			var controles = "<span class='text-xs text-gray-500 self-center mr-1'>Participación</span>" +
-				[0, 1, 2].map(function (n) {
-					return chip(String(n), part === n, "bg-blue-600 text-white",
-						"data-cierre='participacion' data-alumno='" + al.id + "' data-valor='" + n + "'");
-				}).join("") +
-				"<span class='text-xs text-gray-500 self-center mx-1'>Conducta</span>" +
-				[0, 1, 2].map(function (n) {
-					return chip(String(n), cond === n, "bg-blue-600 text-white",
-						"data-cierre='conducta' data-alumno='" + al.id + "' data-valor='" + n + "'");
-				}).join("");
-			return filaAlumno(al, controles);
-		}).join("");
+		cont.innerHTML = encabezadoCierre() + (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).map(filaCierre).join("");
 		var esperados = alumnos.filter(function (a) { return !faltoHoy(a.id); });
 		var guardados = esperados.filter(function (a) { return registroGuardado[a.id]; }).length;
 		// La misma cuenta que Inicio (js/alcance-hoy.js)
@@ -2524,6 +2907,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	} catch (e) {
 		console.error("hoy: pendientes del dispositivo", e);
 	}
+	// Con toda la asistencia capturada, la tarjeta aparece plegada (con su resumen)
+	asistenciaPlegada = asistenciaCompleta();
 	[
 		["asistencia", renderAsistencia],
 		["tareas", renderTareas],

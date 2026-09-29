@@ -63,12 +63,21 @@ const cuerpo = [
 	// Los grados de los PDA ligados a cada producto (nota "Trabaja con", R30)
 	"var gradosPda = {};",
 	"var proyectoPorId = {};",
+	// Lo que Hoy recuerda entre dibujos (actividades abiertas) y la asistencia de hoy (quien faltó no aparece)
+	"var productosAbiertos = ABIERTOS;",
+	"var asistencia = ASISTENCIA_HOY;",
+	"var hoy = '2026-09-29';",
 	extraerLista("NIVELES"),
 	extraerLista("RETRO_RAPIDA"),
 	extraerFuncion("esc"),
 	extraerFuncion("chip"),
 	extraerFuncion("filaAlumno"),
 	extraerFuncion("alumnosDeProducto"),
+	extraerFuncion("faltoHoy"),
+	extraerFuncion("alumnosParaCalificar"),
+	extraerFuncion("estaCalificado"),
+	extraerFuncion("resumenCalificados"),
+	extraerFuncion("chevron"),
 	extraerFuncion("notaTrabajaCon"),
 	extraerFuncion("paraQuien"),
 	extraerFuncion("esSuelta"),
@@ -82,7 +91,9 @@ const cuerpo = [
 	"return { bloqueProducto: bloqueProducto };",
 ].join("\n");
 
-const api = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", "ASIGNACIONES", cuerpo)(alumnos, calificaciones, {}, ALCANCE, require("../js/productos-hoy.js"));
+const fabrica = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", "ASIGNACIONES", "ABIERTOS", "ASISTENCIA_HOY", cuerpo);
+const PH = require("../js/productos-hoy.js");
+const api = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, {}, {});
 
 const producto = { id: "prod-1", nombre: "Cartel del cuento", campo: "LEN", grados: ["2", "3"], tipo: "trabajo" };
 let html = "";
@@ -114,10 +125,39 @@ ok("cada producto ofrece Renombrar y Quitar (44 px)",
 	/data-renombrar='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero) && /data-quitar-producto='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero), true);
 
 // El panel abierto sigue abierto tras redibujar
-const api2 = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", "ASIGNACIONES", cuerpo)(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE, require("../js/productos-hoy.js"));
+const api2 = fabrica(alumnos, calificaciones, { "detalle-prod-1-al-3": true }, ALCANCE, PH, {}, {}, {});
 const htmlAbierto = api2.bloqueProducto(producto);
 ok("un detalle abierto sobrevive al redibujo",
 	htmlAbierto.indexOf("id='detalle-prod-1-al-3' class='rounded-xl") !== -1, true);
+
+// Actividades plegadas (2026-09-29): un renglón que se abre; el cuerpo lleva lo de siempre
+ok("la actividad nace plegada: su renglón dice que no está expandido", /data-abrir-producto='prod-1' aria-expanded='false'/.test(html), true);
+ok("plegada, su cuerpo va oculto pero con todos los alumnos y botones", /id='cuerpo-prod-prod-1' class='hidden /.test(html) && html.indexOf("data-nivel='logrado'") !== -1, true);
+ok("el renglón dice «1 de 2 calificados»", html.indexOf("1 de 2 calificados") !== -1, true);
+ok("el renglón del producto de un grado dice «0 de 1 calificados»", soloTercero.indexOf("0 de 1 calificados") !== -1, true);
+ok("el renglón no lleva data-producto (eso es del semáforo)", !/<button[^>]*data-abrir-producto[^>]*\sdata-producto=/.test(html), true);
+const abierta = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, { "prod-1": true }, {}).bloqueProducto(producto);
+ok("una actividad abierta sobrevive al redibujo (aria-expanded y sin hidden)", /aria-expanded='true'/.test(abierta) && /id='cuerpo-prod-prod-1' class='px-3/.test(abierta), true);
+
+// Quien faltó hoy no aparece para calificar (filtro de pantalla; recibeProducto no cambia). Solo en lo que se
+// califica hoy: una actividad de una sesión de hoy (o una tarea); una suelta de otro día no se filtra.
+const productoHoy = Object.assign({}, producto, { sesion: { fecha: "2026-09-29" } });
+const conFalta = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, { "prod-1": true }, { "al-3": "ausente" });
+const htmlFalta = conFalta.bloqueProducto(productoHoy);
+ok("el ausente sin calificación no aparece", htmlFalta.indexOf("ALUMNO DE TERCERO") === -1 && htmlFalta.indexOf("ALUMNO DE SEGUNDO") !== -1, true);
+ok("el resumen no cuenta al ausente: «1 de 1 calificados»", htmlFalta.indexOf("1 de 1 calificados") !== -1, true);
+const justificada = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, {}, { "al-3": "justificada" }).bloqueProducto(productoHoy);
+ok("con justificada tampoco aparece", justificada.indexOf("ALUMNO DE TERCERO") === -1, true);
+const calificadoAusente = { "al-2|prod-1": calificaciones["al-2|prod-1"], "al-3|prod-1": { id: "c9", nivel: "en_proceso", estado_entrega: "entregado" } };
+const conCal = fabrica(alumnos, calificadoAusente, {}, ALCANCE, PH, {}, {}, { "al-3": "ausente" }).bloqueProducto(productoHoy);
+ok("el ausente que YA tiene calificación sí se muestra", conCal.indexOf("ALUMNO DE TERCERO") !== -1 && conCal.indexOf("2 de 2 calificados") !== -1, true);
+const todosFaltaron = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, {}, { "al-3": "ausente" }).bloqueProducto(Object.assign({}, productoHoy, { id: "prod-3", grados: ["3"] }));
+ok("si todos los que la reciben faltaron: «Faltaron hoy» (no «Sin alumnos») y lo explica", todosFaltaron.indexOf(">Faltaron hoy<") !== -1 && todosFaltaron.indexOf("Sin alumnos") === -1 && todosFaltaron.indexOf("faltaron hoy: no aparecen para calificar") !== -1, true);
+const nadieLaRecibe = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, {}, {}).bloqueProducto(Object.assign({}, productoHoy, { id: "prod-4", grados: ["5"] }));
+ok("si nadie la recibe: «Sin alumnos» y la invitación a «Para quién»", nadieLaRecibe.indexOf(">Sin alumnos<") !== -1 && nadieLaRecibe.indexOf("Nadie recibe esta actividad todavía") !== -1, true);
+const pasado = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, { "prod-1": true }, { "al-3": "ausente" }).bloqueProducto(Object.assign({}, producto, { sesion: { fecha: "2026-09-20" } }));
+ok("una actividad de un día que ya pasó no se filtra por la asistencia de hoy", pasado.indexOf("ALUMNO DE TERCERO") !== -1, true);
+ok("la regla recibeProducto no cambia: sigue dando el producto al ausente", ALCANCE.recibeProducto(alumnos[1], producto, {}, null, undefined), true);
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

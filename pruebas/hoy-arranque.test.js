@@ -69,6 +69,9 @@ require("../js/alcance-hoy.js");
 require("../js/productos-hoy.js");
 // Orden de la tarjeta de Asistencia (hoy.html la carga antes que hoy.js)
 require("../js/orden-lista.js");
+// La secuencia de la sesión (hoy.html la carga antes que hoy.js)
+require("../js/texto-sesion.js");
+require("../js/secuencia-sesion.js");
 // La bandeja de salida (en node no hay IndexedDB: la cola vive en memoria, como sin él)
 require("../js/bandeja-salida.js");
 
@@ -243,8 +246,23 @@ new Function(codigo)();
 	ok("3. Trabajar hoy: la siguiente del segundo proyecto activo también sale", sesiones.indexOf("data-trabajar-hoy='q1'") !== -1, true);
 	ok("3. Trabajar hoy: cada proyecto con su nombre",
 		sesiones.indexOf("Proyecto de prueba") !== -1 && sesiones.indexOf("Otro proyecto activo") !== -1, true);
-	ok("3. Trabajar hoy: sin tope, las demás pendientes se pueden elegir",
-		["q2", "q3", "q4", "q5"].every((id) => sesiones.indexOf("data-trabajar-hoy='" + id + "'") !== -1), true);
+	// Fase 1 (2026-09-29): solo la SIGUIENTE de cada proyecto ofrece "Trabajar hoy"; las demás se ven
+	// ("N sesiones restantes"), cada una con su ojo (secuencia) y su lápiz (Crear proyecto, ya en esa sesión)
+	ok("3. Trabajar hoy: las demás pendientes ya no lo ofrecen (solo la siguiente)",
+		["q2", "q3", "q4", "q5"].every((id) => sesiones.indexOf("data-trabajar-hoy='" + id + "'") === -1), true);
+	ok("3. las restantes dicen «4 sesiones restantes» (ya no «Elegir otra sesión»)",
+		sesiones.indexOf("4 sesiones restantes") !== -1 && sesiones.indexOf("Elegir otra sesión") === -1, true);
+	ok("3. cada sesión que falta lleva su ojo (secuencia)",
+		["q1", "q2", "q3", "q4", "q5", "s3"].every((id) => sesiones.indexOf("data-ver-secuencia='" + id + "'") !== -1), true);
+	ok("3. cada sesión que falta lleva su lápiz: enlace relativo a Crear proyecto con ?id= y &sesion=",
+		sesiones.indexOf("href='crear_proyecto.html?id=0-otro&sesion=q3'") !== -1 && sesiones.indexOf("href='crear_proyecto.html?id=p1&sesion=s3'") !== -1, true);
+	ok("3. el ojo y el lápiz miden al menos 44 px",
+		/data-ver-secuencia='q2'[^>]*min-h-\[44px\] min-w-\[44px\]/.test(sesiones) && /data-editar-sesion='q2'[^>]*min-h-\[44px\] min-w-\[44px\]/.test(sesiones), true);
+	ok("3. el lápiz no sale de /salon/ (ningún enlace absoluto)", !/data-editar-sesion='[^']+'[^>]*href='\//.test(sesiones) && sesiones.indexOf("href='/") === -1, true);
+	ok("3. las sesiones de hoy traen el panel «Secuencia de la sesión» plegado",
+		sesiones.indexOf("data-secuencia='s1'") !== -1 && /data-secuencia='s1' aria-expanded='false'/.test(sesiones) && sesiones.indexOf("Secuencia de la sesión") !== -1, true);
+	ok("3. las actividades salen plegadas, con «N de M calificados»",
+		/data-abrir-producto='pr1' aria-expanded='false'/.test(sesiones) && sesiones.indexOf("calificados") !== -1, true);
 	ok("3. Trabajar hoy: no ofrece sesiones de un proyecto pausado", sesiones.indexOf("data-trabajar-hoy='z1'"), -1);
 
 		// ── Fase 2 (2026-09-26): para quién, incompleta y sueltas ──
@@ -282,10 +300,45 @@ new Function(codigo)();
 	const clic = (lista, datos) => (elementos[lista]._listeners.click || []).forEach((fn) =>
 		fn({ target: { closest: () => ({ dataset: datos }) } }));
 	clic("asistenciaLista", { asistencia: "al-3", valor: "ausente" });
+	// Lo que se ve justo al marcar la falta (el Supabase falso de esta prueba responde luego con su propia
+	// fila de asistencias y la pantalla la toma, así que estas fotos se sacan antes)
+	const cierreDespues = elementos.cierreLista.innerHTML;
+	const sesionesDespues = elementos.sesionesLista.innerHTML;
+	const tareasDespues = elementos.tareasLista.innerHTML;
 	await new Promise((r) => setTimeout(r, 50));
 	ok("tocar una asistencia la guarda (upsert en asistencias)", escrituras.indexOf("asistencias") !== -1, true);
 	const pill = elementos.hoyEstadoGuardado || { textContent: "" };
 	ok("al vaciarse la cola: \"Todo guardado\"", pill.textContent, "Todo guardado");
+
+	// ── Fase 1 (2026-09-29) ──
+	// Cierre del día: encabezado, columnas y "Faltó"
+	ok("4. cierre: encabezado fijo con No., Grado, Nombre, Participación y Conducta",
+		/data-cierre-encabezado[^>]*sticky top-14/.test(cierre) && ["No.", "Grado", "Nombre", "Participación", "Conducta"].every((t) => cierre.indexOf(">" + t + "</span>") !== -1), true);
+	ok("4. cierre: Participación y Conducta con colores distintos", cierre.indexOf("bg-violet-100") !== -1 && cierre.indexOf("bg-teal-100") !== -1, true);
+	ok("4. cierre: en el orden de la lista (2° antes que 3°) y con su número", cierre.indexOf("ALUMNO DE SEGUNDO") < cierre.indexOf("ALUMNO DE TERCERO") && /data-num-lista[^>]*>1</.test(cierre), true);
+	ok("4. cierre: a quien faltó se le pone «Faltó» y no se le dan chips",
+		/data-cierre-fila='al-3'[\s\S]*data-cierre-falto[^>]*>Faltó</.test(cierreDespues) && cierreDespues.indexOf("data-cierre='participacion' data-alumno='al-3'") === -1, true);
+	ok("4. cierre: quien asistió conserva sus chips", cierreDespues.indexOf("data-cierre='participacion' data-alumno='al-2'") !== -1, true);
+	// Quien faltó no aparece para calificar: ni en la sesión ni en Tareas; arriba de la sesión, quién faltó
+	const cartel = sesionesDespues.split("data-bloque-producto='pr1'")[1].split("data-bloque-producto=")[0].split("id='ses-")[0];
+	ok("3. el ausente sin calificación ya no aparece en «Cartel del cuento»", cartel.indexOf("ALUMNO DE TERCERO") === -1 && cartel.indexOf("ALUMNO DE SEGUNDO") !== -1, true);
+	ok("3. arriba de la sesión dice quién faltó hoy", /data-faltaron-hoy>Faltó hoy: <span[^>]*>ALUMNO DE TERCERO/.test(sesionesDespues), true);
+	ok("2. el ausente tampoco aparece en Tareas por revisar", tareasDespues.indexOf("data-tarea='pr2' data-alumno='al-3'") === -1 && tareasDespues.indexOf("data-tarea='pr2' data-alumno='al-2'") !== -1, true);
+	// La asistencia completa se pliega sola a los 0.7 s, con su resumen y «Cambiar asistencia»
+	ok("1. con la asistencia completa (recién marcada) todavía no se pliega", elementos.asistenciaPlegada.classList.contains("hidden"), true);
+	await new Promise((r) => setTimeout(r, 900));
+	ok("1. a los 0.7 s se pliega: resumen visible y lista oculta", !elementos.asistenciaPlegada.classList.contains("hidden") && elementos.asistenciaLista.classList.contains("hidden"), true);
+	ok("1. el resumen dice «2 de 2 · N presentes …»", /^2 de 2 · [0-9] presentes?/.test(elementos.asistenciaTextoPlegada.textContent), true);
+	(elementos.asistenciaCambiar._listeners.click || []).forEach((fn) => fn({}));
+	ok("1. «Cambiar asistencia» la vuelve a abrir", elementos.asistenciaPlegada.classList.contains("hidden") && !elementos.asistenciaLista.classList.contains("hidden"), true);
+	// La secuencia de una sesión se lee al abrirla (lectura opcional) y se muestra
+	const clicSesiones = (selectores) => (elementos.sesionesLista._listeners.click || []).forEach((fn) =>
+		fn({ target: { closest: (sel) => (selectores.some((k) => sel.indexOf(k) !== -1) ? { dataset: selectores.dato } : null) } }));
+	const abrirSecuencia = Object.assign(["data-secuencia"], { dato: { secuencia: "s1" } });
+	clicSesiones(abrirSecuencia);
+	await new Promise((r) => setTimeout(r, 50));
+	ok("3. abrir la secuencia la deja abierta y la lee sin escribir nada", /data-secuencia='s1' aria-expanded='true'/.test(elementos.sesionesLista.innerHTML), true);
+	ok("3. tras abrirla no se escribió en `sesiones`", escrituras.indexOf("sesiones") === -1, true);
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);
