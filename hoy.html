@@ -25,6 +25,11 @@
 				<div>
 					<h1 class="text-2xl font-bold text-white">Hoy</h1>
 					<p id="hoySubtitulo" class="text-blue-100 text-sm mt-1">Cargando...</p>
+					<!-- Aviso de guardado (js/hoy.js, estadoGuardado): una línea discreta, sin flotar. Reserva su alto para no mover nada. -->
+					<p id="hoyEstadoLinea" class="invisible mt-1 min-h-[20px] flex items-center gap-1.5 text-xs text-blue-200" role="status" aria-live="polite">
+						<span id="hoyEstadoIcono" class="shrink-0 inline-flex" aria-hidden="true"></span>
+						<span id="hoyEstadoGuardado"></span>
+					</p>
 				</div>
 				<div id="hoyFecha" class="text-blue-100 text-sm sm:text-right"></div>
 			</header>
@@ -37,8 +42,14 @@
 					<h2 class="font-bold text-gray-800">1. Asistencia</h2>
 					<span id="asistenciaResumen" class="text-xs text-gray-500"></span>
 				</div>
+				<!-- Con la asistencia completa se pliega: resumen y "Cambiar asistencia" (js/hoy.js, renderAsistencia) -->
+				<div id="asistenciaPlegada" class="hidden flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+					<p id="asistenciaTextoPlegada" class="text-sm text-gray-700 min-w-0 break-words"></p>
+					<button id="asistenciaCambiar" type="button" aria-expanded="false" aria-controls="asistenciaLista" class="min-h-[44px] px-4 rounded-xl border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50 shrink-0">Cambiar asistencia</button>
+				</div>
 				<!-- Una sub-tarjeta por grado (js/hoy.js, renderAsistencia) -->
 				<div id="asistenciaLista" class="flex flex-col gap-3"></div>
+				<button id="asistenciaListo" type="button" class="hidden mt-3 min-h-[44px] px-5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Listo</button>
 			</section>
 
 			<!-- 2. Tareas por revisar -->
@@ -79,14 +90,19 @@
 					<span id="cierreResumen" class="text-xs text-gray-500"></span>
 				</div>
 				<p class="text-xs text-gray-500 mb-3">Participación y conducta, una vez al día. Todos empiezan en 1; cambia solo las excepciones. Al tocar la primera se guarda el día de todo el grupo (sin contar a quienes faltaron). Si no hay excepciones, usa el botón de abajo.</p>
-				<div id="cierreLista" class="flex flex-col gap-2"></div>
+				<!-- Qué significa cada valor (texto fijo) -->
+				<div id="cierreLeyenda" class="mb-3 grid gap-2 sm:grid-cols-2 text-xs">
+					<p class="rounded-xl bg-violet-50 border border-violet-200 text-violet-900 px-3 py-2"><span class="font-semibold">Participación.</span> 0 = no participó · 1 = participó · 2 = participó de forma destacada. El 1 y el 2 valen el día completo; el 2 se menciona en la boleta.</p>
+					<p class="rounded-xl bg-teal-50 border border-teal-200 text-teal-900 px-3 py-2"><span class="font-semibold">Conducta.</span> 0 = necesita apoyo · 1 = adecuada · 2 = destacada. Se informa en las observaciones y no cuenta en la calificación.</p>
+				</div>
+				<div id="cierreLista" class="flex flex-col"></div>
 				<button id="cierreGuardarBtn" type="button" class="mt-3 w-full sm:w-auto min-h-[44px] px-5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:bg-emerald-50 disabled:text-emerald-700 disabled:border disabled:border-emerald-200 disabled:cursor-default">Guardar el cierre de hoy</button>
 			</section>
 		</div>
 	</main>
 
-	<!-- Estado de guardado -->
-	<div id="hoyEstadoGuardado" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 text-sm font-medium shadow-lg"></div>
+	<!-- Espacio que se aparta al final cuando flota "Sin señal" o un error, para no tapar la última fila (js/hoy.js, reservarEspacio) -->
+	<div id="hoyReserva" aria-hidden="true"></div>
 
 	<script src="js/supabase.js"></script>
 	<script src="js/lectura.js"></script>
@@ -104,6 +120,9 @@
 	<script src="js/pasar-a-proyecto.js"></script>
 	<!-- Orden de la tarjeta de Asistencia: por grado y orden alfabético (regla única) -->
 	<script src="js/orden-lista.js"></script>
+	<!-- Secuencia de la sesión (inicio, desarrollo, cierre, anexos y libros): lectura opcional -->
+	<script src="js/texto-sesion.js"></script>
+	<script src="js/secuencia-sesion.js"></script>
 	<script src="js/hoy.js"></script>
 </body>
 </html>

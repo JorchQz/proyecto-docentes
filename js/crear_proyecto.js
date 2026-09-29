@@ -2511,6 +2511,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       if (sesiones && sesiones.length) {
         restoreSessionBlocks(sesiones);
+        irASesionPedida();
       } else {
         agregarSesion();
       }
@@ -2620,6 +2621,25 @@ document.addEventListener("DOMContentLoaded", async function () {
     document.querySelectorAll('.session-block').forEach(function (block) {
       if (block.dataset.trabajada === '1') bloquearSesionTrabajada(block);
     });
+  }
+
+  /*
+    ?sesion=<id> (el lápiz de una sesión que falta, en Hoy): se abre esa sesión y se baja hasta ella.
+    Solo desplaza y resalta lo que se ve: no lee ni cambia nada de lo que se guarda.
+  */
+  function irASesionPedida() {
+    const pedida = _urlParams.get("sesion");
+    if (!pedida) return;
+    const bloque = Array.from(document.querySelectorAll(".session-block")).find(function (b) {
+      return b.dataset.sesionId === pedida;
+    });
+    if (!bloque) return;
+    const cuerpo = bloque.querySelector(".session-body");
+    if (cuerpo && cuerpo.classList.contains("hidden")) bloque.querySelector(".session-toggle")?.click();
+    bloque.style.scrollMarginTop = "5rem"; // la barra de arriba es fija
+    bloque.classList.add("ring-2", "ring-blue-400");
+    // Tras pintar: las cajas de texto crecen al llenarse y mueven lo de abajo
+    setTimeout(function () { bloque.scrollIntoView({ block: "start" }); }, 250);
   }
 
   function restoreSessionBlocks(sesiones) {

@@ -166,9 +166,9 @@ function sbFalso(fallarEn) {
 	const cuerpo = [
 		"var document = { getElementById: function (id) { return (DOM[id] = DOM[id] || { innerHTML: '', textContent: '' }); } };",
 		"var window = { OrdenLista: O };",
-		"var alumnos = ALUMNOS; var asistencia = ASIST;",
+		"var alumnos = ALUMNOS; var asistencia = ASIST; var asistenciaPlegada = false;",
 		ASIS, extraer("esc"), extraer("chip"), extraer("filaAlumno"), extraer("agruparPorGrado"),
-		extraer("renderAsistencia"), extraer("resumenAsistencia"),
+		extraer("asistenciaCompleta"), extraer("textoResumenAsistencia"), extraer("renderAsistencia"), extraer("resumenAsistencia"),
 		"return { renderAsistencia: renderAsistencia, filaAlumno: filaAlumno };",
 	].join("\n");
 	const alumnosHoy = [
