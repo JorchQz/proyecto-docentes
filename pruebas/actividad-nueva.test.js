@@ -48,24 +48,13 @@ ok("conCampo: el código corto del campo de su contenido, o null", [N.conCampo(f
 	["LEN", null]);
 
 // ── 3. destino: a qué sesión va lo que se agrega ──
-const bloque = { campo: "ETI", fecha: "2026-09-29" };
-ok("destino: dentro del proyecto, a la sesión elegida", N.destino({ modo: "dentro", tipo: "trabajo", campo: "LEN" }), "sesion");
-ok("destino: fuera del proyecto, una suelta (agregar_actividad_suelta)", N.destino({ modo: "fuera", tipo: "trabajo", campo: "LEN", dia: "2026-09-29", hoy: "2026-09-29" }), "suelta");
-ok("destino: desde un bloque de sueltas sin cambiar día ni campo, a esa misma sesión (como antes)",
-	N.destino({ modo: "fuera", tipo: "trabajo", campo: "ETI", dia: "2026-09-29", hoy: "2026-09-29", suelta: bloque }), "sesion");
-ok("destino: desde un bloque de sueltas con otro día u otro campo, una suelta de ese día y campo",
-	[N.destino({ modo: "fuera", tipo: "trabajo", campo: "ETI", dia: "2026-09-28", hoy: "2026-09-29", suelta: bloque }),
-		N.destino({ modo: "fuera", tipo: "trabajo", campo: "LEN", dia: "2026-09-29", hoy: "2026-09-29", suelta: bloque })], ["suelta", "suelta"]);
-ok("destino: una tarea desde un bloque de sueltas: a esa sesión solo si el bloque es de hoy (la tarea suelta se deja hoy)",
-	[N.destino({ modo: "fuera", tipo: "tarea", campo: "ETI", dia: "2026-09-24", hoy: "2026-09-29", suelta: bloque }),
-		N.destino({ modo: "fuera", tipo: "tarea", campo: "ETI", dia: "2026-09-24", hoy: "2026-09-29", suelta: { campo: "ETI", fecha: "2026-09-24" } })], ["sesion", "suelta"]);
-
-// ── 4. crearParaSuelta: los PDA de un bloque de sueltas, pedidos para la sesión de otro día ──
-const spda = [{ id: "s1", pda_id: "P1", grado: 1 }, { id: "s2", pda_id: "P2", grado: 2 }, { id: "s3", pda_id: null, grado: 1, criterio_aplicado: "solo criterio" }];
-ok("crearParaSuelta: los ligados como (pda_id, grado) más los del catálogo, sin repetir; uno sin pda_id no pasa",
-	N.crearParaSuelta({ ligar: ["s1", "s3", "s2"], crear: [{ pda_id: "P1", grado: 1 }, { pda_id: "P9", grado: 2 }] }, spda),
-	[{ pda_id: "P1", grado: 1 }, { pda_id: "P2", grado: 2 }, { pda_id: "P9", grado: 2 }]);
-ok("crearParaSuelta: sin ligas, lo del catálogo tal cual", N.crearParaSuelta({ ligar: [], crear: [{ pda_id: "P9", grado: 2 }] }, []), [{ pda_id: "P9", grado: 2 }]);
+const bloque = { id: "sx", campo_formativo: "Ética, Naturaleza y Sociedades", fecha: "2026-09-24" };
+ok("destino: dentro del proyecto, a la sesión elegida", N.destino({ modo: "dentro" }), "sesion");
+ok("destino: fuera del proyecto, una suelta (agregar_actividad_suelta)", N.destino({ modo: "fuera" }), "suelta");
+// Como en 7971358: desde un bloque de sueltas va SIEMPRE a esa sesión (también con otro campo, y una tarea de un día pasado)
+ok("destino: desde un bloque de sueltas, a esa misma sesión (como antes de la Fase 4)", N.destino({ modo: "fuera", suelta: bloque }), "sesion");
+ok("destino: desde un bloque de sueltas pero cambiado a dentro del proyecto, a la sesión elegida", N.destino({ modo: "dentro", suelta: bloque }), "sesion");
+ok("ya no hay crearParaSuelta (un bloque de sueltas no se manda a otra sesión)", typeof N.crearParaSuelta, "undefined");
 
 // ── 5. Lo que el código dice ──
 const js = leer("js/actividad-nueva.js");
@@ -82,16 +71,28 @@ ok("¿Para quién?: Grupo / Grado(s) / Alumno(s), con el grado con que trabajan"
 ok("usa el diálogo y la lista de alumnos de js/para-quien.js", /raiz\.ParaQuien\.abrirDialogo\(\{/.test(js) && /raiz\.ParaQuien\.listaAlumnosHtml\(alumnos, "alumnoNuevo", \{\}, \{\}\)/.test(js), true);
 ok("las reglas son las de ProductosHoy (sin copias)", ["planAsignacion", "validarNuevo", "validarSuelta", "pdaDeSesionParaActividad", "pdaMarcadosPorOmision", "planLigas", "buscarContenidos", "fasesDeGrados"]
 	.every((f) => new RegExp("PH\\(\\)\\." + f + "\\(").test(js)) && !/function (planAsignacion|validarNuevo|planLigas|pdaDeSesionParaActividad)\(/.test(js), true);
-ok("«Cambiar» abre el buscador y lo elegido ahí reemplaza a los contenidos de la sesión; «Usar los de la sesión» regresa",
-	/data-cambiar-contenido/.test(js) && /if \(!e\.target\.closest\("\[data-cambiar-contenido\]"\)\) return;\s*pda\.buscar = true;/.test(js) &&
-	/pda\.contenido = c;\s*pda\.buscar = true;/.test(js) && /refs\.volver\.addEventListener\("click", function \(\) \{\s*pda\.buscar = false;/.test(js), true);
+ok("«+ Otro contenido» abre el buscador SIN quitar lo de la sesión; «Cambiar» lo reemplaza; «Usar los de la sesión» regresa",
+	/data-otro-contenido/.test(js) && /data-cambiar-contenido/.test(js) &&
+	/pda\.modo = b\.hasAttribute\("data-otro-contenido"\) \? "otro" : "cambiar";/.test(js) &&
+	/function conContenidosDeSesion\(visibles\) \{ return pda\.modo !== "cambiar" && visibles\.length > 0; \}/.test(js) &&
+	/function conBuscador\(visibles\) \{ return pda\.modo !== "sesion" \|\| !visibles\.length; \}/.test(js) &&
+	/refs\.volver\.addEventListener\("click", function \(\) \{\s*pda\.modo = "sesion";\s*quitarContenido\(\);/.test(js), true);
+ok("lo elegido con el buscador directo (sin contenidos de la sesión) se suma, como «+ Otro contenido»", /pda\.contenido = c;[\s\S]{0,200}if \(pda\.modo === "sesion"\) pda\.modo = "otro";/.test(js), true);
+ok("con los de la sesión a la vista, el contenido del catálogo no repite los PDA que ya están arriba (como antes)",
+	/if \(conContenidosDeSesion\(visibles\)\) visibles\.forEach\(function \(r\) \{ if \(r\.pda_id\) yaArriba\[r\.pda_id \+ "\|" \+ Number\(r\.grado\)\] = true; \}\);/.test(js) &&
+	/Sus PDA de estos grados ya están arriba, entre los de esta sesión\./.test(js), true);
 const elec = js.split("function eleccionPda() {")[1].split("\n\t\t}")[0];
-ok("al agregar: con los contenidos de la sesión a la vista, sus PDA marcados; con el buscador, los del contenido elegido",
-	/var deSesion = enSesion \? visibles\.filter\(marcadoSesion\)/.test(elec) && /var deCatalogo = enSesion \? \[\] :/.test(elec) && /if \(pda\.spda === null\) return null;/.test(elec), true);
+ok("al agregar, la cuenta de antes de la Fase 4: los PDA marcados de la sesión (salvo con «Cambiar») más los marcados del catálogo",
+	/var deSesion = conContenidosDeSesion\(visibles\) \? visibles\.filter\(marcadoSesion\)/.test(elec) &&
+	/var deCatalogo = \(pda\.pdaContenido \|\| \[\]\)\.filter\(function \(p\) \{ return pda\.marcadosCatalogo\[p\.id\] && g\.indexOf\(Number\(p\.grado\)\) !== -1; \}\)/.test(elec) &&
+	/if \(pda\.spda === null\) return null;/.test(elec), true);
+ok("desde un bloque de sueltas: en lugar del día, a qué bloque va (va a esa sesión)",
+	/if \(suelta\) \{\s*var bloque = document\.createElement\("p"\);\s*bloque\.setAttribute\("data-bloque-suelta", "1"\);/.test(js) &&
+	/refs\.diaCont\.classList\.toggle\("hidden", st\.modo !== "fuera" \|\| tarea \|\| !!suelta\);/.test(js) && /fecha: st\.modo === "fuera" && !suelta \? refs\.dia\.value : null,/.test(js), true);
 ok("los PDA de la sesión se marcan por la regla de siempre (r.marcado) salvo lo que tocó el docente",
 	/hasOwnProperty\.call\(pda\.tocadosSesion, r\.id\) \? pda\.tocadosSesion\[r\.id\] : !!r\.marcado/.test(js), true);
 ok("dentro: agregar_producto_sesion; fuera: agregar_actividad_suelta (los dos, en una transacción)",
-	/rpc\("agregar_actividad_suelta", \{ p_grupo: grupo\.id, p_fecha: v\.fecha, p_producto: producto,\s*p_asignacion: plan\.filas, p_crear: suelta \? crearParaSuelta\(ligas, pda\.spda\) : ligas\.crear \}\)/.test(js) &&
+	/rpc\("agregar_actividad_suelta", \{ p_grupo: grupo\.id, p_fecha: v\.fecha, p_producto: producto,\s*p_asignacion: plan\.filas, p_crear: ligas\.crear \}\)/.test(js) &&
 	/rpc\("agregar_producto_sesion", \{ p_sesion: sesion\.id, p_producto: producto,\s*p_asignacion: plan\.filas, p_ligar: ligas\.ligar, p_crear: ligas\.crear \}\)/.test(js), true);
 ok("dentro sin sesión elegida no agrega: «Elige la sesión del proyecto.»", /if \(st\.modo === "dentro" && !st\.sesion\) \{ avisar\("Elige la sesión del proyecto\.", refs\.sesion\); return false; \}/.test(js), true);
 ok("sin señal no agrega (no va por la cola)", /if \(ctx\.sinSenal && ctx\.sinSenal\(\)\) \{ avisar\(ctx\.textoSinSenal\); return false; \}/.test(js), true);
@@ -111,7 +112,15 @@ ok("Hoy: se siguen aceptando ?nueva=suelta (fuera) y ?nueva=1", /if \(nueva !== 
 ok("Inicio: el atajo abre el diálogo (?nueva=1) y dice «Actividad o tarea»", /<a href='hoy\.html\?nueva=1'[^>]*>" \+\s*"<svg[\s\S]{0,400}"Actividad o tarea<\/a>"/.test(dash) && !/Actividad suelta<\/a>/.test(dash), true);
 ok("Hoy ya no tiene agregarProducto, su diálogo ni su lista de alumnos (se usan los de js/actividad-nueva.js y js/para-quien.js)",
 	[/function agregarProducto\(/, /function abrirDialogo\(/, /function listaAlumnosHtml\(/, /function contenidosDelCatalogo\(/].map((r) => r.test(hoy)), [false, false, false, false]);
-ok("Hoy: sin señal el diálogo no se abre (lo dice, como antes)", /if \(sinSenal\(\)\) \{ mensaje\("error", "Agregar una actividad o una tarea necesita señal\./.test(hoy), true);
+// Sin señal el diálogo no se abre y lo dice A LA VISTA (antes el aviso quedaba arriba, fuera de la pantalla)
+ok("Hoy: sin señal el diálogo no se abre y lo dice a la vista", /if \(sinSenal\(\)\) \{ avisoALaVista\("Agregar una actividad o una tarea necesita señal\./.test(hoy), true);
+ok("Hoy: sin señal, Renombrar, Quitar y Para quién también avisan a la vista (ninguno con mensaje(\"error\") por la señal)",
+	[/if \(sinSenal\(\)\) \{ avisoALaVista\("Renombrar necesita señal\. "/, /if \(sinSenal\(\)\) \{ avisoALaVista\("Quitar necesita señal\. "/,
+		/avisoALaVista\(sinSenal\(\) \? "Quitar necesita señal\. "/, /if \(sinSenal\(\)\) \{ avisoALaVista\("Cambiar para quién es necesita señal\. "/].map((r) => r.test(hoy))
+		.concat([/mensaje\("error", [^)]*necesita señal/.test(hoy)]), [true, true, true, true, false]);
+// El aviso de error de un diálogo se desplaza a la vista dentro del diálogo (a 390 px quedaba abajo del borde)
+ok("diálogo (js/para-quien.js): el aviso de error se desplaza a la vista; el foco va al campo sin mover lo que se ve",
+	/foco\.focus\(\{ preventScroll: true \}\)/.test(leer("js/para-quien.js")) && /if \(texto && aviso\.scrollIntoView\) aviso\.scrollIntoView\(\{ block: "nearest" \}\);/.test(leer("js/para-quien.js")), true);
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

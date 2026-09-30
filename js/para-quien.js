@@ -233,10 +233,17 @@
 		if (opciones.construir) opciones.construir(cuerpo);
 		cuerpo.appendChild(aviso);
 
+		/*
+			El aviso va al final del cuerpo: en un diálogo largo (o a 390 px) quedaba abajo del borde. Se desplaza a la
+			vista dentro del diálogo; el foco va al campo que hay que corregir sin mover lo que se ve (el aviso dice qué).
+		*/
 		function avisar(texto, foco) {
 			aviso.textContent = texto || "";
 			aviso.classList.toggle("hidden", !texto);
-			if (foco && foco.focus) foco.focus();
+			if (foco && foco.focus) {
+				try { foco.focus({ preventScroll: true }); } catch (_) { foco.focus(); }
+			}
+			if (texto && aviso.scrollIntoView) aviso.scrollIntoView({ block: "nearest" });
 		}
 		function cerrar() {
 			document.removeEventListener("keydown", teclas, true);

@@ -374,7 +374,8 @@
 		al final ("...mañana." + ", " daba "mañana., ") y, si es largo, cortado en `max` caracteres con "…". El grupo
 		de trabajo del final (" · Morado", los trabajos por nivel de PP-NIVELES) se conserva: sin él, dos trabajos
 		cortados se verían iguales. El corte cae en un límite de palabra (R37: "…y dibújal…" se leía mal); solo una
-		palabra que ocupa más de la mitad se corta a la mitad.
+		palabra que ocupa más de la mitad se corta a la mitad. Un paréntesis no queda abierto: "(p. 6)" sale completo
+		o no sale.
 	*/
 	function nombreBreve(texto, max) {
 		var t = String(texto === null || texto === undefined ? "" : texto).replace(/\s+/g, " ").trim().replace(/[\s.,;:]+$/, "");
@@ -388,6 +389,9 @@
 				var espacio = corte.lastIndexOf(" ");
 				if (espacio >= Math.floor(lim / 2)) corte = corte.slice(0, espacio);
 			}
+			// Un paréntesis que quedaría abierto ("apellidos (p…" de "(p. 6)") se deja fuera completo
+			var abre = corte.lastIndexOf("(");
+			if (abre > corte.lastIndexOf(")") && abre >= Math.floor(lim / 2)) corte = corte.slice(0, abre);
 			return corte.replace(/[\s.,;:]+$/, "") + "…";
 		}
 		var m = t.match(/^(.*\S)\s+·\s+([^·]{1,20})$/);

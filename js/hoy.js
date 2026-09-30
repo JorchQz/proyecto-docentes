@@ -2314,7 +2314,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		opciones = opciones || {};
 		var sesion = opciones.sesionId ? sesionesHoy.find(function (s) { return s.id === opciones.sesionId; }) : null;
 		if (opciones.sesionId && !sesion) return;
-		if (sinSenal()) { mensaje("error", "Agregar una actividad o una tarea necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal."); return; }
+		if (sinSenal()) { avisoALaVista("Agregar una actividad o una tarea necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal."); return; }
 		if (!window.ActividadNueva || !window.ParaQuien) { mensaje("error", "No se pudo abrir el diálogo para agregar. Recarga la página."); return; }
 		var deSueltas = !!sesion && esSuelta(sesion);
 		window.ActividadNueva.abrir({
@@ -2390,7 +2390,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function editarParaQuien(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		if (sinSenal()) { mensaje("error", "Cambiar para quién es necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Cambiar para quién es necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		var marcados = {}, bloqueados = {};
 		alumnos.forEach(function (a) {
 			if (!window.AlcanceHoy.asignadoA(a, producto, asignaciones)) return;
@@ -2469,7 +2469,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function renombrarProducto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		if (sinSenal()) { mensaje("error", "Renombrar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Renombrar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		var refs = {};
 		window.ParaQuien.abrirDialogo({
 			origen: origen,
@@ -2528,14 +2528,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Se calificó mientras el diálogo estaba abierto (otra pestaña u otro aparato: R25a-r09)
 		var avisoCarrera = "Mientras decidías, se calificó «" + producto.nombre + "»; no se quitó. Recarga la página para ver esa calificación.";
 		if (conCapturaAqui()) { mensaje("error", avisoConCal); return; }
-		if (sinSenal()) { mensaje("error", "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		origen.disabled = true;
 		var enBaseCon = 0;
 		try {
 			enBaseCon = await calificadasEnBase();
 		} catch (err) {
 			origen.disabled = false;
-			mensaje("error", sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
+			avisoALaVista(sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
 				: "No se pudo revisar si tiene calificaciones, así que no se quitó: " + textoError(err) + ".");
 			return;
 		}

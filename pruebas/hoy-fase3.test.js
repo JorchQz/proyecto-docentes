@@ -89,6 +89,12 @@ ok("nombreBreve: corta en un límite de palabra (no «dibújal…»), también a
 		A.nombreBreve("Tarjeta de nombre repasada y decorada; registro de letras conocidas · Naranja"),
 		A.nombreBreve("Anticonstitucionalmente" + "x".repeat(60), 30).length, /\S…$/.test(A.nombreBreve("uno dos tres cuatro cinco seis siete ocho nueve", 20))],
 	["Platica en casa cuál regla del salón te gustó más y…", "Tarjeta de nombre repasada y decorada; registro… · Naranja", 30, true]);
+ok("nombreBreve: un paréntesis no queda abierto («(p. 6)» sale completo o no sale; ya no «apellidos (p…»)",
+	[A.nombreBreve("Tarjeta de nombre; nombre completo con apellidos (p. 6) y nombres de dos compañeros · Azul"),
+		A.nombreBreve("Revisión individual de lectura (S04-01) y nombres de tres familiares (p. 9) · Azul"),
+		A.nombreBreve("Lectura con el docente de la página indicada en el libro (p. 12)", 60), A.nombreBreve("Lectura en el libro (p. 12)", 60)],
+	["Tarjeta de nombre; nombre completo con apellidos… · Azul", "Revisión individual de lectura (S04-01) y nombres de… · Azul",
+		"Lectura con el docente de la página indicada en el libro…", "Lectura en el libro (p. 12)"]);
 ok("nombreBreve: ningún corte deja media palabra si hay un espacio en la segunda mitad",
 	["uno dos tres cuatro cinco seis siete ocho nueve", "Escribe acerca de sucesos de su historia personal y familiar ordenados cronológicamente"].every((t) => {
 		const b = A.nombreBreve(t, 20).replace(/…$/, "");

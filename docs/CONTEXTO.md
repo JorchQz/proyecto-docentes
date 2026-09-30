@@ -368,8 +368,22 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
     PDA pero su calificación cuenta. "Para quién" de un producto ya creado: agregar siempre; quitar
     solo a quien no tiene calificación (`guardar_asignacion_producto` lo revisa). Producto,
     asignación y PDA se guardan en una transacción (`agregar_producto_sesion`).
-  - **Actividades sueltas** (guiar sin obligar): botón "Actividad suelta" en Hoy, Inicio y
-    Proyectos (`hoy.html?nueva=suelta`). Van a un proyecto contenedor por grupo y trimestre,
+  - **"+ Actividad o tarea" (Fase 4, 2026-09-29, `js/actividad-nueva.js`):** un solo diálogo
+    para agregar una actividad o una tarea (antes eran dos: "Agregar actividad o tarea" en cada
+    sesión y "Actividad suelta"). Botón arriba de la tarjeta 3 de Hoy y el mismo atajo en cada
+    sesión y en cada bloque de "Actividades del trimestre"; Inicio lo abre con `hoy.html?nueva=1`
+    y Proyectos, fuera del proyecto, con `hoy.html?nueva=suelta`. Interruptor **Dentro del
+    proyecto** (una sesión de hoy o en curso; ya elegida si se abrió desde ella →
+    `agregar_producto_sesion`) / **Fuera del proyecto** (suelta con su día →
+    `agregar_actividad_suelta`; desde un bloque de sueltas se agrega a esa sesión, como antes).
+    Orden: nombre, qué es, para quién (Grupo / Grado(s) / Alumno(s)), campo formativo,
+    contenido y PDA. El contenido de la sesión sale ya elegido (la lectura de `sesiones_pda`
+    trae `catalogo_pda(pda, contenido_id, catalogo_contenidos(...))`) con sus PDA marcados por
+    la regla de siempre; "+ Otro contenido" suma uno del catálogo y "Cambiar" lo reemplaza. Las
+    reglas son las de `ProductosHoy` y el diálogo es el de `js/para-quien.js`. Necesita señal.
+    Una prueba "dorada" comprobó que deja las mismas filas que los dos diálogos de antes.
+  - **Actividades sueltas** (guiar sin obligar): en Hoy, "+ Actividad o tarea" → Fuera del
+    proyecto; desde Inicio y Proyectos (`hoy.html?nueva=1`, `?nueva=suelta`). Van a un proyecto contenedor por grupo y trimestre,
     `proyectos.tipo = 'sueltas'` ("Actividades del trimestre", estado `completado`, `fecha_final`
     = su última fecha), con una sesión por fecha y campo (`agregar_actividad_suelta`); así el
     motor, la boleta, Qué le falta, Tareas e Inicio las cuentan sin cambiar su modelo. No salen en
@@ -961,8 +975,8 @@ cliente y del camino del pago `pruebas/mi-salon-cobros.test.js`.
 | Ponte al día (registro histórico: alumnos, asistencia pasada, actividades en bloque, revisar la boleta y calificación directa) | Completo (2026-09-26, b20; en pruebas) | `ponte-al-dia.html`, `js/ponte-al-dia.js`, `js/historico.js` |
 | Inicio (resume el día y lleva a "Hoy"; plan de la sesión, "Trabajar hoy", terminar sesión) | Completo (rehecho 2026-09-23, 3.7) | `dashboard.html` |
 | **Hoy** (captura diaria: asistencia · tareas vencidas · productos de las sesiones del día · cierre · Trabajar hoy). Desde 2026-09-25 su cola de guardado vive en el dispositivo (IndexedDB `jissez-bandeja`): sobrevive a recargar o cerrar sin red, se reenvía al volver la red, al volver a primer plano y al abrir Hoy; escrituras idempotentes (upsert por llave; calificación con `evaluado_en` = momento de la captura y "gana la más reciente"); solo se reintenta lo de red y lo que la base rechaza se avisa y sale de la cola (una calificación de una actividad que se quitó en otra pantalla: aviso "Esta actividad se quitó en otra pantalla; tu captura no se aplicó" y la actividad sale de la pantalla, b19a). Un error de la base sin traducir (p. ej. falta una migración) se muestra en español y el detalle va a la consola | Completo (2026-09, B.1; cola persistente 2026-09-25) | `hoy.html`, `js/hoy.js`, `js/bandeja-salida.js` |
-| **Actividades sueltas** (sin proyecto, "guiar sin obligar"): "Actividad suelta" en Hoy (de cualquier día del trimestre en curso; la de un día pasado se califica al agregarla), guardadas en el contenedor "Actividades del trimestre" (`proyectos.tipo = 'sueltas'`, una sesión por fecha y campo); "Pasar a un proyecto" del mismo grupo y trimestre sin perder calificaciones, asignación ni PDA (`mover_producto_a_sesion`, la única vía para cambiar de sesión un producto); "Calificar" desde la tarjeta "Actividades del trimestre" de Proyectos | En la rama, pendiente de publicar (b17 y b19a) | `js/hoy.js`, `js/productos-hoy.js`, `js/pasar-a-proyecto.js`, `js/planeacion.js` |
-| **"¿Para quién?"**: cada actividad o tarea es para todo el grupo, uno o varios grados o los alumnos que se eligen (con "¿Con qué grado trabajan?" solo en ese modo); en Hoy al agregar y en "Para quién" de un producto ya creado (quien ya tiene calificación queda bloqueado), y en Crear proyecto por sesión. El alumno sigue en su grado oficial para la boleta | En la rama, pendiente de publicar (b17) | `js/para-quien.js`, `js/hoy.js`, `js/crear_proyecto.js`, `js/alcance-hoy.js` (`asignadoA`) |
+| **Actividades sueltas** (sin proyecto, "guiar sin obligar"): "+ Actividad o tarea" → Fuera del proyecto en Hoy (de cualquier día del trimestre en curso; la de un día pasado se califica al agregarla), guardadas en el contenedor "Actividades del trimestre" (`proyectos.tipo = 'sueltas'`, una sesión por fecha y campo); "Pasar a un proyecto" del mismo grupo y trimestre sin perder calificaciones, asignación ni PDA (`mover_producto_a_sesion`, la única vía para cambiar de sesión un producto); "Calificar" desde la tarjeta "Actividades del trimestre" de Proyectos | En la rama, pendiente de publicar (b17 y b19a) | `js/hoy.js`, `js/actividad-nueva.js` (desde la Fase 4), `js/productos-hoy.js`, `js/pasar-a-proyecto.js`, `js/planeacion.js` |
+| **"¿Para quién?"**: cada actividad o tarea es para todo el grupo, uno o varios grados o los alumnos que se eligen (con "¿Con qué grado trabajan?" solo en ese modo); en Hoy al agregar y en "Para quién" de un producto ya creado (quien ya tiene calificación queda bloqueado), y en Crear proyecto por sesión. El alumno sigue en su grado oficial para la boleta | En la rama, pendiente de publicar (b17) | `js/para-quien.js`, `js/actividad-nueva.js`, `js/hoy.js`, `js/crear_proyecto.js`, `js/alcance-hoy.js` (`asignadoA`) |
 | **Incompleta**: una actividad en clase marcada Incompleta se revisa el siguiente día de clase (calendario SEP y ajustes del grupo) en "Pendientes de la clase anterior": "Lo completó" con el nivel que logró o "Sigue incompleta" (0.5 en el motor); si el alumno faltó, queda pendiente | En la rama, pendiente de publicar (b17) | `js/hoy.js`, `js/calendario-sep.js`, `js/motor-calificacion.js` |
 | **App instalable "Jissez MS"** (Mi Salón como PWA en `/salon/`): manifest, íconos, atajos (Pasar lista, Calificar trabajos, Reportes), página "Sin conexión", modo app (la Tienda abre en el navegador; login y cierre de sesión dentro de `/salon/`), botón "Instalar la app" en Inicio y en el menú de la cuenta (Chromium: aviso del navegador; iPhone/iPad: instrucciones) | Completo (2026-09-25, fases 1 y 2.5 de `docs/PWA-MI-SALON.md`) | `salon.webmanifest`, `sw.js`, `sin-conexion.html`, `iconos/`, `js/app-instalada.js` |
 | Asistencia (con autosave) | Completo | `asistencia.html` |

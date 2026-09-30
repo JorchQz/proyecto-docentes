@@ -11,18 +11,23 @@
 	    desde una sesión) → agregar_producto_sesion (mi_salon_b17), con los PDA de esa sesión;
 	  - fuera: una actividad suelta con su día (cualquier día del trimestre en curso; una tarea suelta se deja hoy) →
 	    agregar_actividad_suelta (se guarda en "Actividades del trimestre"). Abierto desde un bloque de "Actividades
-	    del trimestre", su día y su campo ya vienen puestos, con los PDA que esa sesión ya tiene; si no se cambian, se
-	    agrega a esa misma sesión (agregar_producto_sesion), igual que antes.
+	    del trimestre", se agrega a ESA sesión, como antes de la Fase 4 (agregar_producto_sesion, con los PDA que ya
+	    tiene; también si se cambia el campo o si es una tarea de un bloque de un día que ya pasó): en lugar del día
+	    se dice a qué bloque va.
 	Orden de los campos: nombre, qué es (con el día en que se revisa, si es tarea), para quién (Grupo / Grado(s) /
 	Alumno(s)), campo formativo, contenido y PDA.
 
 	Contenido y PDA (opcional). La lectura de los PDA de la sesión trae su contenido del catálogo
 	(catalogo_pda(pda, contenido_id, catalogo_contenidos(id, contenido, campo_formativo))): salen ya elegidos los
 	contenidos de la sesión para el campo, cada uno con sus PDA marcados por la regla de siempre
-	(ProductosHoy.pdaDeSesionParaActividad). "Cambiar" abre el buscador del catálogo; el contenido que se elige ahí
-	REEMPLAZA a los de la sesión (sus PDA, marcados por ProductosHoy.pdaMarcadosPorOmision; uno que la sesión ya
-	tiene se reutiliza: planLigas) y "Usar los de la sesión" regresa. Sin contenidos de la sesión para ese campo
-	(otro campo, o fuera del proyecto) el buscador sale directo, como antes.
+	(ProductosHoy.pdaDeSesionParaActividad). Con ellos, dos botones:
+	  - "+ Otro contenido": abre el buscador SIN quitar lo de la sesión y se suman, como era el diálogo antes de la
+	    Fase 4 (los PDA de la sesión y los del contenido del catálogo; los que ya están arriba no se repiten abajo);
+	  - "Cambiar": el contenido que se elige en el buscador REEMPLAZA a los de la sesión (sus PDA, marcados por
+	    ProductosHoy.pdaMarcadosPorOmision; uno que la sesión ya tiene se reutiliza: planLigas); "Usar los de la
+	    sesión" regresa.
+	Sin contenidos de la sesión para ese campo (otro campo, o fuera del proyecto) el buscador sale directo, como antes,
+	y lo que se elige se suma.
 
 	Necesita señal (no va por la cola: la captura de sus calificaciones necesita su id de la base).
 
@@ -37,7 +42,7 @@
 	  rango              { desde, hasta }: los días del trimestre en curso (ProductosHoy.rangoTrimestre)
 	  sinSenal(), textoSinSenal, textoError(err), origen (el botón que lo abrió)
 	  alAgregar({ nuevo, respuesta, suelta, sesion, filas, fecha, sinPda })  lo que hace la pantalla al agregarlo
-	Puras (pruebas/actividad-nueva.test.js): contenidosDeSesion, destino, crearParaSuelta, conCampo.
+	Puras (pruebas/actividad-nueva.test.js): contenidosDeSesion, destino, conCampo.
 */
 
 (function () {
@@ -96,38 +101,16 @@
 
 	/*
 		¿A dónde va lo que se agrega?
-		  dentro                                  → "sesion" (la sesión elegida)
-		  fuera, abierto desde un bloque de sueltas, mismo campo y mismo día (una tarea: si el bloque es de hoy)
-		                                          → "sesion" (esa misma sesión, como antes)
-		  fuera                                   → "suelta" (agregar_actividad_suelta: la sesión de ese día y campo)
-		d: { modo, tipo, campo (corto), dia, hoy, suelta: { campo (corto), fecha } | null }
+		  dentro                                    → "sesion" (la sesión elegida)
+		  fuera, abierto desde un bloque de sueltas → "sesion" (esa misma sesión, como antes de la Fase 4: también
+		                                              con otro campo, y una tarea de un bloque de un día que ya pasó)
+		  fuera                                     → "suelta" (agregar_actividad_suelta: la sesión de ese día y campo)
+		d: { modo, suelta: la sesión del bloque | null }
 	*/
 	function destino(d) {
 		d = d || {};
 		if (d.modo === "dentro") return "sesion";
-		var s = d.suelta;
-		if (s && s.campo && d.campo === s.campo && (d.tipo === "tarea" ? s.fecha === d.hoy : d.dia === s.fecha)) return "sesion";
-		return "suelta";
-	}
-
-	/*
-		Fuera del proyecto, abierto desde un bloque de sueltas pero a otro día: los PDA de esa sesión que se marcaron
-		(ligas.ligar) se piden como "del catálogo" (pda_id y grado) para la sesión nueva, junto con ligas.crear, sin
-		repetir. Un PDA sin pda_id (solo criterio) no se puede pedir así y no pasa.
-	*/
-	function crearParaSuelta(ligas, spda) {
-		var porId = {};
-		(spda || []).forEach(function (r) { if (r && r.id) porId[r.id] = r; });
-		var vistos = {}, crear = [];
-		function poner(pdaId, grado) {
-			var k = pdaId + "|" + Number(grado);
-			if (!pdaId || vistos[k]) return;
-			vistos[k] = true;
-			crear.push({ pda_id: pdaId, grado: Number(grado) });
-		}
-		((ligas && ligas.ligar) || []).forEach(function (id) { var r = porId[id]; if (r) poner(r.pda_id, r.grado); });
-		((ligas && ligas.crear) || []).forEach(function (p) { if (p) poner(p.pda_id, p.grado); });
-		return crear;
+		return d.suelta ? "sesion" : "suelta";
 	}
 
 	// ── Contenidos del catálogo (se leen una vez por página) ─────────────────
@@ -160,6 +143,12 @@
 		input.className = CLASE_CAMPO;
 		cont.appendChild(input);
 		return { cont: cont, input: input };
+	}
+
+	// "2026-09-24" → "24 sep"
+	function fechaCorta(iso) {
+		var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+		return m ? Number(m[3]) + " " + ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m[2]) - 1] : "";
 	}
 
 	// "Sesión 3 · Lenguajes · Así me llamo" (el título del proyecto, breve)
@@ -197,7 +186,10 @@
 		var rango = ctx.rango || {};
 		var refs = {};
 		var pda = { spda: null, contenidos: null, errorCatalogo: false, contenido: null, pdaContenido: [], cargandoContenido: false,
-			tocadosSesion: {}, marcadosCatalogo: {}, buscar: false };
+			tocadosSesion: {}, marcadosCatalogo: {},
+			// Con los contenidos de la sesión: "sesion" (solo ellos), "otro" (+ Otro contenido: ellos y el buscador, se
+			// suman, como antes de la Fase 4) o "cambiar" (el buscador los reemplaza)
+			modo: "sesion" };
 		var cargaPda = null; // la lectura de los PDA de la sesión (alAceptar la espera)
 		var lecturaSpda = 0;  // la última lectura pedida (una que llega tarde no pisa a la de otra sesión)
 
@@ -213,10 +205,7 @@
 			return s && ctx.gradosDeLaSesion ? ctx.gradosDeLaSesion(s) : gradosGrupo;
 		}
 		function tipoElegido() { return refs.tipo ? (refs.tipo.querySelector("input:checked") || {}).value : "trabajo"; }
-		function destinoActual() {
-			return destino({ modo: st.modo, tipo: tipoElegido(), campo: refs.campo ? refs.campo.value : "", dia: refs.dia ? refs.dia.value : "", hoy: hoy,
-				suelta: suelta ? { campo: corto(suelta.campo_formativo), fecha: suelta.fecha } : null });
-		}
+		function destinoActual() { return destino({ modo: st.modo, suelta: suelta }); }
 
 		// "¿Para quién?": lo elegido en el diálogo (ProductosHoy.planAsignacion)
 		function planPara() {
@@ -281,10 +270,10 @@
 			refs.sesionCont = lab;
 			cuerpo.appendChild(lab);
 
-			// Fuera: el día de la actividad (por omisión hoy, o el del bloque de sueltas). Cualquier día del trimestre en
-			// curso (decisión de Jorge del 2026-09-26): uno que ya pasó se califica aquí mismo, al agregarla
+			// Fuera: el día de la actividad (por omisión hoy). Cualquier día del trimestre en curso (decisión de Jorge del
+			// 2026-09-26): uno que ya pasó se califica aquí mismo, al agregarla. Abierto desde un bloque de sueltas, en
+			// su lugar se dice a qué bloque va (va a esa sesión, como antes)
 			var dia = campoTexto("Día de la actividad", { type: "date", min: rango.desde, max: rango.hasta, value: hoy });
-			if (suelta && suelta.fecha) dia.input.value = suelta.fecha;
 			var ayudaDia = document.createElement("span");
 			ayudaDia.className = "text-xs font-normal text-gray-500";
 			ayudaDia.textContent = "Puede ser un día que ya pasó del trimestre: la calificas aquí mismo al agregarla. Un día que viene aparece en Hoy ese día.";
@@ -292,6 +281,15 @@
 			refs.dia = dia.input;
 			refs.diaCont = dia.cont;
 			cuerpo.appendChild(dia.cont);
+			if (suelta) {
+				var bloque = document.createElement("p");
+				bloque.setAttribute("data-bloque-suelta", "1");
+				bloque.className = "rounded-xl bg-violet-50 border border-violet-200 px-3 py-2.5 text-sm text-gray-800";
+				bloque.innerHTML = "<span class='block text-xs text-gray-500'>Se agrega a</span>" + esc(raiz.AlcanceHoy.TITULO_SUELTAS) + " · " +
+					esc(suelta.campo_formativo || "") + (suelta.fecha && suelta.fecha !== hoy ? " · " + esc(fechaCorta(suelta.fecha)) : " · hoy");
+				refs.bloqueCont = bloque;
+				cuerpo.appendChild(bloque);
+			}
 
 			fs.addEventListener("change", function (e) {
 				var r = e.target.closest("input[name='dondeNuevo']");
@@ -311,8 +309,9 @@
 		function pintarDonde() {
 			var tarea = tipoElegido() === "tarea";
 			refs.sesionCont.classList.toggle("hidden", st.modo !== "dentro");
-			// La tarea suelta se deja hoy: sin día
-			refs.diaCont.classList.toggle("hidden", st.modo !== "fuera" || tarea);
+			// La tarea suelta se deja hoy: sin día. Desde un bloque de sueltas, el bloque en lugar del día
+			refs.diaCont.classList.toggle("hidden", st.modo !== "fuera" || tarea || !!suelta);
+			if (refs.bloqueCont) refs.bloqueCont.classList.toggle("hidden", st.modo !== "fuera");
 			refs.dondeAyuda.textContent = st.modo === "dentro"
 				? "Se agrega a la sesión que elijas: la de hoy o una que sigue en curso."
 				: "Sin proyecto: se guarda en " + raiz.AlcanceHoy.TITULO_SUELTAS + " y cuenta para la boleta. Después puedes pasarla a un proyecto." +
@@ -455,15 +454,16 @@
 				var c = e.target.closest("input[name='pdaSesion']");
 				if (c) pda.tocadosSesion[c.value] = c.checked;
 			});
-			// "Cambiar": el buscador reemplaza a los contenidos de la sesión
+			// "+ Otro contenido": el buscador se abre sin quitar lo de la sesión (se suman). "Cambiar": el buscador los reemplaza
 			refs.pdaSesion.addEventListener("click", function (e) {
-				if (!e.target.closest("[data-cambiar-contenido]")) return;
-				pda.buscar = true;
+				var b = e.target.closest("[data-otro-contenido], [data-cambiar-contenido]");
+				if (!b) return;
+				pda.modo = b.hasAttribute("data-otro-contenido") ? "otro" : "cambiar";
 				pintarPda();
 				refs.busca.focus();
 			});
 			refs.volver.addEventListener("click", function () {
-				pda.buscar = false;
+				pda.modo = "sesion";
 				quitarContenido();
 				pintarPda();
 				var primera = refs.pdaSesion.querySelector("input[name='pdaSesion'], [data-cambiar-contenido]");
@@ -521,8 +521,10 @@
 		function deSesionVisibles() {
 			return PH().pdaDeSesionParaActividad(pda.spda || [], campoSesion(), refs.campo ? refs.campo.value : "", gradosElegidos());
 		}
-		// ¿Se ven los contenidos de la sesión (y no el buscador)?
-		function conContenidosDeSesion(visibles) { return !pda.buscar && visibles.length > 0; }
+		// ¿Se ven (y cuentan) los contenidos de la sesión? Sí, salvo con "Cambiar"
+		function conContenidosDeSesion(visibles) { return pda.modo !== "cambiar" && visibles.length > 0; }
+		// ¿Se ve el buscador? Con "+ Otro contenido", con "Cambiar" o si la sesión no trae contenidos de ese campo
+		function conBuscador(visibles) { return pda.modo !== "sesion" || !visibles.length; }
 
 		function pintarPda() {
 			if (!refs.pdaSesion) return;
@@ -538,13 +540,19 @@
 			var enSesion = conContenidosDeSesion(visibles);
 			refs.pdaSesion.innerHTML = "";
 			refs.pdaSesion.classList.toggle("hidden", !enSesion);
-			refs.buscador.classList.toggle("hidden", enSesion);
-			refs.volver.classList.toggle("hidden", enSesion || !visibles.length);
+			refs.buscador.classList.toggle("hidden", !conBuscador(visibles));
+			refs.volver.classList.toggle("hidden", pda.modo !== "cambiar" || !visibles.length);
 			if (enSesion) {
 				var cabeza = document.createElement("div");
-				cabeza.className = "flex items-center justify-between gap-2";
+				cabeza.className = "flex flex-wrap items-center justify-between gap-x-2";
 				cabeza.innerHTML = "<p class='text-xs text-gray-500'>De esta sesión (marca los PDA que esta actividad evalúa):</p>" +
-					"<button type='button' data-cambiar-contenido aria-label='Cambiar el contenido: buscar otro en el catálogo' class='shrink-0 min-h-[44px] min-w-[44px] px-3 rounded-xl text-sm font-medium text-blue-700 hover:bg-blue-50'>Cambiar</button>";
+					"<span class='flex flex-wrap gap-1 shrink-0'>" +
+					(pda.modo === "sesion"
+						? "<button type='button' data-otro-contenido aria-label='Otro contenido: buscar uno más en el catálogo, sin quitar los de la sesión' class='inline-flex items-center gap-1 min-h-[44px] px-3 rounded-xl text-sm font-medium text-blue-700 hover:bg-blue-50'>" +
+							"<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 5v14'/><path d='M5 12h14'/></svg>Otro contenido</button>"
+						: "") +
+					"<button type='button' data-cambiar-contenido aria-label='Cambiar el contenido: buscar otro en el catálogo' class='shrink-0 min-h-[44px] min-w-[44px] px-3 rounded-xl text-sm font-medium text-blue-700 hover:bg-blue-50'>Cambiar</button>" +
+					"</span>";
 				refs.pdaSesion.appendChild(cabeza);
 				contenidosDeSesion(visibles).forEach(function (g) {
 					var caja = document.createElement("div");
@@ -563,7 +571,7 @@
 					refs.pdaSesion.appendChild(caja);
 				});
 			}
-			refs.buscaEtiqueta.textContent = campo ? "Buscar un contenido de " + campoLargo(campo) : "Elige el campo formativo para buscar su contenido";
+			refs.buscaEtiqueta.textContent = campo ? (enSesion ? "Buscar otro contenido de " : "Buscar un contenido de ") + campoLargo(campo) : "Elige el campo formativo para buscar su contenido";
 			refs.busca.disabled = !campo || pda.errorCatalogo;
 			pintarResultados();
 			pintarContenido();
@@ -607,7 +615,8 @@
 			var c = (pda.contenidos || []).find(function (x) { return x.id === id; });
 			if (!c) return;
 			pda.contenido = c;
-			pda.buscar = true; // lo elegido en el buscador reemplaza a los contenidos de la sesión
+			// Elegido con el buscador directo (la sesión no traía contenidos de ese campo): se suma, como "+ Otro contenido"
+			if (pda.modo === "sesion") pda.modo = "otro";
 			pda.pdaContenido = [];
 			pda.marcadosCatalogo = {};
 			pda.cargandoContenido = true;
@@ -648,9 +657,17 @@
 			if (pda.cargandoContenido) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Cargando sus PDA...</p>"); return; }
 			if (pda.pdaContenido === null) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>No se pudieron cargar sus PDA. Puedes agregar la actividad sin PDA.</p>"); return; }
 			var g = gradosElegidos();
-			var deGrados = pda.pdaContenido.filter(function (p) { return g.indexOf(Number(p.grado)) !== -1; });
+			// Con los contenidos de la sesión a la vista ("+ Otro contenido"), sin repetir los PDA que ya están arriba
+			// (planLigas los reutiliza), como antes de la Fase 4. Con "Cambiar", todos
+			var visibles = deSesionVisibles();
+			var yaArriba = {};
+			if (conContenidosDeSesion(visibles)) visibles.forEach(function (r) { if (r.pda_id) yaArriba[r.pda_id + "|" + Number(r.grado)] = true; });
+			var deGrados = pda.pdaContenido.filter(function (p) { return g.indexOf(Number(p.grado)) !== -1 && !yaArriba[p.id + "|" + Number(p.grado)]; });
 			if (!deGrados.length) {
-				refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Este contenido no tiene PDA para los grados elegidos.</p>");
+				var yaEstan = pda.pdaContenido.some(function (p) { return yaArriba[p.id + "|" + Number(p.grado)]; });
+				refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>" + (yaEstan
+					? "Sus PDA de estos grados ya están arriba, entre los de esta sesión."
+					: "Este contenido no tiene PDA para los grados elegidos.") + "</p>");
 				return;
 			}
 			deGrados.forEach(function (p) {
@@ -664,23 +681,23 @@
 		}
 
 		/*
-			Lo elegido al aceptar (solo lo visible: de los grados y el campo elegidos). Con los contenidos de la sesión a
-			la vista, sus PDA marcados; con el buscador, los PDA marcados del contenido que se eligió ahí.
+			Lo elegido al aceptar (de los grados y el campo elegidos), la misma cuenta del diálogo de antes de la Fase 4:
+			los PDA marcados de la sesión (salvo con "Cambiar", que los reemplaza) y los marcados del contenido elegido en
+			el buscador (planLigas reutiliza el que la sesión ya tiene).
 		*/
 		function eleccionPda() {
 			if (pda.spda === null) return null; // no se leyeron los de la sesión: como antes (sin PDA)
 			var g = gradosElegidos();
 			var visibles = deSesionVisibles();
-			var enSesion = conContenidosDeSesion(visibles);
-			var deSesion = enSesion ? visibles.filter(marcadoSesion).map(function (r) { return r.id; }) : [];
-			var deCatalogo = enSesion ? [] : (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
+			var deSesion = conContenidosDeSesion(visibles) ? visibles.filter(marcadoSesion).map(function (r) { return r.id; }) : [];
+			var deCatalogo = (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
 				.map(function (p) { return { pda_id: p.id, grado: Number(p.grado) }; });
 			return { deSesion: deSesion, deCatalogo: deCatalogo, spdaSesion: pda.spda };
 		}
 
 		// Otra sesión o el otro lado del interruptor: campo, "¿Para quién?" (si no se tocaron) y los PDA de esa sesión
 		function cambioDeContexto() {
-			pda.buscar = false;
+			pda.modo = "sesion";
 			pda.tocadosSesion = {};
 			quitarContenido();
 			llenarCampos();
@@ -773,7 +790,7 @@
 					grados: plan.grados,
 					incluidos: plan.incluidos,
 					fechaRevision: refs.fecha.value,
-					fecha: st.modo === "fuera" ? refs.dia.value : null,
+					fecha: st.modo === "fuera" && !suelta ? refs.dia.value : null,
 				};
 				var hacia = destinoActual();
 				var esSuelta = hacia === "suelta";
@@ -799,7 +816,7 @@
 				// Producto, "para quién" y PDA en una sola transacción (mi_salon_b17)
 				var res = esSuelta
 					? await sb.rpc("agregar_actividad_suelta", { p_grupo: grupo.id, p_fecha: v.fecha, p_producto: producto,
-						p_asignacion: plan.filas, p_crear: suelta ? crearParaSuelta(ligas, pda.spda) : ligas.crear })
+						p_asignacion: plan.filas, p_crear: ligas.crear })
 					: await sb.rpc("agregar_producto_sesion", { p_sesion: sesion.id, p_producto: producto,
 						p_asignacion: plan.filas, p_ligar: ligas.ligar, p_crear: ligas.crear });
 				if (res.error) {
@@ -817,7 +834,7 @@
 	}
 
 	var api = {
-		abrir: abrir, contenidosDeSesion: contenidosDeSesion, destino: destino, crearParaSuelta: crearParaSuelta, conCampo: conCampo,
+		abrir: abrir, contenidosDeSesion: contenidosDeSesion, destino: destino, conCampo: conCampo,
 	};
 	raiz.ActividadNueva = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;
