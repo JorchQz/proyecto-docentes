@@ -81,10 +81,17 @@ if (P.tieneCaptura) {
 
 // ── Cómo lo usa "Hoy" ──
 const hoy = leer("js/hoy.js"), hoyHtml = leer("hoy.html");
-ok("Hoy: sin window.prompt", /window\.prompt/.test(hoy), false);
-ok("Hoy: diálogo accesible (role=dialog, aria-modal, Esc)", /setAttribute\("role", "dialog"\)/.test(hoy) && /aria-modal/.test(hoy) && /e\.key === "Escape"/.test(hoy), true);
+// Fase 4 (2026-09-29): "+ Actividad o tarea" vive en js/actividad-nueva.js (sacado de agregarProducto de Hoy) y el diálogo
+// accesible es el de js/para-quien.js (Hoy ya no tiene uno propio)
+const nueva = leer("js/actividad-nueva.js"), pq = leer("js/para-quien.js");
+ok("Hoy: sin window.prompt", /window\.prompt/.test(hoy) || /window\.prompt/.test(nueva), false);
+ok("Hoy: diálogo accesible (role=dialog, aria-modal, Esc) de js/para-quien.js, el mismo en Hoy y en el diálogo nuevo",
+	/setAttribute\("role", "dialog"\)/.test(pq) && /aria-modal/.test(pq) && /e\.key === "Escape"/.test(pq) &&
+	/window\.ParaQuien\.abrirDialogo\(\{/.test(hoy) && /raiz\.ParaQuien\.abrirDialogo\(\{/.test(nueva) && !/function abrirDialogo\(/.test(hoy) && !/function listaAlumnosHtml\(/.test(hoy), true);
 // Desde 2026-09-26 (fase 2) el día por omisión es el siguiente día de CLASE (calendario SEP y ajustes del grupo)
-ok("Hoy: el diálogo valida con ProductosHoy.validarNuevo y el día por omisión es venceTarea", /ProductosHoy\.validarNuevo\(datos/.test(hoy) && /AlcanceHoy\.venceTarea\(null, hoy, ajustesCal\)/.test(hoy), true);
+ok("Hoy: el diálogo valida con ProductosHoy.validarNuevo y el día por omisión es venceTarea",
+	/PH\(\)\.validarNuevo\(datos, ctxV\)/.test(nueva) && /PH\(\)\.validarSuelta\(datos, ctxV\)/.test(nueva) && /raiz\.AlcanceHoy\.venceTarea\(null, hoy, ctx\.ajustesCal \|\| \[\]\)/.test(nueva) &&
+	/ajustesCal: ajustesCal/.test(hoy), true);
 ok("Hoy: agregar, renombrar y quitar dicen que necesitan señal", (hoy.match(/necesita señal/g) || []).length >= 3, true);
 ok("Hoy: quitar revisa calificaciones (pantalla y base) antes de poner activo = false",
 	/tieneCaptura\(calificaciones\[/.test(hoy) && /\.eq\("producto_sesion_id", producto\.id\)/.test(hoy) && /update\(\{ activo: false \}\)/.test(hoy) &&
@@ -92,11 +99,14 @@ ok("Hoy: quitar revisa calificaciones (pantalla y base) antes de poner activo = 
 ok("Hoy: renombrar actualiza productos_sesion.nombre", /update\(\{ nombre: v\.nombre \}\)/.test(hoy), true);
 // Fase 2: producto, "para quién" y PDA se guardan juntos en la base (agregar_producto_sesion, mi_salon_b17)
 ok("Hoy: el producto nuevo se liga a los PDA de la sesión de sus grados (en la misma transacción)",
-	/rpc\("agregar_producto_sesion"/.test(hoy) && /p_ligar: ligas\.ligar, p_crear: ligas\.crear/.test(hoy) &&
+	/rpc\("agregar_producto_sesion"/.test(nueva) && /p_ligar: ligas\.ligar, p_crear: ligas\.crear/.test(nueva) &&
 	/insert into public\.producto_sesion_pda \(producto_sesion_id, sesion_pda_id\)\s*select v_prod\.id, sp\.id from public\.sesiones_pda sp/.test(leer("supabase/mi_salon_b17_flujo_libre_2026-09.sql")), true);
 ok("Hoy: Trabajar hoy usa siguientesPorProyecto (sin .slice(0, 4))", /ProductosHoy\.siguientesPorProyecto/.test(hoy) && !/\.slice\(0, 4\)/.test(hoy), true);
 ok("hoy.html: carga js/productos-hoy.js antes de js/hoy.js",
 	hoyHtml.indexOf('src="js/productos-hoy.js"') > 0 && hoyHtml.indexOf('src="js/productos-hoy.js"') < hoyHtml.indexOf('src="js/hoy.js"'), true);
+ok("hoy.html: carga js/para-quien.js y js/actividad-nueva.js después de las reglas y antes de js/hoy.js",
+	["js/para-quien.js", "js/actividad-nueva.js"].map((f) => hoyHtml.indexOf('src="' + f + '"')).every((i) => i > hoyHtml.indexOf('src="js/productos-hoy.js"') && i > hoyHtml.indexOf('src="js/alcance-hoy.js"') && i < hoyHtml.indexOf('src="js/hoy.js"')) &&
+	hoyHtml.indexOf('src="js/para-quien.js"') < hoyHtml.indexOf('src="js/actividad-nueva.js"'), true);
 
 // ── Los inactivos no cuentan en ningún lado ──
 [["js/motor-calificacion.js", "motor (y Qué le falta, que lo usa)"], ["js/tareas.js", "Tareas"], ["js/dashboard.js", "Inicio"], ["js/hoy.js", "Hoy"]].forEach(([f, n]) => {
@@ -144,10 +154,11 @@ if (tiene8.every(Boolean)) {
 	ok("planLigas: liga los de la sesión de su grado, reutiliza el que ya está y crea el que falta (sin duplicar)", plan, { ligar: ["sp4"], crear: [{ pda_id: "pN", grado: 4 }] });
 }
 {
-	const h = leer("js/hoy.js");
+	// Fase 4 (2026-09-29): el diálogo de agregar vive en js/actividad-nueva.js
+	const h = leer("js/actividad-nueva.js");
 	ok("Hoy: el diálogo tiene buscador de contenidos y PDA opcionales", h.includes("PDA que evalúa") && h.includes("data-busca-contenido") && h.includes("(opcional)"), true);
 	ok("Hoy: liga con lo elegido y crea el PDA que falta en sesiones_pda de la sesión (agregar_producto_sesion)",
-		h.includes("window.ProductosHoy.planLigas({ grados: plan.gradosPda") &&
+		h.includes("PH().planLigas({ grados: plan.gradosPda") &&
 		/insert into public\.sesiones_pda \(sesion_id, pda_id, grado, criterio_aplicado\)\s*values \(p_sesion, r\.pda_id, r\.grado, null\)/.test(leer("supabase/mi_salon_b17_flujo_libre_2026-09.sql")), true);
 	ok("Hoy: Enter en el buscador no envía el diálogo", h.includes('refs.busca.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });'), true);
 	const q = leer("js/que-le-falta.js"), m = leer("js/motor-calificacion.js");

@@ -362,8 +362,10 @@ async function crearCardHoy() {
 		"<div><h2 class='text-lg font-bold text-gray-800'>Tu día</h2>" +
 		"<p class='text-sm text-gray-500'>La captura se hace en Hoy: asistencia, tareas, productos y cierre.</p></div>" +
 		"<span class='flex flex-wrap gap-2'>" +
-		// Guiar sin obligar: una actividad o tarea suelta, sin proyecto (se abre en Hoy)
-		"<a href='hoy.html?nueva=suelta' class='inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl border border-violet-300 text-violet-700 font-semibold hover:bg-violet-50'>Actividad suelta</a>" +
+		// Guiar sin obligar: "+ Actividad o tarea", dentro o fuera del proyecto (el diálogo de Hoy, js/actividad-nueva.js)
+		"<a href='hoy.html?nueva=1' class='inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-xl border border-blue-300 text-blue-700 font-semibold hover:bg-blue-50'>" +
+		"<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 5v14'/><path d='M5 12h14'/></svg>" +
+		"Actividad o tarea</a>" +
 		"<a href='hoy.html' class='inline-flex items-center justify-center min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>Abrir Hoy</a>" +
 		"</span></div>" +
 		(sinLeerDia

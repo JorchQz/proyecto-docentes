@@ -74,6 +74,9 @@ require("../js/texto-sesion.js");
 require("../js/secuencia-sesion.js");
 // La bandeja de salida (en node no hay IndexedDB: la cola vive en memoria, como sin él)
 require("../js/bandeja-salida.js");
+// El diálogo accesible y "+ Actividad o tarea" (hoy.html los carga antes que hoy.js; Fase 4)
+require("../js/para-quien.js");
+require("../js/actividad-nueva.js");
 
 // ── Supabase falso ───────────────────────────────────────────────────────────
 const HOY = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
@@ -239,9 +242,12 @@ new Function(codigo)();
 	ok("3. la tarea no se califica dentro de la sesión", sesiones.indexOf("data-producto='pr2'"), -1);
 	ok("3. la sesión lista sus tareas con su día de revisión",
 		/Tareas de esta sesión[\s\S]*Leer en casa[\s\S]*Se revisa hoy/.test(sesiones), true);
-	ok("3. el botón de la sesión es «Agregar actividad o tarea» (sin window.prompt)",
-		sesiones.indexOf("data-agregar-producto='s1'") !== -1 && sesiones.indexOf("Agregar actividad o tarea") !== -1 &&
+	// Fase 4 (2026-09-29): cada sesión tiene el atajo "+ Actividad o tarea" (el diálogo con esa sesión ya elegida)
+	ok("3. el botón de la sesión es «+ Actividad o tarea», con su ícono y su nombre accesible (sin window.prompt)",
+		/data-agregar-producto='s1' aria-label='Agregar actividad o tarea a la sesión 1'[^>]*><svg[^>]*aria-hidden='true'>[\s\S]*?<\/svg>Actividad o tarea<\/button>/.test(sesiones) &&
 		!/window\.prompt/.test(codigo), true);
+	ok("3. el bloque de «Actividades del trimestre» tiene el mismo atajo", /data-agregar-producto='sx' aria-label='Agregar actividad o tarea a Actividades del trimestre de Lenguajes'/.test(sesiones), true);
+	ok("3. ya no hay «Agregar actividad o tarea» ni «Actividad suelta» como texto de botón", !/>Agregar actividad o tarea</.test(sesiones) && !/Actividad suelta/.test(sesiones), true);
 	// Varios proyectos activos: la siguiente de CADA uno, con su nombre (antes 4 en total por uuid)
 	ok("3. Trabajar hoy: la siguiente del segundo proyecto activo también sale", sesiones.indexOf("data-trabajar-hoy='q1'") !== -1, true);
 	ok("3. Trabajar hoy: cada proyecto con su nombre",

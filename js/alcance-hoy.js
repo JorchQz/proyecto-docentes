@@ -373,19 +373,42 @@
 		Un nombre para leerse en una lista corrida (el diálogo de "Finalizar jornada"): sin espacios ni puntuación
 		al final ("...mañana." + ", " daba "mañana., ") y, si es largo, cortado en `max` caracteres con "…". El grupo
 		de trabajo del final (" · Morado", los trabajos por nivel de PP-NIVELES) se conserva: sin él, dos trabajos
-		cortados se verían iguales.
+		cortados se verían iguales. El corte cae en un límite de palabra (R37: "…y dibújal…" se leía mal); solo una
+		palabra que ocupa más de la mitad se corta a la mitad.
 	*/
 	function nombreBreve(texto, max) {
 		var t = String(texto === null || texto === undefined ? "" : texto).replace(/\s+/g, " ").trim().replace(/[\s.,;:]+$/, "");
 		max = max || 60;
 		if (t.length <= max) return t;
-		function cortar(x, n) { return x.slice(0, Math.max(1, n - 1)).replace(/[\s.,;:]+$/, "") + "…"; }
+		function cortar(x, n) {
+			var lim = Math.max(1, n - 1);
+			var corte = x.slice(0, lim);
+			// ¿Quedó una palabra a la mitad? Entonces hasta el espacio anterior
+			if (x.length > lim && /\S/.test(x.charAt(lim)) && /\S$/.test(corte)) {
+				var espacio = corte.lastIndexOf(" ");
+				if (espacio >= Math.floor(lim / 2)) corte = corte.slice(0, espacio);
+			}
+			return corte.replace(/[\s.,;:]+$/, "") + "…";
+		}
 		var m = t.match(/^(.*\S)\s+·\s+([^·]{1,20})$/);
 		if (m && m[1].length > 10) {
 			var sufijo = " · " + m[2];
 			return cortar(m[1], max - sufijo.length) + sufijo;
 		}
 		return cortar(t, max);
+	}
+
+	/*
+		"A, B, C y 4 más" (decisión de Jorge, 2026-09-29): el diálogo de "Finalizar jornada" ya no lista completas las
+		actividades y tareas que faltan. Hasta `n` nombres (3 por omisión) y cuántos más; con `n` o menos: "A",
+		"A y B", "A, B y C".
+	*/
+	function listaBreve(nombres, n) {
+		var l = (nombres || []).map(function (x) { return String(x === null || x === undefined ? "" : x); }).filter(function (x) { return x; });
+		n = n || 3;
+		if (l.length > n) return l.slice(0, n).join(", ") + " y " + (l.length - n) + " más";
+		if (l.length <= 1) return l[0] || "";
+		return l.slice(0, -1).join(", ") + " y " + l[l.length - 1];
 	}
 
 	/*
@@ -668,7 +691,7 @@
 		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,
 		leerAjustesCalendario: leerAjustesCalendario,
-		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre, faltantesJornada: faltantesJornada, tieneCierre: tieneCierre, nombreBreve: nombreBreve,
+		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre, faltantesJornada: faltantesJornada, tieneCierre: tieneCierre, nombreBreve: nombreBreve, listaBreve: listaBreve,
 		fechaAlta: fechaAlta, fechaProducto: fechaProducto, cuentaDesdeAlta: cuentaDesdeAlta,
 		examenCuentaDesdeAlta: examenCuentaDesdeAlta,
 		indiceAsignaciones: indiceAsignaciones, asignadoA: asignadoA, recibeProducto: recibeProducto, trabajaCon: trabajaCon, gradosPdaPorProducto: gradosPdaPorProducto,

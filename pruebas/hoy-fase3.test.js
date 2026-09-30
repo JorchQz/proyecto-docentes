@@ -82,7 +82,22 @@ ok("nombreBreve: conserva el grupo de trabajo del final (dos trabajos por nivel 
 	["Tarjeta de nombre repasada y decorada; registro de… · Morado", true]);
 ok("faltantesJornada: los nombres de los productos salen breves y la lista ya no dice «., »",
 	[largos.tareas.productos.map((p) => p.nombre), largos.tareas.productos.map((p) => p.nombre).join(", ").indexOf("., ") === -1],
-	[["Platica en casa cuál regla del salón te gustó más y dibújal…", "Lectura"], true]);
+	[["Platica en casa cuál regla del salón te gustó más y…", "Lectura"], true]);
+// R37: el corte cae en un límite de palabra ("…y dibújal…" se leía mal); una palabra más larga que medio nombre sí se corta
+ok("nombreBreve: corta en un límite de palabra (no «dibújal…»), también antes del grupo de trabajo",
+	[A.nombreBreve("Platica en casa cuál regla del salón te gustó más y dibújala en tu cuaderno para mostrarla mañana."),
+		A.nombreBreve("Tarjeta de nombre repasada y decorada; registro de letras conocidas · Naranja"),
+		A.nombreBreve("Anticonstitucionalmente" + "x".repeat(60), 30).length, /\S…$/.test(A.nombreBreve("uno dos tres cuatro cinco seis siete ocho nueve", 20))],
+	["Platica en casa cuál regla del salón te gustó más y…", "Tarjeta de nombre repasada y decorada; registro… · Naranja", 30, true]);
+ok("nombreBreve: ningún corte deja media palabra si hay un espacio en la segunda mitad",
+	["uno dos tres cuatro cinco seis siete ocho nueve", "Escribe acerca de sucesos de su historia personal y familiar ordenados cronológicamente"].every((t) => {
+		const b = A.nombreBreve(t, 20).replace(/…$/, "");
+		return t.split(" ").some((_, i, l) => l.slice(0, i + 1).join(" ") === b);
+	}), true);
+// Decisión de Jorge (2026-09-29): el diálogo de "Finalizar jornada" lista las actividades como "A, B, C y N más"
+ok("listaBreve: «A, B, C y N más»; con tres o menos, «A», «A y B», «A, B y C»",
+	[A.listaBreve(["A", "B", "C", "D", "E"]), A.listaBreve(["A", "B", "C", "D"]), A.listaBreve(["A", "B", "C"]), A.listaBreve(["A", "B"]), A.listaBreve(["A"]), A.listaBreve([]), A.listaBreve(null)],
+	["A, B, C y 2 más", "A, B, C y 1 más", "A, B y C", "A y B", "A", "", ""]);
 // R36: la misma regla de "fila con cierre" en Hoy y en Inicio
 ok("tieneCierre: con participación y conducta sí; solo con el comentario (de quien faltó) no",
 	[A.tieneCierre({ participacion: 1, conducta: 1, nota: null }), A.tieneCierre({ participacion: 0, conducta: 2 }), A.tieneCierre({ participacion: null, conducta: null, nota: "Faltó" }), A.tieneCierre(null)],
@@ -115,7 +130,7 @@ ok("finalizar: guarda lo escrito, espera la cola completa (sin revisar pendiente
 	/var envio = await esperarCola\(\);[\s\S]{0,200}if \(envio !== "ok"\) \{ avisoALaVista\(textoSinEnviar\(envio\)\); return; \}/.test(fin), true);
 ok("registrar: completa el cierre, espera la cola completa (lo recién encolado incluido) y solo entonces escribe la jornada",
 	reg.indexOf("completarCierre()") < reg.indexOf("esperarCola()") && reg.indexOf("esperarCola()") < reg.indexOf('from("jornadas")') && !/bandeja\.pendientes\(\)/.test(reg) &&
-	/if \(sinSenal\(\)\) return \{ ok: false/.test(reg) && /if \(envio !== "ok"\) return \{ ok: false, texto: textoSinEnviar\(envio\) \};/.test(reg), true);
+	/if \(sinSenal\(\)\) return \{ ok: false/.test(reg) && /if \(envio !== "ok"\) return \{ ok: false, porRed: envio === "red" \|\| envio === "servidor" \|\| envio === "pendiente", rellenos: rellenos, texto: textoSinEnviar\(envio\) \};/.test(reg), true);
 // Hallazgo 1 de R36: Terminar sesión y Pasar a un proyecto (ya publicados en la Fase 2) esperan igual, y si algo no se
 // envió no siguen (el comportamiento se prueba en pruebas/hoy-jornada-cola.test.js)
 const term = extraerFuncion(hoy, "terminarSesion"), pasar = extraerFuncion(hoy, "pasarAProyecto");
@@ -151,7 +166,34 @@ ok("finalizar: con lo que falta abre un diálogo con «Finalizar de todos modos�
 ok("el diálogo: enlaces a cada sección (asistencia, sesiones, tareas, pendientes y cada sesión sin terminar)",
 	["asistencia", "sesiones", "tareas", "pendientes"].every((a) => new RegExp('"' + a + '", "Ir a').test(hoy)) && /"ses-" \+ s\.id, "Ir a la sesión"/.test(hoy), true);
 ok("el diálogo: los enlaces son relativos (#ancla) y miden al menos 44 px", /a\.href = "#" \+ ancla;/.test(hoy) && /a\.className = "inline-flex items-center min-h-\[44px\]/.test(hoy), true);
-ok("abrirDialogo acepta el texto del botón de salida (Cancelar por omisión)", /cancelar\.textContent = opciones\.cancelar \|\| "Cancelar";/.test(hoy), true);
+// Fase 4 (2026-09-29): Hoy usa el diálogo de js/para-quien.js (el suyo, duplicado, se borró)
+ok("abrirDialogo (js/para-quien.js) acepta el texto del botón de salida (Cancelar por omisión) y Finalizar lo usa",
+	/cancelar\.textContent = opciones\.cancelar \|\| "Cancelar";/.test(leer("js", "para-quien.js")) && /var dialogo = window\.ParaQuien\.abrirDialogo\(\{/.test(fin) && !/function abrirDialogo\(/.test(hoy), true);
+// Decisión de Jorge (2026-09-29): las actividades y tareas que faltan van como "A, B, C y N más"
+ok("el diálogo lista trabajos y tareas con listaBreve (no completas)",
+	/window\.AlcanceHoy\.listaBreve\(f\.trabajos\.productos\.map/.test(extraerFuncion(hoy, "construirFaltantes")) &&
+	/window\.AlcanceHoy\.listaBreve\(f\.tareas\.productos\.map/.test(extraerFuncion(hoy, "construirFaltantes")) &&
+	!/productos\.map\(function \(p\) \{ return p\.nombre; \}\)\.join\(", "\)/.test(extraerFuncion(hoy, "construirFaltantes")), true);
+// R37: "Finalizar de todos modos" que no terminó por la red dice que el 1 y 1 ya quedó guardado y cómo se corrige
+ok("Finalizar de todos modos sin red: el aviso dice que el 1 y 1 ya quedó en el dispositivo y que se corrige marcando Falta",
+	/if \(!res\.ok\) \{ avisar\(res\.texto \+ \(res\.porRed && res\.rellenos \? " " \+ TEXTO_RELLENO_SIN_RED : ""\)\); return false; \}/.test(fin) &&
+	/var TEXTO_RELLENO_SIN_RED = "El 1 y 1 del cierre ya quedó guardado en este dispositivo y llegará a la base cuando vuelva la señal\. Si alguien faltó, corrígelo marcando Falta en Asistencia\.";/.test(hoy) &&
+	/var rellenos = completarCierre\(\);/.test(reg) && /return rellenos;/.test(extraerFuncion(hoy, "completarCierre")), true);
+// R37: "Pasar a un proyecto" dice "Guardando lo capturado..." mientras espera la cola, como las otras cuatro acciones
+ok("Pasar a un proyecto: «Guardando lo capturado...» mientras espera la cola y después regresa su texto",
+	/origen\.textContent = "Guardando lo capturado\.\.\.";\s*var envio = await esperarCola\(\);\s*origen\.disabled = false;\s*origen\.textContent = etiqueta;/.test(pasar), true);
+// R37: Trabajar hoy / Quitar de hoy con la cola "pendiente" (se siguió capturando) no dicen "Sin señal"
+ok("Trabajar hoy / Quitar de hoy: «pendiente» dice lo mismo que las demás acciones (no «Sin señal»)",
+	(function () {
+		const f = new Function("avisoALaVista", extraerFuncion(hoy, "avisoSinSenal") + "\nreturn avisoSinSenal;");
+		const avisos = [];
+		const av = f((t) => avisos.push(t));
+		["pendiente", "red", "servidor"].forEach((m) => av({ disabled: true, textContent: "" }, true, m));
+		av({ disabled: true, textContent: "" }, false, "pendiente");
+		return [avisos[0], /^Sin señal:/.test(avisos[1]), /servidor no respondió/.test(avisos[2]), avisos[3]];
+	})(),
+	["Todavía no se pudo enviar lo capturado, así que no se puede agregar la sesión a hoy. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento.", true, true,
+		"Todavía no se pudo enviar lo capturado, así que no se puede quitar la sesión de hoy. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."]);
 // R36 F2: el diálogo avisa que finalizar así le pone 1 y 1 a quien no tiene asistencia
 const cf = extraerFuncion(hoy, "construirFaltantes");
 ok("F2: con asistencia pendiente, el diálogo avisa del 1 y 1 a quien no la tiene (en «tú», singular y plural)",

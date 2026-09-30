@@ -41,8 +41,9 @@ const ACOTADAS = [
 	["hoy.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
 	["dashboard.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
 	["dashboard.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
-	["hoy.js", "sesiones_pda", ".eq(\"sesion_id\", sesion.id)", "los PDA de una sesión (ligar lo que se agrega en clase)"],
-	["hoy.js", "catalogo_pda", ".eq(\"contenido_id\", c.id)", "los PDA de un contenido del catálogo (unos cuantos por grado)"],
+	// "+ Actividad o tarea" de Hoy (Fase 4, 2026-09-29: el diálogo se sacó de js/hoy.js a js/actividad-nueva.js)
+	["actividad-nueva.js", "sesiones_pda", ".eq(\"sesion_id\", sesion.id)", "los PDA de una sesión (ligar lo que se agrega en clase)"],
+	["actividad-nueva.js", "catalogo_pda", ".eq(\"contenido_id\", c.id)", "los PDA de un contenido del catálogo (unos cuantos por grado)"],
 	["ponte-al-dia.js", "catalogo_pda", ".eq(\"contenido_id\", contenido.id)", "los PDA de un contenido del catálogo (unos cuantos por grado): la actividad histórica, como en Hoy"],
 	["crear_proyecto.js", "sesiones", ".eq('proyecto_id', id)", "las sesiones de un proyecto"],
 	["evaluacion_diagnostica.js", "evaluacion_diagnostica", ".eq(\"momento\", momentoActual)", "un grupo en un momento: uno por alumno"],

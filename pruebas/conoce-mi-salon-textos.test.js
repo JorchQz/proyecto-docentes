@@ -128,12 +128,16 @@ ok("la página nombra actividades sueltas, ¿Para quién?, Incompleta y Activida
 	/pasarla a un proyecto del mismo trimestre/.test(texto), /Si marcas alumnos, eliges con qué grado trabajan/.test(texto),
 ], [true, true, true, true, true, true]);
 const hoyJs = leer("js/hoy.js");
-ok("respaldo: Hoy agrega actividades sueltas y las pasa a un proyecto", [/id="btnSuelta"[^>]*>Actividad suelta</.test(hoyHtml), /Pasar a un proyecto/.test(hoyJs)], [true, true]);
+// Fase 4 (2026-09-29): "+ Actividad o tarea" (js/actividad-nueva.js), con "Fuera del proyecto", reemplaza a "Actividad suelta"
+const nuevaJs = leer("js/actividad-nueva.js");
+ok("respaldo: Hoy agrega actividades sueltas (fuera del proyecto) y las pasa a un proyecto", [
+	/id="btnActividad"[^>]*>[\s\S]{0,400}Actividad o tarea<\/button>/.test(hoyHtml),
+	/\["fuera", "Fuera del proyecto"\]/.test(nuevaJs) && /rpc\("agregar_actividad_suelta"/.test(nuevaJs), /Pasar a un proyecto/.test(hoyJs)], [true, true, true]);
 ok("respaldo: 'Actividades del trimestre' en Proyectos", /<h2 id="sueltasTitulo"[^>]*>Actividades del trimestre<\/h2>/.test(leer("planeacion.html")), true);
 ok("respaldo: pasar a un proyecto del mismo grupo y trimestre", /del MISMO grupo y trimestre/.test(leer("js/pasar-a-proyecto.js")), true);
-ok("respaldo: ¿Para quién? con todo el grupo, grados o alumnos, y el grado con que trabajan", [
-	/¿Para quién\?<\/legend>/.test(hoyJs), /\["grupo", "Todo el grupo"\]/.test(hoyJs), /"Uno o varios grados"/.test(hoyJs), /"Alumnos que elijo"/.test(hoyJs),
-	/¿Con qué grado trabajan\?/.test(hoyJs), /siguen en su grado para la boleta/.test(hoyJs),
+ok("respaldo: ¿Para quién? con todo el grupo, grados o alumnos (Grupo / Grado(s) / Alumno(s)), y el grado con que trabajan", [
+	/¿Para quién\?<\/legend>/.test(nuevaJs), /\["grupo", "Grupo"\]/.test(nuevaJs), /\["grados", "Grado\(s\)"\]/.test(nuevaJs), /\["alumnos", "Alumno\(s\)"\]/.test(nuevaJs),
+	/¿Con qué grado trabajan\?/.test(nuevaJs), /siguen en su grado para la boleta/.test(nuevaJs),
 ], [true, true, true, true, true, true]);
 const AlcanceHoy = require(path.join(RAIZ, "js/alcance-hoy.js"));
 const marcar = AlcanceHoy.cambiosIncompleta("marcar", { hoy: "2026-09-25", ajustes: [] });
@@ -163,10 +167,10 @@ ok("familias: la boleta, el reporte y los mensajes solo llevan a su hija o hijo"
 	/Lo que Mi Salón prepara para una familia solo lleva a su hija o hijo/.test(visible),
 ], [true, false]);
 ok("Incompleta: 'no terminó una actividad en clase'", /Si un alumno no terminó una actividad en clase, márcala Incompleta/.test(visible), true);
-// "¿Con qué grado trabajan?" solo sale en el modo de alumnos de ¿Para quién? (js/hoy.js construirParaQuien)
+// "¿Con qué grado trabajan?" solo sale en el modo de alumnos de ¿Para quién? (js/actividad-nueva.js construirParaQuien)
 const conGrado = visible.split(/(?<=[.?!])\s+/).filter((o) => /eliges con qué grado trabajan/.test(o));
 ok("'eliges con qué grado trabajan' solo en el modo de alumnos", [conGrado.length, conGrado.every((o) => /^Si marcas alumnos, eliges con qué grado trabajan/.test(o))], [2, true]);
-ok("respaldo: el grado con que trabajan solo se muestra con 'Alumnos que elijo'", /data-para='alumnos'[\s\S]{0,200}¿Con qué grado trabajan\?/.test(hoyJs) && /a\.classList\.toggle\("hidden", m !== "alumnos"\)/.test(hoyJs), true);
+ok("respaldo: el grado con que trabajan solo se muestra con 'Alumno(s)'", /data-para='alumnos'[\s\S]{0,200}¿Con qué grado trabajan\?/.test(nuevaJs) && /a\.classList\.toggle\("hidden", m !== "alumnos"\)/.test(nuevaJs), true);
 ok("docentes: ni 'maestra' ni 'maestro' en el texto visible", visible.match(/\bmaestr[oa]s?\b/gi) || [], []);
 ok("comillas: solo latinas en el texto visible, parejas", [
 	(visible.match(/["“”]/g) || []).length, (visible.match(/«/g) || []).length === (visible.match(/»/g) || []).length, (visible.match(/«/g) || []).length > 0,

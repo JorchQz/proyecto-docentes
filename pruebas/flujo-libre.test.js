@@ -226,7 +226,14 @@ intentar("sueltas", function () {
 	], [true, true, true]);
 	ok("«Trabajar hoy» y las tarjetas de Inicio: solo proyectos activos (el contenedor es 'completado')",
 		/p && p\.estado === "activo"/.test(leer("js/productos-hoy.js")) && /\.eq\("estado", "activo"\)/.test(leer("js/dashboard.js")), true);
-	ok("Hoy e Inicio ofrecen «Actividad suelta»", [/id="btnSuelta"/.test(leer("hoy.html")), /hoy\.html\?nueva=suelta/.test(leer("js/dashboard.js")), /hoy\.html\?nueva=suelta/.test(leer("planeacion.html"))], [true, true, true]);
+	// Fase 4 (2026-09-29): "+ Actividad o tarea" (dentro o fuera del proyecto) reemplaza a "Actividad suelta"; Inicio abre
+	// el diálogo (?nueva=1) y Proyectos, fuera del proyecto (?nueva=suelta). Hoy acepta las dos
+	ok("Hoy, Inicio y Proyectos ofrecen «+ Actividad o tarea» (fuera del proyecto es la suelta)", [
+		/id="btnActividad"[^>]*>[\s\S]{0,400}Actividad o tarea<\/button>/.test(leer("hoy.html")) && !/btnSuelta/.test(leer("hoy.html")),
+		/hoy\.html\?nueva=1'[^>]*>[\s\S]{0,400}Actividad o tarea<\/a>/.test(leer("js/dashboard.js")),
+		/hoy\.html\?nueva=suelta/.test(leer("planeacion.html")),
+		/if \(nueva !== "suelta" && nueva !== "1"\) return;/.test(leer("js/hoy.js")) && /agregarActividad\(\{ modo: nueva === "suelta" \? "fuera" : null, origen: btnActividad \}\)/.test(leer("js/hoy.js")),
+	], [true, true, true, true]);
 	ok("SQL: la tabla de asignación con RLS y delete_own_account completo", [
 		/create table if not exists public\.producto_sesion_alumnos/.test(SQL),
 		/alter table public\.producto_sesion_alumnos enable row level security/.test(SQL),

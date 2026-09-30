@@ -49,8 +49,12 @@ ok("alumno dado de alta el mismo día que su grupo: sin fecha de alta (le cuenta
 ok("alumno que llegó otro día: la suelta anterior a su alta no le cuenta", [A.fechaAlta(altaDespues, grupoCreado), A.cuentaDesdeAlta(A.fechaAlta(altaDespues, grupoCreado), "2026-09-24", null)], ["2026-10-05", false]);
 
 const hoyJs = leer("js/hoy.js");
-ok("Hoy: el día de la actividad suelta va del inicio al fin del trimestre (min y max)", /campoTexto\("Día de la actividad", \{ type: "date", min: rango\.desde, max: rango\.hasta, value: hoy \}\)/.test(hoyJs), true);
-ok("Hoy: valida con el rango del trimestre", /var ctxV = \{ hoy: hoy, gradosSesion: porOmision, desde: rangoV\.desde, hasta: rangoV\.hasta \}/.test(hoyJs), true);
+// Fase 4 (2026-09-29): el diálogo de agregar ("Fuera del proyecto" es la suelta) vive en js/actividad-nueva.js; Hoy le
+// pasa el rango del trimestre
+const nuevaJs = leer("js/actividad-nueva.js");
+ok("Hoy: el día de la actividad suelta va del inicio al fin del trimestre (min y max)",
+	/campoTexto\("Día de la actividad", \{ type: "date", min: rango\.desde, max: rango\.hasta, value: hoy \}\)/.test(nuevaJs) && /rango: rangoSuelta\(\),/.test(hoyJs), true);
+ok("Hoy: valida con el rango del trimestre", /var ctxV = \{ hoy: hoy, gradosSesion: porOmision\(\), desde: esSuelta \? rango\.desde : undefined, hasta: esSuelta \? rango\.hasta : undefined \};/.test(nuevaJs), true);
 ok("Hoy: la suelta de un día que ya pasó entra a la pantalla al agregarla", /if \(!r\.sesion\.fecha \|\| r\.sesion\.fecha > hoy\) return null;/.test(hoyJs), true);
 ok("Hoy: entra también al recargar ese día (su producto se creó hoy) y con ?calificar=", /get\("calificar"\)/.test(hoyJs) && /fechaLocal\(p\.created_at\) !== hoy/.test(hoyJs) && /created_at"\)/.test(hoyJs), true);
 ok("Hoy: solo sueltas, solo actividades (las tareas van a Tareas por revisar)", /if \(!s \|\| !s\.fecha \|\| s\.fecha >= hoy \|\| p\.tipo === "tarea"\) return;\s*if \(!window\.AlcanceHoy\.esSueltas\(proyectoPorId\[s\.proyecto_id\]\)\) return;/.test(hoyJs), true);
