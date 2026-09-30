@@ -92,11 +92,19 @@ ok("Hoy: diálogo accesible (role=dialog, aria-modal, Esc) de js/para-quien.js, 
 ok("Hoy: el diálogo valida con ProductosHoy.validarNuevo y el día por omisión es venceTarea",
 	/PH\(\)\.validarNuevo\(datos, ctxV\)/.test(nueva) && /PH\(\)\.validarSuelta\(datos, ctxV\)/.test(nueva) && /raiz\.AlcanceHoy\.venceTarea\(null, hoy, ctx\.ajustesCal \|\| \[\]\)/.test(nueva) &&
 	/ajustesCal: ajustesCal/.test(hoy), true);
-ok("Hoy: agregar, renombrar y quitar dicen que necesitan señal", (hoy.match(/necesita señal/g) || []).length >= 3, true);
-ok("Hoy: quitar revisa calificaciones (pantalla y base) antes de poner activo = false",
-	/tieneCaptura\(calificaciones\[/.test(hoy) && /\.eq\("producto_sesion_id", producto\.id\)/.test(hoy) && /update\(\{ activo: false \}\)/.test(hoy) &&
-	hoy.indexOf('.eq("producto_sesion_id", producto.id)') < hoy.indexOf("update({ activo: false })"), true);
-ok("Hoy: renombrar actualiza productos_sesion.nombre", /update\(\{ nombre: v\.nombre \}\)/.test(hoy), true);
+// Fase 5 (2026-09-30): Renombrar y Quitar viven en js/producto-acciones.js (sacados tal cual de Hoy; los usa también la
+// vista del proyecto). Hoy le pasa lo suyo: lo capturado en pantalla (también lo pendiente de enviar) y cómo se redibuja
+const acciones = leer("js/producto-acciones.js");
+ok("Hoy: agregar, renombrar y quitar dicen que necesitan señal",
+	[(hoy.match(/necesita señal/g) || []).length >= 2, /"Renombrar necesita señal\. "/.test(acciones), /"Quitar necesita señal\. "/.test(acciones)], [true, true, true]);
+ok("Hoy: quitar revisa calificaciones (pantalla y base) antes de poner activo = false (js/producto-acciones.js)",
+	/tieneCaptura\(calificaciones\[/.test(hoy) && /window\.ProductoAcciones\.quitar\(/.test(hoy) &&
+	/\.eq\("producto_sesion_id", producto\.id\)/.test(acciones) && /update\(\{ activo: false \}\)/.test(acciones) &&
+	acciones.indexOf('.eq("producto_sesion_id", producto.id)') < acciones.indexOf("update({ activo: false })") && !/update\(\{ activo: false \}\)/.test(hoy), true);
+ok("Hoy: renombrar actualiza productos_sesion.nombre (js/producto-acciones.js)",
+	/window\.ProductoAcciones\.renombrar\(/.test(hoy) && /update\(\{ nombre: v\.nombre \}\)/.test(acciones) && !/update\(\{ nombre: v\.nombre \}\)/.test(hoy), true);
+ok("hoy.html: carga js/producto-acciones.js (después del diálogo) antes de js/hoy.js",
+	hoyHtml.indexOf('src="js/para-quien.js"') < hoyHtml.indexOf('src="js/producto-acciones.js"') && hoyHtml.indexOf('src="js/producto-acciones.js"') < hoyHtml.indexOf('src="js/hoy.js"'), true);
 // Fase 2: producto, "para quién" y PDA se guardan juntos en la base (agregar_producto_sesion, mi_salon_b17)
 ok("Hoy: el producto nuevo se liga a los PDA de la sesión de sus grados (en la misma transacción)",
 	/rpc\("agregar_producto_sesion"/.test(nueva) && /p_ligar: ligas\.ligar, p_crear: ligas\.crear/.test(nueva) &&

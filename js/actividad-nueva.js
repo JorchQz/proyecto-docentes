@@ -42,6 +42,11 @@
 	  rango              { desde, hasta }: los días del trimestre en curso (ProductosHoy.rangoTrimestre)
 	  sinSenal(), textoSinSenal, textoError(err), origen (el botón que lo abrió)
 	  alAgregar({ nuevo, respuesta, suelta, sesion, filas, fecha, sinPda })  lo que hace la pantalla al agregarlo
+	  Opcionales de la vista del proyecto (js/proyecto.js, Fase 5; Hoy no los pasa y su diálogo no cambia):
+	  soloDentro         true: solo "Dentro del proyecto", en la sesión que llega (el interruptor no se muestra)
+	  revisaAlTrabajar   true: una TAREA de una sesión que aún no se trabaja (sin fecha) no pide día de revisión: se
+	                     revisa el siguiente día de clase después de trabajar la sesión, como las tareas del plan
+	                     (fecha_entrega null; ProductosHoy.validarNuevo con sinFechaRevision)
 	Puras (pruebas/actividad-nueva.test.js): contenidosDeSesion, destino, conCampo.
 */
 
@@ -206,6 +211,14 @@
 		}
 		function tipoElegido() { return refs.tipo ? (refs.tipo.querySelector("input:checked") || {}).value : "trabajo"; }
 		function destinoActual() { return destino({ modo: st.modo, suelta: suelta }); }
+		// Vista del proyecto (ctx.revisaAlTrabajar): la sesión elegida aún no se trabaja → la tarea se revisa después de
+		// trabajarla (sin día de revisión). En Hoy siempre es false: sus sesiones son de hoy o siguen en curso
+		function alTrabajar() { return !!ctx.revisaAlTrabajar && st.modo === "dentro" && !!st.sesion && !st.sesion.fecha; }
+		// El día en que se revisa la tarea (o, con alTrabajar, la nota de cuándo se revisa)
+		function pintarFecha() {
+			refs.fechaCont.classList.toggle("hidden", tipoElegido() !== "tarea" || alTrabajar());
+			if (refs.notaRevision) refs.notaRevision.classList.toggle("hidden", tipoElegido() !== "tarea" || !alTrabajar());
+		}
 
 		// "¿Para quién?": lo elegido en el diálogo (ProductosHoy.planAsignacion)
 		function planPara() {
@@ -242,6 +255,8 @@
 			fs.appendChild(ayuda);
 			refs.donde = fs;
 			refs.dondeAyuda = ayuda;
+			// Vista del proyecto: solo dentro, en la sesión de la que se abrió (el interruptor no se muestra)
+			if (ctx.soloDentro) fs.classList.add("hidden");
 			cuerpo.appendChild(fs);
 
 			// Dentro: la sesión (de las de hoy y las que siguen en curso)
@@ -702,6 +717,7 @@
 			quitarContenido();
 			llenarCampos();
 			aplicarOmisionPara();
+			if (ctx.revisaAlTrabajar) pintarFecha(); // otra sesión: con fecha o sin ella (la vista del proyecto)
 			pintarDonde();
 			cargaPda = cargarSpda();
 			pintarPda();
@@ -742,6 +758,15 @@
 				refs.fecha = fecha.input;
 				refs.fechaCont = fecha.cont;
 				cuerpo.appendChild(fecha.cont);
+				// Vista del proyecto: una tarea de una sesión que aún no se trabaja se revisa después de trabajarla
+				if (ctx.revisaAlTrabajar) {
+					var nota = document.createElement("p");
+					nota.setAttribute("data-revision-al-trabajar", "1");
+					nota.className = "hidden rounded-xl bg-gray-50 border border-gray-200 px-3 py-2.5 text-sm text-gray-700";
+					nota.textContent = "La tarea se revisa el siguiente día de clase después de trabajar esta sesión, como las tareas del plan.";
+					refs.notaRevision = nota;
+					cuerpo.appendChild(nota);
+				}
 
 				var grados = construirParaQuien(porOmision());
 				cuerpo.appendChild(grados);
@@ -762,7 +787,7 @@
 				pintarDonde();
 
 				tipo.addEventListener("change", function () {
-					refs.fechaCont.classList.toggle("hidden", tipoElegido() !== "tarea");
+					pintarFecha();
 					pintarDonde();
 				});
 				sel.addEventListener("change", function () {
@@ -795,6 +820,8 @@
 				var hacia = destinoActual();
 				var esSuelta = hacia === "suelta";
 				var ctxV = { hoy: hoy, gradosSesion: porOmision(), desde: esSuelta ? rango.desde : undefined, hasta: esSuelta ? rango.hasta : undefined };
+				// Vista del proyecto: la tarea de una sesión que aún no se trabaja no lleva día de revisión (en Hoy, nunca)
+				if (!esSuelta && alTrabajar()) ctxV.sinFechaRevision = true;
 				var v = esSuelta ? PH().validarSuelta(datos, ctxV) : PH().validarNuevo(datos, ctxV);
 				if (!v.ok) {
 					var foco = { nombre: refs.nombre, campo: refs.campo, fecha: refs.fecha, fechaSuelta: refs.dia,

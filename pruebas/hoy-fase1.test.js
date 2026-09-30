@@ -246,6 +246,10 @@ ok("faltan: la lista de restantes nace plegada (botón, no <details>)", /data-ab
 const conSecuencia = new Function("ABIERTAS", "SIG", cuerpoFilas)({ s3: true }, sig).bloque();
 ok("faltan: con la secuencia de esa sesión abierta, se despliega ahí mismo", /data-fila-sesion='s3'[\s\S]*<p>CUERPO<\/p>/.test(conSecuencia) && /data-ver-secuencia='s3' aria-expanded='true'/.test(conSecuencia), true);
 ok("faltan: el ojo de una sesión cerrada no despliega nada", bloque.indexOf("CUERPO"), -1);
+// Fase 5 (2026-09-30): con la secuencia desplegada, además, "Ver en el proyecto" (la vista del proyecto en esa sesión)
+ok("faltan: con la secuencia desplegada, «Ver en el proyecto» a la vista en esa sesión (relativo, 44 px); cerrada, no",
+	[/<p>CUERPO<\/p><a href='proyecto\.html\?id=p1&sesion=s3' data-ver-en-proyecto='s3' class='[^']*min-h-\[44px\][^']*'>Ver en el proyecto<\/a>/.test(conSecuencia), bloque.indexOf("data-ver-en-proyecto"), (conSecuencia.match(/data-ver-en-proyecto=/g) || []).length],
+	[true, -1, 1]);
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);

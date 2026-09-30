@@ -109,6 +109,8 @@ var Navegacion = (function () {
 	// Páginas que no están en el menú: se marca la de la que dependen
 	var PADRE = {
 		crear_proyecto: "planeacion",
+		// La vista del proyecto (Fase 5, 2026-09-30): se llega desde Proyectos y desde Hoy
+		proyecto: "planeacion",
 		boleta: "reportes",
 		"reporte-alumno": "reportes",
 		junta: "reportes",
@@ -119,7 +121,7 @@ var Navegacion = (function () {
 
 	var TITULOS = {
 		dashboard: "Inicio", hoy: "Hoy", asistencia: "Asistencia", actividades: "Actividades", tareas: "Tareas",
-		planeacion: "Proyectos", crear_proyecto: "Proyecto", marketplace: "Marketplace",
+		planeacion: "Proyectos", crear_proyecto: "Proyecto", proyecto: "Proyecto", marketplace: "Marketplace",
 		evaluacion_diagnostica: "Diagnóstico", evaluacion_formativa: "Evaluación formativa", examen: "Exámenes",
 		reportes: "Reportes", boleta: "Boleta", "reporte-alumno": "Reporte del alumno", junta: "Junta de padres",
 		exportar: "Exportar", "mi-grupo": "Mi grupo", incidencias: "Incidencias", "mi-cuenta": "Mi cuenta", ajustes: "Ajustes",

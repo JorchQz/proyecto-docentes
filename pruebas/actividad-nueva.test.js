@@ -114,10 +114,13 @@ ok("Hoy ya no tiene agregarProducto, su diálogo ni su lista de alumnos (se usan
 	[/function agregarProducto\(/, /function abrirDialogo\(/, /function listaAlumnosHtml\(/, /function contenidosDelCatalogo\(/].map((r) => r.test(hoy)), [false, false, false, false]);
 // Sin señal el diálogo no se abre y lo dice A LA VISTA (antes el aviso quedaba arriba, fuera de la pantalla)
 ok("Hoy: sin señal el diálogo no se abre y lo dice a la vista", /if \(sinSenal\(\)\) \{ avisoALaVista\("Agregar una actividad o una tarea necesita señal\./.test(hoy), true);
+// Renombrar y Quitar viven desde la Fase 5 en js/producto-acciones.js (sacados tal cual de Hoy): Hoy le pasa su avisoALaVista
+const acciones = leer("js/producto-acciones.js");
 ok("Hoy: sin señal, Renombrar, Quitar y Para quién también avisan a la vista (ninguno con mensaje(\"error\") por la señal)",
-	[/if \(sinSenal\(\)\) \{ avisoALaVista\("Renombrar necesita señal\. "/, /if \(sinSenal\(\)\) \{ avisoALaVista\("Quitar necesita señal\. "/,
-		/avisoALaVista\(sinSenal\(\) \? "Quitar necesita señal\. "/, /if \(sinSenal\(\)\) \{ avisoALaVista\("Cambiar para quién es necesita señal\. "/].map((r) => r.test(hoy))
-		.concat([/mensaje\("error", [^)]*necesita señal/.test(hoy)]), [true, true, true, true, false]);
+	[/if \(sinSenal\(\)\) \{ o\.avisoALaVista\("Renombrar necesita señal\. "/.test(acciones), /if \(sinSenal\(\)\) \{ o\.avisoALaVista\("Quitar necesita señal\. "/.test(acciones),
+		/o\.avisoALaVista\(sinSenal\(\) \? "Quitar necesita señal\. "/.test(acciones), /if \(sinSenal\(\)\) \{ avisoALaVista\("Cambiar para quién es necesita señal\. "/.test(hoy),
+		/avisoALaVista: avisoALaVista, mensaje: mensaje/.test(hoy)]
+		.concat([/mensaje\("error", [^)]*necesita señal/.test(hoy + acciones)]), [true, true, true, true, true, false]);
 // El aviso de error de un diálogo se desplaza a la vista dentro del diálogo (a 390 px quedaba abajo del borde)
 ok("diálogo (js/para-quien.js): el aviso de error se desplaza a la vista; el foco va al campo sin mover lo que se ve",
 	/foco\.focus\(\{ preventScroll: true \}\)/.test(leer("js/para-quien.js")) && /if \(texto && aviso\.scrollIntoView\) aviso\.scrollIntoView\(\{ block: "nearest" \}\);/.test(leer("js/para-quien.js")), true);

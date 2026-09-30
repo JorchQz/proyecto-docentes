@@ -82,6 +82,9 @@ ok("renglones: etiquetas", r.renglones.map((x) => x.etiqueta), ["Trabajo de 3°"
 ok("renglones: claves del materializador (tipo, grados, nombre) + repetición",
 	r.renglones.map((x) => x.clave), ["trabajo|3||1", "trabajo|4||1", "tarea|3,4|Traer una hoja|1"]);
 ok("renglones: lo agregado en Hoy (activo) no se lista y se cuenta; el del plan duplicado (t3b) también es de Hoy", r.deHoy, 2);
+// Fase 5 (2026-09-30): además de contarlos, los devuelve (Crear proyecto los lista por nombre y para quién, de solo lectura)
+ok("renglones: extras = los activos que no son del plan, en el orden en que llegan (sin el quitado ni los de otra sesión); deHoy es cuántos",
+	[r.extras.map((p) => p.id), r.deHoy === r.extras.length], [["t3b", "hoy1"], true]);
 ok("renglones: el producto quitado en Hoy no cuenta", r.renglones.some((x) => x.producto && x.producto.id === "hoy2"), false);
 const renombrada = PQ.renglonesDeSesion(Object.assign({}, sesTodos, { cierre_tareas: { mode: "todos", todos: ["Traer dos hojas"] } }), [3, 4], conHoy);
 ok("cambiar el texto de la tarea cambia su clave (su elección vuelve al predeterminado)",

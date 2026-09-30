@@ -341,11 +341,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		// Duplicar (decisión de Jorge del 2026-09-26): en cualquier estado; la copia sale sin fechas ni calificaciones
 		const duplicar = '<button data-action="duplicar" data-id="' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Duplicar</button>';
+		/*
+			"Ver proyecto" (Fase 5, 2026-09-30) abre la vista del proyecto: cada sesión con su secuencia, sus anexos y
+			sus actividades calificables con quién las hace; ahí se agregan, se renombran y se quitan. Es la acción
+			principal. "Editar" sigue llevando a Crear proyecto (el plan).
+		*/
+		const ver = '<a href="proyecto.html?id=' + id + '" data-ver-proyecto="' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>Ver proyecto</a>';
+		const editar = '<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>Editar</a>';
 
 		if (estado === "borrador") {
 			return (
 				'<button data-action="iniciar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Iniciar</button>' +
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>Editar</a>' +
+				ver + editar +
 				duplicar +
 				'<button data-action="eliminar" data-id="' + id + '" class="' + btnBase + ' border border-red-200 text-red-600 hover:bg-red-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Eliminar</button>'
 			);
@@ -353,7 +360,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		if (estado === "activo") {
 			return (
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver y editar sesiones</a>' +
+				ver + editar +
 				'<button data-action="pausar" data-id="' + id + '" class="' + btnBase + ' border border-amber-300 text-amber-700 hover:bg-amber-50 inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pausar</button>' +
 				duplicar
 			);
@@ -362,19 +369,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (estado === "pausado") {
 			return (
 				'<button data-action="reanudar" data-id="' + id + '" class="' + btnBase + ' bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>Reanudar</button>' +
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' border border-gray-300 text-gray-700 hover:bg-gray-50">Ver y editar sesiones</a>' +
+				ver + editar +
 				duplicar
 			);
 		}
 
 		if (estado === "completado") {
 			return (
-				'<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver sesiones</a>' +
+				ver + editar +
 				duplicar
 			);
 		}
 
-		return '<a href="crear_proyecto.html?id=' + id + '" class="' + btnBase + ' bg-blue-600 hover:bg-blue-700 text-white">Ver proyecto</a>' + duplicar;
+		return ver + editar + duplicar;
 	}
 
 	// =========================================================================

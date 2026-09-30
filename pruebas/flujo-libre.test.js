@@ -246,10 +246,14 @@ intentar("sueltas", function () {
 
 // ── 5. Arreglos del revisor R25a ─────────────────────────────────────────────
 intentar("R25a", function () {
-	const h = leer("js/hoy.js");
+	// Desde la Fase 5 (2026-09-30) Quitar vive en js/producto-acciones.js (sacado tal cual de Hoy; lo usan Hoy y la vista
+	// del proyecto)
+	const h = leer("js/producto-acciones.js").replace(/\r\n/g, "\n");
 	const iUpd = h.indexOf('update({ activo: false })');
 	const iRevision = h.lastIndexOf("calificadasEnBase()", iUpd);
-	ok("Quitar: vuelve a revisar justo antes del UPDATE y avisa «Mientras decidías…»", [iRevision > h.indexOf("alAceptar: async function (form, avisar) {\n\t\t\t\tif (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }\n\t\t\t\t// Se vuelve"), iRevision < iUpd, /Mientras decidías, se calificó/.test(h), /producto_con_calificaciones/.test(h)], [true, true, true, true]);
+	const iDialogo = h.indexOf("alAceptar: async function (form, avisar) {\n\t\t\t\tif (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }\n\t\t\t\t// Se vuelve");
+	ok("Quitar: vuelve a revisar justo antes del UPDATE y avisa «Mientras decidías…»", [iDialogo !== -1 && iRevision > iDialogo, iRevision < iUpd, /Mientras decidías, se calificó/.test(h), /producto_con_calificaciones/.test(h)], [true, true, true, true]);
+	ok("Quitar: Hoy usa el módulo (sin copia propia)", /window\.ProductoAcciones\.quitar\(/.test(leer("js/hoy.js")) && !/update\(\{ activo: false \}\)/.test(leer("js/hoy.js")), true);
 	ok("Quitar: la base lo rechaza con calificaciones (trigger BEFORE UPDATE OF activo)", [
 		/create trigger productos_sesion_no_quitar_calificado\s+before update of activo on public\.productos_sesion/.test(SQL),
 		/raise exception 'Mientras decidías, se calificó este producto; no se quitó\.'\s+using errcode = 'P0001', hint = 'producto_con_calificaciones'/.test(SQL),

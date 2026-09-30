@@ -1913,7 +1913,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       - Edición: se muestra lo ya asignado; un alumno con calificación en ese producto sale
         marcado y bloqueado (la base lo revisa otra vez al guardar). En una sesión trabajada se
         cambia el "para quién" de sus productos existentes, con el mismo candado.
-      - Lo agregado en Hoy (no es del plan) no se lista: se maneja en Hoy (se dice en una línea).
+      - Lo que no es del plan (agregado en Hoy o en la vista del proyecto, o un trabajo por grupo de
+        trabajo) se lista por nombre y para quién, de solo lectura, con el enlace "Ver y gestionar en la
+        vista del proyecto" (Fase 5, 2026-09-30; ParaQuien.renglonesDeSesion → extras). No se guarda aquí.
       - El borrador local guarda la elección (_paraQuien de cada sesión).
     block._paraQuien = { clave: { quieren: { alumnoId: true } } }: solo lo que la maestra cambió.
   */
@@ -1974,11 +1976,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   function pqHtml(block) {
-    const { renglones, deHoy } = pqRenglones(block, pqProductos);
+    const { renglones, extras } = pqRenglones(block, pqProductos);
     if (!alumnosGrupo.length) {
       return '<p class="text-sm text-gray-600">Tu grupo aún no tiene alumnos. Cuando los agregues, en Hoy eliges para quién es cada trabajo o tarea.</p>';
     }
-    if (!renglones.length && !deHoy) return '';
+    if (!renglones.length && !(extras || []).length) return '';
     let html = '<p class="text-xs text-gray-500 mb-2">Por omisión, cada trabajo y cada tarea son para los alumnos de su grado. ' +
       'Cámbialo si alguien no lo hace o si un alumno de otro grado trabaja con ese grado. Se guarda al guardar el proyecto.</p>';
     if (renglones.length) {
@@ -1996,11 +1998,25 @@ document.addEventListener("DOMContentLoaded", async function () {
           </li>`;
       }).join('') + '</ul>';
     }
-    if (deHoy) {
-      html += '<p class="text-xs text-gray-500 mt-2">' + (deHoy === 1
-        ? 'Esta sesión tiene 1 actividad o tarea más (agregada en Hoy o para un grupo de trabajo)'
-        : 'Esta sesión tiene ' + deHoy + ' actividades o tareas más (agregadas en Hoy o para un grupo de trabajo)') +
-        ': su «para quién» se cambia en Hoy.</p>';
+    /*
+      Lo que no es del plan (agregado en Hoy o en la vista del proyecto, o un trabajo por grupo de trabajo): por
+      nombre y para quién, de SOLO LECTURA (Fase 5, 2026-09-30; antes solo se decía cuántos eran). No
+      entra a lo que se guarda: se gestiona en la vista del proyecto (proyecto.html) o en Hoy.
+    */
+    if ((extras || []).length) {
+      html += '<p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mt-3 mb-1">También en esta sesión</p>' +
+        '<ul class="pq-extras flex flex-col divide-y divide-gray-200">' + extras.map(function (p) {
+          const q = window.ParaQuien.quienHace(p, pqAsignaciones[p.id] || {}, alumnosGrupo);
+          return `<li class="py-2">
+              <p class="text-sm font-medium text-gray-800 break-words">${escapeHtml(p.nombre || 'Sin nombre')}<span class="font-normal text-gray-600">: ${escapeHtml(q.texto)}</span></p>
+              <p class="text-xs text-gray-500">${p.tipo === 'tarea' ? 'Tarea para casa' : 'Actividad en clase'} · ${q.n} ${q.n === 1 ? 'alumno' : 'alumnos'}</p>
+            </li>`;
+        }).join('') + '</ul>';
+    }
+    // La vista del proyecto en esta sesión: ahí se agregan, se renombran, se quitan y se cambia su «para quién»
+    if (proyectoId && block.dataset.sesionId) {
+      html += '<a href="proyecto.html?id=' + encodeURIComponent(proyectoId) + '&sesion=' + encodeURIComponent(block.dataset.sesionId) + '" ' +
+        'class="pq-ver-vista mt-2 inline-flex items-center min-h-[44px] px-3 rounded-xl text-sm font-semibold text-blue-700 hover:bg-blue-50">Ver y gestionar en la vista del proyecto</a>';
     }
     return html;
   }

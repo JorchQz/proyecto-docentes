@@ -10,10 +10,14 @@
 
 	Arriba, reglas puras (pruebas/para-quien-planeacion.test.js):
 	  ParaQuien.renglonesDeSesion(ses, gradosProyecto, productos, { soloConProducto })
-	    → { renglones: [{ clave, hueco, producto, grados, etiqueta }], deHoy }
+	    → { renglones: [{ clave, hueco, producto, grados, etiqueta }], deHoy, extras }
 	    Lo que la sesión materializa (SesionesMaterializar.emparejarPlan: la MISMA regla del
-	    materializador) con su producto si ya existe. deHoy: productos activos de la sesión que no
-	    son del plan (se agregaron en Hoy; su "para quién" se cambia en Hoy).
+	    materializador) con su producto si ya existe. extras: los productos activos de la sesión que
+	    no son del plan (se agregaron en Hoy o en la vista del proyecto, o son de un grupo de trabajo);
+	    deHoy: cuántos son. Crear proyecto los lista de solo lectura y se gestionan en la vista del
+	    proyecto (proyecto.html) o en Hoy.
+	  ParaQuien.quienHace(producto, asignacion, alumnos) → { texto, n, alumnos, porNombre, resumen }
+	    "1° (todos)" o los nombres de quienes lo hacen ("ANA, LUIS"): la vista del proyecto y Crear proyecto.
 	    La clave es la del materializador (tipo, grados y, en tareas, nombre) más el número de
 	    repetición: si la maestra cambia el texto de una tarea o los grados, la clave cambia y ese
 	    renglón vuelve al predeterminado (los alumnos de su grado).
@@ -94,8 +98,32 @@
 				etiqueta: etiquetaHueco(par.hueco),
 			});
 		});
-		var deHoy = deSesion.filter(function (p) { return !usados[p.id] && p.activo !== false; }).length;
-		return { renglones: renglones, deHoy: deHoy };
+		// Los activos que no son del plan (agregados en Hoy o en la vista del proyecto, o por grupo de trabajo), en
+		// el orden en que llegaron. deHoy es cuántos son (se conserva: Crear proyecto los contaba así)
+		var extras = deSesion.filter(function (p) { return !usados[p.id] && p.activo !== false; });
+		return { renglones: renglones, deHoy: extras.length, extras: extras };
+	}
+
+	/*
+		Quién hace un producto, para leerlo en una lista (la vista del proyecto y Crear proyecto; Fase 5, 2026-09-30:
+		"Tarjeta de nombre · Morado: Angela, Dilan"). La regla de quién lo recibe es la de siempre (asignadoA).
+		  - todo un grado (o varios) sin cambios → el resumen: "1° (todos)", "1° y 2° (todos)";
+		  - si no (alumnos elegidos uno por uno, un grado sin alguno o con alumnos de otro grado) → los nombres de
+		    quienes lo hacen, en el orden de la lista (OrdenLista si está cargado: por grado y nombre);
+		  - nadie → el resumen ("Nadie", "4° (no hay alumnos de ese grado en el grupo)").
+		→ { texto, n (cuántos lo hacen: para el material), alumnos, porNombre, resumen }
+	*/
+	function quienHace(producto, asignacion, alumnos) {
+		var g = gradosOrdenados(producto && producto.grados);
+		var lista = (alumnos || []).filter(function (a) { return a && a.id && asignadoA(a, g, asignacion); });
+		if (raiz.OrdenLista && raiz.OrdenLista.ordenar) lista = raiz.OrdenLista.ordenar(lista);
+		var r = resumen(g, asignacion, alumnos);
+		var todos = / \(todos\)$/.test(r);
+		var porNombre = lista.length > 0 && !todos;
+		return {
+			texto: porNombre ? lista.map(function (a) { return String(a.nombre_completo || "").trim(); }).join(", ") : r,
+			n: lista.length, alumnos: lista, porNombre: porNombre, resumen: r,
+		};
 	}
 
 	function quierenPorOmision(grados, alumnos, asignacion) {
@@ -321,7 +349,7 @@
 	var api = {
 		claveHueco: claveHueco, etiquetaHueco: etiquetaHueco, renglonesDeSesion: renglonesDeSesion,
 		quierenPorOmision: quierenPorOmision, bloqueados: bloqueados, indiceCalificaciones: indiceCalificaciones,
-		asignacionDe: asignacionDe, mismaAsignacion: mismaAsignacion, resumen: resumen,
+		asignacionDe: asignacionDe, mismaAsignacion: mismaAsignacion, resumen: resumen, quienHace: quienHace,
 		esc: esc, listaAlumnosHtml: listaAlumnosHtml, abrirDialogo: abrirDialogo, elegir: elegir,
 	};
 	raiz.ParaQuien = api;

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- App instalable "Jissez MS" (js/app-instalada.js; docs/PWA-MI-SALON.md) -->
+	<link rel="manifest" href="/salon.webmanifest">
+	<meta name="theme-color" content="#1e3a8a">
+	<link rel="apple-touch-icon" href="/iconos/apple-touch-icon-180.png">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Jissez MS">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<script src="js/app-instalada.js"></script>
+	<!-- Navegación (js/navbar.js): en el head, para apartar su espacio desde el primer pintado -->
+	<script src="js/navbar.js"></script>
+	<title>Proyecto — Jissez</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		/* Cada sesión: la secuencia y, al lado, sus actividades calificables (desde 1280 px, la tableta en horizontal).
+		   Más angosto, una debajo de otra, primero las actividades. Con el visor de libros abierto (pantalla
+		   dividida, js/visor-recursos.js) también una debajo de otra: al lado no cabrían. */
+		.pv-cols { display: flex; flex-direction: column; gap: 1rem; }
+		@media (min-width: 1280px) {
+			.pv-cols { flex-direction: row; align-items: flex-start; }
+			.pv-acts { width: 23rem; flex-shrink: 0; order: 2; }
+			.pv-sec { order: 1; }
+		}
+		html.jz-visor-dividido .pv-cols { flex-direction: column; }
+		html.jz-visor-dividido .pv-acts { width: auto; order: 0; }
+		html.jz-visor-dividido .pv-sec { order: 0; }
+	</style>
+</head>
+<body class="bg-gray-50 min-h-screen pt-16 px-4 md:px-8 pb-24 text-gray-800">
+	<main>
+		<div class="max-w-6xl mx-auto flex flex-col gap-4">
+			<header class="bg-blue-800 rounded-2xl shadow-md p-5 sm:p-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+				<div class="min-w-0">
+					<a href="planeacion.html" class="inline-flex items-center min-h-[44px] -mt-2 text-sm text-blue-100 hover:text-white hover:underline">← Proyectos</a>
+					<h1 id="proyectoTitulo" class="text-2xl font-bold text-white break-words">Cargando el proyecto...</h1>
+					<p id="proyectoSubtitulo" class="text-blue-100 text-sm mt-1"></p>
+				</div>
+				<!-- "Editar el plan": Crear proyecto (el plan de las sesiones); se llena al cargar -->
+				<a id="proyectoEditar" href="planeacion.html" class="hidden shrink-0 self-start inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl border border-white/60 text-sm font-semibold text-white hover:bg-white/10">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Editar el plan</a>
+			</header>
+
+			<p class="text-sm text-gray-600">Cada sesión con su secuencia (inicio, desarrollo y cierre), sus anexos y libros, y sus actividades calificables: quién hace cada una y cuántos alumnos son, para preparar el material. Lo que agregues, renombres o quites aquí aparece en Hoy, y lo de Hoy aparece aquí.</p>
+
+			<div id="proyectoMensaje" class="hidden rounded-xl px-4 py-3 text-sm" role="status" aria-live="polite"></div>
+
+			<div id="proyectoEstado" class="text-center py-16 text-gray-400 text-lg">Cargando el proyecto...</div>
+
+			<!-- Índice: un botón por sesión, con su estado (js/proyecto.js) -->
+			<nav id="proyectoIndice" aria-label="Sesiones del proyecto" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5"></nav>
+
+			<!-- Las sesiones (js/proyecto.js) -->
+			<div id="proyectoSesiones" class="flex flex-col gap-4"></div>
+		</div>
+	</main>
+
+	<script src="js/supabase.js"></script>
+	<script src="js/lectura.js"></script>
+	<script src="js/saas-guard.js"></script>
+	<script src="js/mi-salon-acceso.js"></script>
+	<script src="js/secciones.js"></script>
+	<!-- Cerrar sesión (la barra) avisa si hay capturas de Hoy sin enviar en este aparato -->
+	<script src="js/bandeja-salida.js"></script>
+	<script src="js/grupo-activo.js"></script>
+	<script src="js/leer-todo.js"></script>
+	<script src="js/calendario-escolar.js"></script>
+	<script src="js/calendario-sep.js"></script>
+	<script src="js/alcance-hoy.js"></script>
+	<script src="js/section-shell.js"></script>
+	<script src="js/campos-formativos.js"></script>
+	<script src="js/productos-hoy.js"></script>
+	<!-- El diálogo accesible, "+ Actividad o tarea" (el de Hoy) y Renombrar / Quitar (compartidos con Hoy) -->
+	<script src="js/para-quien.js"></script>
+	<script src="js/actividad-nueva.js"></script>
+	<script src="js/producto-acciones.js"></script>
+	<script src="js/orden-lista.js"></script>
+	<!-- La secuencia de la sesión y el visor de libros (los de Hoy e Inicio) -->
+	<script src="js/texto-sesion.js"></script>
+	<script src="js/secuencia-sesion.js"></script>
+	<script src="js/sesion-terminar.js"></script>
+	<script src="js/visor-recursos.js"></script>
+	<script src="js/proyecto-edicion.js"></script>
+	<script src="js/proyecto.js"></script>
+</body>
+</html>

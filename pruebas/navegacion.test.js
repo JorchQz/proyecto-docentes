@@ -107,6 +107,8 @@ ok("barra de abajo: espacio al final y lo fijo abajo sube (avisos de Hoy, pies d
 
 // ── Menú y títulos ───────────────────────────────────────────────────────────
 ok("página actual", ["/salon/hoy", "/hoy.html", "/x/reportes", "/", "/salon/"].map(N.paginaDe), ["hoy", "hoy", "reportes", "dashboard", "dashboard"]);
+ok("la vista del proyecto (Fase 5, 2026-09-30) marca Proyectos y se titula «Proyecto» (también en /salon/)",
+	[N.activoDe("salon", "proyecto"), N.tituloDe("salon", "proyecto"), N.paginaDe("/salon/proyecto"), N.paginaDe("/proyecto.html")], ["planeacion", "Proyecto", "proyecto", "proyecto"]);
 ok("marcado en el menú (las páginas hijas marcan a su sección)",
 	["hoy", "crear_proyecto", "boleta", "mi-cuenta", "evaluacion_formativa", "sala-maestros"].map((p) => N.activoDe(p === "sala-maestros" ? "sala" : "salon", p)),
 	["hoy", "planeacion", "reportes", "mi-cuenta", null, "sala-maestros"]);

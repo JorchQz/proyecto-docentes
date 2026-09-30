@@ -74,8 +74,11 @@
 	}
 
 	/*
-		validarNuevo({ nombre, tipo, campo, grados, fechaRevision }, { hoy, gradosSesion })
+		validarNuevo({ nombre, tipo, campo, grados, fechaRevision }, { hoy, gradosSesion, sinFechaRevision })
 		→ { ok, error, foco, fila } — fila lista para productos_sesion (sin sesion_id ni maestro_id)
+		sinFechaRevision (opcional; solo la vista del proyecto, Fase 5): una tarea de una sesión que aún no se trabaja
+		no lleva día de revisión (fecha_entrega null): vence el siguiente día de clase después de trabajar la sesión
+		(AlcanceHoy.venceTarea), como las tareas del plan. Hoy no lo pasa: sus tareas siempre llevan su día.
 	*/
 	function validarNuevo(d, ctx) {
 		d = d || {};
@@ -89,7 +92,7 @@
 		// Sin grados solo si es para alumnos elegidos ("¿Para quién?": d.incluidos > 0)
 		if (!grados.length && !(Number(d.incluidos) > 0)) return { ok: false, foco: "grados", error: "Elige al menos un grado." };
 		var fecha = null;
-		if (d.tipo === "tarea") {
+		if (d.tipo === "tarea" && !ctx.sinFechaRevision) {
 			fecha = String(d.fechaRevision || "");
 			if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, foco: "fecha", error: "Elige el día en que se revisa la tarea." };
 			if (ctx.hoy && fecha < ctx.hoy) return { ok: false, foco: "fecha", error: "El día en que se revisa la tarea no puede ser anterior a hoy." };

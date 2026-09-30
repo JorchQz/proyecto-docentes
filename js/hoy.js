@@ -1622,7 +1622,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"aria-label='Editar la sesión " + num + " en el proyecto' title='Editar en el proyecto' " +
 			"class='inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-blue-700 hover:bg-blue-50'>" + iconoLapiz() + "</a>" +
 			"</span></div>" +
-			(abierta ? "<div class='px-3 pb-3 border-t border-gray-100 pt-2'>" + cuerpoSecuencia(s) + "</div>" : "") +
+			(abierta ? "<div class='px-3 pb-3 border-t border-gray-100 pt-2'>" + cuerpoSecuencia(s) +
+				// "Ver en el proyecto" (Fase 5): la vista del proyecto en esta sesión, con sus actividades y quién hace cada una
+				"<a href='proyecto.html?id=" + encodeURIComponent(s.proyecto_id || "") + "&sesion=" + encodeURIComponent(s.id) + "' data-ver-en-proyecto='" + esc(s.id) + "' " +
+				"class='mt-2 inline-flex items-center min-h-[44px] px-3 rounded-lg text-sm font-semibold text-blue-700 hover:bg-blue-50'>Ver en el proyecto</a>" +
+				"</div>" : "") +
 			"</div>";
 	}
 
@@ -2277,17 +2281,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: "Sin señal: no se puede " + accion + " en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 	}
 
-	function campoTexto(etiqueta, atributos) {
-		var cont = document.createElement("label");
-		cont.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
-		cont.textContent = etiqueta;
-		var input = document.createElement("input");
-		Object.keys(atributos || {}).forEach(function (k) { input.setAttribute(k, atributos[k]); });
-		input.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600";
-		cont.appendChild(input);
-		return { cont: cont, input: input };
-	}
-
 	// Sin señal no se crea, renombra ni quita un producto (no va por la cola: la captura de sus
 	// calificaciones necesita su id de la base). Lo capturado sigue a salvo en el dispositivo
 	var TEXTO_SIN_SENAL = "Esto necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal.";
@@ -2466,120 +2459,53 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	/*
+		Renombrar y Quitar un producto: el módulo compartido con la vista del proyecto (js/producto-acciones.js, Fase 5
+		del plan de Fanny; se sacó tal cual de aquí, con las mismas reglas y los mismos textos). Aquí queda lo que es de
+		Hoy: qué hay capturado en esta pantalla (también lo pendiente de enviar), cómo se vuelve a dibujar y dónde se avisa.
+	*/
+	function accionesDe(producto, origen) {
+		return {
+			sb: window.sb, maestroId: user.id, producto: producto, origen: origen,
+			sinSenal: sinSenal, textoSinSenal: TEXTO_SIN_SENAL, textoError: textoError,
+			avisoALaVista: avisoALaVista, mensaje: mensaje,
+		};
+	}
+
 	function renombrarProducto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		if (sinSenal()) { avisoALaVista("Renombrar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
-		var refs = {};
-		window.ParaQuien.abrirDialogo({
-			origen: origen,
-			textoError: textoError,
-			titulo: "Renombrar",
-			subtitulo: (producto.tipo === "tarea" ? "Tarea" : "Actividad") + " para " + window.ProductosHoy.etiquetaGrados(producto.grados),
-			aceptar: "Guardar nombre",
-			construir: function (cuerpo) {
-				var n = campoTexto("Nombre", { type: "text", maxlength: String(window.ProductosHoy.NOMBRE_MAX), autocomplete: "off", "data-foco": "1" });
-				n.input.value = producto.nombre || "";
-				refs.nombre = n.input;
-				cuerpo.appendChild(n.cont);
-			},
-			alAceptar: async function (form, avisar) {
-				var v = window.ProductosHoy.validarNombre(refs.nombre.value);
-				if (!v.ok) { avisar(v.error, refs.nombre); return false; }
-				if (v.nombre === producto.nombre) return;
-				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
-				var res = await window.sb.from("productos_sesion").update({ nombre: v.nombre })
-					.eq("id", producto.id).eq("maestro_id", user.id);
-				if (res.error) {
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo renombrar: " + textoError(res.error) + ".");
-					return false;
-				}
-				producto.nombre = v.nombre;
+		window.ProductoAcciones.renombrar(Object.assign(accionesDe(producto, origen), {
+			alRenombrar: function () {
 				renderTareas();
 				renderSesiones();
-				mensaje("info", "Nombre guardado: «" + v.nombre + "».");
 			},
-		});
+		}));
 	}
 
 	/*
 		Quitar un producto (activo = false: ya no se califica ni cuenta en el motor, "Qué le
 		falta" ni los reportes). Solo si no tiene calificaciones: se revisa lo de esta pantalla
-		(también lo pendiente de enviar) y la base.
+		(también lo pendiente de enviar) y la base, dos veces (js/producto-acciones.js).
 	*/
 	async function quitarProducto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		// Con captura en esta pantalla (también lo pendiente de enviar)
-		function conCapturaAqui() {
-			return alumnos.some(function (al) {
-				return window.ProductosHoy.tieneCaptura(calificaciones[al.id + "|" + producto.id]);
-			});
-		}
-		// Con calificaciones en la base (lanza si no se pudo leer)
-		async function calificadasEnBase() {
-			var res = await window.sb.from("calificaciones").select("id", { count: "exact", head: true })
-				.eq("maestro_id", user.id).eq("producto_sesion_id", producto.id)
-				.or("estado_entrega.not.is.null,nivel.not.is.null,puntaje.not.is.null,retroalimentacion.not.is.null");
-			if (res.error) throw res.error;
-			return res.count || 0;
-		}
-		var avisoConCal = "«" + producto.nombre + "» ya tiene calificaciones, así que no se puede quitar. Si el nombre no es el correcto, usa Renombrar.";
-		// Se calificó mientras el diálogo estaba abierto (otra pestaña u otro aparato: R25a-r09)
-		var avisoCarrera = "Mientras decidías, se calificó «" + producto.nombre + "»; no se quitó. Recarga la página para ver esa calificación.";
-		if (conCapturaAqui()) { mensaje("error", avisoConCal); return; }
-		if (sinSenal()) { avisoALaVista("Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
-		origen.disabled = true;
-		var enBaseCon = 0;
-		try {
-			enBaseCon = await calificadasEnBase();
-		} catch (err) {
-			origen.disabled = false;
-			avisoALaVista(sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
-				: "No se pudo revisar si tiene calificaciones, así que no se quitó: " + textoError(err) + ".");
-			return;
-		}
-		origen.disabled = false;
-		if (enBaseCon > 0) { mensaje("error", avisoConCal); return; }
-		window.ParaQuien.abrirDialogo({
-			origen: origen,
-			textoError: textoError,
-			titulo: "¿Quitar «" + producto.nombre + "»?",
-			subtitulo: "Ya no aparecerá para calificar y no cuenta en la boleta. Nadie lo ha calificado todavía.",
-			aceptar: "Quitar",
-			peligro: true,
-			alAceptar: async function (form, avisar) {
-				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
-				// Se vuelve a revisar justo antes: mientras el diálogo estuvo abierto, otra pestaña pudo
-				// calificarlo (la base también lo rechaza: productos_sesion_no_quitar_calificado, b17)
-				var yaCalificado = conCapturaAqui();
-				if (!yaCalificado) {
-					try {
-						yaCalificado = (await calificadasEnBase()) > 0;
-					} catch (err) {
-						avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo revisar si tiene calificaciones, así que no se quitó: " + textoError(err) + ".");
-						return false;
-					}
-				}
-				if (yaCalificado) { mensaje("error", avisoCarrera); return; }
-				var upd = await window.sb.from("productos_sesion").update({ activo: false })
-					.eq("id", producto.id).eq("maestro_id", user.id);
-				if (upd.error) {
-					if (String(upd.error.hint || "") === "producto_con_calificaciones" || /se calific/i.test(String(upd.error.message || ""))) {
-						mensaje("error", avisoCarrera);
-						return;
-					}
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo quitar: " + textoError(upd.error) + ".");
-					return false;
-				}
+		await window.ProductoAcciones.quitar(Object.assign(accionesDe(producto, origen), {
+			// Con captura en esta pantalla (también lo pendiente de enviar)
+			conCaptura: function () {
+				return alumnos.some(function (al) {
+					return window.ProductosHoy.tieneCaptura(calificaciones[al.id + "|" + producto.id]);
+				});
+			},
+			alQuitar: function () {
 				var lista = productosPorSesion[producto.sesion_id] || [];
 				productosPorSesion[producto.sesion_id] = lista.filter(function (p) { return p.id !== producto.id; });
 				tareas = tareas.filter(function (t) { return t.id !== producto.id; });
 				renderTareas();
 				renderSesiones();
-				mensaje("info", "Se quitó «" + producto.nombre + "».");
 			},
-		});
+		}));
 	}
 
 	// ── 4. Cierre del día ─────────────────────────────────────────────────────

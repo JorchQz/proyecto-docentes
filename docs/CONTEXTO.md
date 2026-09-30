@@ -382,6 +382,30 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
     la regla de siempre; "+ Otro contenido" suma uno del catálogo y "Cambiar" lo reemplaza. Las
     reglas son las de `ProductosHoy` y el diálogo es el de `js/para-quien.js`. Necesita señal.
     Una prueba "dorada" comprobó que deja las mismas filas que los dos diálogos de antes.
+  - **La vista del proyecto (Fase 5, 2026-09-30, `proyecto.html?id=…&sesion=…`, `js/proyecto.js`):**
+    "Fanny necesita ver en el proyecto bien organizado lo que hará cada quién, no hasta Hoy, y cuánto
+    material necesita según quién hará la actividad". Por cada sesión, como la tarjeta 3 de Hoy: número,
+    campo, horario (`duracion`) y estado con la regla de Hoy (`SesionTerminar.enCurso` y
+    `CORTE_EN_CURSO`: "Pendiente", "En curso desde…" o "Terminada" con "Se trabajó el…", porque la
+    base no guarda el día en que se terminó); la secuencia (`SecuenciaSesion`: inicio, desarrollo y
+    cierre, tareas, anexos y libros; los libros en el visor, Drive en otra pestaña) y las actividades
+    calificables (`productos_sesion` activos) con qué son, quién las hace (`ParaQuien.quienHace`:
+    "Tarjeta de nombre · Morado: ANGELA, DILAN" o "1° (todos)"), cuántos alumnos son, cuántos ya tienen
+    calificación y, arriba, "Para el material: 3 actividades en clase: 2, 8 y 6 alumnos". Índice con un
+    botón por sesión; las terminadas salen plegadas; con `?sesion=` baja a esa sesión y la resalta.
+    Desde la vista, con las MISMAS tablas y RPC que Hoy (lo de aquí aparece en Hoy y al revés):
+    agregar con el diálogo de Hoy (`ActividadNueva.abrir` con `soloDentro`: solo en esa sesión; en una
+    sesión que aún no se trabaja, una **tarea** no pide día de revisión y vence el siguiente día de
+    clase después de trabajarla, como las del plan: `revisaAlTrabajar`, `fecha_entrega` null,
+    `ProductosHoy.validarNuevo` con `sinFechaRevision`); una sesión **terminada no ofrece agregar** (no
+    aparecería en Hoy para calificarse); renombrar y quitar con `js/producto-acciones.js` (sacado tal
+    cual de Hoy, que también lo usa: Quitar revisa dos veces y la base lo rechaza con
+    "producto_con_calificaciones"); "Para quién" con `ParaQuien.elegir` y `guardar_asignacion_producto`
+    (quien tiene calificación, bloqueado). Una sesión trabajada dice "Esta sesión ya se trabajó: su
+    plan no cambia; sus actividades calificables sí". "Editar el plan" lleva a Crear proyecto en esa
+    sesión. Botones de captura con `data-captura` (solo lectura, b21). En Proyectos, "Ver proyecto"
+    abre la vista y "Editar" sigue a Crear proyecto; en Hoy, el ojo de las sesiones que faltan agrega
+    "Ver en el proyecto". Necesita señal para agregar, renombrar, quitar y cambiar para quién.
   - **Actividades sueltas** (guiar sin obligar): en Hoy, "+ Actividad o tarea" → Fuera del
     proyecto; desde Inicio y Proyectos (`hoy.html?nueva=1`, `?nueva=suelta`). Van a un proyecto contenedor por grupo y trimestre,
     `proyectos.tipo = 'sueltas'` ("Actividades del trimestre", estado `completado`, `fecha_final`
@@ -404,7 +428,10 @@ docente** sobre el conjunto de evidencias (art. 4 XI). El Acuerdo no regula el t
     quién" y un diálogo compartido (`js/para-quien.js`). Los grados del producto los fija el plan;
     la elección se guarda como filas de `producto_sesion_alumnos` (`filasDeEdicion`) con
     `guardar_asignacion_producto` después de materializar. En un proyecto iniciado, un alumno con
-    calificación sale bloqueado y la base rechaza quitarlo. Lo agregado en Hoy se cambia en Hoy.
+    calificación sale bloqueado y la base rechaza quitarlo. Lo que no es del plan (agregado en Hoy o
+    en la vista del proyecto, o un trabajo por grupo de trabajo como "… · Morado") se lista por nombre
+    y para quién, de solo lectura (`ParaQuien.renglonesDeSesion` → `extras`), con el enlace "Ver y
+    gestionar en la vista del proyecto" (Fase 5); guardar el proyecto no lo toca.
   - **Incompleta → siguiente día de clase:** en actividades en clase, "Incompleta" guarda
     `estado_entrega='incompleto'`, `estado_en_clase='incompleta'` y `revisar_en` (siguiente día de
     clase). "Pendientes de la clase anterior" (Hoy) lista los de `revisar_en <= hoy`, uno por
@@ -985,7 +1012,8 @@ cliente y del camino del pago `pruebas/mi-salon-cobros.test.js`.
 | Calendario escolar SEP 2026-2027 del grupo (vista de mes, hoy y próximo día sin clase, ajustes propios con confirmación, fuente DOF) y rol de aseo (reparto por días de clase, continuidad entre meses, cambios a mano, imagen PNG para WhatsApp, compartir, copiar texto e imprimir). No cambia la asistencia ni el trimestre; desde 2026-09-26 las tareas vencen y lo incompleto se revisa el siguiente día de clase (`siguienteDiaDeClase`, cabecera de `js/calendario-sep.js`) | Completo (2026-09-25, en pruebas) | `calendario.html`, `js/calendario.js`, `js/calendario-sep.js`, `js/rol-aseo.js` |
 | Listas de cooperación y materiales (columnas palomita, texto y monto en pesos; resumen y avance; imagen y texto para familias sin nombres; Recordar por WhatsApp; impresión solo para uso docente; cerrar como expediente, reabrir con confirmación; historial por alumno) | Completo (2026-09-26, b15) | `listas.html`, `js/listas.js` |
 | Crear Proyecto / Planeación (3 pasos con catálogo SEP) | Completo | `crear_proyecto.html` |
-| Planeación (lista de proyectos con filtros + acciones completas) | Completo | `planeacion.html` |
+| **Vista del proyecto** (Fase 5): cada sesión con estado, horario, secuencia, anexos y libros, y sus actividades calificables con quién las hace y cuántos alumnos son (para el material); agregar (solo en sesiones pendientes o en curso), renombrar, quitar y "Para quién" con las mismas tablas y RPC que Hoy; `?sesion=` | En la rama (2026-09-30), pendiente de publicar | `proyecto.html`, `js/proyecto.js`, `js/producto-acciones.js` (Renombrar y Quitar, compartido con Hoy) |
+| Planeación (lista de proyectos con filtros + acciones completas; "Ver proyecto" abre la vista del proyecto y "Editar", Crear proyecto, desde la Fase 5) | Completo | `planeacion.html` |
 | Actividades | Completo | `actividades.html` |
 | Tareas (seguimiento de los productos tipo tarea; la revisión es en "Hoy") | Completo (rehecho 2026-09-23, 3.7) | `tareas.html` |
 | Reportes (Asistencia · Vista Recrea · Concentrado · Boleta · Avance por PDA), todo sobre el motor y la calificación confirmada | Completo (2026-09) | `reportes.html`, `js/reportes.js`, `js/reportes-grupo.js` |
