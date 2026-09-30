@@ -14,8 +14,11 @@
 	  - si la clave ya está usada en la misma sesión de captura, se agrega un sufijo "-2",
 	    "-3"... (dos nombres distintos pueden quedar iguales: «3° B.pdf» y «3 B.pdf»).
 
-	Uso (js/crear_proyecto.js):
+	Uso:
 		ClaveArchivo.unica(file.name, rutasUsadas) → "3-B.pdf" (o "3-B-2.pdf")
+
+	SIN USO desde el 2026-09-29: Mi Salón solo guarda enlaces (decisión de Jorge) y Crear proyecto ya no
+	sube archivos ni carga este módulo. Queda, con sus pruebas, para cuando se lancen las subidas.
 */
 (function () {
 	"use strict";

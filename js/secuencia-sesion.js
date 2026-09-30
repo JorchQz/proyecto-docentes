@@ -209,10 +209,11 @@
 		if (!lista.length) return "";
 		return "<div class='mb-2'><p class='text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1'>" + titulo + "</p>" +
 			"<div class='flex flex-wrap gap-2'>" + lista.map(function (r) {
-				// Con js/visor-recursos.js un toque normal lo abre en el visor (data-visor-url); sin él, o con
-				// Ctrl/Cmd, se abre en otra pestaña (rel noopener). Son enlaces externos: no aplica lo relativo
+				// Todos se abren en otra pestaña (rel noopener). Solo los libros llevan data-visor-url: con
+				// js/visor-recursos.js un toque normal los abre en el visor. Drive y los demás sitios, nunca
+				// en el visor (decisión de Jorge del 2026-09-29). Son enlaces externos: no aplica lo relativo
 				return "<a href='" + esc(r.url) + "' target='_blank' rel='noopener noreferrer' data-secuencia-enlace='" + r.tipo + "' " +
-					"data-visor-url='" + esc(r.url) + "' data-visor-titulo='" + esc(r.titulo) + "' " +
+					(r.tipo === "libro" ? "data-visor-url='" + esc(r.url) + "' data-visor-titulo='" + esc(r.titulo) + "' " : "") +
 					"class='inline-flex items-center min-h-[44px] text-sm border border-amber-300 text-amber-800 px-3 rounded-lg hover:bg-amber-50'>" +
 					esc(r.titulo) + "</a>";
 			}).join("") + "</div></div>";

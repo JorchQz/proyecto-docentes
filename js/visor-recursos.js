@@ -1,15 +1,17 @@
 /*
-	visor-recursos.js — Visor de anexos y libros de una sesión (decisión de Jorge del 2026-09-29):
-	el docente ve el anexo de Drive o la página del libro SIN salir de Hoy ni de Inicio.
+	visor-recursos.js — Visor de los libros de texto de una sesión: el docente ve la página del libro
+	SIN salir de Hoy ni de Inicio.
 
+	  - SOLO los libros de CONALITEG se abren aquí, por https (esa página responde sin X-Frame-Options).
+	    Los enlaces de Drive (archivo, carpeta, Docs, Slides) y de cualquier otro sitio se abren en otra
+	    pestaña, sin visor (decisión de Jorge del 2026-09-29): dentro de un marco, Drive muestra el login
+	    de Google si el archivo no es público o si el navegador bloquea las cookies de terceros.
 	  - Desde 1024 px de ancho es un panel a la derecha con la pantalla dividida (la página se hace
-	    a un lado; se sigue calificando mientras se ve el anexo). Abajo de 1024 px es pantalla completa.
-	  - Drive se ve por /preview y sus carpetas por embeddedfolderview; los libros de CONALITEG se
-	    abren dentro por https (esa página responde sin X-Frame-Options).
+	    a un lado; se sigue calificando mientras se ve el libro). Abajo de 1024 px es pantalla completa.
 	  - Siempre están "Abrir aparte" y "Cerrar". Si en 8 s no carga, dice "¿No se ve? Ábrelo aparte".
-	  - Cualquier enlace con data-visor-url (los de la secuencia de la sesión, js/secuencia-sesion.js)
+	  - Un enlace con data-visor-url (los libros de la secuencia de la sesión, js/secuencia-sesion.js)
 	    abre aquí con un toque normal; con Ctrl, Cmd, Mayús o botón del medio se abre como enlace común.
-	    Un enlace que no se puede mostrar dentro (otro sitio) se abre en otra pestaña, como siempre.
+	    Si la dirección no es de un libro, el visor no la abre y el enlace se abre en otra pestaña.
 
 	Expone window.VisorRecursos (y module.exports para las pruebas):
 	  urlEmbebible(url) → { tipo, src, embebible, aparte } (funciones puras: se prueban en node)
@@ -27,26 +29,15 @@
 	}
 
 	/*
-		urlEmbebible(url) → { tipo: "drive-archivo" | "drive-carpeta" | "drive-documento" | "libro" | "otro",
-		                      src, embebible, aparte }
-		src: lo que va dentro del visor; aparte: la dirección para abrirlo en otra pestaña (la de siempre,
-		con https). Solo http y https: cualquier otro esquema (javascript:, data:) no es embebible ni
-		se abre (aparte null).
+		urlEmbebible(url) → { tipo: "libro" | "otro", src, embebible, aparte }
+		src: lo que va dentro del visor; aparte: la dirección para abrirlo en otra pestaña (la de siempre;
+		la del libro, con https). Solo un libro de CONALITEG es embebible: Drive, Google Docs y cualquier
+		otro sitio son "otro" y se abren en otra pestaña. Solo http y https: cualquier otro esquema
+		(javascript:, data:) no es embebible ni se abre (aparte null).
 	*/
 	function urlEmbebible(url) {
 		var u = soloHttp(url);
 		if (!u) return { tipo: "otro", src: null, embebible: false, aparte: null };
-		var m;
-		// Carpeta de Drive: /drive/folders/ID o /drive/u/0/folders/ID
-		m = u.match(/^https?:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([\w-]+)/i);
-		if (m) return { tipo: "drive-carpeta", src: "https://drive.google.com/embeddedfolderview?id=" + m[1] + "#list", embebible: true, aparte: u };
-		// Archivo de Drive: /file/d/ID/..., /open?id=ID, /uc?id=ID
-		m = u.match(/^https?:\/\/drive\.google\.com\/file\/d\/([\w-]+)/i) ||
-			u.match(/^https?:\/\/drive\.google\.com\/(?:open|uc)\?(?:[^#]*&)?id=([\w-]+)/i);
-		if (m) return { tipo: "drive-archivo", src: "https://drive.google.com/file/d/" + m[1] + "/preview", embebible: true, aparte: u };
-		// Documentos, hojas y presentaciones de Google
-		m = u.match(/^https?:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/([\w-]+)/i);
-		if (m) return { tipo: "drive-documento", src: "https://docs.google.com/" + m[1].toLowerCase() + "/d/" + m[2] + "/preview", embebible: true, aparte: u };
 		// Libros de texto gratuitos (CONALITEG): por https dentro del visor, con su página (#page/N)
 		if (/^https?:\/\/(?:[\w-]+\.)*conaliteg\.(?:gob|sep\.gob)\.mx(?:[/?#:]|$)/i.test(u)) {
 			var https = u.replace(/^http:/i, "https:");
@@ -91,14 +82,14 @@
 		panel.className = "jz-visor";
 		panel.hidden = true;
 		panel.setAttribute("role", "dialog");
-		panel.setAttribute("aria-label", "Visor de anexos y libros");
+		panel.setAttribute("aria-label", "Visor de libros");
 		panel.innerHTML =
 			"<div class='jz-visor-barra'>" +
 			"<p class='jz-visor-titulo' data-visor-titulo></p>" +
 			"<a class='jz-visor-btn' data-visor-aparte target='_blank' rel='noopener noreferrer'>Abrir aparte</a>" +
 			"<button type='button' class='jz-visor-btn' data-visor-cerrar>Cerrar</button>" +
 			"</div>" +
-			"<p class='jz-visor-pista' data-visor-pista>Para volver a Hoy usa «Cerrar». La tecla Esc solo funciona fuera del anexo.</p>" +
+			"<p class='jz-visor-pista' data-visor-pista>Para volver usa «Cerrar». La tecla Esc solo funciona fuera del libro.</p>" +
 			"<div class='jz-visor-aviso' data-visor-aviso hidden role='status'>¿No se ve? <a data-visor-aparte-2 target='_blank' rel='noopener noreferrer'>Ábrelo aparte</a></div>" +
 			"<div class='jz-visor-cuerpo'></div>";
 		document.body.appendChild(panel);
@@ -124,8 +115,8 @@
 	}
 
 	/*
-		abrir({ url, titulo, origen }): muestra el recurso dentro. Si no se puede mostrar dentro (otro
-		sitio, esquema raro) devuelve false y quien llama lo abre como enlace común.
+		abrir({ url, titulo, origen }): muestra el libro dentro. Si no es un libro (Drive, otro sitio,
+		esquema raro) devuelve false y quien llama lo abre como enlace común (otra pestaña).
 	*/
 	function abrir(op) {
 		op = op || {};
@@ -135,26 +126,21 @@
 		if (!abierto()) origenAnterior = op.origen || document.activeElement;
 		if (temporizador) { clearTimeout(temporizador); temporizador = null; }
 		if (marco && marco.parentNode) marco.parentNode.removeChild(marco);
-		panel.querySelector("[data-visor-titulo]").textContent = op.titulo || "Recurso de la sesión";
+		panel.querySelector("[data-visor-titulo]").textContent = op.titulo || "Libro de la sesión";
 		panel.querySelector("[data-visor-aparte]").setAttribute("href", r.aparte);
 		panel.querySelector("[data-visor-aparte-2]").setAttribute("href", r.aparte);
-		// Drive: el aviso está a la vista desde el principio (el login de Google también dispara "load", así que
-		// por tiempo nunca saldría); los libros lo muestran solo si a los 8 s no cargó
-		var esDrive = r.tipo.indexOf("drive") === 0;
-		aviso.hidden = !esDrive;
+		// El aviso "¿No se ve?" sale solo si a los 8 s el libro no cargó
+		aviso.hidden = true;
 		marco = document.createElement("iframe");
-		marco.title = op.titulo || "Recurso de la sesión";
+		marco.title = op.titulo || "Libro de la sesión";
 		marco.setAttribute("loading", "eager");
-		// Drive y Google Docs van en un marco con permisos acotados (sin allow-top-navigation: no pueden llevarse la
-		// pantalla completa). El visor de libros de CONALITEG no dibuja sus páginas dentro de un marco con sandbox
-		// (comprobado con el mismo libro con y sin el atributo), así que ese va sin él: es el sitio del gobierno.
-		if (r.tipo !== "libro") {
-			marco.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation");
-		}
+		// Sin sandbox: el visor de libros de CONALITEG no dibuja sus páginas dentro de un marco con sandbox
+		// (comprobado con el mismo libro con y sin el atributo); es el sitio del gobierno y lo único que se
+		// muestra aquí.
 		marco.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
 		marco.addEventListener("load", function () {
 			if (temporizador) { clearTimeout(temporizador); temporizador = null; }
-			if (!esDrive) aviso.hidden = true;
+			aviso.hidden = true;
 			panel.setAttribute("data-visor-cargado", "1");
 		});
 		panel.removeAttribute("data-visor-cargado");

@@ -302,12 +302,11 @@ const fila = (fecha, estado, upd) => ({ alumno_id: "x", fecha: fecha, asistencia
 
 	// ── 6. Visor: urlEmbebible ──
 	const u = V.urlEmbebible;
-	ok("Drive: archivo → /preview", u("https://drive.google.com/file/d/1t7XZhp0TOeHCeHod_wpo1HVAZUVtm2Hu/view?usp=sharing"),
-		{ tipo: "drive-archivo", src: "https://drive.google.com/file/d/1t7XZhp0TOeHCeHod_wpo1HVAZUVtm2Hu/preview", embebible: true, aparte: "https://drive.google.com/file/d/1t7XZhp0TOeHCeHod_wpo1HVAZUVtm2Hu/view?usp=sharing" });
-	ok("Drive: carpeta → embeddedfolderview", u("https://drive.google.com/drive/folders/1Nx6kmHq4J_NmIxmaSbt9riMYiEUaSz-t").src, "https://drive.google.com/embeddedfolderview?id=1Nx6kmHq4J_NmIxmaSbt9riMYiEUaSz-t#list");
-	ok("Drive: carpeta con /u/0/", u("https://drive.google.com/drive/u/0/folders/ABC_-1?usp=sharing").src, "https://drive.google.com/embeddedfolderview?id=ABC_-1#list");
-	ok("Drive: open?id= y uc?id=", [u("https://drive.google.com/open?id=XYZ123").src, u("https://drive.google.com/uc?export=download&id=XYZ123").src], ["https://drive.google.com/file/d/XYZ123/preview", "https://drive.google.com/file/d/XYZ123/preview"]);
-	ok("Google Docs → /preview", u("https://docs.google.com/document/d/DOC1/edit").src, "https://docs.google.com/document/d/DOC1/preview");
+	// Constructor AX (Jorge, 2026-09-29): Drive ya no se abre en el visor, va en otra pestaña (más casos en
+	// pruebas/recursos-solo-enlaces.test.js)
+	ok("Drive: archivo → otra pestaña, sin visor", u("https://drive.google.com/file/d/1t7XZhp0TOeHCeHod_wpo1HVAZUVtm2Hu/view?usp=sharing"),
+		{ tipo: "otro", src: null, embebible: false, aparte: "https://drive.google.com/file/d/1t7XZhp0TOeHCeHod_wpo1HVAZUVtm2Hu/view?usp=sharing" });
+	ok("Drive: carpeta, open?id= y Google Docs → otra pestaña", ["https://drive.google.com/drive/folders/1Nx6kmHq4J_NmIxmaSbt9riMYiEUaSz-t", "https://drive.google.com/open?id=XYZ123", "https://docs.google.com/document/d/DOC1/edit"].map((x) => u(x).embebible), [false, false, false]);
 	ok("CONALITEG se abre dentro por https y conserva la página", u("http://libros.conaliteg.gob.mx/2025/P1MLA.htm#page/100"),
 		{ tipo: "libro", src: "https://libros.conaliteg.gob.mx/2025/P1MLA.htm#page/100", embebible: true, aparte: "https://libros.conaliteg.gob.mx/2025/P1MLA.htm#page/100" });
 	ok("otro sitio: no embebible (se abre en otra pestaña)", [u("https://ejemplo.com/a.pdf").embebible, u("https://ejemplo.com/a.pdf").aparte], [false, "https://ejemplo.com/a.pdf"]);
@@ -372,7 +371,8 @@ const fila = (fecha, estado, upd) => ({ alumno_id: "x", fecha: fecha, asistencia
 		ok("la tarjeta azul se vuelve a poner a la vista tras la recarga (scroll manual y reintentos)", /scrollRestoration = "manual"/.test(hj) && /\[250, 900\]\.forEach/.test(hj), true);
 		ok("tocar el chip de asistencia ya activo no escribe nada", /if \(asistencia\[alumnoId\] === btn\.dataset\.valor\) return;/.test(hj), true);
 		ok("tocar el valor del Cierre ya guardado no escribe nada", /if \(registroGuardado\[alumnoId\] && actual\[btn\.dataset\.cierre\] === Number\(btn\.dataset\.valor\)\) return;/.test(hj), true);
-		ok("visor: en Drive el aviso «¿No se ve?» está a la vista desde el principio y avisa que Esc no funciona dentro del anexo", /aviso\.hidden = !esDrive;/.test(vs2) && /if \(!esDrive\) aviso\.hidden = true;/.test(vs2) && /Esc solo funciona fuera del anexo/.test(vs2), true);
+		// Constructor AX (2026-09-29): el visor ya solo abre libros; el aviso sale si a los 8 s no cargó
+		ok("visor: el aviso «¿No se ve?» sale solo si el libro no cargó y avisa que Esc no funciona dentro del libro", /aviso\.hidden = true;/.test(vs2) && !/esDrive/.test(vs2) && /Esc solo funciona fuera del libro/.test(vs2), true);
 	}
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
