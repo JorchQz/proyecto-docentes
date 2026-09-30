@@ -1281,7 +1281,12 @@ document.addEventListener("DOMContentLoaded", async function () {
           <span class="font-bold text-gray-700 text-sm uppercase tracking-wide block mb-3">Recursos y material didáctico</span>
           ${window.sb ? `
           <div class="space-y-5">
-            <!-- Solo enlaces: los archivos que se subieron antes se ven y se pueden quitar; este bloque solo se ve si hay alguno -->
+            <!-- recursos.archivos: los materiales en texto (proyectos de la tienda) y los archivos que se subieron antes,
+                 cada uno en su bloque, que solo se ve si hay alguno; los dos se pueden quitar -->
+            <div class="resource-materiales-wrap hidden">
+              <div class="text-xs font-semibold text-gray-500 mb-2">Materiales</div>
+              <div class="resource-materiales-list flex flex-wrap gap-2"></div>
+            </div>
             <div class="resource-files-wrap hidden">
               <div class="text-xs font-semibold text-gray-500 mb-2">Archivos que subiste antes</div>
               <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
@@ -1369,6 +1374,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     // Actualizar etiqueta del header cuando cambia la secuencia
     div.querySelector('.session-momento').addEventListener('change', () => updateLabel(div));
 
+    const recursosMaterialesWrap = div.querySelector('.resource-materiales-wrap');
+    const recursosMaterialesList = div.querySelector('.resource-materiales-list');
     const recursosFilesWrap = div.querySelector('.resource-files-wrap');
     const recursosFilesList = div.querySelector('.resource-files-list');
     const recursosFilesError = div.querySelector('.resource-files-error');
@@ -1403,21 +1410,63 @@ document.addEventListener("DOMContentLoaded", async function () {
       elemento.classList.toggle('hidden', !mensaje);
     }
 
+    /*
+      recursos.archivos trae dos cosas (R35): los archivos que se subieron antes ({ nombre, path, url }) y,
+      en los proyectos importados de la tienda, materiales en TEXTO ("Dado grande", el código de un anexo),
+      sin path ni url. Cada uno va en su bloque; el arreglo se guarda tal cual y en el mismo orden (guardar
+      sin cambios no lo toca). Quitar un archivo lo quita de Storage (como siempre) y de la sesión; quitar
+      un material solo lo quita de la sesión al guardar.
+    */
+    function esArchivoSubido(x) {
+      return !!x && typeof x === 'object' && !!(x.path || x.url);
+    }
+    function textoMaterial(x) {
+      if (typeof x === 'string' || typeof x === 'number') return String(x).trim();
+      if (x && typeof x === 'object') return String(x.nombre || x.titulo || x.texto || x.descripcion || '').trim();
+      return '';
+    }
+    const ICONO_QUITAR = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>';
+
     function renderArchivos() {
       if (!recursosFilesList) return;
-      if (recursosFilesWrap) recursosFilesWrap.classList.toggle('hidden', archivosSubidos.length === 0);
-      recursosFilesList.innerHTML = archivosSubidos.map(function (archivo) {
+      const conIndice = archivosSubidos.map(function (x, index) { return { x: x, index: index }; });
+      const archivos = conIndice.filter(function (a) { return esArchivoSubido(a.x); });
+      const materiales = conIndice.filter(function (a) { return !esArchivoSubido(a.x) && textoMaterial(a.x); });
+      if (recursosFilesWrap) recursosFilesWrap.classList.toggle('hidden', archivos.length === 0);
+      if (recursosMaterialesWrap) recursosMaterialesWrap.classList.toggle('hidden', materiales.length === 0);
+      recursosFilesList.innerHTML = archivos.map(function (a) {
+        const archivo = a.x;
         const etiqueta = truncarTexto(archivo.nombre || '', 30);
         return `
           <span class="inline-flex max-w-full items-center gap-2 min-h-[44px] pl-3 pr-0 py-0 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-path="${escapeHtml(archivo.path || '')}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span>
             <span class="min-w-0 break-words" title="${escapeHtml(archivo.nombre || '')}">${escapeHtml(etiqueta)}</span>
-            <button type="button" class="resource-remove-file shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" aria-label="Eliminar archivo">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+            <button type="button" class="resource-remove-file shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-path="${escapeHtml(archivo.path || '')}" data-index="${a.index}" aria-label="Quitar archivo">
+              ${ICONO_QUITAR}
             </button>
           </span>`;
       }).join('');
+      if (recursosMaterialesList) {
+        recursosMaterialesList.innerHTML = materiales.map(function (a) {
+          const texto = textoMaterial(a.x);
+          return `
+          <span class="inline-flex max-w-full items-center gap-2 min-h-[44px] pl-3 pr-0 py-0 rounded-lg text-sm bg-white border border-gray-200 text-gray-800" data-index="${a.index}">
+            <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
+            <span class="min-w-0 break-words">${escapeHtml(texto)}</span>
+            <button type="button" class="resource-remove-material shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-index="${a.index}" aria-label="Quitar material">
+              ${ICONO_QUITAR}
+            </button>
+          </span>`;
+        }).join('');
+      }
       syncRecursosState();
+    }
+
+    // Quita un elemento de recursos.archivos por su posición (arreglo nuevo: se ve como cambio al guardar)
+    function quitarDeArchivos(index) {
+      if (Number.isNaN(index) || index < 0 || index >= archivosSubidos.length) return;
+      archivosSubidos = archivosSubidos.filter(function (_, i) { return i !== index; });
+      renderArchivos();
     }
 
     function renderLinks() {
@@ -1428,7 +1477,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           <span class="inline-flex max-w-full items-center gap-2 min-h-[44px] pl-3 pr-0 py-0 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
             <span class="min-w-0 break-words" title="${escapeHtml(link.url || '')}">${escapeHtml(titulo)}</span>
-            <button type="button" class="resource-remove-link shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-index="${index}" aria-label="Eliminar link">
+            <button type="button" class="resource-remove-link shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-red-500 h-11 w-11 rounded-full transition" data-index="${index}" aria-label="Quitar enlace">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
             </button>
           </span>`;
@@ -1440,18 +1489,26 @@ document.addEventListener("DOMContentLoaded", async function () {
       const btn = event.target.closest('.resource-remove-file');
       if (!btn) return;
       const path = String(btn.dataset.path || '');
-      if (!path) return;
+      // Un archivo de antes con enlace pero sin ruta en Storage: solo se quita de la sesión
+      if (!path) { quitarDeArchivos(parseInt(btn.dataset.index, 10)); return; }
       try {
         const { error } = await window.sb.storage.from('recursos').remove([path]);
         if (error) throw error;
         archivosSubidos = archivosSubidos.filter(function (archivo) {
-          return String(archivo.path || '') !== path;
+          return !(archivo && typeof archivo === 'object' && String(archivo.path || '') === path);
         });
         renderArchivos();
       } catch (err) {
         console.error('Error eliminando archivo:', err);
         mostrarError(recursosFilesError, 'No se pudo eliminar el archivo. Intenta de nuevo.');
       }
+    });
+
+    // Un material en texto no está en Storage: se quita de la sesión (se guarda al guardar el proyecto)
+    recursosMaterialesList?.addEventListener('click', function (event) {
+      const btn = event.target.closest('.resource-remove-material');
+      if (!btn) return;
+      quitarDeArchivos(parseInt(btn.dataset.index, 10));
     });
 
     recursosLinkAdd?.addEventListener('click', function () {
