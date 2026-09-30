@@ -64,7 +64,7 @@ const UNICAS = {
 const ESQUEMA = typeof B.columnasMarca === "function" ? "campo" : typeof B.baseDeFila === "function" ? "fila" : "ninguno";
 const GRUPOS_BD = {
 	asistencias: [["captura_id", ["asistencia_estado"]]],
-	registro_diario: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
+	registro_diario: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]], ["captura_nota", ["nota"]]],
 	// mi_salon_b17: la revisión de una actividad incompleta va con el semáforo
 	calificaciones: [["captura_semaforo", ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"]], ["captura_puntaje", ["puntaje"]], ["captura_retroalimentacion", ["retroalimentacion"]]],
 	// mi_salon_b19: una marca por fila en las tablas de exámenes
@@ -370,7 +370,7 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 			["justificada", 2, "en_proceso/7/Revisa"]);
 		ok("sin cambios: sin conflictos", bA.eventos.conflictos.length, 0);
 		ok("sin cambios: la pantalla recibe el valor que quedó", bA.eventos.guardadas.map(([c, r]) => c.split("|")[0] + ":" + JSON.stringify(r.valor)),
-			['asistencia:{"estado":"justificada"}', 'registro:{"participacion":2,"conducta":1}',
+			['asistencia:{"estado":"justificada"}', 'registro:{"participacion":2,"conducta":1,"nota":null}',
 				// Sin opciones.campos la captura escribe todos sus campos, también los de la revisión de
 				// una actividad incompleta (mi_salon_b17), que quedan vacíos
 				'calificacion:{"estado_entrega":"entregado","nivel":"en_proceso","puntaje":7,"retroalimentacion":"Revisa","revisar_en":null,"estado_en_clase":null,"completado_en":null}']);
@@ -457,7 +457,7 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		ok("retiro de cierre con conflicto: el cierre que otro cambió sigue; el que no, se retira",
 			bdD.registro_diario.map((r) => r.alumno_id + ":" + r.participacion), ["a1:2"]);
 		ok("retiro de cierre con conflicto: se avisa", bD.eventos.conflictos.map((c) => c[0] + " → " + JSON.stringify(c[1].actual)),
-			['Cierre de A1 → {"participacion":2,"conducta":1}']);
+			['Cierre de A1 → {"participacion":2,"conducta":1,"nota":null}']);
 	});
 
 	// 4e. La calificación "borrada en otro lado" no se vuelve a crear a ciegas
@@ -618,8 +618,8 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 	// La base que vio la pantalla: con la marca en el código nuevo; por contenido en las versiones
 	// anteriores (3d48d1a, eadbe09), para que cada una se pruebe con lo que entiende
 	const NUEVO = ESQUEMA !== "ninguno"; // con marcas (80a4375 o el nuevo)
-	const COLS = { asistencia: ["captura_id"], registro: ["captura_participacion", "captura_conducta"], calificacion: ["captura_semaforo", "captura_puntaje", "captura_retroalimentacion"] };
-	const COL_DE = { estado: "captura_id", participacion: "captura_participacion", conducta: "captura_conducta", nivel: "captura_semaforo", estado_entrega: "captura_semaforo", puntaje: "captura_puntaje", retroalimentacion: "captura_retroalimentacion" };
+	const COLS = { asistencia: ["captura_id"], registro: ["captura_participacion", "captura_conducta", "captura_nota"], calificacion: ["captura_semaforo", "captura_puntaje", "captura_retroalimentacion"] };
+	const COL_DE = { estado: "captura_id", participacion: "captura_participacion", conducta: "captura_conducta", nota: "captura_nota", nivel: "captura_semaforo", estado_entrega: "captura_semaforo", puntaje: "captura_puntaje", retroalimentacion: "captura_retroalimentacion" };
 	const tipoDe = (v) => ("estado" in v ? "asistencia" : "participacion" in v || "conducta" in v ? "registro" : "calificacion");
 	// Una fila sembrada con la misma marca en todos sus grupos (y captura_id, para 80a4375)
 	const M = (tipo, id) => { const o = { captura_id: id }; if (ESQUEMA === "campo") COLS[tipo].forEach((c) => { o[c] = id; }); return o; };
@@ -1529,6 +1529,136 @@ const vCal = (o) => Object.assign({ estado_entrega: null, nivel: null, puntaje: 
 		ok("§13 al editar: la base conserva su capturado_en", [bdH.asistencias[0].asistencia_estado, bdH.asistencias[0].capturado_en,
 			cH.escrituras.some((w) => /asistencias:update/.test(w) && /capturado_en/.test(w))], ["presente", ayer, false]);
 	});
+
+	// ── §14 El comentario del día (Fase 3, mi_salon_b25): campo `nota` con su marca captura_nota ──────
+	// Solo con el esquema nuevo (una marca por grupo de campos). La nota es un grupo más de registro_diario:
+	// no choca con la participación ni la conducta del mismo alumno, y el relleno y el retiro del cierre la respetan.
+	const NOTA = (alumno, p, c, n) => ({ alumno_id: alumno, fecha: F, participacion: p, conducta: c, nota: n, grupo_id: "g1" });
+	const vN = (p, c, n, id) => vista({ participacion: p, conducta: c, nota: n }, id || "m0", "registro");
+	const filaN = (id, alumno, p, c, n) => ({ id: id, maestro_id: "m1", alumno_id: alumno, fecha: F, participacion: p, conducta: c, nota: n, ...M("registro", "m0") });
+
+	await caso("§14 comentario y participación de dos aparatos no se pisan", async () => {
+		if (ESQUEMA !== "campo") return;
+		B.marcaDisponible(true);
+		const bdR = crearBD();
+		bdR.registro_diario.push(filaN("n1", "ana", 1, 1, null));
+		const A = bandeja(cliente(bdR, {}), B.almacenMemoria());
+		const Bb = bandeja(cliente(bdR, {}), B.almacenMemoria());
+		A.iniciar(); Bb.iniciar();
+		await A.agregar("registro", NOTA("ana", 1, 1, "Llegó tarde"), "Comentario del día de Ana", vN(1, 1, null), C(["nota"]));
+		await Bb.agregar("registro", NOTA("ana", 2, 1, null), "Cierre del día de Ana", vN(1, 1, null), C(["participacion"]));
+		await esperarTodas([A, Bb]);
+		const f = regDe(bdR, "ana");
+		ok("§14 el comentario de A y la participación de B quedan los dos, sin aviso",
+			[f.participacion, f.conducta, f.nota, A.eventos.conflictos.length + Bb.eventos.conflictos.length, A.eventos.rechazos.length + Bb.eventos.rechazos.length], [2, 1, "Llegó tarde", 0, 0]);
+		ok("§14 cada campo dejó su propia marca (la nota cambió, las otras no)",
+			[f.captura_nota !== "m0", f.captura_participacion !== "m0", f.captura_conducta === "m0"], [true, true, true]);
+	});
+
+	await caso("§14 el mismo comentario desde dos aparatos: conflicto, no se pisa", async () => {
+		if (ESQUEMA !== "campo") return;
+		const bdR = crearBD();
+		bdR.registro_diario.push(filaN("n1", "ana", 1, 1, null));
+		const A = bandeja(cliente(bdR, {}), B.almacenMemoria());
+		const Bb = bandeja(cliente(bdR, {}), B.almacenMemoria());
+		A.iniciar(); Bb.iniciar();
+		await A.agregar("registro", NOTA("ana", 1, 1, "Uno"), "Comentario del día de Ana", vN(1, 1, null), C(["nota"]));
+		await Bb.agregar("registro", NOTA("ana", 1, 1, "Dos"), "Comentario del día de Ana", vN(1, 1, null), C(["nota"]));
+		await esperarTodas([A, Bb]);
+		ok("§14 se conserva el primero y B recibe el aviso con el comentario que quedó",
+			[regDe(bdR, "ana").nota, Bb.eventos.conflictos.length, /sin comentario|comentario “Uno”/.test(String(Bb.eventos.conflictos[0] && Bb.eventos.conflictos[0][1].texto))], ["Uno", 1, true]);
+	});
+
+	await caso("§14 el comentario de quien faltó: una fila sin participación ni conducta", async () => {
+		if (ESQUEMA !== "campo") return;
+		const bdR = crearBD();
+		const s = cliente(bdR, {});
+		const b = bandeja(s, B.almacenMemoria());
+		b.iniciar();
+		await b.agregar("registro", NOTA("beto", null, null, "Enfermo, avisó su mamá"), "Comentario del día de Beto", null, C(["nota"]));
+		await vacia(b);
+		const f = regDe(bdR, "beto");
+		ok("§14 se inserta con la nota y sin participación ni conducta", f ? [f.participacion, f.conducta, f.nota] : null, [null, null, "Enfermo, avisó su mamá"]);
+		// Si después vuelve a Presente, se le completan solo los valores que faltan; el comentario se queda
+		await b.agregar("registro", NOTA("beto", 1, 1, "Enfermo, avisó su mamá"), "Cierre del día de Beto", B.baseDeFila("registro", f), C(["participacion", "conducta"]));
+		await vacia(b);
+		const g = regDe(bdR, "beto");
+		ok("§14 completar 1 y 1 no toca el comentario", [g.participacion, g.conducta, g.nota, b.eventos.conflictos.length], [1, 1, "Enfermo, avisó su mamá", 0]);
+	});
+
+	await caso("§14 el relleno 1 y 1 no toca una fila con comentario", async () => {
+		if (ESQUEMA !== "campo") return;
+		const bdR = crearBD();
+		bdR.registro_diario.push(filaN("n1", "ana", 2, 0, "Ayudó a un compañero"));
+		const s = cliente(bdR, {});
+		const b = bandeja(s, B.almacenMemoria());
+		b.iniciar();
+		await b.agregar("registro", NOTA("ana", 1, 1, null), "Cierre del día de Ana", null, RELLENO);
+		await b.agregar("registro", NOTA("caro", 1, 1, null), "Cierre del día de Caro", null, RELLENO);
+		await vacia(b);
+		ok("§14 Ana conserva participación, conducta y comentario; Caro (sin fila) recibe su 1 y 1",
+			[vReg(regDe(bdR, "ana")), regDe(bdR, "ana").nota, regDe(bdR, "caro") && [regDe(bdR, "caro").participacion, regDe(bdR, "caro").conducta, regDe(bdR, "caro").nota]],
+			[{ participacion: 2, conducta: 0 }, "Ayudó a un compañero", [1, 1, null]]);
+	});
+
+	await caso("§14 retirar el cierre no borra una fila a la que otro aparato le puso comentario", async () => {
+		if (ESQUEMA !== "campo") return;
+		const bdR = crearBD();
+		bdR.registro_diario.push(filaN("n1", "ana", 1, 1, null));
+		bdR.registro_diario.push(filaN("n2", "beto", 1, 1, null));
+		const s = cliente(bdR, { red: true });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
+		b.iniciar();
+		await b.agregar("registro_borrar", { alumno_id: "ana", fecha: F }, "Cierre del día de Ana", vN(1, 1, null));
+		await b.agregar("registro_borrar", { alumno_id: "beto", fecha: F }, "Cierre del día de Beto", vN(1, 1, null));
+		Object.assign(regDe(bdR, "ana"), { nota: "Se fue temprano" }, otro("nota", "otro")); // otro aparato le puso un comentario
+		s.modo.red = false;
+		await b.procesar();
+		await vacia(b);
+		ok("§14 Ana (con comentario nuevo) sigue y se avisa; Beto (igual que como se vio) se retira",
+			[bdR.registro_diario.map((r) => r.alumno_id + ":" + r.nota), b.eventos.conflictos.map((c) => c[0])], [["ana:Se fue temprano"], ["Cierre del día de Ana"]]);
+	});
+
+	await caso("§14 una captura vieja de la cola (sin nota) sigue funcionando y no borra el comentario", async () => {
+		if (ESQUEMA !== "campo") return;
+		const bdR = crearBD();
+		bdR.registro_diario.push(filaN("n1", "ana", 1, 1, "Trajo material extra"));
+		const alm = B.almacenMemoria();
+		const ahora = Date.now() * 1000;
+		// Formato 3 de antes de b25: campos y vistos solo de participación
+		await alm.poner({ v: 3, clave: "registro|m1|ana|" + F, tipo: "registro", maestro_id: "m1", seq: ahora, capturado_en: new Date().toISOString(),
+			datos: { alumno_id: "ana", fecha: F, participacion: 2, conducta: 1, grupo_id: "g1" }, descripcion: "Cierre del día de Ana", captura_id: "viejo-1",
+			campos: { participacion: 2 }, vistos: { participacion: { fila: true, id: "m0", valor: 1 } }, propiasValor: {}, intentado: false });
+		// Y una del formato sin `v` (la publicada antes de las marcas): tampoco toca la nota
+		await alm.poner({ clave: "registro|m1|beto|" + F, tipo: "registro", maestro_id: "m1", seq: ahora + 1, capturado_en: new Date().toISOString(),
+			datos: reg("beto", 2, 1), descripcion: "Cierre de Beto", base: { participacion: 1, conducta: 1 }, propias: [], intentado: true });
+		bdR.registro_diario.push(filaN("n2", "beto", 1, 1, "Nota de Beto"));
+		const b = bandeja(cliente(bdR, {}), alm);
+		await b.iniciar();
+		await vacia(b);
+		ok("§14 llegan las dos y los comentarios siguen",
+			[regDe(bdR, "ana").participacion, regDe(bdR, "ana").nota, regDe(bdR, "beto").participacion, regDe(bdR, "beto").nota, b.eventos.conflictos.length, b.eventos.rechazos.length, b.pendientes()],
+			[2, "Trajo material extra", 2, "Nota de Beto", 0, 0, 0]);
+	});
+
+	await caso("§14 la base sin b25 (sin captura_nota): el comentario se guarda por contenido, sin rechazos", async () => {
+		if (ESQUEMA !== "campo") return;
+		B.marcaDisponible(null);
+		const bdR = crearBD();
+		bdR.registro_diario.push({ id: "n1", maestro_id: "m1", alumno_id: "ana", fecha: F, participacion: 1, conducta: 1, nota: null });
+		const s = cliente(bdR, { sinMarca: true });
+		const b = bandeja(s, B.almacenMemoria(), { esperaMax: 20 });
+		b.iniciar();
+		await b.agregar("registro", NOTA("ana", 1, 1, "Sin marca"), "Comentario del día de Ana", vista({ participacion: 1, conducta: 1, nota: null }, null, "registro"), C(["nota"]));
+		await vacia(b);
+		ok("§14 sin b25: el comentario llega, sin conflicto ni rechazo, y la bandeja recuerda que no hay marcas",
+			[regDe(bdR, "ana").nota, b.eventos.conflictos.length, b.eventos.rechazos.length, B.marcaDisponible()], ["Sin marca", 0, 0, false]);
+		B.marcaDisponible(true);
+	});
+
+	ok("§14 la nota es un campo de registro con su marca captura_nota", ESQUEMA !== "campo" || [B.MARCAS.registro.some((g) => g[0] === "captura_nota" && g[1].join() === "nota"), B.columnasMarca("registro").join()].join("|") === "true|captura_participacion,captura_conducta,captura_nota", true);
+	ok("§14 valorDeFila trae la nota (y null si la fila no la tiene)", ESQUEMA !== "campo" || [B.valorDeFila("registro", { participacion: 1, conducta: 2, nota: "x" }).nota, B.valorDeFila("registro", { participacion: 1, conducta: 2 }).nota], ["x", null]);
+	ok("§14 describir dice el comentario y no el objeto", ESQUEMA !== "campo" || B.describir("registro", { nota: "Llegó tarde" }) + " / " + B.describir("registro", { nota: null }), "comentario “Llegó tarde” / sin comentario");
 
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);

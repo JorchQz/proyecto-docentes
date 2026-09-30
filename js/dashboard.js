@@ -341,6 +341,15 @@ async function crearCardHoy() {
 		sinLeer = true;
 	}
 
+	// lectura-opcional: solo la fila "Jornada" de Tu día; nada se guarda con ella y, si no se puede leer (o la tabla de b25 aún no existe), la fila no se muestra
+	let jornada; // undefined: no se pudo leer; null: sin finalizar; { cerrada_en, actualizada_en }: finalizada
+	try {
+		const jRes = await window.sb.from("jornadas").select("cerrada_en, actualizada_en")
+			.eq("maestro_id", user.id).eq("grupo_id", grupoId).eq("fecha", hoy).maybeSingle();
+		if (!jRes.error) jornada = jRes.data || null;
+	} catch (_) { /* sin la jornada, Inicio sigue igual */ }
+	const horaJornada = jornada ? new Date(jornada.cerrada_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+
 	const fila = (etiqueta, valor, listo) =>
 		"<div class='flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0'>" +
 		"<span class='text-sm text-gray-700'>" + etiqueta + "</span>" +
@@ -365,7 +374,8 @@ async function crearCardHoy() {
 			(porFalta ? fila("Por falta justificada", porFalta + (porFaltaVencidas ? " (" + porFaltaVencidas + (porFaltaVencidas === 1 ? " venció)" : " vencieron)") : ""), false) : "") +
 			fila("Sesiones de hoy", sesionesHoy ? String(sesionesHoy) : "ninguna todavía", sesionesHoy > 0) +
 			fila("Productos por calificar", sesionesHoy ? String(sinCalificar) : "—", sesionesHoy > 0 && sinCalificar === 0)) +
-		(sinLeerDia ? "" : fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo));
+		(sinLeerDia ? "" : fila("Cierre del día", cierre.nadieAsistio ? "nadie asistió hoy" : cierre.conteo + cierre.sinContar, cierre.completo)) +
+		(jornada === undefined ? "" : fila("Jornada", jornada ? "finalizada a las " + horaJornada : "sin finalizar", !!jornada));
 	return card;
 }
 

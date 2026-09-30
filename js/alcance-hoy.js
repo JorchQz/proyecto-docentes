@@ -360,6 +360,60 @@
 	}
 
 	/*
+		"Finalizar jornada" (Fase 3, 2026-10-01): lo que falta al terminar el día. Pura: la pantalla
+		(js/hoy.js) le pasa lo que ya calculó con SUS reglas y aquí solo se junta y se cuenta.
+		  d.alumnos       [{ id, nombre_completo }] los activos del grupo
+		  d.asistencia    { alumnoId: "presente" | "ausente" | "justificada" } la de hoy
+		  d.trabajos      [{ id, nombre, alumnos: [alumnoId] }] las actividades de las sesiones de hoy y de las que
+		                  siguen en curso, con los alumnos que se califican en pantalla
+		  d.tareas        igual, las tareas que se revisan hoy
+		  d.calificado    (alumnoId, productoId) → true si ya tiene semáforo, entrega o puntaje
+		  d.pendientes    cuántos "pendientes de la clase anterior" y "por falta justificada" siguen sin revisar
+		  d.sesiones      [{ id, numero_sesion, titulo }] sesiones empezadas y sin terminar
+		Quien faltó hoy (ausente o justificada) NO cuenta como trabajo o tarea sin calificar, salvo que ya
+		tenga una calificación (entonces está calificado y tampoco falta). → { asistencia, trabajos, tareas,
+		pendientes, sesiones, total, completo, resumen }. `resumen` (solo números) es lo que se guarda en
+		jornadas.resumen.
+	*/
+	function faltantesJornada(d) {
+		d = d || {};
+		var asis = d.asistencia || {};
+		var calificado = typeof d.calificado === "function" ? d.calificado : function () { return false; };
+		function faltoHoy(id) { return asis[id] === "ausente" || asis[id] === "justificada"; }
+		var nombres = {};
+		(d.alumnos || []).forEach(function (a) { nombres[a.id] = a.nombre_completo; });
+		var sinAsistencia = (d.alumnos || []).filter(function (a) { return !asis[a.id]; }).map(function (a) { return a.nombre_completo; });
+		function sinCalificarDe(lista) {
+			var productos = [], n = 0;
+			(lista || []).forEach(function (p) {
+				var faltan = (p.alumnos || []).filter(function (id) { return !faltoHoy(id) && !calificado(id, p.id); });
+				if (!faltan.length) return;
+				n += faltan.length;
+				productos.push({ id: p.id, nombre: p.nombre, n: faltan.length, alumnos: faltan.map(function (id) { return nombres[id] || ""; }) });
+			});
+			return { n: n, productos: productos };
+		}
+		var trabajos = sinCalificarDe(d.trabajos);
+		var tareas = sinCalificarDe(d.tareas);
+		var pendientes = Math.max(0, Number(d.pendientes) || 0);
+		var sesiones = (d.sesiones || []).slice();
+		var salida = {
+			asistencia: { n: sinAsistencia.length, alumnos: sinAsistencia },
+			trabajos: trabajos,
+			tareas: tareas,
+			pendientes: { n: pendientes },
+			sesiones: { n: sesiones.length, lista: sesiones },
+		};
+		salida.total = salida.asistencia.n + trabajos.n + tareas.n + pendientes + sesiones.length;
+		salida.completo = salida.total === 0;
+		salida.resumen = {
+			asistencia: salida.asistencia.n, trabajos: trabajos.n, tareas: tareas.n,
+			pendientes: pendientes, sesiones: sesiones.length,
+		};
+		return salida;
+	}
+
+	/*
 		── Registro histórico (spec de Jorge del 2026-09-26, §4.3; mi_salon_b20) ──
 		Una captura con fecha anterior al día en que se registró es histórica (es_historico). La
 		base la marca (triggers de b20); aquí vive la misma regla para las pantallas:
@@ -579,7 +633,7 @@
 		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,
 		leerAjustesCalendario: leerAjustesCalendario,
-		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre,
+		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre, faltantesJornada: faltantesJornada,
 		fechaAlta: fechaAlta, fechaProducto: fechaProducto, cuentaDesdeAlta: cuentaDesdeAlta,
 		examenCuentaDesdeAlta: examenCuentaDesdeAlta,
 		indiceAsignaciones: indiceAsignaciones, asignadoA: asignadoA, recibeProducto: recibeProducto, trabajaCon: trabajaCon, gradosPdaPorProducto: gradosPdaPorProducto,

@@ -24,8 +24,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var user = null, grupo = null, alumnos = [];
 	var hoy = getLocalDateISO();
 	var asistencia = {};      // alumno_id -> estado
-	var registro = {};        // alumno_id -> {participacion, conducta}
+	var registro = {};        // alumno_id -> {participacion, conducta, nota}; nota = el comentario del día (mi_salon_b25)
 	var registroGuardado = {}; // alumno_id -> true si ya hay fila de hoy en registro_diario
+	// Comentarios del día a medio escribir: alumno_id -> { texto, timer } (se guardan tras una pausa, como la
+	// retroalimentación; el texto escrito sobrevive a un nuevo dibujo del Cierre)
+	var notasPendientes = {};
+	var NOTA_MAX = 500;
+	// La jornada de hoy ya finalizada ({ cerrada_en, actualizada_en }) o null (lectura opcional de `jornadas`, b25)
+	var jornadaHoy = null;
+	var esperandoJornada = false;
 	var calificaciones = {};  // alumno_id|producto_id -> fila de calificaciones
 	var tareas = [], sesionesHoy = [], productosPorSesion = {};
 	var sesionPedida = null; // la sesión de la actividad suelta que se abrió desde Proyectos (?calificar=)
@@ -417,7 +424,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} else if (it.tipo === "registro" || it.tipo === "registro_borrar") {
 				if (d.fecha !== hoy) return;
 				if (v) {
-					registro[d.alumno_id] = { participacion: v.participacion, conducta: v.conducta };
+					registro[d.alumno_id] = { participacion: v.participacion, conducta: v.conducta, nota: v.nota === undefined ? null : v.nota };
 					registroGuardado[d.alumno_id] = true;
 				} else {
 					delete registro[d.alumno_id];
@@ -471,7 +478,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (it.tipo === "registro" || it.tipo === "registro_borrar") {
 			var r = registroGuardado[d.alumno_id] ? registro[d.alumno_id] : null;
 			if (!r || !v) return !r !== !v;
-			return r.participacion !== v.participacion || r.conducta !== v.conducta;
+			return r.participacion !== v.participacion || r.conducta !== v.conducta || (r.nota || null) !== (v.nota || null);
 		}
 		if (it.tipo === "calificacion" && d.fila) {
 			var c = calificaciones[d.fila.alumno_id + "|" + d.fila.producto_sesion_id] || {};
@@ -492,7 +499,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// IndexedDB) o con retroalimentación a medio escribir: el navegador pregunta
 	window.addEventListener("beforeunload", function (e) {
 		var sinResguardo = bandeja && bandeja.pendientes() && !bandeja.persistente();
-		if (!sinResguardo && !Object.keys(retroPendiente || {}).length) return;
+		if (!sinResguardo && !Object.keys(retroPendiente || {}).length && !Object.keys(notasPendientes || {}).length) return;
 		e.preventDefault();
 		e.returnValue = "";
 	});
@@ -663,7 +670,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// error-revisado-en: regRes.error
 		function leerRegistro() {
 			return window.sb.from("registro_diario")
-				.select(conCaptura("alumno_id, participacion, conducta", "registro"))
+				.select(conCaptura("alumno_id, participacion, conducta, nota", "registro"))
 				.eq("maestro_id", user.id).eq("fecha", hoy);
 		}
 		var desdeReg = numeroVista;
@@ -672,10 +679,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		(regRes.data || []).forEach(function (r) {
 			var d = { alumno_id: r.alumno_id, fecha: hoy };
 			tomarLeido(claveDe("registro", d), desdeReg, { tipo: "registro", datos: d }, r, function () {
-				registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta };
+				registro[r.alumno_id] = { participacion: r.participacion, conducta: r.conducta, nota: r.nota || null };
 				registroGuardado[r.alumno_id] = true;
 			});
 		});
+
+		// lectura-opcional: solo dice "Jornada finalizada a las 13:20"; nada se guarda con ella y, si no se puede leer
+		// (o la tabla aún no existe), el botón sigue diciendo "Finalizar jornada"
+		try {
+			var jorRes = await window.sb.from("jornadas").select("cerrada_en, actualizada_en")
+				.eq("maestro_id", user.id).eq("grupo_id", grupo.id).eq("fecha", hoy).limit(1);
+			if (!jorRes.error && jorRes.data && jorRes.data.length) jornadaHoy = jorRes.data[0];
+		} catch (_) { /* sin la jornada, Hoy sigue igual */ }
 
 		// Los ajustes del grupo al calendario SEP: las tareas vencen y lo incompleto se revisa el
 		// siguiente día de clase (acotada: una fila por día ajustado del grupo, a lo más los días
@@ -863,14 +878,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"Asistencia de " + nombreDe(alumnoId), { campos: ["estado"] });
 	}
 
-	// campo: "participacion" o "conducta" (lo que tocó la maestra); sin campo, el relleno 1 y 1
-	// del cierre, que solo se inserta donde no hay fila (nunca pisa ni avisa). El grupo va para que
+	// Lo que hay por omisión en el cierre de un alumno: 1 y 1 si asistió; sin participación ni conducta si faltó
+	// (quien faltó no participó ni se portó: su fila, si la hay, es solo el comentario)
+	function registroPorOmision(alumnoId) {
+		return faltoHoy(alumnoId) ? { participacion: null, conducta: null, nota: null } : { participacion: 1, conducta: 1, nota: null };
+	}
+
+	// campo: "participacion", "conducta" o "nota" (lo que tocó el docente), o varios en un arreglo; sin campo, el
+	// relleno 1 y 1 del cierre, que solo se inserta donde no hay fila (nunca pisa ni avisa). El grupo va para que
 	// la bandeja no rellene a quien este aparato marcó con falta en otra ventana
 	function guardarRegistro(alumnoId, campo) {
-		var v = registro[alumnoId] || { participacion: 1, conducta: 1 };
+		var v = registro[alumnoId] || registroPorOmision(alumnoId);
+		if (!registro[alumnoId]) registro[alumnoId] = v;
 		registroGuardado[alumnoId] = true;
-		guardar("registro", { alumno_id: alumnoId, fecha: hoy, participacion: v.participacion, conducta: v.conducta, grupo_id: grupo.id },
-			"Cierre del día de " + nombreDe(alumnoId), campo ? { campos: [campo] } : { relleno: true });
+		var campos = campo ? [].concat(campo) : null;
+		guardar("registro", { alumno_id: alumnoId, fecha: hoy, participacion: v.participacion, conducta: v.conducta, nota: v.nota || null, grupo_id: grupo.id },
+			(campos && campos.length === 1 && campos[0] === "nota" ? "Comentario del día de " : "Cierre del día de ") + nombreDe(alumnoId),
+			campos ? { campos: campos } : { relleno: true });
 	}
 
 	function faltoHoy(alumnoId) {
@@ -917,19 +941,40 @@ document.addEventListener("DOMContentLoaded", async function () {
 		que faltaron: ese día no participaron.
 	*/
 	function completarCierre() {
-		// Un relleno por alumno; la bandeja los manda juntos en un insert que no pisa
+		// Un relleno por alumno; la bandeja los manda juntos en un insert que no pisa. Una fila que ya existe
+		// (por ejemplo, solo con su comentario) no se rellena: se le completa lo que le falte, sin tocar el comentario
 		alumnos.forEach(function (al) {
-			if (registroGuardado[al.id] || faltoHoy(al.id)) return;
-			if (!registro[al.id]) registro[al.id] = { participacion: 1, conducta: 1 };
+			if (faltoHoy(al.id)) return;
+			if (registroGuardado[al.id]) { completarValoresNulos(al.id); return; }
+			if (!registro[al.id]) registro[al.id] = { participacion: 1, conducta: 1, nota: null };
 			guardarRegistro(al.id);
 		});
 	}
 
+	// Un alumno que asiste con una fila SIN participación o conducta (la creó su comentario cuando había faltado y
+	// después se le puso Presente): se le pone 1 en lo que falta. Solo esos campos: el comentario no se toca
+	function completarValoresNulos(alumnoId) {
+		var v = registro[alumnoId];
+		if (!v || !registroGuardado[alumnoId] || faltoHoy(alumnoId)) return;
+		var campos = [];
+		if (v.participacion === null || v.participacion === undefined) { v.participacion = 1; campos.push("participacion"); }
+		if (v.conducta === null || v.conducta === undefined) { v.conducta = 1; campos.push("conducta"); }
+		if (campos.length) guardarRegistro(alumnoId, campos);
+	}
+
 	// Si se marca una falta después del cierre, se retira el registro que se puso por
-	// defecto (1 y 1); uno que el maestro cambió a mano se deja
+	// defecto (1 y 1); uno que el maestro cambió a mano se deja. Una fila con COMENTARIO no se borra (el
+	// comentario es del docente): solo se le quitan la participación y la conducta por defecto, para que
+	// quien faltó no cuente un día de participación
 	function retirarCierreSiFalto(alumnoId) {
 		var v = registro[alumnoId];
 		if (!faltoHoy(alumnoId) || !registroGuardado[alumnoId] || !v || v.participacion !== 1 || v.conducta !== 1) return;
+		if (v.nota) {
+			v.participacion = null;
+			v.conducta = null;
+			guardarRegistro(alumnoId, ["participacion", "conducta"]);
+			return;
+		}
 		delete registro[alumnoId];
 		registroGuardado[alumnoId] = false;
 		guardar("registro_borrar", { alumno_id: alumnoId, fecha: hoy }, "Cierre del día de " + nombreDe(alumnoId));
@@ -1179,6 +1224,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		asistencia[alumnoId] = btn.dataset.valor;
 		guardarAsistencia(alumnoId, btn.dataset.valor);
 		retirarCierreSiFalto(alumnoId);
+		completarValoresNulos(alumnoId);
 		renderAsistencia();
 		renderTareas(); // quien faltó hoy no aparece para calificar
 		renderPendientes(); // quien faltó hoy sigue pendiente
@@ -2082,6 +2128,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 	function guardarRetrosPendientes() {
 		Object.keys(retroPendiente).forEach(function (k) { guardarRetro(retroPendiente[k].ta); });
+		guardarNotasPendientes(); // los comentarios del cierre a medio escribir también entran a la cola
 	}
 	sesionesCont.addEventListener("input", function (e) {
 		var ta = e.target.closest("textarea[data-retroalimentacion]");
@@ -2209,7 +2256,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var cancelar = document.createElement("button");
 		cancelar.type = "button";
 		cancelar.className = "min-h-[44px] px-5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
-		cancelar.textContent = "Cancelar";
+		cancelar.textContent = opciones.cancelar || "Cancelar";
 		var aceptar = document.createElement("button");
 		aceptar.type = "submit";
 		aceptar.className = "min-h-[44px] px-5 rounded-xl font-semibold text-white " + (opciones.peligro ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700");
@@ -3030,12 +3077,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// ── 4. Cierre del día ─────────────────────────────────────────────────────
 	/*
 		Una tabla con encabezado fijo (sticky top-14: se queda a la vista al bajar por la lista) y una
-		columna por cosa, cada una de su color: No., Grado, Nombre, Participación y Conducta, en el
-		orden de la lista (OrdenLista). A quien faltó se le pone "Faltó" y no se le muestran chips. Desde
-		md (768 px) es tabla; abajo de eso, una tarjeta por alumno con las mismas cosas. El significado
-		del 0, 1 y 2 está en la leyenda de hoy.html.
+		columna por cosa, cada una de su color: No., Grado, Nombre, Participación, Conducta y Comentarios,
+		en el orden de la lista (OrdenLista). A quien faltó se le pone "Faltó" y no se le muestran chips
+		(sí su caja de comentario: para anotar el motivo). Desde xl (1280 px) es tabla de seis columnas;
+		de md (768 px) a xl, de cinco con el comentario en una fila debajo de cada alumno; abajo de md,
+		una tarjeta por alumno con las mismas cosas. El significado del 0, 1 y 2 está en la leyenda de hoy.html.
+		El comentario (registro_diario.nota, mi_salon_b25) se guarda tras una pausa, como la
+		retroalimentación, y funciona sin señal (js/bandeja-salida.js).
 	*/
-	function columnasCierre() { return "md:grid-cols-[2.75rem_3.25rem_minmax(0,1fr)_10.5rem_10.5rem]"; }
+	// Desde md (768 px): cinco columnas y el comentario en una fila debajo de cada alumno (el ancho de la tarjeta no da para
+	// seis); desde xl (1280 px, la tableta en horizontal): seis columnas, con Comentarios al lado
+	function columnasCierre() {
+		return "md:grid-cols-[2.75rem_3.25rem_minmax(0,1fr)_10.5rem_10.5rem] xl:grid-cols-[2.75rem_3.25rem_minmax(0,1fr)_10.5rem_10.5rem_minmax(0,1.3fr)]";
+	}
 
 	function encabezadoCierre() {
 		return "<div data-cierre-encabezado class='hidden md:grid " + columnasCierre() + " sticky top-14 z-20 mb-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm text-xs font-semibold'>" +
@@ -3043,7 +3097,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<span class='bg-gray-100 px-2 py-2 text-gray-600'>Grado</span>" +
 			"<span class='bg-gray-100 px-2 py-2 text-gray-600'>Nombre</span>" +
 			"<span class='bg-violet-100 px-2 py-2 text-center text-violet-800'>Participación</span>" +
-			"<span class='bg-teal-100 px-2 py-2 text-center text-teal-800'>Conducta</span></div>";
+			"<span class='bg-teal-100 px-2 py-2 text-center text-teal-800'>Conducta</span>" +
+			"<span class='hidden xl:block bg-amber-100 px-2 py-2 text-amber-800'>Comentarios</span></div>";
 	}
 
 	function celdaCierre(alumno, campo, etiqueta, valor, colorTexto, colorActivo) {
@@ -3055,35 +3110,67 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}).join("") + "</div></div>";
 	}
 
+	// Lo que se ve en la caja de comentario: lo que se está escribiendo o lo guardado
+	function textoNota(alumnoId) {
+		if (notasPendientes[alumnoId]) return notasPendientes[alumnoId].texto;
+		var v = registro[alumnoId];
+		return v && v.nota ? v.nota : "";
+	}
+
+	// La caja de comentario de un alumno (también de quien faltó: para anotar el motivo). Abajo de md lleva su etiqueta
+	function celdaNota(al) {
+		return "<div class='mt-2 md:col-span-5 md:px-2 md:pb-2 xl:col-span-1 xl:mt-0 xl:py-1.5 xl:pb-1.5' data-cierre-columna='nota'>" +
+			"<label for='cierreNota-" + esc(al.id) + "' class='xl:hidden mb-1 block text-xs font-semibold text-amber-800'>Comentarios</label>" +
+			"<textarea id='cierreNota-" + esc(al.id) + "' rows='1' maxlength='" + NOTA_MAX + "' data-cierre-nota='" + esc(al.id) + "' " +
+			"aria-label='Comentario del día de " + esc(al.nombre_completo) + "' placeholder='Comentario (opcional)' " +
+			"class='block w-full min-h-[44px] resize-none rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500'>" +
+			esc(textoNota(al.id)) + "</textarea></div>";
+	}
+
+	// La caja crece con lo escrito (hasta unas cuatro líneas)
+	function ajustarAlturaNota(ta) {
+		if (!ta || !ta.style) return;
+		ta.style.height = "auto";
+		ta.style.height = Math.max(44, Math.min(ta.scrollHeight || 0, 128)) + "px";
+	}
+
+	// ¿Ya tiene participación Y conducta guardadas? Una fila que solo trae su comentario no es un cierre
+	function cierreGuardado(alumnoId) {
+		var v = registro[alumnoId];
+		return !!registroGuardado[alumnoId] && !!v && v.participacion !== null && v.participacion !== undefined &&
+			v.conducta !== null && v.conducta !== undefined;
+	}
+
 	function filaCierre(al) {
 		var v = registro[al.id];
 		var falto = faltoHoy(al.id);
 		// Quien faltó y ya tiene una fila con valores distintos de 1 y 1 (la capturó antes de marcarle la
-		// falta): se ve "Faltó" CON sus chips, para corregirla, y un botón para quitarla del cierre
-		var conFila = falto && !!registroGuardado[al.id] && !!v && (v.participacion !== 1 || v.conducta !== 1);
+		// falta): se ve "Faltó" CON sus chips, para corregirla, y un botón para quitarla del cierre. Una fila
+		// que solo trae el comentario (sin participación ni conducta) no cuenta: es el caso normal de quien faltó
+		var conValores = !!v && ((v.participacion !== null && v.participacion !== undefined) || (v.conducta !== null && v.conducta !== undefined));
+		var conFila = falto && !!registroGuardado[al.id] && conValores && (v.participacion !== 1 || v.conducta !== 1);
 		var etiquetaFalto = "<span data-cierre-falto class='inline-flex items-center rounded-lg bg-gray-100 px-3 min-h-[36px] text-sm font-semibold text-gray-600'>" +
 			(asistencia[al.id] === "justificada" ? "Faltó · justificada" : "Faltó") + "</span>";
 		var estado = falto && !conFila
 			? "<div class='mt-2 md:mt-0 md:col-span-2 md:px-2 md:py-2'>" + etiquetaFalto + "</div>"
 			: celdaCierre(al, "participacion", "Participación", v ? v.participacion : 1, "text-violet-800", "bg-violet-600 text-white") +
-				celdaCierre(al, "conducta", "Conducta", v ? v.conducta : 1, "text-teal-800", "bg-teal-600 text-white") +
-				(conFila ? "<div class='mt-2 flex flex-wrap items-center gap-2 md:col-span-5 md:px-2 md:pb-2'>" + etiquetaFalto +
-					"<span class='text-xs text-gray-500'>Tiene un cierre capturado.</span>" +
-					"<button type='button' data-cierre-quitar='" + esc(al.id) + "' class='min-h-[44px] px-4 rounded-xl border border-red-200 text-sm font-semibold text-red-700 hover:bg-red-50'>Quitar del cierre</button></div>" : "");
+				celdaCierre(al, "conducta", "Conducta", v ? v.conducta : 1, "text-teal-800", "bg-teal-600 text-white");
+		var quitar = conFila ? "<div class='mt-2 flex flex-wrap items-center gap-2 md:col-span-5 xl:col-span-6 md:px-2 md:pb-2'>" + etiquetaFalto +
+			"<span class='text-xs text-gray-500'>Tiene un cierre capturado.</span>" +
+			"<button type='button' data-cierre-quitar='" + esc(al.id) + "' class='min-h-[44px] px-4 rounded-xl border border-red-200 text-sm font-semibold text-red-700 hover:bg-red-50'>Quitar del cierre</button></div>" : "";
 		return "<div data-cierre-fila='" + esc(al.id) + "' class='mb-2 rounded-xl border border-gray-200 p-3 md:mb-0 md:grid " + columnasCierre() +
 			" md:items-center md:rounded-none md:border-0 md:border-b md:border-gray-100 md:p-0'>" +
 			"<div class='flex items-baseline gap-2 md:contents'>" +
 			"<span data-num-lista class='text-sm font-bold text-gray-900 tabular-nums md:px-2 md:text-right'>" + esc(al.num_lista || "") + "</span>" +
 			"<span class='order-last text-xs text-gray-500 md:order-none md:px-2' data-cierre-grado>" + esc(al.grado) + "°</span>" +
 			"<span class='min-w-0 break-words text-sm font-medium text-gray-800 md:px-2 md:py-2'>" + esc(al.nombre_completo) + "</span></div>" +
-			estado + "</div>";
+			estado + celdaNota(al) + quitar + "</div>";
 	}
 
-	function renderCierre() {
-		var cont = document.getElementById("cierreLista");
-		cont.innerHTML = encabezadoCierre() + (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).map(filaCierre).join("");
+	// Cuántos cierres hay guardados y el botón de abajo (sin volver a dibujar la lista: no se pierde lo que se escribe)
+	function resumenDelCierre() {
 		var esperados = alumnos.filter(function (a) { return !faltoHoy(a.id); });
-		var guardados = esperados.filter(function (a) { return registroGuardado[a.id]; }).length;
+		var guardados = esperados.filter(function (a) { return cierreGuardado(a.id); }).length;
 		// La misma cuenta que Inicio (js/alcance-hoy.js)
 		var r = window.AlcanceHoy.resumenCierre(alumnos.length, esperados.length, guardados);
 		document.getElementById("cierreResumen").textContent = r.nadieAsistio
@@ -3096,21 +3183,89 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
+	function renderCierre() {
+		var cont = document.getElementById("cierreLista");
+		// Si se está escribiendo un comentario, el foco y el cursor se quedan donde estaban
+		var activo = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+		var foco = activo && activo.dataset && activo.dataset.cierreNota && cont.contains && cont.contains(activo)
+			? { id: activo.dataset.cierreNota, ini: activo.selectionStart, fin: activo.selectionEnd } : null;
+		cont.innerHTML = encabezadoCierre() + (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).map(filaCierre).join("");
+		cont.querySelectorAll("textarea[data-cierre-nota]").forEach(function (ta) { if (ta.value) ajustarAlturaNota(ta); });
+		if (foco) {
+			var ta = cont.querySelector("textarea[data-cierre-nota='" + foco.id + "']");
+			if (ta && ta.focus) {
+				ta.focus();
+				try { ta.setSelectionRange(foco.ini, foco.fin); } catch (_) { /* sin selección */ }
+			}
+		}
+		resumenDelCierre();
+	}
+
+	/*
+		Un comentario: se guarda tras una pausa o al salir de la caja. Sin cambios no escribe nada. A quien faltó
+		se le guarda sin participación ni conducta (una fila solo con su comentario); si después se borra y no queda
+		nada, la fila se retira. Al alumno que asistió se le crea su fila con 1 y 1, como cualquier toque del cierre.
+	*/
+	function guardarNota(alumnoId) {
+		var p = notasPendientes[alumnoId];
+		if (!p) return;
+		clearTimeout(p.timer);
+		delete notasPendientes[alumnoId];
+		var nota = String(p.texto || "").trim() || null;
+		var v = registro[alumnoId];
+		if (nota === ((v && v.nota) || null)) return;
+		if (!v) v = registro[alumnoId] = registroPorOmision(alumnoId);
+		v.nota = nota;
+		var sinValores = (v.participacion === null || v.participacion === undefined) && (v.conducta === null || v.conducta === undefined);
+		if (!nota && sinValores && faltoHoy(alumnoId)) {
+			delete registro[alumnoId];
+			registroGuardado[alumnoId] = false;
+			guardar("registro_borrar", { alumno_id: alumnoId, fecha: hoy }, "Cierre del día de " + nombreDe(alumnoId));
+		} else {
+			guardarRegistro(alumnoId, "nota");
+		}
+		resumenDelCierre();
+	}
+	function guardarNotasPendientes() {
+		Object.keys(notasPendientes).forEach(guardarNota);
+	}
+
+	document.getElementById("cierreLista").addEventListener("input", function (e) {
+		var ta = e.target && e.target.closest ? e.target.closest("textarea[data-cierre-nota]") : null;
+		if (!ta) return;
+		var id = ta.dataset.cierreNota;
+		if (notasPendientes[id]) clearTimeout(notasPendientes[id].timer);
+		notasPendientes[id] = { texto: ta.value, timer: setTimeout(function () { guardarNota(id); }, 1000) };
+		ajustarAlturaNota(ta);
+	});
+	document.getElementById("cierreLista").addEventListener("focusout", function (e) {
+		var ta = e.target && e.target.closest ? e.target.closest("textarea[data-cierre-nota]") : null;
+		if (ta) guardarNota(ta.dataset.cierreNota);
+	});
+
 	document.getElementById("cierreLista").addEventListener("click", function (e) {
-		// "Quitar del cierre": borra la fila de quien faltó (por la cola, como retirarCierreSiFalto)
+		// "Quitar del cierre": borra la fila de quien faltó (por la cola, como retirarCierreSiFalto). Si la fila
+		// tiene comentario, solo se le quitan la participación y la conducta: el comentario se queda
 		var quitar = e.target.closest("button[data-cierre-quitar]");
 		if (quitar && quitar.dataset.cierreQuitar) {
 			var idQuitar = quitar.dataset.cierreQuitar;
-			delete registro[idQuitar];
-			registroGuardado[idQuitar] = false;
-			guardar("registro_borrar", { alumno_id: idQuitar, fecha: hoy }, "Cierre del día de " + nombreDe(idQuitar));
+			var vQuitar = registro[idQuitar];
+			if (vQuitar && vQuitar.nota) {
+				vQuitar.participacion = null;
+				vQuitar.conducta = null;
+				guardarRegistro(idQuitar, ["participacion", "conducta"]);
+			} else {
+				delete registro[idQuitar];
+				registroGuardado[idQuitar] = false;
+				guardar("registro_borrar", { alumno_id: idQuitar, fecha: hoy }, "Cierre del día de " + nombreDe(idQuitar));
+			}
 			renderCierre();
 			return;
 		}
 		var btn = e.target.closest("button[data-cierre]");
 		if (!btn) return;
 		var alumnoId = btn.dataset.alumno;
-		var actual = registro[alumnoId] || { participacion: 1, conducta: 1 };
+		var actual = registro[alumnoId] || registroPorOmision(alumnoId);
 		// Igual que en Asistencia: volver a tocar el valor ya guardado no escribe nada
 		if (registroGuardado[alumnoId] && actual[btn.dataset.cierre] === Number(btn.dataset.valor)) return;
 		actual[btn.dataset.cierre] = Number(btn.dataset.valor);
@@ -3128,6 +3283,196 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
+	// ── 5. Finalizar jornada ──────────────────────────────────────────────────
+	/*
+		Al terminar el día: guarda lo que esté a medio escribir (retroalimentaciones y comentarios), completa el
+		cierre, espera a que todo llegue a la base y registra la jornada (jornadas, mi_salon_b25: una fila por
+		grupo y día). Antes dice lo que falta (AlcanceHoy.faltantesJornada) con un enlace a cada parte; se puede
+		"Finalizar de todos modos". No bloquea nada: se sigue editando y se puede "Finalizar de nuevo". Necesita
+		señal: sin ella avisa y NO marca el día.
+	*/
+	function horaDe(iso) {
+		try { return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }); } catch (_) { return ""; }
+	}
+
+	function renderJornada() {
+		var btn = document.getElementById("jornadaBtn");
+		var linea = document.getElementById("jornadaEstado");
+		var texto = document.getElementById("jornadaEstadoTexto");
+		if (btn) btn.textContent = jornadaHoy ? "Finalizar de nuevo" : "Finalizar jornada";
+		if (linea && linea.classList) linea.classList.toggle("hidden", !jornadaHoy);
+		if (!texto) return;
+		if (!jornadaHoy) { texto.textContent = ""; return; }
+		var cerrada = horaDe(jornadaHoy.cerrada_en), actualizada = horaDe(jornadaHoy.actualizada_en);
+		texto.textContent = "Jornada finalizada a las " + cerrada + (actualizada && actualizada !== cerrada ? " · actualizada a las " + actualizada : "");
+	}
+
+	// Lo que falta del día, con las mismas reglas que las tarjetas de arriba (AlcanceHoy.faltantesJornada lo cuenta)
+	function faltantesDeLaJornada() {
+		var trabajos = [], tareasDia = [], esTarea = {};
+		sesionesHoy.forEach(function (ses) {
+			(productosPorSesion[ses.id] || []).forEach(function (p) {
+				if (p.tipo === "tarea") return; // las tareas que se dejan hoy se revisan otro día
+				trabajos.push({ id: p.id, nombre: p.nombre, alumnos: alumnosParaCalificar(p).map(function (a) { return a.id; }) });
+			});
+		});
+		tareas.forEach(function (t) {
+			esTarea[t.id] = true;
+			tareasDia.push({ id: t.id, nombre: t.nombre, alumnos: alumnosParaCalificar(t).map(function (a) { return a.id; }) });
+		});
+		var pendientes = 0;
+		pendientesDeRevisar().forEach(function (x) {
+			if (x.cal.estado_en_clase === "incompleta" && !faltoHoy(x.alumno.id)) pendientes++;
+		});
+		itemsPorFalta().forEach(function (x) {
+			if (window.AlcanceHoy.sinCalificar(calificaciones[x.alumno.id + "|" + x.producto.id]) && !faltoHoy(x.alumno.id)) pendientes++;
+		});
+		var enCurso = sesionesHoy.filter(function (s) { return !esSuelta(s) && s.estado_sesion !== "completada"; }).map(function (s) {
+			var pr = proyectoPorId[s.proyecto_id] || {};
+			return { id: s.id, numero_sesion: s.numero_sesion, titulo: pr.titulo || "" };
+		});
+		return window.AlcanceHoy.faltantesJornada({
+			alumnos: alumnos, asistencia: asistencia, trabajos: trabajos, tareas: tareasDia, pendientes: pendientes, sesiones: enCurso,
+			calificado: function (alumnoId, productoId) {
+				var c = calificaciones[alumnoId + "|" + productoId];
+				return esTarea[productoId] ? !!(c && c.estado_entrega) : estaCalificado(c);
+			},
+		});
+	}
+
+	// El cuerpo del diálogo: cada cosa que falta, con su enlace a la parte de la pantalla
+	function construirFaltantes(cuerpo, f, alIr) {
+		var intro = document.createElement("p");
+		intro.className = "text-sm text-gray-600";
+		intro.textContent = "Todavía falta esto del día. Puedes volver a completarlo o finalizar así.";
+		cuerpo.appendChild(intro);
+		var lista = document.createElement("ul");
+		lista.className = "flex flex-col gap-2";
+		function fila(texto, ancla, etiqueta) {
+			var li = document.createElement("li");
+			li.className = "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800";
+			var t = document.createElement("span");
+			t.textContent = texto;
+			var a = document.createElement("a");
+			a.href = "#" + ancla;
+			a.setAttribute("data-faltante", ancla);
+			a.className = "inline-flex items-center min-h-[44px] shrink-0 font-semibold text-blue-700 hover:underline";
+			a.textContent = etiqueta + " →";
+			a.addEventListener("click", function () { alIr(ancla); });
+			li.appendChild(t);
+			li.appendChild(a);
+			lista.appendChild(li);
+		}
+		if (f.asistencia.n) fila("Falta la asistencia de " + f.asistencia.n + (f.asistencia.n === 1 ? " alumno: " : " alumnos: ") + f.asistencia.alumnos.join(", ") + ".", "asistencia", "Ir a Asistencia");
+		if (f.trabajos.n) fila(f.trabajos.n + (f.trabajos.n === 1 ? " calificación de trabajo sin poner" : " calificaciones de trabajos sin poner") + " (" + f.trabajos.productos.map(function (p) { return p.nombre; }).join(", ") + ").", "sesiones", "Ir a las sesiones");
+		if (f.tareas.n) fila(f.tareas.n + (f.tareas.n === 1 ? " tarea sin revisar" : " tareas sin revisar") + " (" + f.tareas.productos.map(function (p) { return p.nombre; }).join(", ") + ").", "tareas", "Ir a Tareas");
+		if (f.pendientes.n) fila(f.pendientes.n + (f.pendientes.n === 1 ? " pendiente sin revisar." : " pendientes sin revisar."), "pendientes", "Ir a Pendientes");
+		f.sesiones.lista.forEach(function (s) {
+			fila("La sesión " + (s.numero_sesion || "") + (s.titulo ? " de «" + s.titulo + "»" : "") + " sigue sin terminar.", "ses-" + s.id, "Ir a la sesión");
+		});
+		cuerpo.appendChild(lista);
+	}
+
+	// Sale a la parte de la pantalla que falta (el diálogo se cierra antes)
+	function irAFaltante(ancla) {
+		var el = document.getElementById(ancla);
+		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });
+	}
+
+	/*
+		Registra la jornada: completa el cierre, espera a que se envíe todo y escribe en jornadas. Devuelve
+		{ ok: true } o { ok: false, texto } (el día NO queda marcado).
+	*/
+	async function registrarJornada(faltantes) {
+		completarCierre();
+		renderCierre();
+		if (sinSenal()) return { ok: false, texto: "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal." };
+		if (bandeja && bandeja.pendientes()) {
+			var envio = await bandeja.esperarEnvio();
+			if (envio !== "ok") {
+				return { ok: false, texto: (envio === "red" || envio === "servidor"
+					? "Todavía no se pudo enviar lo capturado, así que el día no se marcó. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
+					: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.") };
+			}
+		}
+		var resumen = Object.assign({}, faltantes.resumen, { de_todos_modos: !faltantes.completo });
+		var res = await window.sb.from("jornadas")
+			.upsert({ maestro_id: user.id, grupo_id: grupo.id, fecha: hoy, resumen: resumen }, { onConflict: "grupo_id,fecha" })
+			.select("cerrada_en, actualizada_en");
+		if (res.error) {
+			return { ok: false, texto: sinSenal() ? "Sin señal: el día no se marcó. Lo capturado sigue guardado. Inténtalo de nuevo cuando haya señal."
+				: "No se pudo registrar la jornada: " + textoError(res.error) + ". Lo capturado sí quedó guardado; el día no se marcó." };
+		}
+		var fila = res.data && res.data[0];
+		jornadaHoy = fila || { cerrada_en: new Date().toISOString(), actualizada_en: new Date().toISOString() };
+		renderJornada();
+		return { ok: true };
+	}
+
+	async function finalizarJornada(btn) {
+		if (esperandoJornada || !pintado) return;
+		esperandoJornada = true;
+		var etiqueta = btn.textContent;
+		try {
+			guardarRetrosPendientes(); // lo que se está escribiendo (retroalimentaciones y comentarios) entra a la cola
+			if (sinSenal()) {
+				mensaje("error", "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+				return;
+			}
+			if (bandeja && bandeja.pendientes()) {
+				btn.disabled = true;
+				btn.textContent = "Guardando lo capturado...";
+				var envio = await bandeja.esperarEnvio();
+				btn.disabled = false;
+				btn.textContent = etiqueta;
+				if (envio !== "ok") {
+					mensaje("error", envio === "red" || envio === "servidor"
+						? "Todavía no se pudo enviar lo capturado, así que el día no se marcó. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
+						: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+					return;
+				}
+			}
+			mensaje("", "");
+			var faltantes = faltantesDeLaJornada();
+			if (faltantes.completo) {
+				btn.disabled = true;
+				btn.textContent = "Finalizando...";
+				var r = await registrarJornada(faltantes);
+				btn.disabled = false;
+				btn.textContent = etiqueta;
+				if (!r.ok) { mensaje("error", r.texto); return; }
+				renderJornada();
+				mensaje("info", "Jornada finalizada a las " + horaDe(jornadaHoy.cerrada_en) + ".");
+				return;
+			}
+			var dialogo = abrirDialogo({
+				origen: btn,
+				titulo: "Antes de finalizar la jornada",
+				aceptar: "Finalizar de todos modos",
+				cancelar: "Volver",
+				construir: function (cuerpo) {
+					construirFaltantes(cuerpo, faltantes, function (ancla) {
+						dialogo.cerrar();
+						irAFaltante(ancla);
+					});
+				},
+				alAceptar: async function (form, avisar) {
+					var res = await registrarJornada(faltantes);
+					if (!res.ok) { avisar(res.texto); return false; }
+					mensaje("info", "Jornada finalizada a las " + horaDe(jornadaHoy.cerrada_en) + ".");
+				},
+			});
+		} finally {
+			esperandoJornada = false;
+			if (btn && !btn.disabled) btn.textContent = jornadaHoy ? "Finalizar de nuevo" : "Finalizar jornada";
+		}
+	}
+
+	var jornadaBtn = document.getElementById("jornadaBtn");
+	if (jornadaBtn && jornadaBtn.addEventListener) {
+		jornadaBtn.addEventListener("click", function () { finalizarJornada(jornadaBtn); });
+	}
+
 	// ── Lo pendiente del dispositivo ──────────────────────────────────────────
 	// Las capturas que siguen en la bandeja (por ejemplo, se recargó sin red) se ponen
 	// encima de lo leído de la base: en pantalla se ve lo que la maestra capturó.
@@ -3143,10 +3488,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			} else if (it.tipo === "registro") {
 				if (d.fecha !== hoy) return;
 				if (it.relleno && registroGuardado[d.alumno_id]) return; // ya hay fila: el relleno no la cambia
-				var r = registro[d.alumno_id] || { participacion: 1, conducta: 1 };
+				// Una captura vieja de la cola (de antes de b25) no trae `nota`: no la toca
+				var r = registro[d.alumno_id] || {
+					participacion: d.participacion === undefined ? 1 : d.participacion,
+					conducta: d.conducta === undefined ? 1 : d.conducta, nota: null,
+				};
 				registro[d.alumno_id] = {
 					participacion: "participacion" in v ? v.participacion : r.participacion,
 					conducta: "conducta" in v ? v.conducta : r.conducta,
+					nota: "nota" in v ? v.nota : (r.nota || null),
 				};
 				registroGuardado[d.alumno_id] = true;
 			} else if (it.tipo === "registro_borrar") {
@@ -3232,6 +3582,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		["pendientes de la clase anterior", renderPendientes],
 		["sesiones", renderSesiones],
 		["cierre", renderCierre],
+		["jornada", renderJornada],
 	].forEach(function (par) {
 		try {
 			par[1]();

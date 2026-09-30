@@ -146,10 +146,16 @@ document.addEventListener("DOMContentLoaded", function () {
 		var alumnoIds = faltaron.map(function (c) { return c.alumnoId; });
 		encolar({
 			correr: async function () {
+				// Sin comentario: se borra la fila. Con comentario (mi_salon_b25, Hoy): se le quitan solo la
+				// participación y la conducta por defecto y el comentario se queda
 				var res = await window.sb.from("registro_diario").delete()
 					.eq("maestro_id", userId).eq("fecha", dia)
-					.in("alumno_id", alumnoIds).eq("participacion", 1).eq("conducta", 1);
+					.in("alumno_id", alumnoIds).eq("participacion", 1).eq("conducta", 1).is("nota", null);
 				if (res.error) throw res.error;
+				var conNota = await window.sb.from("registro_diario").update({ participacion: null, conducta: null })
+					.eq("maestro_id", userId).eq("fecha", dia)
+					.in("alumno_id", alumnoIds).eq("participacion", 1).eq("conducta", 1).not("nota", "is", null);
+				if (conNota.error) throw conNota.error;
 			},
 			mal: function (e) {
 				mensaje("error", avisoCierreSinQuitar(dia, faltaron, textoError(e)));
