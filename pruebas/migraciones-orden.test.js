@@ -3,11 +3,11 @@
 	lanzamiento: b20, b21 y b22).
 
 	Varias migraciones reemplazan delete_own_account completa (b10, jissez_interes_secciones, b17,
-	b18, b19, b19a, b20, b21, b22 y b23). La que se aplica AL FINAL es la que queda, así que la última
-	del orden recomendado (b23) debe contener todo lo que borran las anteriores:
+	b18, b19, b19a, b20, b21, b22, b23 y b25). La que se aplica AL FINAL es la que queda, así que la última
+	del orden recomendado (b25) debe contener todo lo que borran las anteriores:
 	  - cada tabla que borra alguna versión anterior también la borra b22 (b19a: búsquedas vacías y
 	    productos finales; b20: calificacion_directa y ponte_al_dia; b21: mi_salon_correos y
-	    mi_salon_accesos) más mi_salon_ordenes (b22) e incidencias_folios (b23);
+	    mi_salon_accesos) más mi_salon_ordenes (b22), incidencias_folios (b23) y jornadas (b25);
 	  - lo de b13 en adelante va con guarda to_regclass (b22 se puede aplicar aunque falte una tabla);
 	  - las compras de la tienda y los PAGOS de Mi Salón siguen bloqueando el borrado;
 	  - la cabecera de b22 dice que va al final.
@@ -58,8 +58,10 @@ const ORDEN = [
 	"mi_salon_b20_registro_historico_2026-09.sql",
 	"mi_salon_b21_acceso_2026-09.sql",
 	"mi_salon_b22_cobros_2026-09.sql",
-	// Folio de incidencias y ajustes de R27a/R27b (2026-09-26): trae la versión FINAL y es la última
+	// Folio de incidencias y ajustes de R27a/R27b (2026-09-26)
 	"mi_salon_b23_folio_incidencias_2026-09.sql",
+	// Comentarios del día y Finalizar jornada (Fase 3 del plan de Fanny, 2026-09-29): trae la versión FINAL y es la última
+	"mi_salon_b25_jornada_comentario_2026-10.sql",
 ];
 
 // El cuerpo de delete_own_account de un archivo (la última definición, si hay varias)
@@ -82,7 +84,7 @@ const todas = fs.readdirSync(DIR).filter((f) => f.endsWith(".sql") && /create or
 const fuera = todas.filter((f) => ORDEN.indexOf(f) === -1);
 ok("cada migración que redefine delete_own_account está en el orden", fuera.length === 0, fuera.join(", "));
 
-// La que manda es la ÚLTIMA del orden que define delete_own_account (b23); si alguna fuera después,
+// La que manda es la ÚLTIMA del orden que define delete_own_account (b25); si alguna fuera después,
 // no debe redefinirla
 const definen = ORDEN.filter((f) => cuerpo(leer(f)).length > 0);
 const ultima = definen[definen.length - 1];
@@ -97,8 +99,8 @@ ORDEN.slice(0, ORDEN.indexOf(ultima)).forEach((f) => {
 });
 ok("la última borra marketplace_busquedas_vacias y productos_finales (R26b)",
 	tu.has("public.marketplace_busquedas_vacias") && tu.has("public.productos_finales"));
-ok("la última borra lo de b20, b21, b22 y b23 (calificacion_directa, ponte_al_dia, mi_salon_correos, mi_salon_accesos, mi_salon_ordenes, incidencias_folios)",
-	["calificacion_directa", "ponte_al_dia", "mi_salon_correos", "mi_salon_accesos", "mi_salon_ordenes", "incidencias_folios"].filter((t) => !tu.has("public." + t)), []);
+ok("la última borra lo de b20, b21, b22, b23 y b25 (calificacion_directa, ponte_al_dia, mi_salon_correos, mi_salon_accesos, mi_salon_ordenes, incidencias_folios, jornadas)",
+	["calificacion_directa", "ponte_al_dia", "mi_salon_correos", "mi_salon_accesos", "mi_salon_ordenes", "incidencias_folios", "jornadas"].filter((t) => !tu.has("public." + t)), []);
 ok("un pago de Mi Salón bloquea el borrado (guarda con to_regclass, antes de borrar nada)",
 	/if to_regclass\('public\.mi_salon_accesos'\) is not null then\s+if exists \(select 1 from public\.mi_salon_accesos where docente_id = v and origen = 'pago'\) then[\s\S]*?errcode = 'check_violation'/.test(cu)
 	&& cu.indexOf("origen = 'pago'") < cu.indexOf("delete from public."));
@@ -118,10 +120,22 @@ ok("las tablas nuevas van con guarda to_regclass", sinGuarda.length === 0, sinGu
 const guardas = (cu.match(/if to_regclass\('public\.([a-z_]+)'\) is not null then\s+execute 'delete from public\.([a-z_]+)/g) || [])
 	.map((g) => g.match(/public\.([a-z_]+)'\)[\s\S]*public\.([a-z_]+)/)).filter((x) => x[1] !== x[2]);
 ok("cada guarda revisa la misma tabla que borra", guardas.length === 0);
-igual("la última que define delete_own_account es b23 (folio de incidencias)", ultima, "mi_salon_b23_folio_incidencias_2026-09.sql");
+igual("la última que define delete_own_account es b25 (comentarios del día y jornadas)", ultima, "mi_salon_b25_jornada_comentario_2026-10.sql");
 ok("la cabecera de " + ultima + " dice que va al final (de las que la reemplazan)", /ORDEN: va AL FINAL/.test(leer(ultima)));
 igual("solo " + ultima + " dice que va al final", ORDEN.filter((f) => f !== ultima && /ORDEN: va AL FINAL/.test(leer(f))), []);
-igual("la última del orden es b23 (folio de incidencias)", ORDEN[ORDEN.length - 1], "mi_salon_b23_folio_incidencias_2026-09.sql");
+igual("la última del orden es b25 (comentarios del día y jornadas)", ORDEN[ORDEN.length - 1], "mi_salon_b25_jornada_comentario_2026-10.sql");
+// b25 es aditiva e idempotente y no abre ni cierra transacciones (el script de aplicación la envuelve)
+const b25 = leer("mi_salon_b25_jornada_comentario_2026-10.sql").replace(/--[^\n]*/g, "");
+ok("b25: sin begin/commit (el script de aplicación pone la transacción)", !/^\s*(begin|commit)\s*;/im.test(b25));
+ok("b25: la columna de la marca es nula y SIN default; jornadas con unique(grupo_id, fecha), RLS y candado",
+	/alter table public\.registro_diario add column if not exists captura_nota uuid;/.test(b25) && /create table if not exists public\.jornadas/.test(b25) &&
+	/constraint jornadas_grupo_fecha_key unique \(grupo_id, fecha\)/.test(b25) && /alter table public\.jornadas enable row level security/.test(b25) &&
+	/select public\.mi_salon_candado\('public\.jornadas'\)/.test(b25));
+ok("b25: el trigger de marcas conserva participación y conducta y agrega la nota",
+	/create or replace function public\.marca_captura_registro_diario\(\)/.test(b25) && /new\.participacion is distinct from old\.participacion/.test(b25) &&
+	/new\.conducta is distinct from old\.conducta/.test(b25) && /new\.nota is distinct from old\.nota/.test(b25));
+ok("b25: las políticas de jornadas exigen que el grupo sea del docente al insertar y actualizar",
+	(b25.match(/exists \(select 1 from public\.grupos g where g\.id = grupo_id and g\.maestro_id = \(select auth\.uid\(\)\)\)/g) || []).length === 2);
 
 // ── b24 descartada (decisión de Jorge del 2026-09-27: el alumno se evalúa siempre con los PDA de su
 // grado; la evidencia la deja la regla de b5). Nunca se aplicó en producción ──
@@ -139,17 +153,21 @@ const archivosDe = (l) => (l || "").split(/\s+/).slice(2).map((a) => a.replace(/
 const iCadena = comandos.findIndex((l) => l.indexOf("jissez_interes_secciones_2026-09.sql") !== -1);
 const primera = archivosDe(comandos[iCadena]);
 const pendientes = ORDEN.slice(ORDEN.indexOf("jissez_interes_secciones_2026-09.sql"));
-igual("la guía: la cadena completa trae las de este orden desde jissez_interes_secciones, en el mismo orden, y termina en b23",
+igual("la guía: la cadena completa trae las de este orden desde jissez_interes_secciones, en el mismo orden, y termina en b25",
 	primera.filter((a) => pendientes.indexOf(a) !== -1), pendientes);
-igual("la guía: b23 es la última de esa transacción", primera[primera.length - 1], "mi_salon_b23_folio_incidencias_2026-09.sql");
+igual("la guía: b25 es la última de esa transacción", primera[primera.length - 1], "mi_salon_b25_jornada_comentario_2026-10.sql");
 igual("la guía: b21b va aparte, después de la cadena", (comandos[iCadena + 1] || "").indexOf("mi_salon_b21b_piloto_produccion_2026-09.sql") !== -1, true);
-igual("la guía: lo que falta en producción es solo b21b, antes de la cadena completa",
-	[iCadena, archivosDe(comandos[0])], [1, ["mi_salon_b21b_piloto_produccion_2026-09.sql"]]);
+igual("la guía: lo que falta en producción es b21b y, de la Fase 3, b25 (sola: b23 ya está), antes de la cadena completa",
+	[iCadena, archivosDe(comandos[0]), archivosDe(comandos[1])], [2, ["mi_salon_b21b_piloto_produccion_2026-09.sql"], ["mi_salon_b25_jornada_comentario_2026-10.sql"]]);
+igual("la guía: b25 va ANTES del frontend de la Fase 3 y dice qué pasa si llegara después",
+	[/b25\*\*, la migración de los comentarios del día[\s\S]{0,400}ANTES del frontend de la Fase 3/.test(guia), /Si el frontend de la Fase 3 llegara antes que b25[\s\S]{0,700}NO marca el día/.test(guia)], [true, true]);
+igual("la guía: la comprobación de b25 pide 138 políticas en 46 tablas y jornadas en delete_own_account",
+	[/as candados,\s+-- 138\n?/.test(guia.replace(/\r/g, "")), /as tablas_candado, -- 46/.test(guia), /position\('jornadas' in pg_get_functiondef/.test(guia), /\*\*138 políticas en 46 tablas\*\*/.test(guia)], [true, true, true, true]);
 igual("la guía: ningún comando aplica b24 (descartada)", comandos.filter((l) => /b24/.test(l)), []);
 igual("la guía: dice que b24 se descartó por decisión de Jorge del 2026-09-27 y que nunca se aplicó en producción",
 	/b24 \(`mi_salon_b24_evidencia_incluidos_2026-09\.sql`\) se descartó por decisión de Jorge del 2026-09-27[\s\S]{0,200}se evalúa siempre con los PDA de su grado[\s\S]{0,300}Nunca se aplicó\s+en producción/.test(guia), true);
-igual("la guía: la tabla numera b23 como la 11 y b21b como la 12 (sin b24)",
-	[/\| 11 \| `supabase\/mi_salon_b23_folio_incidencias_2026-09\.sql` \|/.test(guia), /\| 12 \| `supabase\/mi_salon_b21b_piloto_produccion_2026-09\.sql` \|/.test(guia), /\| \d+ \| `supabase\/mi_salon_b24/.test(guia)], [true, true, false]);
+igual("la guía: la tabla numera b23 como la 11, b25 como la 12 y b21b como la 13 (sin b24)",
+	[/\| 11 \| `supabase\/mi_salon_b23_folio_incidencias_2026-09\.sql` \|/.test(guia), /\| 12 \| `supabase\/mi_salon_b25_jornada_comentario_2026-10\.sql` \|/.test(guia), /\| 13 \| `supabase\/mi_salon_b21b_piloto_produccion_2026-09\.sql` \|/.test(guia), /\| \d+ \| `supabase\/mi_salon_b24/.test(guia)], [true, true, true, false]);
 igual("la guía: la comprobación final ya no trae la columna b24 ni pda_de_alumno_en_producto", [/as b24/.test(guia), /pda_de_alumno_en_producto/.test(guia)], [false, false]);
 igual("la guía: el estado real dice que falta solo b21b", /YA están\s+aplicadas en producción[\s\S]{0,160}falta solo b21b:/.test(guia), true);
 igual("la guía: la carga de PP-NIVELES pide b17 (ya aplicada) y el push a main, con --simular y --aplicar",

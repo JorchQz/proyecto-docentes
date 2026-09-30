@@ -33,9 +33,9 @@
 --      admin_ nueva debe llevar su propio "revoke ... from public, anon".
 --   4. delete_own_account: la versión FINAL (b22 + incidencias_folios).
 --
--- ORDEN: va AL FINAL de las que reemplazan delete_own_account (interes, b16, b17, b18, b18a, b19,
--- b19a, b20, b21, b22, b23); después, en la misma transacción, solo b24, que no la toca; b21b y
--- b22_avisos_cron aparte. Antes que el frontend que muestra el folio.
+-- ORDEN: iba al final de las que reemplazan delete_own_account (interes, b16, b17, b18, b18a, b19,
+-- b19a, b20, b21, b22, b23); desde el 2026-09-29 la versión FINAL es la de b25 (agrega las
+-- jornadas). b21b y b22_avisos_cron aparte. Antes que el frontend que muestra el folio.
 -- =============================================================================
 
 
@@ -237,14 +237,14 @@ end $$;
 
 -- ── 4. delete_own_account: la versión FINAL (b22 + incidencias_folios) ──────────────
 /*
-  ORDEN: va AL FINAL. Varias migraciones reemplazan delete_own_account completa (b10,
+  ORDEN: antes de b25, que es la última. Varias migraciones reemplazan delete_own_account completa (b10,
   jissez_interes_secciones, b17, b18, b19, b19a, b20, b21, b22 y esta). La que se aplica al último
-  es la que queda (b24 va después, pero no la toca); esta es la de b22 (b19a completa, b20, b21 y la guarda de pagos de Mi Salón,
+  es la que queda (desde b25, esa; esta es la anterior); esta es la de b22 (b19a completa, b20, b21 y la guarda de pagos de Mi Salón,
   mi_salon_ordenes) más el contador de folios de incidencias de b23 (también se iría en cascada con
   los grupos). Cada tabla nueva con guarda to_regclass. La prueba pruebas/migraciones-orden.test.js
   exige todo esto de la última del orden.
 */
--- @@delete_own_account inicio (b23: la versión FINAL)
+-- @@delete_own_account inicio (b23; la versión FINAL es la de b25)
 create or replace function public.delete_own_account()
 returns void
 language plpgsql

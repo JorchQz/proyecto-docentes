@@ -44,8 +44,8 @@ público no nota nada.
 
 ## 1. Migraciones
 
-En este orden exacto (cada una es aditiva e idempotente; b23, la última, define la versión final de
-`delete_own_account`):
+En este orden exacto (cada una es aditiva e idempotente; b25, la última, define la versión final de
+`delete_own_account`; b25 es de la Fase 3 del plan de Fanny y VA ANTES DE SU FRONTEND, ver más abajo):
 
 | # | Archivo | Qué hace |
 |---|---|---|
@@ -59,13 +59,14 @@ En este orden exacto (cada una es aditiva e idempotente; b23, la última, define
 | 8 | `supabase/mi_salon_b20_registro_historico_2026-09.sql` | Ponte al día, `es_historico`, calificación directa (ya confirmada en la boleta) |
 | 9 | `supabase/mi_salon_b21_acceso_2026-09.sql` | periodos, accesos, T1 gratis a toda cuenta, interruptor (apagado), solo lectura en el servidor |
 | 10 | `supabase/mi_salon_b22_cobros_2026-09.sql` | precios, fundador, cupones, órdenes y pagos, avisos, panel; parcha funciones de la tienda (abajo) |
-| 11 | `supabase/mi_salon_b23_folio_incidencias_2026-09.sql` | folio RDI de incidencias (y a las que ya existen), directa con boleta cerrada, admin_ sin anon; `delete_own_account` FINAL |
+| 11 | `supabase/mi_salon_b23_folio_incidencias_2026-09.sql` | folio RDI de incidencias (y a las que ya existen), directa con boleta cerrada, admin_ sin anon |
+| 12 | `supabase/mi_salon_b25_jornada_comentario_2026-10.sql` | comentarios del día (`registro_diario.captura_nota`, con su marca), tabla `jornadas` ("Finalizar jornada"); `delete_own_account` FINAL |
 
-Aparte, después de la 11:
+Aparte, después de la 12:
 
 | # | Archivo | Qué hace |
 |---|---|---|
-| 12 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
+| 13 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
 
 NO se aplican en producción: `mi_salon_b21c_piloto_pruebas_2026-09.sql` (cuentas QA, solo pruebas)
 y `mi_salon_b22_avisos_cron_2026-09.sql` (va en el paso 4).
@@ -79,8 +80,9 @@ las dos funciones de evidencia quedaron iguales a las de producción.
 Precisiones (verificadas contra el texto de cada archivo y con la cadena completa sobre una base
 igual a producción, en una transacción revertida):
 
-- Candado de solo lectura: **135 políticas en 45 tablas** (3 por tabla: `acceso_mi_salon_ins`,
-  `_upd` y `_del`). Eran 132 en 44 hasta b22; b23 agrega `incidencias_folios`.
+- Candado de solo lectura: **138 políticas en 46 tablas** (3 por tabla: `acceso_mi_salon_ins`,
+  `_upd` y `_del`). Eran 132 en 44 hasta b22; b23 agrega `incidencias_folios` (135 en 45) y b25
+  agrega `jornadas` (138 en 46).
 - b18a solo reemplaza la política de UPDATE de `examenes` ("examenes reclamar/editar" → "examenes
   editar propios"); no toca filas ni columnas.
 - Funciones que YA existen en producción y la cadena reemplaza (mismo resultado para lo que ya
@@ -108,11 +110,44 @@ bloque de abajo: falta solo b21b:
 node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
 
-La comprobación final debe dar `piloto = 2`. Para una base sin ninguna de las migraciones, la
-cadena completa es:
+La comprobación final debe dar `piloto = 2`.
+
+**Fase 3 (2026-09-29): falta b25**, la migración de los comentarios del día y "Finalizar jornada". Va
+**ANTES del frontend de la Fase 3** (el Hoy nuevo lee `registro_diario.captura_nota` y escribe en
+`jornadas`), pero después de b23 (que ya está en producción). Es aditiva e idempotente (una columna
+nula, una tabla nueva con su RLS y su candado, la función de marcas ampliada y `delete_own_account`
+final) y el frontend anterior sigue funcionando igual con ella. Solo con el OK de Jorge, a hora de
+poco uso:
 
 ```
-node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql supabase/mi_salon_b23_folio_incidencias_2026-09.sql
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b25_jornada_comentario_2026-10.sql
+```
+
+Comprobación de b25 (editor SQL de producción, solo lectura; todo lo de la derecha debe coincidir):
+
+```sql
+select
+  (select count(*) from information_schema.columns where table_schema = 'public'
+     and table_name = 'registro_diario' and column_name = 'captura_nota')         as columna,          -- 1
+  to_regclass('public.jornadas') is not null                                       as tabla,            -- true
+  (select count(*) from pg_policies where policyname like 'acceso_mi_salon%')     as candados,         -- 138
+  (select count(distinct tablename) from pg_policies where policyname like 'acceso_mi_salon%') as tablas_candado, -- 46
+  (select count(*) from pg_policies where tablename = 'jornadas')                  as politicas,        -- 7 (4 propias + 3 del candado)
+  position('captura_nota' in pg_get_functiondef('public.marca_captura_registro_diario'::regproc)) > 0 as marca_nota, -- true
+  position('jornadas' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0
+    and position('incidencias_folios' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
+```
+
+Si el frontend de la Fase 3 llegara antes que b25 (no debe): Hoy sigue funcionando, con un 400 en la
+consola por carga (`registro_diario.captura_nota` no existe): la bandeja detecta que faltan las columnas
+de marca y compara por contenido (la regla de antes de b12, para todo Hoy); los comentarios se guardan;
+"Finalizar jornada" avisa "No se pudo registrar la jornada" y NO marca el día; Inicio no muestra la fila
+Jornada. Se arregla aplicando b25 y recargando.
+
+Para una base sin ninguna de las migraciones, la cadena completa es:
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/jissez_interes_secciones_2026-09.sql supabase/mi_salon_b16_pda_campo_catalogo_2026-09.sql supabase/mi_salon_b17_flujo_libre_2026-09.sql supabase/mi_salon_b18_examenes_2026-09.sql supabase/mi_salon_b18a_examenes_plantillas_2026-09.sql supabase/mi_salon_b19_examenes_cola_2026-09.sql supabase/mi_salon_b19a_integridad_2026-09.sql supabase/mi_salon_b20_registro_historico_2026-09.sql supabase/mi_salon_b21_acceso_2026-09.sql supabase/mi_salon_b22_cobros_2026-09.sql supabase/mi_salon_b23_folio_incidencias_2026-09.sql supabase/mi_salon_b25_jornada_comentario_2026-10.sql
 node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
 
@@ -132,8 +167,8 @@ select
   (select count(*) from auth.users u where not exists (
      select 1 from public.mi_salon_accesos a where a.docente_id = u.id))                as sin_acceso,       -- 0 (hasta el 18-dic)
   (select count(*) from public.mi_salon_accesos where origen = 'piloto')                as piloto,           -- 2
-  (select count(*) from pg_policies where policyname like 'acceso_mi_salon%')           as candados,         -- 135
-  (select count(distinct tablename) from pg_policies where policyname like 'acceso_mi_salon%') as tablas_candado, -- 45
+  (select count(*) from pg_policies where policyname like 'acceso_mi_salon%')           as candados,         -- 138
+  (select count(distinct tablename) from pg_policies where policyname like 'acceso_mi_salon%') as tablas_candado, -- 46
   (select count(*) from public.incidencias where folio is null)                         as sin_folio,        -- 0
   (select count(*) from public.incidencias i where not exists (
      select 1 from public.incidencias_folios f where f.grupo_id = i.grupo_id))          as sin_contador,     -- 0
@@ -141,7 +176,8 @@ select
      and has_function_privilege('anon', oid, 'execute'))                                as admin_anon,       -- 0
   position('m.aprobado_en is not null' in pg_get_functiondef('public.mi_salon_aplicar_pago(uuid,jsonb)'::regprocedure)) > 0 as pago_reparable, -- true
   position('incidencias_folios' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0
-    and position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
+    and position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0
+    and position('jornadas' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
 ```
 
 ## 2. Secretos de las Edge Functions
