@@ -170,7 +170,7 @@ igual("la guía: dice que b24 se descartó por decisión de Jorge del 2026-09-27
 igual("la guía: la tabla numera b23 como la 11, b25 como la 12 y b21b como la 13 (sin b24)",
 	[/\| 11 \| `supabase\/mi_salon_b23_folio_incidencias_2026-09\.sql` \|/.test(guia), /\| 12 \| `supabase\/mi_salon_b25_jornada_comentario_2026-10\.sql` \|/.test(guia), /\| 13 \| `supabase\/mi_salon_b21b_piloto_produccion_2026-09\.sql` \|/.test(guia), /\| \d+ \| `supabase\/mi_salon_b24/.test(guia)], [true, true, true, false]);
 igual("la guía: la comprobación final ya no trae la columna b24 ni pda_de_alumno_en_producto", [/as b24/.test(guia), /pda_de_alumno_en_producto/.test(guia)], [false, false]);
-igual("la guía: el estado real dice que falta solo b21b", /YA están\s+aplicadas en producción[\s\S]{0,160}falta solo b21b:/.test(guia), true);
+igual("la guía: el estado real dice que b21b también ya está aplicada (2026-09-27)", /YA están\s+aplicadas en producción[\s\S]{0,160}b21b también ya está\s+aplicada/.test(guia), true);
 igual("la guía: la carga de PP-NIVELES pide b17 (ya aplicada) y el push a main, con --simular y --aplicar",
 	/## 5b\. Cargar PP-NIVELES/.test(guia) && /necesita b17, ya aplicada/.test(guia) && /del paso 5 \(el push a `main`\)/.test(guia) &&
 	/cargar-pp-niveles\.js --base prod --grupo \S+ --simular/.test(guia) && /cargar-pp-niveles\.js --base prod --grupo \S+ --aplicar/.test(guia), true);

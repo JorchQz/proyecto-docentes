@@ -103,14 +103,16 @@ está en git); toma `PROD_DB_URL` de la variable de entorno o de `.env.local` y 
 `.qa/node_modules` (o de un `npm install pg`).
 
 **Estado real (2026-09-27, 03:45 del centro):** las once (de `interes_secciones` a b23) YA están
-aplicadas en producción, en una transacción, con la comprobación final correcta. NO volver a correr el
-bloque de abajo: falta solo b21b:
+aplicadas en producción, en una transacción, con la comprobación final correcta. **b21b también ya está
+aplicada** (2026-09-27 por la mañana: Fanny y soporte con acceso `piloto` T1-T3 hasta el 2027-07-30,
+`piloto = 2` verificado). NO volver a correr la cadena de abajo; este comando de b21b queda solo como
+registro (es idempotente):
 
 ```
 node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b21b_piloto_produccion_2026-09.sql
 ```
 
-La comprobación final debe dar `piloto = 2`.
+La comprobación final da `piloto = 2`.
 
 **Fase 3 (2026-09-29): falta b25**, la migración de los comentarios del día y "Finalizar jornada". Va
 **ANTES del frontend de la Fase 3** (el Hoy nuevo lee `registro_diario.captura_nota` y escribe en
