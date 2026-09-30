@@ -116,6 +116,17 @@ ok("finalizar: guarda lo escrito, espera la cola completa (sin revisar pendiente
 ok("registrar: completa el cierre, espera la cola completa (lo recién encolado incluido) y solo entonces escribe la jornada",
 	reg.indexOf("completarCierre()") < reg.indexOf("esperarCola()") && reg.indexOf("esperarCola()") < reg.indexOf('from("jornadas")') && !/bandeja\.pendientes\(\)/.test(reg) &&
 	/if \(sinSenal\(\)\) return \{ ok: false/.test(reg) && /if \(envio !== "ok"\) return \{ ok: false, texto: textoSinEnviar\(envio\) \};/.test(reg), true);
+// Hallazgo 1 de R36: Terminar sesión y Pasar a un proyecto (ya publicados en la Fase 2) esperan igual, y si algo no se
+// envió no siguen (el comportamiento se prueba en pruebas/hoy-jornada-cola.test.js)
+const term = extraerFuncion(hoy, "terminarSesion"), pasar = extraerFuncion(hoy, "pasarAProyecto");
+ok("Terminar sesión: guarda lo escrito, espera la cola completa (sin pendientes()) y si no llegó todo no termina",
+	term.indexOf("guardarRetrosPendientes()") < term.indexOf("esperarCola()") && !/bandeja\.pendientes\(\)/.test(term) &&
+	/var envio = await esperarCola\(\);[\s\S]{0,200}if \(envio !== "ok"\) \{[\s\S]{0,500}no se puede terminar la sesión[\s\S]{0,400}return;\s*\}/.test(term) &&
+	term.indexOf("esperarCola()") < term.indexOf("abrirModal("), true);
+ok("Pasar a un proyecto: guarda lo escrito, espera la cola completa (sin pendientes()) y si no llegó todo no abre el diálogo",
+	pasar.indexOf("guardarRetrosPendientes()") < pasar.indexOf("esperarCola()") && !/bandeja\.pendientes\(\)/.test(pasar) &&
+	/if \(envio !== "ok"\) \{ mensaje\("error", "Primero hay que enviar lo capturado[^}]*return; \}/.test(pasar) &&
+	pasar.indexOf("esperarCola()") < pasar.indexOf("PasarAProyecto.abrir("), true);
 ok("textoSinEnviar: siempre dice que el día no se marcó (o que la sesión no está activa)",
 	["red", "servidor", "pendiente", "acceso"].every((e) => /el día no se marcó/.test(new Function(extraerFuncion(hoy, "textoSinEnviar") + "\nreturn textoSinEnviar;")()(e))), true);
 ok("registrar: upsert por grupo y fecha, con el resumen de lo que faltaba",

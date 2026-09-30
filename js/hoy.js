@@ -1788,6 +1788,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		"Terminar sesión N": espera a que se envíe lo capturado (sin eso, "quedan N sin calificar" mentiría
 		y lo capturado podría quedarse en la cola), dice cuántos quedan sin calificar, deja escribir notas,
 		la marca completada (js/sesion-terminar.js) y recarga con la tarjeta azul de la siguiente a la vista.
+		La espera es esperarCola (R36): también lo que se acaba de encolar (la retroalimentación a medio
+		escribir), que bandeja.pendientes() todavía no cuenta. Si algo no se pudo enviar, no se termina.
 	*/
 	async function terminarSesion(btn) {
 		var ses = todasLasSesiones.filter(function (s) { return s.id === btn.dataset.terminarSesion; })[0];
@@ -1800,18 +1802,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 				mensaje("error", "Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 				return;
 			}
-			if (bandeja && bandeja.pendientes()) {
-				btn.disabled = true;
-				btn.textContent = "Guardando lo capturado...";
-				var envio = await bandeja.esperarEnvio();
-				btn.disabled = false;
-				btn.textContent = etiqueta;
-				if (envio !== "ok") {
-					mensaje("error", envio === "red" || envio === "servidor"
-						? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
-						: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
-					return;
-				}
+			// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
+			btn.disabled = true;
+			btn.textContent = "Guardando lo capturado...";
+			var envio = await esperarCola();
+			btn.disabled = false;
+			btn.textContent = etiqueta;
+			if (envio !== "ok") {
+				mensaje("error", envio === "red" || envio === "servidor" || envio === "pendiente"
+					? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
+					: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+				return;
 			}
 			mensaje("", "");
 			window.SesionTerminar.abrirModal({
@@ -2957,19 +2958,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		un proyecto del mismo grupo y trimestre, con sus calificaciones, su "para quién" y sus PDA
 		(mover_producto_a_sesion, mi_salon_b17; el diálogo vive en js/pasar-a-proyecto.js, el mismo de
 		Proyectos). Antes se envía lo capturado (una captura pendiente de esa actividad iría a la
-		sesión vieja) y después se recarga la pantalla.
+		sesión vieja; esperarCola, R36: también lo que se acaba de encolar) y después se recarga la pantalla.
+		Si algo no se pudo enviar, no se pasa.
 	*/
 	async function pasarAProyecto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto || !window.PasarAProyecto) return;
 		guardarRetrosPendientes();
 		if (sinSenal()) { mensaje("error", "Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
-		if (bandeja && bandeja.pendientes()) {
-			origen.disabled = true;
-			var envio = await bandeja.esperarEnvio();
-			origen.disabled = false;
-			if (envio !== "ok") { mensaje("error", "Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
-		}
+		// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
+		origen.disabled = true;
+		var envio = await esperarCola();
+		origen.disabled = false;
+		if (envio !== "ok") { mensaje("error", "Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
 		var proyecto = proyectoPorId[(producto.sesion || {}).proyecto_id] || {};
 		window.PasarAProyecto.abrir({
 			sb: window.sb, maestroId: user.id, grupoId: grupo.id, trimestre: proyecto.trimestre || grupo.trimestre_actual,
