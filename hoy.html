@@ -87,7 +87,8 @@
 					<h2 class="font-bold text-gray-800">3. Sesiones de hoy</h2>
 					<span class="flex flex-wrap items-center gap-2">
 						<span id="sesionesResumen" class="text-xs text-gray-500"></span>
-						<button id="btnSuelta" type="button" class="min-h-[44px] px-4 rounded-xl border border-violet-300 text-sm font-semibold text-violet-700 hover:bg-violet-50">Actividad suelta</button>
+						<!-- "+ Actividad o tarea": dentro o fuera del proyecto, un solo diálogo (js/actividad-nueva.js). Reemplaza a "Actividad suelta" -->
+						<button id="btnActividad" type="button" class="inline-flex items-center gap-1.5 min-h-[44px] px-4 rounded-xl border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Actividad o tarea</button>
 					</span>
 				</div>
 				<div id="sesionesLista" class="flex flex-col gap-6"></div>
@@ -141,6 +142,9 @@
 	<script src="js/bandeja-salida.js"></script>
 	<script src="js/productos-hoy.js"></script>
 	<script src="js/pasar-a-proyecto.js"></script>
+	<!-- El diálogo accesible y "¿Para quién?" (el mismo de Crear proyecto) y "+ Actividad o tarea" (Fase 4) -->
+	<script src="js/para-quien.js"></script>
+	<script src="js/actividad-nueva.js"></script>
 	<!-- Orden de la tarjeta de Asistencia: por grado y orden alfabético (regla única) -->
 	<script src="js/orden-lista.js"></script>
 	<!-- Secuencia de la sesión (inicio, desarrollo, cierre, anexos y libros): lectura opcional -->

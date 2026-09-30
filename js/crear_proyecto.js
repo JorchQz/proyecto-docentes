@@ -1472,7 +1472,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     function renderLinks() {
       if (!recursosLinksList) return;
       recursosLinksList.innerHTML = linksAgregados.map(function (link, index) {
-        const titulo = link.titulo && String(link.titulo).trim() ? String(link.titulo).trim() : truncarTexto(link.url || '', 30);
+        // Los enlaces importados de la tienda traen `nombre` y no `titulo` (decisión de Jorge, 2026-09-29: se pintan
+        // con su nombre, no con la URL cortada). Solo se pinta: lo que se guarda no cambia
+        const nombreLink = [link.titulo, link.nombre].map(function (x) { return String(x || '').trim(); }).find(Boolean);
+        const titulo = nombreLink ? nombreLink : truncarTexto(link.url || '', 30);
         return `
           <span class="inline-flex max-w-full items-center gap-2 min-h-[44px] pl-3 pr-0 py-0 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800" data-index="${index}">
             <span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>

@@ -34,6 +34,12 @@ ok("crear: los renglones de actividades y tareas del paso 3 miden al menos 44 de
 
 const hoy = leer("js/hoy.js");
 ok("Hoy: los chips (0/1/2 del cierre y demás) miden al menos 44 de ancho", /function chip\(texto, activo, clasesActivo, atributos\) \{\s*return "<button type='button' " \+ atributos \+ " class='min-h-\[44px\] min-w-\[44px\]/.test(hoy), true);
+// Fase 4 (2026-09-29): "+ Actividad o tarea" arriba de la tarjeta 3 y en cada sesión, y los botones del diálogo nuevo
+const nueva = leer("js/actividad-nueva.js");
+ok("Hoy: «+ Actividad o tarea» (arriba y en cada sesión) y «Cambiar» / «Usar los de la sesión» del diálogo, con alto de 44",
+	[/<button id="btnActividad"[^>]*min-h-\[44px\]/.test(leer("hoy.html")), /data-agregar-producto='" \+ ses\.id \+ "'[\s\S]{0,400}class='inline-flex items-center gap-1\.5 min-h-\[44px\]/.test(hoy),
+		/data-cambiar-contenido aria-label='[^']*' class='shrink-0 min-h-\[44px\] min-w-\[44px\]/.test(nueva), /refs\.volver\.className = "self-start min-h-\[44px\]/.test(nueva)],
+	[true, true, true, true]);
 
 const ob = leer("onboarding.html"), obj = leer("js/onboarding.js");
 ok("onboarding: las 6 casillas de grado con ancho de 44", (ob.match(/<label class="flex items-center gap-2 min-h-\[44px\] min-w-\[44px\] pr-2 select-none cursor-pointer">/g) || []).length, 6);

@@ -989,26 +989,30 @@ document.addEventListener("DOMContentLoaded", async function () {
 		guardan de una vez (un solo upsert) los que aún no tienen registro hoy, menos los
 		que faltaron: ese día no participaron.
 	*/
+	// → a cuántos se les puso el 1 y 1 (o se les completó) ahora: "Finalizar de todos modos" lo dice si no llega
 	function completarCierre() {
 		// Un relleno por alumno; la bandeja los manda juntos en un insert que no pisa. Una fila que ya existe
 		// (por ejemplo, solo con su comentario) no se rellena: se le completa lo que le falte, sin tocar el comentario
+		var rellenos = 0;
 		alumnos.forEach(function (al) {
 			if (faltoHoy(al.id)) return;
-			if (registroGuardado[al.id]) { completarValoresNulos(al.id); return; }
-			if (!registro[al.id]) registro[al.id] = { participacion: 1, conducta: 1, nota: null };
+			if (registroGuardado[al.id]) { if (completarValoresNulos(al.id)) rellenos++; return; }
+			if (!registro[al.id]) { registro[al.id] = { participacion: 1, conducta: 1, nota: null }; rellenos++; }
 			guardarRegistro(al.id);
 		});
+		return rellenos;
 	}
 
 	// Un alumno que asiste con una fila SIN participación o conducta (la creó su comentario cuando había faltado y
 	// después se le puso Presente): se le pone 1 en lo que falta. Solo esos campos: el comentario no se toca
 	function completarValoresNulos(alumnoId) {
 		var v = registro[alumnoId];
-		if (!v || !registroGuardado[alumnoId] || faltoHoy(alumnoId)) return;
+		if (!v || !registroGuardado[alumnoId] || faltoHoy(alumnoId)) return false;
 		var campos = [];
 		if (v.participacion === null || v.participacion === undefined) { v.participacion = 1; campos.push("participacion"); }
 		if (v.conducta === null || v.conducta === undefined) { v.conducta = 1; campos.push("conducta"); }
 		if (campos.length) guardarRegistro(alumnoId, campos);
+		return campos.length > 0;
 	}
 
 	// Si se marca una falta después del cierre, se retira el registro que se puso por
@@ -1589,6 +1593,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function iconoOjo() {
 		return "<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0'/><circle cx='12' cy='12' r='3'/></svg>";
 	}
+	// "+" de "Actividad o tarea" (el mismo trazo que el botón de arriba de la tarjeta 3, en hoy.html)
+	function iconoMas() {
+		return "<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 5v14'/><path d='M5 12h14'/></svg>";
+	}
 	function iconoLapiz() {
 		return "<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'/><path d='m15 5 4 4'/></svg>";
 	}
@@ -1628,7 +1636,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 	function bloqueSiguientes() {
 		if (!siguientes.length) {
-			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en tus proyectos activos. Inicia un proyecto desde Proyectos o agrega una actividad suelta.");
+			return sesionesHoy.length ? "" : vacio("No hay sesiones pendientes en tus proyectos activos. Inicia un proyecto desde Proyectos o agrega una actividad fuera del proyecto con «Actividad o tarea».");
 		}
 		return "<div id='siguientes' class='scroll-mt-32 rounded-xl border border-dashed border-blue-300 bg-blue-50/40 p-3'>" +
 			"<p class='text-sm font-semibold text-gray-800 mb-1'>" +
@@ -1736,7 +1744,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var tareasSesion = (productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo === "tarea"; });
 			var cuerpo = productos.length
 				? productos.map(function (p) { return bloqueProducto(p); }).join("")
-				: vacio("Esta sesión no tiene actividades para calificar. Agrega una con \"Agregar actividad o tarea\".");
+				: vacio("Esta sesión no tiene actividades para calificar. Agrega una con «Actividad o tarea».");
 			var proyecto = proyectoPorId[ses.proyecto_id];
 			var suelta = esSuelta(ses);
 			return "<div id='ses-" + esc(ses.id) + "' class='rounded-xl border " + (suelta ? "border-violet-200 bg-violet-50/30" : "border-gray-200") + " p-3 scroll-mt-20'>" +
@@ -1760,8 +1768,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 				(suelta || sesionTieneCalificaciones(ses.id) || ses.estado_sesion === "completada" || ses.fecha < hoy ? "" :
 					"<button type='button' data-quitar-hoy='" + ses.id + "' " +
 					"class='min-h-[44px] px-3 rounded-lg border border-gray-300 text-sm text-gray-500 hover:bg-gray-50'>Quitar de hoy</button>") +
-				"<button type='button' data-agregar-producto='" + ses.id + "' " +
-				"class='min-h-[44px] px-3 rounded-lg border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50'>Agregar actividad o tarea</button>" +
+				// "+ Actividad o tarea": el diálogo de siempre con esta sesión ya elegida (js/actividad-nueva.js)
+				"<button type='button' data-agregar-producto='" + ses.id + "' aria-label='" + (suelta
+					? "Agregar actividad o tarea a " + esc(window.AlcanceHoy.TITULO_SUELTAS) + " de " + esc(ses.campo_formativo || "") + (ses.fecha && ses.fecha !== hoy ? " del " + esc(fechaCorta(ses.fecha)) : "")
+					: "Agregar actividad o tarea a la sesión " + (ses.numero_sesion || "")) + "' " +
+				"class='inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50'>" + iconoMas() + "Actividad o tarea</button>" +
 				"</span>" +
 				"</div>" + (ses.fecha === hoy || esEnCurso(ses) ? lineaFaltaron(ses.fecha) : "") + panelSecuencia(ses) + cuerpo + bloqueTareasDeSesion(tareasSesion) + pieSesion(ses) + "</div>";
 		}).join("") + bloqueSiguientes();
@@ -2072,7 +2083,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 
 		var btnAgregar = e.target.closest("button[data-agregar-producto]");
-		if (btnAgregar) { agregarProducto(btnAgregar.dataset.agregarProducto, btnAgregar); return; }
+		if (btnAgregar) { agregarActividad({ sesionId: btnAgregar.dataset.agregarProducto, origen: btnAgregar }); return; }
 
 		var btnRenombrar = e.target.closest("button[data-renombrar]");
 		if (btnRenombrar) { renombrarProducto(btnRenombrar.dataset.renombrar, btnRenombrar); return; }
@@ -2252,7 +2263,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// "Trabajar hoy" y "Quitar de hoy" cambian la sesión en la base: sin señal no se puede.
-	// Lo capturado no se pierde (sigue en este dispositivo)
+	// Lo capturado no se pierde (sigue en este dispositivo). motivo "pendiente": la cola no terminó porque se siguió
+	// capturando (no es falta de señal: R37); se dice lo mismo que en las demás acciones
 	function avisoSinSenal(btn, poner, motivo) {
 		btn.disabled = false;
 		btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
@@ -2260,114 +2272,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		avisoALaVista(motivo === "servidor"
 			? "No se pudo guardar lo capturado por ahora (el servidor no respondió bien) y sin eso no se puede " + accion +
 				". Lo capturado sigue guardado en este dispositivo y se reintentará solo. Vuelve a intentarlo en un momento."
+			: motivo === "pendiente"
+			? "Todavía no se pudo enviar lo capturado, así que no se puede " + accion + ". Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
 			: "Sin señal: no se puede " + accion + " en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
-	}
-
-	/*
-		Diálogo accesible (role="dialog", foco dentro, Esc cierra y el foco vuelve al botón que
-		lo abrió). construir(form) arma el contenido; alAceptar(form, avisar) guarda y devuelve
-		false si el diálogo debe seguir abierto (con el aviso que puso).
-	*/
-	var numeroDialogo = 0;
-	function abrirDialogo(opciones) {
-		var previo = opciones.origen || document.activeElement;
-		var id = "hoyDialogo" + (++numeroDialogo);
-		var fondo = document.createElement("div");
-		fondo.className = "fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4";
-		var caja = document.createElement("div");
-		caja.setAttribute("role", "dialog");
-		caja.setAttribute("aria-modal", "true");
-		caja.setAttribute("aria-labelledby", id + "-titulo");
-		caja.className = "bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto";
-		var form = document.createElement("form");
-		form.noValidate = true;
-		form.className = "flex flex-col";
-		var cabeza = document.createElement("div");
-		cabeza.className = "p-5 border-b border-gray-100";
-		var titulo = document.createElement("h2");
-		titulo.id = id + "-titulo";
-		titulo.className = "text-lg font-bold text-gray-800";
-		titulo.textContent = opciones.titulo;
-		cabeza.appendChild(titulo);
-		if (opciones.subtitulo) {
-			var sub = document.createElement("p");
-			sub.className = "text-sm text-gray-500 mt-1";
-			sub.textContent = opciones.subtitulo;
-			cabeza.appendChild(sub);
-		}
-		var cuerpo = document.createElement("div");
-		cuerpo.className = "p-5 flex flex-col gap-4";
-		var aviso = document.createElement("p");
-		aviso.setAttribute("role", "alert");
-		aviso.className = "hidden text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2";
-		var pie = document.createElement("div");
-		pie.className = "p-5 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2";
-		var cancelar = document.createElement("button");
-		cancelar.type = "button";
-		cancelar.className = "min-h-[44px] px-5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
-		cancelar.textContent = opciones.cancelar || "Cancelar";
-		var aceptar = document.createElement("button");
-		aceptar.type = "submit";
-		aceptar.className = "min-h-[44px] px-5 rounded-xl font-semibold text-white " + (opciones.peligro ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700");
-		aceptar.textContent = opciones.aceptar || "Guardar";
-		pie.appendChild(cancelar);
-		pie.appendChild(aceptar);
-		form.appendChild(cabeza);
-		form.appendChild(cuerpo);
-		form.appendChild(pie);
-		caja.appendChild(form);
-		fondo.appendChild(caja);
-		if (opciones.construir) opciones.construir(cuerpo);
-		cuerpo.appendChild(aviso);
-
-		function avisar(texto, foco) {
-			aviso.textContent = texto || "";
-			aviso.classList.toggle("hidden", !texto);
-			if (foco && foco.focus) foco.focus();
-		}
-		function cerrar() {
-			document.removeEventListener("keydown", teclas, true);
-			if (fondo.parentNode) fondo.parentNode.removeChild(fondo);
-			if (previo && previo.focus && document.body.contains(previo)) previo.focus();
-		}
-		function enfocables() {
-			return Array.from(caja.querySelectorAll("input, select, textarea, button, summary"))
-				.filter(function (el) { return !el.disabled && el.offsetParent !== null; });
-		}
-		function teclas(e) {
-			if (e.key === "Escape") { e.preventDefault(); cerrar(); return; }
-			if (e.key !== "Tab") return;
-			var lista = enfocables();
-			if (!lista.length) return;
-			var primero = lista[0], ultimo = lista[lista.length - 1];
-			if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
-			else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
-		}
-		cancelar.addEventListener("click", cerrar);
-		fondo.addEventListener("click", function (e) { if (e.target === fondo) cerrar(); });
-		document.addEventListener("keydown", teclas, true);
-		form.addEventListener("submit", async function (e) {
-			e.preventDefault();
-			avisar("");
-			aceptar.disabled = true;
-			var textoAceptar = aceptar.textContent;
-			aceptar.textContent = "Guardando...";
-			var seguir = false;
-			try {
-				seguir = (await opciones.alAceptar(form, avisar)) === false;
-			} catch (err) {
-				console.error("hoy: diálogo", err);
-				avisar("No se pudo guardar: " + textoError(err) + ".");
-				seguir = true;
-			}
-			aceptar.disabled = false;
-			aceptar.textContent = textoAceptar;
-			if (!seguir) cerrar();
-		});
-		document.body.appendChild(fondo);
-		var primero = caja.querySelector("[data-foco]") || enfocables()[0];
-		if (primero) primero.focus();
-		return { cerrar: cerrar, avisar: avisar };
 	}
 
 	function campoTexto(etiqueta, atributos) {
@@ -2393,490 +2300,67 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	/*
-		"Agregar actividad o tarea" en plena clase (decisión de Jorge del 2026-09-26): nombre,
-		tipo, campo formativo (el de la sesión), grados (los de la sesión y el proyecto, con las
-		casillas de los grados del grupo) y, en tareas, el día en que se revisa (por omisión el
-		siguiente día hábil: AlcanceHoy.venceTarea). Se crea con origen 'maestro' y aparece de
-		inmediato. La regla del alta tarde se respeta sola: la fecha del producto es la de la sesión.
-		PDA (opcional, decisión de Jorge del 2026-09-26: "que cada actividad sume"): por omisión
-		los de la sesión si el campo es el de la sesión; además se puede buscar un contenido del
-		catálogo del campo elegido y marcar sus PDA. Un PDA elegido que la sesión no tiene se crea
-		en sesiones_pda de esa sesión y grado (ProductosHoy.planLigas), para que el trigger de
-		evaluación formativa y "Qué le falta" lo cuenten.
+		"+ Actividad o tarea" (Fase 4 del plan de Fanny, 2026-09-29): UN solo diálogo, el de js/actividad-nueva.js
+		(sacado de lo que aquí era agregarProducto; las reglas son las de siempre: ProductosHoy). Con el interruptor
+		"Dentro del proyecto / Fuera del proyecto":
+		  - desde una sesión de un proyecto: dentro, con esa sesión ya elegida;
+		  - desde un bloque de "Actividades del trimestre": fuera, con su día y su campo;
+		  - desde arriba de la tarjeta 3 (o hoy.html?nueva=1): dentro si hay sesiones de proyecto hoy o en curso;
+		    con ?nueva=suelta (Proyectos), fuera.
+		Necesita señal (no va por la cola: la captura de sus calificaciones necesita su id de la base).
+		opciones: { sesionId, modo: "fuera" | null, origen }
 	*/
-	/*
-		sesionId null: ACTIVIDAD O TAREA SUELTA (sin proyecto, decisión de Jorge del 2026-09-26): se
-		guarda en "Actividades del trimestre" del grupo (proyecto tipo 'sueltas', una sesión por fecha
-		y campo: agregar_actividad_suelta, mi_salon_b17). Pide además el día de la actividad (una
-		tarea suelta se deja hoy). "¿Para quién?" (los dos casos): todo el grupo, uno o varios grados
-		o los alumnos que la maestra marca (ProductosHoy.planAsignacion); producto, asignación y PDA
-		se guardan juntos en una transacción (agregar_producto_sesion).
-	*/
-	function agregarProducto(sesionId, origen) {
-		var suelta = !sesionId;
-		var sesion = suelta ? null : sesionesHoy.find(function (s) { return s.id === sesionId; });
-		if (!suelta && !sesion) return;
-		if (sinSenal()) { mensaje("error", "Agregar una actividad o una tarea necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal."); return; }
-		var campoSesion = sesion && window.CamposFormativos ? window.CamposFormativos.corto(sesion.campo_formativo) : null;
-		var gradosGrupo = (grupo.grados || []).map(Number).filter(function (g) { return g >= 1 && g <= 6; }).sort(function (a, b) { return a - b; });
-		// Los grados de los alumnos (por si el grupo no los tiene todos anotados)
-		alumnos.forEach(function (a) { if (gradosGrupo.indexOf(Number(a.grado)) === -1) gradosGrupo.push(Number(a.grado)); });
-		gradosGrupo.sort(function (a, b) { return a - b; });
-		var porOmision = sesion ? gradosDeLaSesion(sesion) : gradosGrupo;
-		var fechaOmision = window.AlcanceHoy.venceTarea(null, hoy, ajustesCal);
-		var refs = {};
-		var pda = { spda: suelta ? [] : null, contenidos: null, errorCatalogo: false, contenido: null, pdaContenido: [], cargandoContenido: false,
-			tocadosSesion: {}, marcadosCatalogo: {} };
-		var cargaPda = null; // la lectura de los PDA de la sesión (alAceptar la espera)
-
-		// "¿Para quién?": lo elegido en el diálogo (ProductosHoy.planAsignacion)
-		function planPara() {
-			var modo = refs.para ? (refs.para.querySelector("input[name='paraNuevo']:checked") || {}).value : "grupo";
-			return window.ProductosHoy.planAsignacion({
-				modo: modo || "grupo",
-				gradosGrupo: gradosGrupo,
-				gradosElegidos: refs.para ? Array.from(refs.para.querySelectorAll("input[name='gradoNuevo']:checked")).map(function (c) { return Number(c.value); }) : porOmision,
-				alumnos: alumnos,
-				elegidos: refs.para ? Array.from(refs.para.querySelectorAll("input[name='alumnoNuevo']:checked")).map(function (c) { return c.value; }) : [],
-				nivel: refs.nivel ? refs.nivel.value : "",
-			});
-		}
-		// Los grados cuyos PDA se ofrecen: los de la actividad y los de sus alumnos incluidos
-		function gradosElegidos() {
-			var p = planPara();
-			return p.ok ? p.gradosPda : [];
-		}
-		function campoLargo(corto) { return window.CamposFormativos ? window.CamposFormativos.largo(corto) : corto; }
-		var estiloOpcion = "flex items-start gap-3 min-h-[44px] rounded-xl border border-gray-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
-
-		/*
-			Sección "¿Para quién?": todo el grupo, uno o varios grados (en multigrado) o los alumnos
-			que la maestra marca, agrupados por grado, con el grado con el que trabajan (por
-			ejemplo dos de 3° que trabajan con 2°). omision: los grados por omisión.
-		*/
-		function construirParaQuien(omision) {
-			var fs = document.createElement("fieldset");
-			fs.className = "flex flex-col gap-2";
-			var modo0 = omision.length && omision.length < gradosGrupo.length ? "grados" : "grupo";
-			var opciones = [["grupo", "Todo el grupo"]];
-			if (gradosGrupo.length > 1) opciones.push(["grados", "Uno o varios grados"]);
-			opciones.push(["alumnos", "Alumnos que elijo"]);
-			var etiqueta = "flex items-center gap-2 min-h-[44px] rounded-xl border border-gray-300 px-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50";
-			fs.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>¿Para quién?</legend>" +
-				"<div class='grid grid-cols-1 sm:grid-cols-" + opciones.length + " gap-2'>" + opciones.map(function (o) {
-					return "<label class='" + etiqueta + "'><input type='radio' name='paraNuevo' value='" + o[0] + "'" + (o[0] === modo0 ? " checked" : "") +
-						" class='h-5 w-5 text-blue-600'><span class='text-sm text-gray-800'>" + o[1] + "</span></label>";
-				}).join("") + "</div>" +
-				"<div data-para='grados' class='flex flex-wrap gap-2'>" + gradosGrupo.map(function (g) {
-					return "<label class='" + etiqueta + "'><input type='checkbox' name='gradoNuevo' value='" + g + "'" +
-						(omision.indexOf(g) !== -1 ? " checked" : "") + " class='h-5 w-5 text-blue-600 rounded'><span class='text-sm text-gray-800'>" + g + "°</span></label>";
-				}).join("") + "</div>" +
-				"<div data-para='alumnos' class='flex flex-col gap-2'>" + listaAlumnosHtml("alumnoNuevo", {}, {}) +
-				"<label class='flex flex-col gap-1 text-sm font-medium text-gray-700'>¿Con qué grado trabajan?" +
-				"<select data-nivel class='min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 bg-white'>" +
-				"<option value=''>Cada uno con el suyo</option>" + [1, 2, 3, 4, 5, 6].map(function (g) {
-					return "<option value='" + g + "'>Con " + g + "° (siguen en su grado para la boleta)</option>";
-				}).join("") + "</select></label></div>";
-			refs.para = fs;
-			refs.nivel = fs.querySelector("select[data-nivel]");
-			function mostrar() {
-				var m = (fs.querySelector("input[name='paraNuevo']:checked") || {}).value;
-				var g = fs.querySelector("[data-para='grados']"), a = fs.querySelector("[data-para='alumnos']");
-				if (g) g.classList.toggle("hidden", m !== "grados");
-				if (a) a.classList.toggle("hidden", m !== "alumnos");
-			}
-			fs.addEventListener("change", mostrar);
-			mostrar();
-			return fs;
-		}
-
-		// Sección "PDA que evalúa (opcional)"
-		function construirPda(cuerpo) {
-			var fs = document.createElement("fieldset");
-			fs.className = "flex flex-col gap-2";
-			fs.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>PDA que evalúa <span class='font-normal text-gray-500'>(opcional)</span></legend>";
-			refs.pdaSesion = document.createElement("div");
-			refs.pdaSesion.className = "flex flex-col gap-2";
-			fs.appendChild(refs.pdaSesion);
-			var busca = document.createElement("label");
-			busca.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
-			refs.buscaEtiqueta = document.createElement("span");
-			refs.buscaEtiqueta.textContent = "Buscar un contenido del catálogo";
-			busca.appendChild(refs.buscaEtiqueta);
-			refs.busca = document.createElement("input");
-			refs.busca.type = "search";
-			refs.busca.autocomplete = "off";
-			refs.busca.setAttribute("data-busca-contenido", "1");
-			refs.busca.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600";
-			refs.busca.placeholder = "Escribe una palabra del contenido";
-			busca.appendChild(refs.busca);
-			fs.appendChild(busca);
-			refs.resultados = document.createElement("div");
-			refs.resultados.className = "flex flex-col gap-1";
-			refs.resultados.setAttribute("aria-live", "polite");
-			fs.appendChild(refs.resultados);
-			refs.contenido = document.createElement("div");
-			refs.contenido.className = "flex flex-col gap-2";
-			fs.appendChild(refs.contenido);
-			cuerpo.appendChild(fs);
-			refs.busca.addEventListener("input", pintarResultados);
-			// Enter en el buscador no envía el diálogo
-			refs.busca.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
-			refs.resultados.addEventListener("click", function (e) {
-				var b = e.target.closest("[data-contenido]");
-				if (b) elegirContenido(b.getAttribute("data-contenido"));
-			});
-			refs.contenido.addEventListener("click", function (e) {
-				if (e.target.closest("[data-quitar-contenido]")) { quitarContenido(); pintarPda(); refs.busca.focus(); }
-			});
-			refs.contenido.addEventListener("change", function (e) {
-				var c = e.target.closest("input[name='pdaCatalogo']");
-				if (c) pda.marcadosCatalogo[c.value] = c.checked;
-			});
-			refs.pdaSesion.addEventListener("change", function (e) {
-				var c = e.target.closest("input[name='pdaSesion']");
-				if (c) pda.tocadosSesion[c.value] = c.checked;
-			});
-		}
-
-		async function cargarPda() {
-			if (!suelta) try {
-				var res = await window.sb.from("sesiones_pda").select("id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo))").eq("sesion_id", sesion.id).order("grado");
-				if (res.error) throw res.error;
-				// El campo de cada PDA es el de su contenido en el catálogo (ProductosHoy.pdaDeSesionParaActividad)
-				pda.spda = (res.data || []).map(function (r) {
-					var cp = Array.isArray(r.catalogo_pda) ? r.catalogo_pda[0] : r.catalogo_pda;
-					var cc = cp && (Array.isArray(cp.catalogo_contenidos) ? cp.catalogo_contenidos[0] : cp.catalogo_contenidos);
-					var corto = cc && window.CamposFormativos ? window.CamposFormativos.corto(cc.campo_formativo) : null;
-					return Object.assign({}, r, { campo: corto || null });
-				});
-			} catch (err) {
-				console.error("hoy: PDA de la sesión", err);
-				pda.spda = null;
-			}
-			try {
-				// Todas las fases: un alumno puede trabajar con otro grado ("¿Para quién?")
-				pda.contenidos = await contenidosDelCatalogo(window.ProductosHoy.fasesDeGrados([1, 2, 3, 4, 5, 6]));
-			} catch (err) {
-				console.error("hoy: catálogo de contenidos", err);
-				pda.errorCatalogo = true;
-			}
-			pintarPda();
-		}
-
-		// Marcado: lo que tocó la maestra; si no lo tocó, la regla (r.marcado)
-		function marcadoSesion(r) {
-			return Object.prototype.hasOwnProperty.call(pda.tocadosSesion, r.id) ? pda.tocadosSesion[r.id] : !!r.marcado;
-		}
-
-		function textoPda(r) {
-			var cp = Array.isArray(r.catalogo_pda) ? r.catalogo_pda[0] : r.catalogo_pda;
-			return (cp && cp.pda) || r.criterio_aplicado || "Criterio de la sesión";
-		}
-
-		function pintarPda() {
-			if (!refs.pdaSesion) return;
-			var campo = refs.campo ? refs.campo.value : "";
-			var deSesion = window.ProductosHoy.pdaDeSesionParaActividad(pda.spda || [], campoSesion, campo, gradosElegidos());
-			refs.pdaSesion.innerHTML = "";
-			if (deSesion.length) {
-				var t = document.createElement("p");
-				t.className = "text-xs text-gray-500";
-				t.textContent = "De esta sesión (marca los que esta actividad evalúa):";
-				refs.pdaSesion.appendChild(t);
-				deSesion.forEach(function (r) {
-					var l = document.createElement("label");
-					l.className = estiloOpcion;
-					l.innerHTML = "<input type='checkbox' name='pdaSesion' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (marcadoSesion(r) ? " checked" : "") + ">" +
-						"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(r.grado) + "°</span> · " + esc(textoPda(r)) + "</span>";
-					l.querySelector("input").value = r.id;
-					refs.pdaSesion.appendChild(l);
-				});
-			}
-			refs.buscaEtiqueta.textContent = campo ? "Buscar un contenido de " + campoLargo(campo) : "Elige el campo formativo para buscar su contenido";
-			refs.busca.disabled = !campo || pda.errorCatalogo;
-			pintarResultados();
-			pintarContenido();
-		}
-
-		function pintarResultados() {
-			if (!refs.resultados) return;
-			refs.resultados.innerHTML = "";
-			var campo = refs.campo ? refs.campo.value : "";
-			if (pda.errorCatalogo) {
-				refs.resultados.innerHTML = "<p class='text-xs text-gray-500'>No se pudo cargar el catálogo de contenidos. Puedes agregar la actividad sin PDA.</p>";
-				return;
-			}
-			if (!campo || pda.contenido) return;
-			if (!pda.contenidos) { refs.resultados.innerHTML = "<p class='text-xs text-gray-500'>Cargando el catálogo...</p>"; return; }
-			var texto = refs.busca.value;
-			if (!String(texto || "").trim()) return;
-			var fases = window.ProductosHoy.fasesDeGrados(gradosElegidos());
-			var todos = window.ProductosHoy.buscarContenidos(pda.contenidos, texto, campoLargo(campo), fases);
-			if (!todos.length) {
-				refs.resultados.innerHTML = "<p class='text-xs text-gray-500'>Ningún contenido de " + esc(campoLargo(campo)) + " tiene esas palabras.</p>";
-				return;
-			}
-			todos.slice(0, 8).forEach(function (c) {
-				var b = document.createElement("button");
-				b.type = "button";
-				b.setAttribute("data-contenido", c.id);
-				b.className = "w-full min-h-[44px] text-left rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 hover:border-blue-400 hover:bg-blue-50";
-				b.textContent = c.contenido;
-				refs.resultados.appendChild(b);
-			});
-			if (todos.length > 8) {
-				var mas = document.createElement("p");
-				mas.className = "text-xs text-gray-500";
-				mas.textContent = "Y " + (todos.length - 8) + " más: escribe otra palabra para acotar.";
-				refs.resultados.appendChild(mas);
-			}
-		}
-
-		async function elegirContenido(id) {
-			var c = (pda.contenidos || []).find(function (x) { return x.id === id; });
-			if (!c) return;
-			pda.contenido = c;
-			pda.pdaContenido = [];
-			pda.marcadosCatalogo = {};
-			pda.cargandoContenido = true;
-			pintarResultados();
-			pintarContenido();
-			try {
-				var res = await window.sb.from("catalogo_pda").select("id, grado, pda, orden").eq("contenido_id", c.id).in("grado", [1, 2, 3, 4, 5, 6]).order("orden");
-				if (res.error) throw res.error;
-				if (pda.contenido !== c) return;
-				pda.pdaContenido = res.data || [];
-				window.ProductosHoy.pdaMarcadosPorOmision(pda.pdaContenido, gradosElegidos()).forEach(function (pid) { pda.marcadosCatalogo[pid] = true; });
-			} catch (err) {
-				console.error("hoy: PDA del contenido", err);
-				pda.pdaContenido = null;
-			}
-			pda.cargandoContenido = false;
-			pintarContenido();
-			var primera = refs.contenido.querySelector("input[name='pdaCatalogo'], [data-quitar-contenido]");
-			if (primera) primera.focus();
-		}
-
-		function quitarContenido() {
-			pda.contenido = null;
-			pda.pdaContenido = [];
-			pda.marcadosCatalogo = {};
-			if (refs.busca) refs.busca.value = "";
-		}
-
-		function pintarContenido() {
-			if (!refs.contenido) return;
-			refs.contenido.innerHTML = "";
-			if (!pda.contenido) return;
-			var caja = document.createElement("div");
-			caja.className = "flex items-start justify-between gap-2 rounded-xl bg-gray-50 border border-gray-200 pl-3";
-			caja.innerHTML = "<p class='text-sm text-gray-800 py-2.5'><span class='block text-xs text-gray-500'>Contenido</span>" + esc(pda.contenido.contenido) + "</p>" +
-				"<button type='button' data-quitar-contenido class='shrink-0 min-h-[44px] min-w-[44px] px-3 rounded-xl text-sm font-medium text-blue-700 hover:bg-blue-50'>Cambiar</button>";
-			refs.contenido.appendChild(caja);
-			if (pda.cargandoContenido) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>Cargando sus PDA...</p>"); return; }
-			if (pda.pdaContenido === null) { refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>No se pudieron cargar sus PDA. Puedes agregar la actividad sin PDA.</p>"); return; }
-			var g = gradosElegidos();
-			// Sin repetir los que ya se ofrecen arriba como PDA de esta sesión (planLigas los reutiliza)
-			var yaArriba = {};
-			window.ProductosHoy.pdaDeSesionParaActividad(pda.spda || [], campoSesion, refs.campo ? refs.campo.value : "", g)
-				.forEach(function (r) { if (r.pda_id) yaArriba[r.pda_id + "|" + Number(r.grado)] = true; });
-			var deGrados = pda.pdaContenido.filter(function (p) { return g.indexOf(Number(p.grado)) !== -1 && !yaArriba[p.id + "|" + Number(p.grado)]; });
-			if (!deGrados.length) {
-				var yaEstan = pda.pdaContenido.some(function (p) { return yaArriba[p.id + "|" + Number(p.grado)]; });
-				refs.contenido.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>" + (yaEstan
-					? "Sus PDA de estos grados ya están arriba, entre los de esta sesión."
-					: "Este contenido no tiene PDA para los grados elegidos.") + "</p>");
-				return;
-			}
-			deGrados.forEach(function (p) {
-				var l = document.createElement("label");
-				l.className = estiloOpcion;
-				l.innerHTML = "<input type='checkbox' name='pdaCatalogo' class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'" + (pda.marcadosCatalogo[p.id] ? " checked" : "") + ">" +
-					"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(p.grado) + "°</span> · " + esc(p.pda || "") + "</span>";
-				l.querySelector("input").value = p.id;
-				refs.contenido.appendChild(l);
-			});
-		}
-
-		// Lo elegido al aceptar (solo lo visible: de los grados y el campo elegidos)
-		function eleccionPda() {
-			if (pda.spda === null) return null; // no se leyeron los de la sesión: como antes
-			var campo = refs.campo ? refs.campo.value : "";
-			var g = gradosElegidos();
-			var deSesion = window.ProductosHoy.pdaDeSesionParaActividad(pda.spda, campoSesion, campo, g)
-				.filter(marcadoSesion).map(function (r) { return r.id; });
-			var deCatalogo = (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
-				.map(function (p) { return { pda_id: p.id, grado: Number(p.grado) }; });
-			return { deSesion: deSesion, deCatalogo: deCatalogo, spdaSesion: pda.spda };
-		}
-
-		abrirDialogo({
-			origen: origen,
-			titulo: suelta ? "Actividad o tarea suelta" : "Agregar actividad o tarea",
-			subtitulo: suelta
-				? "Sin proyecto: se guarda en " + window.AlcanceHoy.TITULO_SUELTAS + " y cuenta para la boleta. Después puedes pasarla a un proyecto."
-				: esSuelta(sesion)
-				? window.AlcanceHoy.TITULO_SUELTAS + " · " + (sesion.campo_formativo || "")
-				: "Sesión " + (sesion.numero_sesion || "") + " · " + (sesion.campo_formativo || "") +
-					((proyectoPorId[sesion.proyecto_id] || {}).titulo ? " · " + proyectoPorId[sesion.proyecto_id].titulo : ""),
-			aceptar: "Agregar",
-			construir: function (cuerpo) {
-				var nombre = campoTexto("Nombre", { type: "text", maxlength: String(window.ProductosHoy.NOMBRE_MAX), autocomplete: "off",
-					placeholder: "Por ejemplo: Cartel del cuento", "data-foco": "1" });
-				refs.nombre = nombre.input;
-				cuerpo.appendChild(nombre.cont);
-
-				var tipo = document.createElement("fieldset");
-				tipo.className = "flex flex-col gap-2";
-				tipo.innerHTML = "<legend class='text-sm font-medium text-gray-700 mb-1'>¿Qué es?</legend>" +
-					"<div class='grid grid-cols-1 sm:grid-cols-2 gap-2'>" +
-					["trabajo", "tarea"].map(function (t, i) {
-						return "<label class='flex items-center gap-3 min-h-[44px] rounded-xl border border-gray-300 px-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50'>" +
-							"<input type='radio' name='tipoNuevo' value='" + t + "'" + (i === 0 ? " checked" : "") + " class='h-5 w-5 text-blue-600'>" +
-							"<span class='text-sm text-gray-800'>" + (t === "trabajo" ? "Actividad en clase" : "Tarea para casa") + "</span></label>";
-					}).join("") + "</div>";
-				cuerpo.appendChild(tipo);
-
-				var campo = document.createElement("label");
-				campo.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
-				campo.textContent = "Campo formativo";
-				var sel = document.createElement("select");
-				sel.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 bg-white";
-				window.ProductosHoy.CAMPOS.forEach(function (c) {
-					var o = document.createElement("option");
-					o.value = c;
-					o.textContent = window.CamposFormativos ? window.CamposFormativos.largo(c) : c;
-					if (c === campoSesion) o.selected = true;
-					sel.appendChild(o);
-				});
-				if (!campoSesion) {
-					var elige = document.createElement("option");
-					elige.value = "";
-					elige.textContent = "Elige el campo formativo...";
-					elige.selected = true;
-					sel.insertBefore(elige, sel.firstChild);
-				}
-				refs.campo = sel;
-				campo.appendChild(sel);
-				cuerpo.appendChild(campo);
-
-				var grados = construirParaQuien(porOmision);
-				cuerpo.appendChild(grados);
-				refs.campo = sel;
-				refs.grados = grados;
-
-				construirPda(cuerpo);
-
-				// Suelta: el día de la actividad (por omisión hoy). Cualquier día del trimestre en curso
-				// (decisión de Jorge del 2026-09-26): uno que ya pasó se califica aquí mismo, al agregarla
-				if (suelta) {
-					var rango = rangoSuelta();
-					var dia = campoTexto("Día de la actividad", { type: "date", min: rango.desde, max: rango.hasta, value: hoy });
-					var ayudaDia = document.createElement("span");
-					ayudaDia.className = "text-xs font-normal text-gray-500";
-					ayudaDia.textContent = "Puede ser un día que ya pasó del trimestre: la calificas aquí mismo al agregarla. Un día que viene aparece en Hoy ese día.";
-					dia.cont.appendChild(ayudaDia);
-					refs.dia = dia.input;
-					refs.diaCont = dia.cont;
-					cuerpo.appendChild(dia.cont);
-				}
-
-				var fecha = campoTexto("Día en que se revisa la tarea", { type: "date", min: hoy, value: fechaOmision || "" });
-				fecha.cont.classList.add("hidden");
-				var ayuda = document.createElement("span");
-				ayuda.className = "text-xs font-normal text-gray-500";
-				ayuda.textContent = "Por omisión, el siguiente día de clase. Ese día aparece en Tareas por revisar.";
-				fecha.cont.appendChild(ayuda);
-				refs.fecha = fecha.input;
-				refs.fechaCont = fecha.cont;
-				cuerpo.appendChild(fecha.cont);
-
-				tipo.addEventListener("change", function () {
-					var esTarea = (tipo.querySelector("input:checked") || {}).value === "tarea";
-					refs.fechaCont.classList.toggle("hidden", !esTarea);
-					if (refs.diaCont) refs.diaCont.classList.toggle("hidden", esTarea); // la tarea suelta se deja hoy
-				});
-				refs.tipo = tipo;
-				refs.grados = grados;
-				sel.addEventListener("change", function () {
-					if (pda.contenido && window.CamposFormativos && window.CamposFormativos.corto(pda.contenido.campo_formativo) !== sel.value) quitarContenido();
-					pintarPda();
-				});
-				grados.addEventListener("change", pintarPda);
-				cargaPda = cargarPda();
-			},
-			alAceptar: async function (form, avisar) {
-				var plan = planPara();
-				var focoPara = function (f) {
-					return f === "alumnos" ? refs.para.querySelector("input[name='alumnoNuevo']") || refs.para.querySelector("input")
-						: refs.para.querySelector(f === "grados" ? "input[name='gradoNuevo']" : "input");
-				};
-				if (!plan.ok) { avisar(plan.error, focoPara(plan.foco)); return false; }
-				var datos = {
-					nombre: refs.nombre.value,
-					tipo: (refs.tipo.querySelector("input:checked") || {}).value,
-					campo: refs.campo.value,
-					grados: plan.grados,
-					incluidos: plan.incluidos,
-					fechaRevision: refs.fecha.value,
-					fecha: refs.dia ? refs.dia.value : null,
-				};
-				var rangoV = suelta ? rangoSuelta() : {};
-				var ctxV = { hoy: hoy, gradosSesion: porOmision, desde: rangoV.desde, hasta: rangoV.hasta };
-				var v = suelta ? window.ProductosHoy.validarSuelta(datos, ctxV) : window.ProductosHoy.validarNuevo(datos, ctxV);
-				if (!v.ok) {
-					var foco = { nombre: refs.nombre, campo: refs.campo, fecha: refs.fecha, fechaSuelta: refs.dia,
-						grados: focoPara("grados"), tipo: refs.tipo.querySelector("input") }[v.foco];
-					avisar(v.error, foco);
-					return false;
-				}
-				if (sinSenal()) { avisar(TEXTO_SIN_SENAL); return false; }
-				// PDA elegidos: los de la sesión se ligan y los del catálogo se reutilizan o se crean
-				// Los PDA de la sesión se leen al abrir: si la maestra aceptó antes de que llegaran, se esperan
-				if (cargaPda) await cargaPda;
-				var eleccion = eleccionPda();
-				var ligas = eleccion
-					? window.ProductosHoy.planLigas({ grados: plan.gradosPda, deSesion: eleccion.deSesion, deCatalogo: eleccion.deCatalogo, spdaSesion: eleccion.spdaSesion })
-					: { ligar: [], crear: [] };
-				var producto = { tipo: v.fila.tipo, nombre: v.fila.nombre, grados: v.fila.grados, modalidad: v.fila.modalidad,
-					campo: v.fila.campo, fecha_entrega: v.fila.fecha_entrega };
-				// Producto, "para quién" y PDA en una sola transacción (mi_salon_b17)
-				var res = suelta
-					? await window.sb.rpc("agregar_actividad_suelta", { p_grupo: grupo.id, p_fecha: v.fecha, p_producto: producto,
-						p_asignacion: plan.filas, p_crear: ligas.crear })
-					: await window.sb.rpc("agregar_producto_sesion", { p_sesion: sesion.id, p_producto: producto,
-						p_asignacion: plan.filas, p_ligar: ligas.ligar, p_crear: ligas.crear });
-				if (res.error) {
-					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo agregar: " + textoError(res.error) + ".");
-					return false;
-				}
-				var nuevo = suelta ? (res.data || {}).producto : res.data;
-				var ses = sesion;
-				if (suelta) ses = incorporarSesionSuelta(res.data);
-				if (!nuevo || !nuevo.id) { avisar("No se pudo agregar: la base no devolvió la actividad."); return false; }
-				nuevo.sesion = ses;
-				productosAbiertos[nuevo.id] = true; // la que se acaba de agregar se ve abierta, lista para calificar
-				asignaciones[nuevo.id] =window.AlcanceHoy.indiceAsignaciones(plan.filas.map(function (f) {
-					return { producto_sesion_id: nuevo.id, alumno_id: f.alumno_id, modo: f.modo };
-				}))[nuevo.id] || {};
-				if (ses) {
-					(productosPorSesion[ses.id] = productosPorSesion[ses.id] || []).push(nuevo);
-					if (nuevo.tipo === "tarea") {
-						var vence = venceDe(nuevo);
-						if (vence && vence <= hoy) tareas.unshift(nuevo);
-					}
-				}
-				renderTareas();
-				renderSesiones();
-				var cuando = suelta && nuevo.tipo !== "tarea" && v.fecha > hoy ? " Aparece en Hoy el " + fechaCorta(v.fecha) + " para calificarla."
-					: suelta && nuevo.tipo !== "tarea" && v.fecha < hoy ? " Es del " + fechaCorta(v.fecha) + ": califícala aquí abajo." : "";
-				mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
-					paraQuien(nuevo) + "." + cuando +
-					(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + "." : "") +
-					(eleccion ? "" : " No se pudieron leer los PDA de la sesión: se agregó sin PDA; sus calificaciones cuentan igual para la boleta."));
-			},
+	function agregarActividad(opciones) {
+		opciones = opciones || {};
+		var sesion = opciones.sesionId ? sesionesHoy.find(function (s) { return s.id === opciones.sesionId; }) : null;
+		if (opciones.sesionId && !sesion) return;
+		if (sinSenal()) { avisoALaVista("Agregar una actividad o una tarea necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal."); return; }
+		if (!window.ActividadNueva || !window.ParaQuien) { mensaje("error", "No se pudo abrir el diálogo para agregar. Recarga la página."); return; }
+		var deSueltas = !!sesion && esSuelta(sesion);
+		window.ActividadNueva.abrir({
+			sb: window.sb, grupo: grupo, alumnos: alumnos, hoy: hoy, ajustesCal: ajustesCal,
+			// Dentro del proyecto: las sesiones de hoy y las que siguen en curso (las de Hoy, sin las sueltas)
+			sesiones: sesionesHoy.filter(function (s) { return !esSuelta(s); }),
+			sesionId: sesion && !deSueltas ? sesion.id : null,
+			sesionSuelta: deSueltas ? sesion : null,
+			modo: opciones.modo || null,
+			proyectoPorId: proyectoPorId,
+			gradosDeLaSesion: gradosDeLaSesion,
+			rango: rangoSuelta(),
+			sinSenal: sinSenal, textoSinSenal: TEXTO_SIN_SENAL, textoError: textoError,
+			origen: opciones.origen,
+			alAgregar: incorporarNueva,
 		});
+	}
+
+	/*
+		Lo que se acaba de agregar aparece de inmediato (abierto, listo para calificar): en su sesión si es de hoy (o
+		de un día que ya pasó: se califica ahora) y, si es una tarea que ya se revisa, en Tareas por revisar.
+		r: { nuevo, respuesta, suelta, sesion, filas, fecha, sinPda } (js/actividad-nueva.js)
+	*/
+	function incorporarNueva(r) {
+		var nuevo = r.nuevo;
+		var ses = r.suelta ? incorporarSesionSuelta(r.respuesta) : r.sesion;
+		nuevo.sesion = ses;
+		productosAbiertos[nuevo.id] = true; // la que se acaba de agregar se ve abierta, lista para calificar
+		asignaciones[nuevo.id] = window.AlcanceHoy.indiceAsignaciones((r.filas || []).map(function (f) {
+			return { producto_sesion_id: nuevo.id, alumno_id: f.alumno_id, modo: f.modo };
+		}))[nuevo.id] || {};
+		if (ses) {
+			(productosPorSesion[ses.id] = productosPorSesion[ses.id] || []).push(nuevo);
+			if (nuevo.tipo === "tarea") {
+				var vence = venceDe(nuevo);
+				if (vence && vence <= hoy) tareas.unshift(nuevo);
+			}
+		}
+		renderTareas();
+		renderSesiones();
+		var cuando = r.suelta && nuevo.tipo !== "tarea" && r.fecha > hoy ? " Aparece en Hoy el " + fechaCorta(r.fecha) + " para calificarla."
+			: r.suelta && nuevo.tipo !== "tarea" && r.fecha < hoy ? " Es del " + fechaCorta(r.fecha) + ": califícala aquí abajo." : "";
+		mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
+			paraQuien(nuevo) + "." + cuando +
+			(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + "." : "") +
+			(r.sinPda ? " No se pudieron leer los PDA de la sesión: se agregó sin PDA; sus calificaciones cuentan igual para la boleta." : ""));
 	}
 
 	/*
@@ -2898,22 +2382,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return s;
 	}
 
-	// Casillas de los alumnos del grupo, por grado. marcados / bloqueados: { alumnoId: true }
-	function listaAlumnosHtml(nombre, marcados, bloqueados) {
-		return "<div class='max-h-72 overflow-y-auto rounded-xl border border-gray-200 p-2 flex flex-col gap-1'>" +
-			agruparPorGrado(alumnos).map(function (g) {
-				return "<p class='text-xs font-semibold text-gray-500 mt-1'>" + g.grado + "° grado</p>" +
-					"<div class='grid grid-cols-1 sm:grid-cols-2 gap-1'>" + g.alumnos.map(function (a) {
-						var bloq = bloqueados && bloqueados[a.id];
-						return "<label class='flex items-center gap-3 min-h-[44px] rounded-lg px-2 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50'>" +
-							"<input type='checkbox' name='" + nombre + "' value='" + esc(a.id) + "'" + (marcados && marcados[a.id] ? " checked" : "") +
-							(bloq ? " disabled" : "") + " class='h-5 w-5 text-blue-600 rounded shrink-0'>" +
-							"<span class='text-sm text-gray-800'>" + esc(a.nombre_completo) +
-							(bloq ? "<span class='block text-xs text-gray-500'>Ya tiene calificación: no se puede quitar</span>" : "") + "</span></label>";
-					}).join("") + "</div>";
-			}).join("") + "</div>";
-	}
-
 	/*
 		"Para quién" de un producto ya creado (decisión de Jorge del 2026-09-26): agregar alumnos
 		siempre se puede; quitar, solo a quien no tiene calificación (su casilla sale bloqueada y la
@@ -2922,7 +2390,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function editarParaQuien(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		if (sinSenal()) { mensaje("error", "Cambiar para quién es necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Cambiar para quién es necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		var marcados = {}, bloqueados = {};
 		alumnos.forEach(function (a) {
 			if (!window.AlcanceHoy.asignadoA(a, producto, asignaciones)) return;
@@ -2930,15 +2398,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 			if (window.ProductosHoy.tieneCaptura(calificaciones[a.id + "|" + producto.id])) bloqueados[a.id] = true;
 		});
 		var refs = {};
-		abrirDialogo({
+		window.ParaQuien.abrirDialogo({
 			origen: origen,
+			textoError: textoError,
 			titulo: "¿Para quién es «" + producto.nombre + "»?",
 			subtitulo: "Marca a los alumnos que la hacen. Cada uno sigue en su grado para la boleta." +
 				(window.ProductosHoy.etiquetaGrados(producto.grados) ? " La actividad es de " + window.ProductosHoy.etiquetaGrados(producto.grados) + "." : ""),
 			aceptar: "Guardar",
 			construir: function (cuerpo) {
 				var cont = document.createElement("div");
-				cont.innerHTML = listaAlumnosHtml("alumnoPara", marcados, bloqueados);
+				cont.innerHTML = window.ParaQuien.listaAlumnosHtml(alumnos, "alumnoPara", marcados, bloqueados);
 				refs.lista = cont;
 				cuerpo.appendChild(cont);
 			},
@@ -2980,10 +2449,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (!producto || !window.PasarAProyecto) return;
 		guardarRetrosPendientes();
 		if (sinSenal()) { avisoALaVista("Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
-		// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
+		// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí). Mientras, el botón lo dice (como las
+		// otras cuatro acciones: R37)
+		var etiqueta = origen.textContent;
 		origen.disabled = true;
+		origen.textContent = "Guardando lo capturado...";
 		var envio = await esperarCola();
 		origen.disabled = false;
+		origen.textContent = etiqueta;
 		if (envio !== "ok") { avisoALaVista("Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
 		var proyecto = proyectoPorId[(producto.sesion || {}).proyecto_id] || {};
 		window.PasarAProyecto.abrir({
@@ -2993,29 +2466,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
-	// Contenidos del catálogo de las fases del grupo (se leen una vez por página)
-	var contenidosCache = {};
-	function contenidosDelCatalogo(fases) {
-		var clave = (fases || []).join(",");
-		if (!contenidosCache[clave]) {
-			contenidosCache[clave] = (async function () {
-				var res = await window.sb.from("catalogo_contenidos").select("id, fase, campo_formativo, contenido, orden")
-					.in("fase", fases && fases.length ? fases : ["Fase 3", "Fase 4", "Fase 5"]).order("orden").range(0, 999);
-				if (res.error) throw res.error;
-				return res.data || [];
-			})();
-			contenidosCache[clave].catch(function () { delete contenidosCache[clave]; });
-		}
-		return contenidosCache[clave];
-	}
-
 	function renombrarProducto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto) return;
-		if (sinSenal()) { mensaje("error", "Renombrar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Renombrar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		var refs = {};
-		abrirDialogo({
+		window.ParaQuien.abrirDialogo({
 			origen: origen,
+			textoError: textoError,
 			titulo: "Renombrar",
 			subtitulo: (producto.tipo === "tarea" ? "Tarea" : "Actividad") + " para " + window.ProductosHoy.etiquetaGrados(producto.grados),
 			aceptar: "Guardar nombre",
@@ -3070,21 +2528,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Se calificó mientras el diálogo estaba abierto (otra pestaña u otro aparato: R25a-r09)
 		var avisoCarrera = "Mientras decidías, se calificó «" + producto.nombre + "»; no se quitó. Recarga la página para ver esa calificación.";
 		if (conCapturaAqui()) { mensaje("error", avisoConCal); return; }
-		if (sinSenal()) { mensaje("error", "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		origen.disabled = true;
 		var enBaseCon = 0;
 		try {
 			enBaseCon = await calificadasEnBase();
 		} catch (err) {
 			origen.disabled = false;
-			mensaje("error", sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
+			avisoALaVista(sinSenal() ? "Quitar necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")
 				: "No se pudo revisar si tiene calificaciones, así que no se quitó: " + textoError(err) + ".");
 			return;
 		}
 		origen.disabled = false;
 		if (enBaseCon > 0) { mensaje("error", avisoConCal); return; }
-		abrirDialogo({
+		window.ParaQuien.abrirDialogo({
 			origen: origen,
+			textoError: textoError,
 			titulo: "¿Quitar «" + producto.nombre + "»?",
 			subtitulo: "Ya no aparecerá para calificar y no cuenta en la boleta. Nadie lo ha calificado todavía.",
 			aceptar: "Quitar",
@@ -3428,7 +2887,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		});
 	}
 
-	// El cuerpo del diálogo: cada cosa que falta, con su enlace a la parte de la pantalla
+	// El cuerpo del diálogo: cada cosa que falta, con su enlace a la parte de la pantalla. Las actividades y tareas van
+	// como "A, B, C y N más" (decisión de Jorge, 2026-09-29: no completas; AlcanceHoy.listaBreve)
 	function construirFaltantes(cuerpo, f, alIr) {
 		var intro = document.createElement("p");
 		intro.className = "text-sm text-gray-600";
@@ -3469,8 +2929,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				sinMarca ? "Si finalizas así, en el cierre del día " + (sinMarca === 1 ? "se le pondrá" : "se les pondrá") +
 					" 1 y 1 de participación y conducta, como si " + (sinMarca === 1 ? "hubiera asistido" : "hubieran asistido") + ". Si faltó alguien, márcalo antes en Asistencia." : "");
 		}
-		if (f.trabajos.n) fila(f.trabajos.n + (f.trabajos.n === 1 ? " calificación de trabajo sin poner" : " calificaciones de trabajos sin poner") + " (" + f.trabajos.productos.map(function (p) { return p.nombre; }).join(", ") + ").", "sesiones", "Ir a las sesiones");
-		if (f.tareas.n) fila(f.tareas.n + (f.tareas.n === 1 ? " tarea sin revisar" : " tareas sin revisar") + " (" + f.tareas.productos.map(function (p) { return p.nombre; }).join(", ") + ").", "tareas", "Ir a Tareas");
+		if (f.trabajos.n) fila(f.trabajos.n + (f.trabajos.n === 1 ? " calificación de trabajo sin poner" : " calificaciones de trabajos sin poner") + " (" + window.AlcanceHoy.listaBreve(f.trabajos.productos.map(function (p) { return p.nombre; })) + ").", "sesiones", "Ir a las sesiones");
+		if (f.tareas.n) fila(f.tareas.n + (f.tareas.n === 1 ? " tarea sin revisar" : " tareas sin revisar") + " (" + window.AlcanceHoy.listaBreve(f.tareas.productos.map(function (p) { return p.nombre; })) + ").", "tareas", "Ir a Tareas");
 		if (f.pendientes.n) {
 			var partes = [];
 			var clase = f.pendientes.clase === undefined ? f.pendientes.n : f.pendientes.clase;
@@ -3490,6 +2950,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });
 	}
 
+	// "Finalizar de todos modos" que no terminó por la red: el 1 y 1 del cierre ya quedó en la cola del dispositivo
+	var TEXTO_RELLENO_SIN_RED = "El 1 y 1 del cierre ya quedó guardado en este dispositivo y llegará a la base cuando vuelva la señal. Si alguien faltó, corrígelo marcando Falta en Asistencia.";
+
 	// Por qué no se pudo enviar lo capturado (el día NO se marca)
 	function textoSinEnviar(envio) {
 		if (envio === "sesion" || envio === "cuenta") return "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.";
@@ -3500,20 +2963,21 @@ document.addEventListener("DOMContentLoaded", async function () {
 	/*
 		Registra la jornada: completa el cierre, espera a que TODO llegue a la base (también lo que se acaba de encolar:
 		el relleno 1 y 1 y el comentario a medio escribir; esperarCola) y solo entonces escribe en jornadas. Devuelve
-		{ ok: true } o { ok: false, texto } (el día NO queda marcado).
+		{ ok: true } o { ok: false, texto, porRed, rellenos } (el día NO queda marcado; porRed: no llegó por la señal o el
+		servidor; rellenos: a cuántos se les acaba de poner el 1 y 1 del cierre, que ya está en la cola del dispositivo).
 	*/
 	async function registrarJornada(faltantes) {
-		completarCierre();
+		var rellenos = completarCierre();
 		renderCierre();
-		if (sinSenal()) return { ok: false, texto: "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal." };
+		if (sinSenal()) return { ok: false, porRed: true, rellenos: rellenos, texto: "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal." };
 		var envio = await esperarCola();
-		if (envio !== "ok") return { ok: false, texto: textoSinEnviar(envio) };
+		if (envio !== "ok") return { ok: false, porRed: envio === "red" || envio === "servidor" || envio === "pendiente", rellenos: rellenos, texto: textoSinEnviar(envio) };
 		var resumen = Object.assign({}, faltantes.resumen, { de_todos_modos: !faltantes.completo });
 		var res = await window.sb.from("jornadas")
 			.upsert({ maestro_id: user.id, grupo_id: grupo.id, fecha: hoy, resumen: resumen }, { onConflict: "grupo_id,fecha" })
 			.select("cerrada_en, actualizada_en");
 		if (res.error) {
-			return { ok: false, texto: sinSenal() ? "Sin señal: el día no se marcó. Lo capturado sigue guardado. Inténtalo de nuevo cuando haya señal."
+			return { ok: false, porRed: sinSenal(), rellenos: rellenos, texto: sinSenal() ? "Sin señal: el día no se marcó. Lo capturado sigue guardado. Inténtalo de nuevo cuando haya señal."
 				: "No se pudo registrar la jornada: " + textoError(res.error) + ". Lo capturado sí quedó guardado; el día no se marcó." };
 		}
 		var fila = res.data && res.data[0];
@@ -3552,8 +3016,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				mensaje("info", "Jornada finalizada a las " + horaDe(jornadaHoy.cerrada_en) + ".");
 				return;
 			}
-			var dialogo = abrirDialogo({
+			var dialogo = window.ParaQuien.abrirDialogo({
 				origen: btn,
+				textoError: textoError,
 				titulo: "Antes de finalizar la jornada",
 				aceptar: "Finalizar de todos modos",
 				cancelar: "Volver",
@@ -3565,7 +3030,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 				},
 				alAceptar: async function (form, avisar) {
 					var res = await registrarJornada(faltantes);
-					if (!res.ok) { avisar(res.texto); return false; }
+					// Sin red, el 1 y 1 que se acaba de poner ya está en este dispositivo y llegará solo (R37): se dice y cómo se corrige
+					if (!res.ok) { avisar(res.texto + (res.porRed && res.rellenos ? " " + TEXTO_RELLENO_SIN_RED : "")); return false; }
 					mensaje("info", "Jornada finalizada a las " + horaDe(jornadaHoy.cerrada_en) + ".");
 				},
 			});
@@ -3641,22 +3107,25 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
-	// "Actividad suelta": una actividad o tarea sin proyecto, en cualquier momento (guiar sin obligar)
-	var btnSuelta = document.getElementById("btnSuelta");
-	if (btnSuelta && btnSuelta.addEventListener) {
-		btnSuelta.addEventListener("click", function () {
+	// "+ Actividad o tarea" arriba de la tarjeta 3 (reemplaza a "Actividad suelta"): dentro o fuera del proyecto
+	// (guiar sin obligar)
+	var btnActividad = document.getElementById("btnActividad");
+	if (btnActividad && btnActividad.addEventListener) {
+		btnActividad.addEventListener("click", function () {
 			if (!pintado) return;
-			agregarProducto(null, btnSuelta);
+			agregarActividad({ origen: btnActividad });
 		});
 	}
-	// Desde Inicio o Proyectos: hoy.html?nueva=suelta abre el diálogo al terminar de cargar
-	function abrirSueltaDeUrl() {
+	// Desde Inicio (hoy.html?nueva=1) o Proyectos (hoy.html?nueva=suelta: fuera del proyecto) se abre el diálogo al
+	// terminar de cargar
+	function abrirNuevaDeUrl() {
 		try {
-			if (new URLSearchParams(window.location.search || "").get("nueva") !== "suelta") return;
+			var nueva = new URLSearchParams(window.location.search || "").get("nueva");
+			if (nueva !== "suelta" && nueva !== "1") return;
 			if (window.history && window.history.replaceState) window.history.replaceState(null, "", window.location.pathname + (window.location.hash || ""));
-			agregarProducto(null, btnSuelta);
+			agregarActividad({ modo: nueva === "suelta" ? "fuera" : null, origen: btnActividad });
 		} catch (e) {
-			console.error("hoy: abrir actividad suelta", e);
+			console.error("hoy: abrir «Actividad o tarea»", e);
 		}
 	}
 
@@ -3703,5 +3172,5 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// pintura podía dejar en pantalla el valor viejo)
 	if (bandeja) bandeja.iniciar();
 	irASeccion();
-	abrirSueltaDeUrl();
+	abrirNuevaDeUrl();
 });

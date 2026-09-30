@@ -24,6 +24,10 @@
 	    "3° + 2 alumnos de 2°", "2 alumnos de 2°"
 	Abajo, el diálogo accesible (role="dialog", foco atrapado, Esc cierra, el foco vuelve al botón):
 	  ParaQuien.abrirDialogo({ origen, titulo, subtitulo, aceptar, construir(cuerpo), alAceptar(form, avisar) })
+	    Opcionales: cancelar (el texto del botón de salida; "Cancelar" por omisión), peligro (el botón de
+	    aceptar en rojo), textoError(err) (cómo se explica un error que lance alAceptar; por omisión su
+	    mensaje) y alCerrar(). Desde la Fase 4 (2026-09-29) es el MISMO diálogo de Hoy (js/hoy.js y
+	    js/actividad-nueva.js) y de Crear proyecto.
 	  ParaQuien.listaAlumnosHtml(alumnos, nombre, marcados, bloqueados)
 	  ParaQuien.elegir({ origen, titulo, subtitulo, alumnos, marcados, bloqueados, aceptar, alGuardar(quieren, avisar) })
 	    Una casilla bloqueada (ya tiene calificación) cuenta como marcada. alGuardar puede ser
@@ -214,10 +218,10 @@
 		var cancelar = document.createElement("button");
 		cancelar.type = "button";
 		cancelar.className = "min-h-[44px] px-5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
-		cancelar.textContent = "Cancelar";
+		cancelar.textContent = opciones.cancelar || "Cancelar";
 		var aceptar = document.createElement("button");
 		aceptar.type = "submit";
-		aceptar.className = "min-h-[44px] px-5 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700";
+		aceptar.className = "min-h-[44px] px-5 rounded-xl font-semibold text-white " + (opciones.peligro ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700");
 		aceptar.textContent = opciones.aceptar || "Guardar";
 		pie.appendChild(cancelar);
 		pie.appendChild(aceptar);
@@ -229,10 +233,17 @@
 		if (opciones.construir) opciones.construir(cuerpo);
 		cuerpo.appendChild(aviso);
 
+		/*
+			El aviso va al final del cuerpo: en un diálogo largo (o a 390 px) quedaba abajo del borde. Se desplaza a la
+			vista dentro del diálogo; el foco va al campo que hay que corregir sin mover lo que se ve (el aviso dice qué).
+		*/
 		function avisar(texto, foco) {
 			aviso.textContent = texto || "";
 			aviso.classList.toggle("hidden", !texto);
-			if (foco && foco.focus) foco.focus();
+			if (foco && foco.focus) {
+				try { foco.focus({ preventScroll: true }); } catch (_) { foco.focus(); }
+			}
+			if (texto && aviso.scrollIntoView) aviso.scrollIntoView({ block: "nearest" });
 		}
 		function cerrar() {
 			document.removeEventListener("keydown", teclas, true);
@@ -268,7 +279,7 @@
 				seguir = (await opciones.alAceptar(form, avisar)) === false;
 			} catch (err) {
 				console.error("para-quien: diálogo", err);
-				avisar("No se pudo guardar: " + ((err && err.message) || "error desconocido") + ".");
+				avisar("No se pudo guardar: " + (opciones.textoError ? opciones.textoError(err) : ((err && err.message) || "error desconocido")) + ".");
 				seguir = true;
 			}
 			aceptar.disabled = false;
