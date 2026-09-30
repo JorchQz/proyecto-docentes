@@ -1,5 +1,5 @@
 /*
-	Nombres de archivo al subir recursos en Crear proyecto (js/clave-archivo.js).
+	Nombres de archivo al subir recursos (js/clave-archivo.js; sin uso en pantalla desde el 2026-09-29).
 	Storage respondía "Invalid key" con «3° 'B'.pdf» (°, apóstrofo, comillas, acentos, ñ):
 	  - la clave queda solo con letras y números ASCII, punto, guion y guion bajo;
 	  - la extensión se conserva (en minúsculas);
@@ -45,17 +45,15 @@ ok("choque con una ruta completa ya subida: -2", K.unica("3 B.pdf", ["recursos/u
 ok("choque doble: -3", K.unica("3° B.pdf", ["3-B.pdf", "3-B-2.pdf"]), "3-B-3.pdf");
 ok("el choque no distingue mayúsculas", K.unica("a.PDF", ["A.pdf"]), "a-2.pdf");
 
-// Crear proyecto usa la clave normalizada y escapa el nombre original
+/*
+	Desde el 2026-09-29 Mi Salón solo guarda enlaces (decisión de Jorge; constructor AX): Crear proyecto
+	ya no sube archivos ni carga este módulo, que queda para cuando vuelvan las subidas. Que la pantalla
+	no ofrezca subir y que los archivos de antes se sigan viendo se prueba en
+	pruebas/recursos-solo-enlaces.test.js. Aquí solo: el nombre de un archivo de antes se sigue pintando
+	escapado.
+*/
 const cp = fs.readFileSync(path.join(__dirname, "..", "js", "crear_proyecto.js"), "utf8");
-const html = fs.readFileSync(path.join(__dirname, "..", "crear_proyecto.html"), "utf8");
-ok("la ruta ya no lleva file.name tal cual", /sesion_\$\{num\}\/\$\{file\.name\}/.test(cp), false);
-ok("la ruta usa ClaveArchivo.unica", /ClaveArchivo\.unica\(file\.name/.test(cp), true);
-ok("se guarda el nombre original aparte", /archivosSubidos\.push\(\{ nombre: file\.name, path: ruta/.test(cp), true);
-ok("ningún file.name ni ruta se pinta sin escapar", /\$\{String\((file\.name|ruta)|\$\{file\.name\}|\$\{String\(truncarTexto\(file/.test(cp), false);
-ok("el chip de «Subiendo...» escapa el nombre", /title="\$\{escapeHtml\(file\.name\)\}">\$\{escapeHtml\(truncarTexto\(file\.name, 30\)\)\} · Subiendo/.test(cp), true);
-ok("si la subida falla, el chip de «Subiendo...» se quita", /catch \(errorSubida\) \{\s*pendingChip\.remove\(\)/.test(cp), true);
-ok("crear_proyecto.html carga clave-archivo.js antes de crear_proyecto.js",
-	html.indexOf('src="js/clave-archivo.js"') !== -1 && html.indexOf('src="js/clave-archivo.js"') < html.indexOf('src="js/crear_proyecto.js"'), true);
+ok("el nombre de un archivo de antes se pinta escapado", /title="\$\{escapeHtml\(archivo\.nombre \|\| ''\)\}">\$\{escapeHtml\(etiqueta\)\}/.test(cp), true);
 
 console.log(fallos ? "\n" + fallos + " FALLAS" : "\nTODAS PASAN");
 process.exit(fallos ? 1 : 0);

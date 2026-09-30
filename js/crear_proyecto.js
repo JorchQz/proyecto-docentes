@@ -1281,24 +1281,25 @@ document.addEventListener("DOMContentLoaded", async function () {
           <span class="font-bold text-gray-700 text-sm uppercase tracking-wide block mb-3">Recursos y material didáctico</span>
           ${window.sb ? `
           <div class="space-y-5">
-            <div>
-              <div class="text-xs font-semibold text-gray-500 mb-2">Archivos</div>
-              <input type="file" multiple class="w-full min-h-[44px] text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+            <!-- Solo enlaces: los archivos que se subieron antes se ven y se pueden quitar; este bloque solo se ve si hay alguno -->
+            <div class="resource-files-wrap hidden">
+              <div class="text-xs font-semibold text-gray-500 mb-2">Archivos que subiste antes</div>
               <p class="resource-files-error hidden mt-2 text-sm text-red-600"></p>
               <div class="resource-files-list mt-3 flex flex-wrap gap-2"></div>
             </div>
             <div>
-              <div class="text-xs font-semibold text-gray-500 mb-2">Links externos</div>
+              <div class="text-xs font-semibold text-gray-500 mb-2">Enlaces</div>
+              <p class="resource-link-ayuda text-sm text-gray-600 mb-2">Pega el enlace de tu archivo o carpeta. Te recomendamos Google Drive. Por ahora no se suben archivos a Mi Salón.</p>
               <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
                 <input type="url"
                   class="resource-link-url w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
-                  placeholder="Pega la URL del link...">
+                  placeholder="Pega el enlace (https://...)">
                 <input type="text"
                   class="resource-link-title w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
-                  placeholder="Nombre del link (opcional)">
+                  placeholder="Nombre del enlace (opcional)">
                 <button type="button"
                   class="resource-link-add min-h-[44px] px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition">
-                  Agregar
+                  Agregar enlace
                 </button>
               </div>
               <p class="resource-links-error hidden mt-2 text-sm text-red-600"></p>
@@ -1368,7 +1369,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     // Actualizar etiqueta del header cuando cambia la secuencia
     div.querySelector('.session-momento').addEventListener('change', () => updateLabel(div));
 
-    const recursosFilesInput = div.querySelector('input[type="file"]');
+    const recursosFilesWrap = div.querySelector('.resource-files-wrap');
     const recursosFilesList = div.querySelector('.resource-files-list');
     const recursosFilesError = div.querySelector('.resource-files-error');
     const recursosLinkUrl = div.querySelector('.resource-link-url');
@@ -1377,9 +1378,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     const recursosLinksList = div.querySelector('.resource-links-list');
     const recursosLinksError = div.querySelector('.resource-links-error');
 
+    // Mi Salón solo guarda enlaces (decisión de Jorge del 2026-09-29; se recomienda Google Drive): ya no
+    // se suben archivos. Los que se subieron antes (recursos.archivos) se muestran y se pueden quitar
+    // como siempre, y se guardan tal cual (el guardado sin cambios no los toca).
+    // Estos arreglos NUNCA se modifican en su lugar (push/splice): block._alAbrir guarda los mismos
+    // arreglos para saber qué cambió (R30) y, modificados en su lugar, un enlace agregado o quitado en
+    // una sesión ya guardada no se veía como cambio y no se guardaba (constructor AX, 2026-09-29)
     let archivosSubidos = [];
     let linksAgregados = [];
-    const tempRecursosId = `temp_${Date.now()}`;
 
     function syncRecursosState() {
       div._archivos = archivosSubidos;
@@ -1399,6 +1405,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     function renderArchivos() {
       if (!recursosFilesList) return;
+      if (recursosFilesWrap) recursosFilesWrap.classList.toggle('hidden', archivosSubidos.length === 0);
       recursosFilesList.innerHTML = archivosSubidos.map(function (archivo) {
         const etiqueta = truncarTexto(archivo.nombre || '', 30);
         return `
@@ -1429,75 +1436,6 @@ document.addEventListener("DOMContentLoaded", async function () {
       syncRecursosState();
     }
 
-    async function subirArchivo(file) {
-      // A media captura: sin red se avisa aquí, sin detener la página (se perdería el proyecto)
-      const { data: { user }, error: userError } = await authCaptura().getUser();
-      if (userError && window.Lectura && window.Lectura.errorDeRed(userError)) throw new Error('No se pudo comprobar tu sesión. Revisa tu conexión y vuelve a subir el archivo.');
-      if (!user) throw new Error('No hay sesión activa para subir archivos.');
-
-      /*
-        La clave de Storage no puede llevar acentos, ñ, °, comillas ni otros signos ("Invalid
-        key" con «3° 'B'.pdf"): se normaliza con js/clave-archivo.js y el nombre ORIGINAL se
-        guarda aparte (archivo.nombre), que es el que se muestra, siempre escapado. Si dos
-        nombres quedan con la misma clave, la segunda lleva sufijo ("-2").
-      */
-      const carpeta = `recursos/${user.id}/${tempRecursosId}/sesion_${num}/`;
-      const usadas = archivosSubidos.map(function (a) { return String(a.path || ''); });
-      let ruta = carpeta + window.ClaveArchivo.unica(file.name, usadas);
-      const pendingChip = document.createElement('span');
-      pendingChip.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-50 border border-gray-100 text-gray-800';
-      pendingChip.dataset.pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      pendingChip.innerHTML = `<span><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg></span><span title="${escapeHtml(file.name)}">${escapeHtml(truncarTexto(file.name, 30))} · Subiendo...</span>`;
-      recursosFilesList?.appendChild(pendingChip);
-
-      try {
-        // Ya existe esa clave en la carpeta (otra pestaña o un intento anterior): otro sufijo
-        for (let intento = 0; ; intento++) {
-          const { error: uploadError } = await window.sb.storage.from('recursos').upload(ruta, file, { upsert: false });
-          if (!uploadError) break;
-          const yaExiste = String(uploadError.statusCode || uploadError.status || '') === '409' ||
-            /already exists|duplicate/i.test(String(uploadError.message || uploadError.error || ''));
-          if (!yaExiste || intento >= 3) throw uploadError;
-          usadas.push(ruta);
-          ruta = carpeta + window.ClaveArchivo.unica(file.name, usadas);
-        }
-      } catch (errorSubida) {
-        pendingChip.remove(); // no se queda "Subiendo..." para siempre
-        throw errorSubida;
-      }
-
-      let urlPublica = null;
-      try {
-        const { data: signedData, error: signedError } = await window.sb.storage.from('recursos').createSignedUrl(ruta, 31536000);
-        if (signedError) throw signedError;
-        urlPublica = signedData?.signedUrl || null;
-      } catch (signedUrlError) {
-        mostrarError(recursosFilesError, 'El archivo se subió, pero no se pudo generar el enlace seguro.');
-      }
-
-      // El chip definitivo lo pinta renderArchivos (con el nombre original y la ruta escapados)
-      pendingChip.remove();
-      archivosSubidos.push({ nombre: file.name, path: ruta, url: urlPublica });
-      syncRecursosState();
-      renderArchivos();
-    }
-
-    if (recursosFilesInput) {
-      recursosFilesInput.addEventListener('change', async function () {
-        mostrarError(recursosFilesError, '');
-        const files = Array.from(recursosFilesInput.files || []);
-        recursosFilesInput.value = '';
-        for (const file of files) {
-          try {
-            await subirArchivo(file);
-          } catch (err) {
-            console.error('Error subiendo archivo:', err);
-            mostrarError(recursosFilesError, 'No se pudo subir "' + file.name + '". Puedes continuar sin ese archivo.');
-          }
-        }
-      });
-    }
-
     recursosFilesList?.addEventListener('click', async function (event) {
       const btn = event.target.closest('.resource-remove-file');
       if (!btn) return;
@@ -1521,16 +1459,16 @@ document.addEventListener("DOMContentLoaded", async function () {
       const url = String(recursosLinkUrl?.value || '').trim();
       const titulo = String(recursosLinkTitle?.value || '').trim();
       if (!url) {
-        mostrarError(recursosLinksError, 'Agrega una URL válida para continuar.');
+        mostrarError(recursosLinksError, 'Pega el enlace para agregarlo.');
         return;
       }
       // SEGURIDAD: solo http(s). Evita recursos con esquema javascript: que
       // ejecutarían código (robo de sesión) al hacer clic desde el dashboard.
       if (!/^https?:\/\//i.test(url)) {
-        mostrarError(recursosLinksError, 'La URL debe comenzar con http:// o https://.');
+        mostrarError(recursosLinksError, 'El enlace debe comenzar con http:// o https://.');
         return;
       }
-      linksAgregados.push({ titulo: titulo, url: url });
+      linksAgregados = linksAgregados.concat([{ titulo: titulo, url: url }]);
       if (recursosLinkUrl) recursosLinkUrl.value = '';
       if (recursosLinkTitle) recursosLinkTitle.value = '';
       renderLinks();
@@ -1541,7 +1479,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (!btn) return;
       const index = parseInt(btn.dataset.index, 10);
       if (Number.isNaN(index)) return;
-      linksAgregados.splice(index, 1);
+      linksAgregados = linksAgregados.filter(function (_, i) { return i !== index; });
       renderLinks();
     });
 

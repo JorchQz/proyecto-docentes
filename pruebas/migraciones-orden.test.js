@@ -18,7 +18,8 @@
 	lo mismo de la última que la define. La prueba también revisa que la guía de producción aplique
 	este orden (b23 al final, b21b aparte) y que ningún comando aplique b24: se descartó por decisión
 	de Jorge del 2026-09-27 (el alumno se evalúa siempre con los PDA de su grado) y nunca se aplicó
-	en producción.
+	en producción. Al final, b26 (bucket `recursos` solo para su cuenta, sin INSERT): va aparte, en su
+	propio comando de la guía.
 
 	node pruebas/migraciones-orden.test.js
 */
@@ -205,6 +206,35 @@ ok("calificacion_directa: en la lista de b21 y b20 llama a mi_salon_candado (vol
 ok("ponte_al_dia NO lleva candado (a propósito)", [conCandado.has("ponte_al_dia") || /mi_salon_candado\('public\.ponte_al_dia'\)/.test(leer("mi_salon_b20_registro_historico_2026-09.sql"))], [false]);
 ok("b19 ya no afirma ser la última ni cita una prueba que no comprueba eso",
 	!/cualquiera de esos archivos que se\s+--\s+aplique AL FINAL deja la función completa/.test(leer("mi_salon_b19_examenes_cola_2026-09.sql")));
+
+// ── b26 (constructor AX, 2026-09-29): el bucket `recursos` solo para la cuenta que subió cada archivo ──
+// Va aparte (no depende de nada ni redefine delete_own_account), idempotente y sin begin/commit. Sin
+// política de INSERT: Mi Salón solo guarda enlaces (decisión de Jorge del 2026-09-29).
+{
+	const B26 = "mi_salon_b26_recursos_storage_2026-10.sql";
+	const sql = leer(B26);
+	const codigo = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+	const politica = (nombre, cmd) => new RegExp("drop policy if exists \"" + nombre + "\" on storage\\.objects;\\s*create policy \"" + nombre +
+		"\" on storage\\.objects\\s+for " + cmd + " to authenticated\\s+using \\(bucket_id = 'recursos' and \\(storage\\.foldername\\(name\\)\\)\\[2\\] = auth\\.uid\\(\\)::text\\);").test(codigo);
+	igual("b26: quita las tres políticas abiertas del bucket recursos",
+		["recursos_select_autenticado", "recursos_upload_autenticado", "recursos_delete_autenticado"].map((p) => codigo.indexOf("drop policy if exists \"" + p + "\" on storage.objects;") !== -1), [true, true, true]);
+	igual("b26: SELECT y DELETE solo para la propia cuenta (to authenticated, carpeta [2] = auth.uid())",
+		[politica("recursos: lectura de la propia cuenta", "select"), politica("recursos: borrado de la propia cuenta", "delete")], [true, true]);
+	igual("b26: solo esas dos políticas nuevas, ninguna de INSERT ni UPDATE (la de INSERT queda comentada)",
+		[(codigo.match(/create policy/g) || []).length, /for (insert|update|all)/.test(codigo), /create policy "recursos: subida de la propia cuenta"[\s\S]*for insert to authenticated/.test(sql)], [2, false, true]);
+	igual("b26: sin begin/commit, sin tocar objetos, buckets ni assets, y sin delete_own_account",
+		[/\b(begin|commit)\s*;/i.test(codigo), /(insert into|update|delete from|truncate)\s+storage\./i.test(codigo), /assets/.test(codigo), /delete_own_account/.test(codigo)], [false, false, false, false]);
+	igual("b26: idempotente (cada create policy tiene antes su drop policy if exists)",
+		(codigo.match(/create policy "([^"]+)"/g) || []).every((c) => codigo.indexOf("drop policy if exists " + c.slice("create policy ".length)) !== -1 &&
+			codigo.indexOf("drop policy if exists " + c.slice("create policy ".length)) < codigo.indexOf(c)), true);
+	igual("b26: no está en la cadena de delete_own_account (va aparte)", ORDEN.indexOf(B26), -1);
+	const i26 = comandos.findIndex((l) => l.indexOf(B26) !== -1);
+	igual("la guía: b26 va en su propio comando, después de la cadena y de b21b, y solo con su archivo",
+		[i26 > iCadena + 1, archivosDe(comandos[i26])], [true, [B26]]);
+	igual("la guía: b26 trae su comprobación (las dos políticas) y dice que no crea INSERT",
+		/## Aparte: b26[\s\S]*"recursos: borrado de la propia cuenta" \{authenticated\} DELETE[\s\S]*"recursos: lectura de la propia cuenta" \{authenticated\} SELECT/.test(guia) &&
+		/## Aparte: b26[\s\S]{0,1200}No crea política de\s+INSERT/.test(guia), true);
+}
 
 console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 process.exit(fallos ? 1 : 0);
