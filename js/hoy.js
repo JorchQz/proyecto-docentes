@@ -132,6 +132,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.classList.remove("hidden");
 	}
 
+	// Deja a la vista el aviso de arriba (#hoyMensaje): el mismo desplazamiento de "Ver detalle" del aviso fijo
+	function irAlMensaje() {
+		var el = document.getElementById("hoyMensaje");
+		if (!el || !el.scrollIntoView) return;
+		if (el.style) el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
+		if (el.setAttribute) el.setAttribute("tabindex", "-1");
+		el.scrollIntoView({ block: "start", behavior: "smooth" });
+		try { el.focus({ preventScroll: true }); } catch (_) { /* sin foco */ }
+	}
+
+	/*
+		Por qué no se pudo hacer una acción que el docente tocó abajo (Terminar sesión, Finalizar jornada, Pasar a un
+		proyecto, Trabajar hoy o Quitar de hoy): el aviso sale arriba, y a 390 px solo se veía la barra ámbar de "Sin
+		señal" (R36). Se muestra y la página se desplaza hasta él.
+	*/
+	function avisoALaVista(texto) {
+		mensaje("error", texto);
+		irAlMensaje();
+	}
+
 	/*
 		Por qué falló algo, en español y sin tecnicismos. El texto técnico de la base (en inglés, p. ej.
 		"column … does not exist" si falta una migración) va solo a la consola. Los mensajes propios
@@ -342,12 +362,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		ver.addEventListener("click", function () {
 			if (caja.parentNode) caja.parentNode.removeChild(caja);
 			reservarEspacio();
-			var el = document.getElementById("hoyMensaje");
-			if (!el || !el.scrollIntoView) return;
-			el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
-			el.setAttribute("tabindex", "-1");
-			el.scrollIntoView({ block: "start", behavior: "smooth" });
-			try { el.focus({ preventScroll: true }); } catch (_) {}
+			irAlMensaje();
 		});
 		var cerrar = document.createElement("button");
 		cerrar.type = "button";
@@ -396,10 +411,44 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return v === undefined ? null : v;
 	}
 
-	// opciones: { campos: [los que tocó la maestra] } o { relleno: true } (1 y 1 del cierre)
+	/*
+		opciones: { campos: [los que tocó la maestra] } o { relleno: true } (1 y 1 del cierre).
+		Devuelve la promesa de encolar. bandeja.agregar es ASÍNCRONO: justo después de llamarlo la captura todavía no
+		está en la cola y bandeja.pendientes() no la cuenta (R36). Por eso se lleva aquí lo que se está encolando
+		(`encolando`), y quien necesita que TODO llegue a la base antes de seguir usa esperarCola().
+	*/
+	var encolando = [];
 	function guardar(tipo, datos, descripcion, opciones) {
-		if (!bandeja) return;
-		bandeja.agregar(tipo, datos, descripcion, baseDe(tipo, datos), opciones).catch(function (e) { console.error("hoy: no se pudo encolar", e); });
+		if (!bandeja) return Promise.resolve();
+		var p = bandeja.agregar(tipo, datos, descripcion, baseDe(tipo, datos), opciones).catch(function (e) { console.error("hoy: no se pudo encolar", e); });
+		encolando.push(p);
+		p.then(function () {
+			var i = encolando.indexOf(p);
+			if (i !== -1) encolando.splice(i, 1);
+		});
+		return p;
+	}
+
+	// Espera a que entre a la cola del dispositivo todo lo que se mandó a encolar (también lo que se encole mientras tanto)
+	async function esperarEncolado() {
+		while (encolando.length) await Promise.all(encolando.slice());
+	}
+
+	/*
+		Que todo lo capturado llegue a la base: primero lo que se está encolando y después, SIEMPRE, esperarEnvio de la
+		bandeja (sin mirar pendientes(), que no cuenta lo que aún se encola). Si mientras tanto se capturó algo más, se
+		vuelve a esperar. → "ok" o el estado de la cola que lo impidió ("red", "servidor", "sesion"...; "pendiente": se
+		siguió capturando y quedó algo por enviar).
+	*/
+	async function esperarCola() {
+		if (!bandeja) return "ok";
+		for (var vuelta = 0; vuelta < 3; vuelta++) {
+			await esperarEncolado();
+			var envio = await bandeja.esperarEnvio();
+			if (envio !== "ok") return envio;
+			if (!encolando.length && !bandeja.pendientes()) return "ok";
+		}
+		return "pendiente";
 	}
 
 	/*
@@ -1754,6 +1803,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		"Terminar sesión N": espera a que se envíe lo capturado (sin eso, "quedan N sin calificar" mentiría
 		y lo capturado podría quedarse en la cola), dice cuántos quedan sin calificar, deja escribir notas,
 		la marca completada (js/sesion-terminar.js) y recarga con la tarjeta azul de la siguiente a la vista.
+		La espera es esperarCola (R36): también lo que se acaba de encolar (la retroalimentación a medio
+		escribir), que bandeja.pendientes() todavía no cuenta. Si algo no se pudo enviar, no se termina.
 	*/
 	async function terminarSesion(btn) {
 		var ses = todasLasSesiones.filter(function (s) { return s.id === btn.dataset.terminarSesion; })[0];
@@ -1763,21 +1814,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
 			if (sinSenal()) {
-				mensaje("error", "Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+				avisoALaVista("Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 				return;
 			}
-			if (bandeja && bandeja.pendientes()) {
-				btn.disabled = true;
-				btn.textContent = "Guardando lo capturado...";
-				var envio = await bandeja.esperarEnvio();
-				btn.disabled = false;
-				btn.textContent = etiqueta;
-				if (envio !== "ok") {
-					mensaje("error", envio === "red" || envio === "servidor"
-						? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
-						: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
-					return;
-				}
+			// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
+			btn.disabled = true;
+			btn.textContent = "Guardando lo capturado...";
+			var envio = await esperarCola();
+			btn.disabled = false;
+			btn.textContent = etiqueta;
+			if (envio !== "ok") {
+				avisoALaVista(envio === "red" || envio === "servidor" || envio === "pendiente"
+					? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
+					: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+				return;
 			}
 			mensaje("", "");
 			window.SesionTerminar.abrirModal({
@@ -2158,28 +2208,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var destino = todasLasSesiones.filter(function (s) { return s.id === sesionId; })[0];
 			var abierta = destino ? window.SesionTerminar.enCursoDe(todasLasSesiones.filter(function (x) { return !esSuelta(x); }), destino.proyecto_id) : [];
 			if (abierta.length) {
-				mensaje("error", "Primero termina la sesión " + abierta.map(function (x) { return x.numero_sesion; }).join(", ") + " de este proyecto; después empiezas la siguiente.");
+				avisoALaVista("Primero termina la sesión " + abierta.map(function (x) { return x.numero_sesion; }).join(", ") + " de este proyecto; después empiezas la siguiente.");
 				return;
 			}
 		}
 		btn.disabled = true;
 		try {
 			// La pantalla se recarga al final: primero debe quedar guardado todo lo que ya
-			// se capturó (antes la recarga cortaba la cola y se perdían marcas)
+			// se capturó (antes la recarga cortaba la cola y se perdían marcas). Siempre esperarCola (R36): también lo
+			// que se acaba de encolar (la retroalimentación o el comentario a medio escribir), que pendientes() no cuenta
 			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
 			if (sinSenal()) { avisoSinSenal(btn, poner); return; }
-			if (bandeja && bandeja.pendientes()) {
-				btn.textContent = "Guardando lo capturado...";
-				// No se espera para siempre: si la cola se atora (sin red, error del servidor,
-				// sesión), se dice qué pasa y el botón vuelve
-				var envio = await bandeja.esperarEnvio();
-				if (envio !== "ok") {
-					if (envio === "red" || envio === "servidor") { avisoSinSenal(btn, poner, envio); return; }
-					btn.disabled = false;
-					btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
-					mensaje("error", "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
-					return;
-				}
+			btn.textContent = "Guardando lo capturado...";
+			// No se espera para siempre: si la cola se atora (sin red, error del servidor,
+			// sesión), se dice qué pasa y el botón vuelve; la sesión no cambia
+			var envio = await esperarCola();
+			if (envio !== "ok") {
+				if (envio === "red" || envio === "servidor" || envio === "pendiente") { avisoSinSenal(btn, poner, envio); return; }
+				btn.disabled = false;
+				btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
+				avisoALaVista("Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+				return;
 			}
 			btn.textContent = poner ? "Agregando..." : "Quitando...";
 			// Quitar de hoy la regresa como estaba: sin fecha y pendiente (no "activa")
@@ -2194,7 +2243,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 			btn.disabled = false;
 			btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
-			mensaje("error", "No se pudo actualizar la sesión: " + textoError(err));
+			avisoALaVista("No se pudo actualizar la sesión: " + textoError(err));
 		}
 	}
 
@@ -2208,7 +2257,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		btn.disabled = false;
 		btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
 		var accion = poner ? "agregar la sesión a hoy" : "quitar la sesión de hoy";
-		mensaje("error", motivo === "servidor"
+		avisoALaVista(motivo === "servidor"
 			? "No se pudo guardar lo capturado por ahora (el servidor no respondió bien) y sin eso no se puede " + accion +
 				". Lo capturado sigue guardado en este dispositivo y se reintentará solo. Vuelve a intentarlo en un momento."
 			: "Sin señal: no se puede " + accion + " en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
@@ -2923,19 +2972,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 		un proyecto del mismo grupo y trimestre, con sus calificaciones, su "para quién" y sus PDA
 		(mover_producto_a_sesion, mi_salon_b17; el diálogo vive en js/pasar-a-proyecto.js, el mismo de
 		Proyectos). Antes se envía lo capturado (una captura pendiente de esa actividad iría a la
-		sesión vieja) y después se recarga la pantalla.
+		sesión vieja; esperarCola, R36: también lo que se acaba de encolar) y después se recarga la pantalla.
+		Si algo no se pudo enviar, no se pasa.
 	*/
 	async function pasarAProyecto(productoId, origen) {
 		var producto = productoPorId(productoId);
 		if (!producto || !window.PasarAProyecto) return;
 		guardarRetrosPendientes();
-		if (sinSenal()) { mensaje("error", "Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
-		if (bandeja && bandeja.pendientes()) {
-			origen.disabled = true;
-			var envio = await bandeja.esperarEnvio();
-			origen.disabled = false;
-			if (envio !== "ok") { mensaje("error", "Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
-		}
+		if (sinSenal()) { avisoALaVista("Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
+		origen.disabled = true;
+		var envio = await esperarCola();
+		origen.disabled = false;
+		if (envio !== "ok") { avisoALaVista("Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
 		var proyecto = proyectoPorId[(producto.sesion || {}).proyecto_id] || {};
 		window.PasarAProyecto.abrir({
 			sb: window.sb, maestroId: user.id, grupoId: grupo.id, trimestre: proyecto.trimestre || grupo.trimestre_actual,
@@ -3124,7 +3173,34 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<textarea id='cierreNota-" + esc(al.id) + "' rows='1' maxlength='" + NOTA_MAX + "' data-cierre-nota='" + esc(al.id) + "' " +
 			"aria-label='Comentario del día de " + esc(al.nombre_completo) + "' placeholder='Comentario (opcional)' " +
 			"class='block w-full min-h-[44px] resize-none rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500'>" +
-			esc(textoNota(al.id)) + "</textarea></div>";
+			esc(textoNota(al.id)) + "</textarea>" +
+			"<p data-cierre-nota-cuenta='" + esc(al.id) + "' aria-live='polite' class='" + (textoCuentaNota(textoNota(al.id).length) ? "" : "hidden ") +
+			"mt-1 text-right text-xs " + (textoNota(al.id).length >= NOTA_MAX ? "text-amber-800" : "text-gray-500") + "'>" +
+			esc(textoCuentaNota(textoNota(al.id).length)) + "</p></div>";
+	}
+
+	/*
+		El comentario llega hasta NOTA_MAX caracteres (la caja no deja escribir más; la base no cambia). Cerca del límite
+		aparece un contador discreto y, si se pegó un texto más largo, se avisa que se recortó.
+	*/
+	var NOTA_AVISO = 450;
+	var notaRecortada = {}; // alumno_id -> true: lo último que se pegó no cabía
+	function textoCuentaNota(n, recortada) {
+		if (recortada) return "Se recortó lo que pegaste: el comentario llega hasta " + NOTA_MAX + " caracteres.";
+		if (n >= NOTA_MAX) return n + " de " + NOTA_MAX + ": llegaste al límite.";
+		if (n >= NOTA_AVISO) return n + " de " + NOTA_MAX;
+		return "";
+	}
+	function contarNota(ta, recortada) {
+		var el = document.getElementById("cierreLista").querySelector("[data-cierre-nota-cuenta='" + ta.dataset.cierreNota + "']");
+		if (!el) return;
+		var t = textoCuentaNota((ta.value || "").length, recortada);
+		el.textContent = t;
+		if (el.classList) {
+			el.classList.toggle("hidden", !t);
+			el.classList.toggle("text-amber-800", !!recortada || (ta.value || "").length >= NOTA_MAX);
+			el.classList.toggle("text-gray-500", !recortada && (ta.value || "").length < NOTA_MAX);
+		}
 	}
 
 	// La caja crece con lo escrito (hasta unas cuatro líneas)
@@ -3134,11 +3210,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 		ta.style.height = Math.max(44, Math.min(ta.scrollHeight || 0, 128)) + "px";
 	}
 
-	// ¿Ya tiene participación Y conducta guardadas? Una fila que solo trae su comentario no es un cierre
+	// ¿Ya tiene participación Y conducta guardadas? Una fila que solo trae su comentario no es un cierre (la misma
+	// regla que Inicio: AlcanceHoy.tieneCierre)
 	function cierreGuardado(alumnoId) {
-		var v = registro[alumnoId];
-		return !!registroGuardado[alumnoId] && !!v && v.participacion !== null && v.participacion !== undefined &&
-			v.conducta !== null && v.conducta !== undefined;
+		return !!registroGuardado[alumnoId] && window.AlcanceHoy.tieneCierre(registro[alumnoId]);
 	}
 
 	function filaCierre(al) {
@@ -3237,6 +3312,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (notasPendientes[id]) clearTimeout(notasPendientes[id].timer);
 		notasPendientes[id] = { texto: ta.value, timer: setTimeout(function () { guardarNota(id); }, 1000) };
 		ajustarAlturaNota(ta);
+		contarNota(ta, !!notaRecortada[id]);
+		delete notaRecortada[id];
+	});
+	// Pegar un texto que no cabe: la caja lo recorta (maxlength) y el contador lo dice
+	document.getElementById("cierreLista").addEventListener("paste", function (e) {
+		var ta = e.target && e.target.closest ? e.target.closest("textarea[data-cierre-nota]") : null;
+		if (!ta) return;
+		var pegado = e.clipboardData && e.clipboardData.getData ? e.clipboardData.getData("text") : "";
+		var elegido = Math.max(0, (ta.selectionEnd || 0) - (ta.selectionStart || 0));
+		if ((ta.value || "").length - elegido + pegado.length > NOTA_MAX) notaRecortada[ta.dataset.cierreNota] = true;
 	});
 	document.getElementById("cierreLista").addEventListener("focusout", function (e) {
 		var ta = e.target && e.target.closest ? e.target.closest("textarea[data-cierre-nota]") : null;
@@ -3324,15 +3409,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pendientesDeRevisar().forEach(function (x) {
 			if (x.cal.estado_en_clase === "incompleta" && !faltoHoy(x.alumno.id)) pendientes++;
 		});
+		// Lo de una falta justificada sin calificar: faltantesJornada solo cuenta lo que ya venció (dentro de sus 3
+		// días de clase, o si el alumno aún no regresa, todavía no falta)
+		var porFalta = [];
 		itemsPorFalta().forEach(function (x) {
-			if (window.AlcanceHoy.sinCalificar(calificaciones[x.alumno.id + "|" + x.producto.id]) && !faltoHoy(x.alumno.id)) pendientes++;
+			if (window.AlcanceHoy.sinCalificar(calificaciones[x.alumno.id + "|" + x.producto.id]) && !faltoHoy(x.alumno.id)) porFalta.push({ vence: x.vence || null });
 		});
 		var enCurso = sesionesHoy.filter(function (s) { return !esSuelta(s) && s.estado_sesion !== "completada"; }).map(function (s) {
 			var pr = proyectoPorId[s.proyecto_id] || {};
 			return { id: s.id, numero_sesion: s.numero_sesion, titulo: pr.titulo || "" };
 		});
 		return window.AlcanceHoy.faltantesJornada({
-			alumnos: alumnos, asistencia: asistencia, trabajos: trabajos, tareas: tareasDia, pendientes: pendientes, sesiones: enCurso,
+			alumnos: alumnos, asistencia: asistencia, trabajos: trabajos, tareas: tareasDia, pendientes: pendientes, porFalta: porFalta, hoy: hoy, sesiones: enCurso,
 			calificado: function (alumnoId, productoId) {
 				var c = calificaciones[alumnoId + "|" + productoId];
 				return esTarea[productoId] ? !!(c && c.estado_entrega) : estaCalificado(c);
@@ -3348,11 +3436,22 @@ document.addEventListener("DOMContentLoaded", async function () {
 		cuerpo.appendChild(intro);
 		var lista = document.createElement("ul");
 		lista.className = "flex flex-col gap-2";
-		function fila(texto, ancla, etiqueta) {
+		// nota: una línea de aviso debajo del texto (ámbar)
+		function fila(texto, ancla, etiqueta, nota) {
 			var li = document.createElement("li");
 			li.className = "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800";
-			var t = document.createElement("span");
-			t.textContent = texto;
+			var t = document.createElement("div");
+			t.className = "min-w-0";
+			var p = document.createElement("p");
+			p.textContent = texto;
+			t.appendChild(p);
+			if (nota) {
+				var aviso = document.createElement("p");
+				aviso.setAttribute("data-faltante-aviso", ancla);
+				aviso.className = "mt-1 text-xs font-medium text-amber-800";
+				aviso.textContent = nota;
+				t.appendChild(aviso);
+			}
 			var a = document.createElement("a");
 			a.href = "#" + ancla;
 			a.setAttribute("data-faltante", ancla);
@@ -3363,12 +3462,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 			li.appendChild(a);
 			lista.appendChild(li);
 		}
-		if (f.asistencia.n) fila("Falta la asistencia de " + f.asistencia.n + (f.asistencia.n === 1 ? " alumno: " : " alumnos: ") + f.asistencia.alumnos.join(", ") + ".", "asistencia", "Ir a Asistencia");
+		if (f.asistencia.n) {
+			// "Finalizar de todos modos" completa el cierre: a quien no tiene asistencia ni cierre se le pone 1 y 1
+			var sinMarca = alumnos.filter(function (a) { return !asistencia[a.id] && !cierreGuardado(a.id); }).length;
+			fila("Falta la asistencia de " + f.asistencia.n + (f.asistencia.n === 1 ? " alumno: " : " alumnos: ") + f.asistencia.alumnos.join(", ") + ".", "asistencia", "Ir a Asistencia",
+				sinMarca ? "Si finalizas así, en el cierre del día " + (sinMarca === 1 ? "se le pondrá" : "se les pondrá") +
+					" 1 y 1 de participación y conducta, como si " + (sinMarca === 1 ? "hubiera asistido" : "hubieran asistido") + ". Si faltó alguien, márcalo antes en Asistencia." : "");
+		}
 		if (f.trabajos.n) fila(f.trabajos.n + (f.trabajos.n === 1 ? " calificación de trabajo sin poner" : " calificaciones de trabajos sin poner") + " (" + f.trabajos.productos.map(function (p) { return p.nombre; }).join(", ") + ").", "sesiones", "Ir a las sesiones");
 		if (f.tareas.n) fila(f.tareas.n + (f.tareas.n === 1 ? " tarea sin revisar" : " tareas sin revisar") + " (" + f.tareas.productos.map(function (p) { return p.nombre; }).join(", ") + ").", "tareas", "Ir a Tareas");
-		if (f.pendientes.n) fila(f.pendientes.n + (f.pendientes.n === 1 ? " pendiente sin revisar." : " pendientes sin revisar."), "pendientes", "Ir a Pendientes");
+		if (f.pendientes.n) {
+			var partes = [];
+			var clase = f.pendientes.clase === undefined ? f.pendientes.n : f.pendientes.clase;
+			if (clase) partes.push(clase + (clase === 1 ? " pendiente de la clase anterior sin revisar" : " pendientes de la clase anterior sin revisar"));
+			if (f.pendientes.vencidos) partes.push(f.pendientes.vencidos + " por falta justificada con el plazo vencido");
+			fila(partes.join(" y ") + ".", "pendientes", "Ir a Pendientes");
+		}
 		f.sesiones.lista.forEach(function (s) {
-			fila("La sesión " + (s.numero_sesion || "") + (s.titulo ? " de «" + s.titulo + "»" : "") + " sigue sin terminar.", "ses-" + s.id, "Ir a la sesión");
+			fila("La sesión " + (s.numero_sesion || "") + (s.titulo ? " de «" + window.AlcanceHoy.nombreBreve(s.titulo, 60) + "»" : "") + " sigue sin terminar.", "ses-" + s.id, "Ir a la sesión");
 		});
 		cuerpo.appendChild(lista);
 	}
@@ -3379,22 +3490,24 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" });
 	}
 
+	// Por qué no se pudo enviar lo capturado (el día NO se marca)
+	function textoSinEnviar(envio) {
+		if (envio === "sesion" || envio === "cuenta") return "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.";
+		if (envio === "acceso") return "Lo capturado no se pudo enviar porque Mi Salón está en solo lectura, así que el día no se marcó. Sigue guardado en este dispositivo.";
+		return "Todavía no se pudo enviar lo capturado, así que el día no se marcó. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento.";
+	}
+
 	/*
-		Registra la jornada: completa el cierre, espera a que se envíe todo y escribe en jornadas. Devuelve
+		Registra la jornada: completa el cierre, espera a que TODO llegue a la base (también lo que se acaba de encolar:
+		el relleno 1 y 1 y el comentario a medio escribir; esperarCola) y solo entonces escribe en jornadas. Devuelve
 		{ ok: true } o { ok: false, texto } (el día NO queda marcado).
 	*/
 	async function registrarJornada(faltantes) {
 		completarCierre();
 		renderCierre();
 		if (sinSenal()) return { ok: false, texto: "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal." };
-		if (bandeja && bandeja.pendientes()) {
-			var envio = await bandeja.esperarEnvio();
-			if (envio !== "ok") {
-				return { ok: false, texto: (envio === "red" || envio === "servidor"
-					? "Todavía no se pudo enviar lo capturado, así que el día no se marcó. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
-					: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.") };
-			}
-		}
+		var envio = await esperarCola();
+		if (envio !== "ok") return { ok: false, texto: textoSinEnviar(envio) };
 		var resumen = Object.assign({}, faltantes.resumen, { de_todos_modos: !faltantes.completo });
 		var res = await window.sb.from("jornadas")
 			.upsert({ maestro_id: user.id, grupo_id: grupo.id, fecha: hoy, resumen: resumen }, { onConflict: "grupo_id,fecha" })
@@ -3416,22 +3529,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			guardarRetrosPendientes(); // lo que se está escribiendo (retroalimentaciones y comentarios) entra a la cola
 			if (sinSenal()) {
-				mensaje("error", "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+				avisoALaVista("Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 				return;
 			}
-			if (bandeja && bandeja.pendientes()) {
-				btn.disabled = true;
-				btn.textContent = "Guardando lo capturado...";
-				var envio = await bandeja.esperarEnvio();
-				btn.disabled = false;
-				btn.textContent = etiqueta;
-				if (envio !== "ok") {
-					mensaje("error", envio === "red" || envio === "servidor"
-						? "Todavía no se pudo enviar lo capturado, así que el día no se marcó. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
-						: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
-					return;
-				}
-			}
+			// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
+			btn.disabled = true;
+			btn.textContent = "Guardando lo capturado...";
+			var envio = await esperarCola();
+			btn.disabled = false;
+			btn.textContent = etiqueta;
+			if (envio !== "ok") { avisoALaVista(textoSinEnviar(envio)); return; }
 			mensaje("", "");
 			var faltantes = faltantesDeLaJornada();
 			if (faltantes.completo) {
@@ -3440,7 +3547,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var r = await registrarJornada(faltantes);
 				btn.disabled = false;
 				btn.textContent = etiqueta;
-				if (!r.ok) { mensaje("error", r.texto); return; }
+				if (!r.ok) { avisoALaVista(r.texto); return; }
 				renderJornada();
 				mensaje("info", "Jornada finalizada a las " + horaDe(jornadaHoy.cerrada_en) + ".");
 				return;

@@ -360,7 +360,36 @@
 	}
 
 	/*
-		"Finalizar jornada" (Fase 3, 2026-10-01): lo que falta al terminar el día. Pura: la pantalla
+		¿Esta fila de registro_diario es un cierre del día? Solo si tiene participación y conducta. Una fila que
+		solo trae el comentario (de quien faltó, mi_salon_b25) no cuenta como cerrada. La misma regla en Hoy y en
+		Inicio (así dan el mismo número).
+	*/
+	function tieneCierre(fila) {
+		return !!fila && fila.participacion !== null && fila.participacion !== undefined &&
+			fila.conducta !== null && fila.conducta !== undefined;
+	}
+
+	/*
+		Un nombre para leerse en una lista corrida (el diálogo de "Finalizar jornada"): sin espacios ni puntuación
+		al final ("...mañana." + ", " daba "mañana., ") y, si es largo, cortado en `max` caracteres con "…". El grupo
+		de trabajo del final (" · Morado", los trabajos por nivel de PP-NIVELES) se conserva: sin él, dos trabajos
+		cortados se verían iguales.
+	*/
+	function nombreBreve(texto, max) {
+		var t = String(texto === null || texto === undefined ? "" : texto).replace(/\s+/g, " ").trim().replace(/[\s.,;:]+$/, "");
+		max = max || 60;
+		if (t.length <= max) return t;
+		function cortar(x, n) { return x.slice(0, Math.max(1, n - 1)).replace(/[\s.,;:]+$/, "") + "…"; }
+		var m = t.match(/^(.*\S)\s+·\s+([^·]{1,20})$/);
+		if (m && m[1].length > 10) {
+			var sufijo = " · " + m[2];
+			return cortar(m[1], max - sufijo.length) + sufijo;
+		}
+		return cortar(t, max);
+	}
+
+	/*
+		"Finalizar jornada" (Fase 3, 2026-09-29): lo que falta al terminar el día. Pura: la pantalla
 		(js/hoy.js) le pasa lo que ya calculó con SUS reglas y aquí solo se junta y se cuenta.
 		  d.alumnos       [{ id, nombre_completo }] los activos del grupo
 		  d.asistencia    { alumnoId: "presente" | "ausente" | "justificada" } la de hoy
@@ -368,12 +397,16 @@
 		                  siguen en curso, con los alumnos que se califican en pantalla
 		  d.tareas        igual, las tareas que se revisan hoy
 		  d.calificado    (alumnoId, productoId) → true si ya tiene semáforo, entrega o puntaje
-		  d.pendientes    cuántos "pendientes de la clase anterior" y "por falta justificada" siguen sin revisar
+		  d.pendientes    cuántos "pendientes de la clase anterior" siguen sin revisar
+		  d.porFalta      [{ vence }] lo "por falta justificada" que sigue sin calificar; solo cuenta lo que ya VENCIÓ
+		                  (vence < d.hoy): lo que está dentro de su plazo de 3 días de clase, o de quien aún no regresa,
+		                  no falta hoy
+		  d.hoy           "AAAA-MM-DD"
 		  d.sesiones      [{ id, numero_sesion, titulo }] sesiones empezadas y sin terminar
 		Quien faltó hoy (ausente o justificada) NO cuenta como trabajo o tarea sin calificar, salvo que ya
-		tenga una calificación (entonces está calificado y tampoco falta). → { asistencia, trabajos, tareas,
-		pendientes, sesiones, total, completo, resumen }. `resumen` (solo números) es lo que se guarda en
-		jornadas.resumen.
+		tenga una calificación (entonces está calificado y tampoco falta). Los nombres de los productos salen
+		breves (nombreBreve, 60). → { asistencia, trabajos, tareas, pendientes: { n, clase, vencidos }, sesiones,
+		total, completo, resumen }. `resumen` (solo números) es lo que se guarda en jornadas.resumen.
 	*/
 	function faltantesJornada(d) {
 		d = d || {};
@@ -389,19 +422,21 @@
 				var faltan = (p.alumnos || []).filter(function (id) { return !faltoHoy(id) && !calificado(id, p.id); });
 				if (!faltan.length) return;
 				n += faltan.length;
-				productos.push({ id: p.id, nombre: p.nombre, n: faltan.length, alumnos: faltan.map(function (id) { return nombres[id] || ""; }) });
+				productos.push({ id: p.id, nombre: nombreBreve(p.nombre, 60), n: faltan.length, alumnos: faltan.map(function (id) { return nombres[id] || ""; }) });
 			});
 			return { n: n, productos: productos };
 		}
 		var trabajos = sinCalificarDe(d.trabajos);
 		var tareas = sinCalificarDe(d.tareas);
-		var pendientes = Math.max(0, Number(d.pendientes) || 0);
+		var clase = Math.max(0, Number(d.pendientes) || 0);
+		var vencidos = (d.porFalta || []).filter(function (x) { return !!d.hoy && estadoPlazo(x && x.vence, d.hoy) === "vencido"; }).length;
+		var pendientes = clase + vencidos;
 		var sesiones = (d.sesiones || []).slice();
 		var salida = {
 			asistencia: { n: sinAsistencia.length, alumnos: sinAsistencia },
 			trabajos: trabajos,
 			tareas: tareas,
-			pendientes: { n: pendientes },
+			pendientes: { n: pendientes, clase: clase, vencidos: vencidos },
 			sesiones: { n: sesiones.length, lista: sesiones },
 		};
 		salida.total = salida.asistencia.n + trabajos.n + tareas.n + pendientes + sesiones.length;
@@ -633,7 +668,7 @@
 		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,
 		leerAjustesCalendario: leerAjustesCalendario,
-		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre, faltantesJornada: faltantesJornada,
+		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre, faltantesJornada: faltantesJornada, tieneCierre: tieneCierre, nombreBreve: nombreBreve,
 		fechaAlta: fechaAlta, fechaProducto: fechaProducto, cuentaDesdeAlta: cuentaDesdeAlta,
 		examenCuentaDesdeAlta: examenCuentaDesdeAlta,
 		indiceAsignaciones: indiceAsignaciones, asignadoA: asignadoA, recibeProducto: recibeProducto, trabajaCon: trabajaCon, gradosPdaPorProducto: gradosPdaPorProducto,
