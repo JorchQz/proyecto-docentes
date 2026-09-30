@@ -210,7 +210,7 @@ async function crearCardHoy() {
 		[asistenciasHoy, registrosHoy] = await Promise.all([
 			window.Lectura.uno(window.sb.from("asistencias").select("alumno_id, asistencia_estado").eq("grupo_id", grupoId).eq("fecha", hoy)),
 			alumnos.length
-				? window.Lectura.uno(window.sb.from("registro_diario").select("alumno_id").eq("maestro_id", user.id).eq("fecha", hoy)
+				? window.Lectura.uno(window.sb.from("registro_diario").select("alumno_id, participacion, conducta").eq("maestro_id", user.id).eq("fecha", hoy)
 					.in("alumno_id", alumnos.map((a) => a.id)))
 				: Promise.resolve([]),
 		]);
@@ -226,7 +226,9 @@ async function crearCardHoy() {
 		.filter((r) => r.asistencia_estado === "ausente" || r.asistencia_estado === "justificada")
 		.map((r) => r.alumno_id));
 	const esperadosCierre = alumnos.filter((a) => !faltaron.has(a.id));
-	const conRegistro = new Set((registrosHoy || []).map((r) => r.alumno_id));
+	// Solo las filas con participación y conducta: una fila que solo trae el comentario del día (de quien faltó,
+	// mi_salon_b25) no es un cierre. La misma regla que Hoy (AlcanceHoy.tieneCierre): dan el mismo número
+	const conRegistro = new Set((registrosHoy || []).filter((r) => window.AlcanceHoy.tieneCierre(r)).map((r) => r.alumno_id));
 	const conCierre = esperadosCierre.filter((a) => conRegistro.has(a.id)).length;
 	const cierre = window.AlcanceHoy.resumenCierre(alumnos.length, esperadosCierre.length, conCierre);
 

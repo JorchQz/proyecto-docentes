@@ -60,11 +60,11 @@ const alumnos = [
 const cuerpoCierre = [
 	"var window = { OrdenLista: O };",
 	"var alumnos = ALUMNOS; var registro = REGISTRO; var asistencia = ASISTENCIA_HOY; var registroGuardado = GUARDADO;",
-	"var notasPendientes = PENDIENTES; var NOTA_MAX = 500;",
+	"var notasPendientes = PENDIENTES; var NOTA_MAX = 500; var NOTA_AVISO = 450;",
 	extraerLista("NIVELES"),
 	extraerFuncion("esc"), extraerFuncion("chip"), extraerFuncion("faltoHoy"),
 	extraerFuncion("columnasCierre"), extraerFuncion("encabezadoCierre"), extraerFuncion("celdaCierre"),
-	extraerFuncion("textoNota"), extraerFuncion("celdaNota"), extraerFuncion("filaCierre"),
+	extraerFuncion("textoNota"), extraerFuncion("textoCuentaNota"), extraerFuncion("celdaNota"), extraerFuncion("filaCierre"),
 	"return { encabezadoCierre: encabezadoCierre, filaCierre: filaCierre, ordenar: function () { return O.ordenar(alumnos).map(filaCierre).join(''); } };",
 ].join("\n");
 const fabricaCierre = (registro, asis, guardado, pendientes) => new Function("O", "ALUMNOS", "REGISTRO", "ASISTENCIA_HOY", "GUARDADO", "PENDIENTES", cuerpoCierre)(ORDEN, alumnos, registro, asis, guardado, pendientes || {});
@@ -138,8 +138,22 @@ ok("comentarios: lo escrito y aún no guardado cuenta como pendiente (recargar p
 	/!Object\.keys\(notasPendientes \|\| \{\}\)\.length\) return;/.test(fuente) && /function guardarRetrosPendientes\(\) \{[\s\S]{0,200}guardarNotasPendientes\(\)/.test(fuente), true);
 ok("comentarios: guardar el comentario no dibuja de nuevo la lista (no se pierde el foco)", extraerFuncion("guardarNota").indexOf("renderCierre()") === -1, true);
 ok("comentarios: renderCierre conserva el foco y el cursor de la caja que se está escribiendo", /activo\.dataset\.cierreNota[\s\S]{0,900}setSelectionRange\(foco\.ini, foco\.fin\)/.test(extraerFuncion("renderCierre")), true);
-ok("comentarios: la fila de comentario no cuenta como cierre guardado (cierreGuardado pide participación y conducta)",
-	/return !!registroGuardado\[alumnoId\] && !!v && v\.participacion !== null && v\.participacion !== undefined &&\s*v\.conducta !== null && v\.conducta !== undefined;/.test(fuente), true);
+ok("comentarios: la fila de comentario no cuenta como cierre guardado (la regla única AlcanceHoy.tieneCierre, la misma de Inicio)",
+	/return !!registroGuardado\[alumnoId\] && window\.AlcanceHoy\.tieneCierre\(registro\[alumnoId\]\);/.test(fuente) &&
+	/filter\(\(r\) => window\.AlcanceHoy\.tieneCierre\(r\)\)/.test(fs.readFileSync(path.join(RAIZ, "js", "dashboard.js"), "utf8")), true);
+// R36: el límite de 500 caracteres del comentario se ve cerca del límite y al pegar un texto más largo
+const cuentaNota = new Function("var NOTA_MAX = 500; var NOTA_AVISO = 450;\n" + extraerFuncion("textoCuentaNota") + "\nreturn textoCuentaNota;")();
+ok("comentarios: sin contador lejos del límite; «N de 500» desde 450; aviso al llegar y al recortar lo pegado",
+	[cuentaNota(10), cuentaNota(449), cuentaNota(450), cuentaNota(500), cuentaNota(500, true)],
+	["", "", "450 de 500", "500 de 500: llegaste al límite.", "Se recortó lo que pegaste: el comentario llega hasta 500 caracteres."]);
+const cercaLimite = fabricaCierre({ a1: { participacion: 1, conducta: 1, nota: "x".repeat(470) } }, {}, { a1: true }).ordenar();
+const cuentaA1 = (cercaLimite.split("data-cierre-fila='a1'")[1] || "").split("data-cierre-fila=")[0];
+ok("comentarios: el contador va bajo la caja, oculto si no hace falta y visible con 470 caracteres («470 de 500»)",
+	/<p data-cierre-nota-cuenta='a1' aria-live='polite' class='mt-1 text-right text-xs text-gray-500'>470 de 500<\/p>/.test(cuentaA1) &&
+	/<p data-cierre-nota-cuenta='a2' aria-live='polite' class='hidden mt-1/.test(cercaLimite), true);
+ok("comentarios: al pegar un texto que no cabe se marca y el contador lo dice (maxlength lo recorta)",
+	/addEventListener\("paste"[\s\S]{0,500}> NOTA_MAX\) notaRecortada\[ta\.dataset\.cierreNota\] = true;/.test(fuente) &&
+	/contarNota\(ta, !!notaRecortada\[id\]\);/.test(fuente), true);
 ok("comentarios: la leyenda de la página explica la columna, también para quien faltó", /En Comentarios puedes anotar algo del día de cada alumno, también de quien faltó/.test(leyenda), true);
 
 // ── 3. Asistencia plegada: el resumen ────────────────────────────────────────

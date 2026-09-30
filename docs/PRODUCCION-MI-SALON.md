@@ -144,6 +144,11 @@ de marca y compara por contenido (la regla de antes de b12, para todo Hoy); los 
 "Finalizar jornada" avisa "No se pudo registrar la jornada" y NO marca el día; Inicio no muestra la fila
 Jornada. Se arregla aplicando b25 y recargando.
 
+Después del push a `main` del frontend de la Fase 3: **pedir que se recargue la app en todos los aparatos**
+(Fanny: la tableta, el celular y cualquier pestaña abierta; basta cerrar y volver a abrir la app o recargar la
+página). Una pantalla de Asistencia de antes que siga abierta, al marcar Falta, borraría la fila del cierre de ese
+alumno aunque ya tenga un comentario del día; la versión nueva le quita solo el 1 y 1 y deja el comentario.
+
 Para una base sin ninguna de las migraciones, la cadena completa es:
 
 ```
