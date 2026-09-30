@@ -144,6 +144,45 @@ select
     and position('mi_salon_ordenes' in pg_get_functiondef('public.delete_own_account'::regproc)) > 0 as borrar_final; -- true
 ```
 
+## Aparte: b26, los archivos de Crear proyecto solo para su cuenta
+
+`supabase/mi_salon_b26_recursos_storage_2026-10.sql` (constructor AX, 2026-09-29). Arreglo de
+seguridad del bucket privado `recursos`: sus tres políticas (`recursos_select_autenticado`,
+`recursos_upload_autenticado`, `recursos_delete_autenticado`, para `{public}` con
+`auth.role() = 'authenticated'`) dejaban a CUALQUIER cuenta con sesión listar, descargar, subir y
+borrar los archivos de cualquier docente. b26 las quita y deja SELECT y DELETE solo para la cuenta
+que subió el archivo (`(storage.foldername(name))[2] = auth.uid()::text`). No crea política de
+INSERT: Mi Salón solo guarda enlaces (decisión de Jorge del 2026-09-29), así que subir falla para
+todos. No toca objetos, ni el bucket, ni `assets`. Es idempotente, no depende de ninguna otra
+migración ni redefine `delete_own_account`: va sola, en su propia transacción, cuando Jorge dé el OK.
+
+- Cuándo: a hora de poco uso (crear y quitar políticas bloquea `storage.objects` un instante; la
+  tienda lee ahí sus vistas previas y el `lock_timeout` de 5 s la protege). Lo ideal es junto con el
+  push a `main` del frontend que ya no sube archivos (el mismo commit del constructor AX) o después.
+  Si va antes, el "subir archivo" viejo de Crear proyecto muestra "No se pudo subir ... Puedes
+  continuar sin ese archivo" y el proyecto se guarda igual; nada más cambia.
+- Probada en pruebas (dos veces, idempotente) con QA1 y QA2: cada cuenta lista, descarga, firma y
+  borra solo lo suyo; la otra recibe 0 filas u "Object not found"; subir y sobrescribir fallan para
+  las dos; las URL firmadas creadas antes siguen sirviendo; "Archivos que subiste antes" en Crear
+  proyecto se ve y se quita (evidencia en `.qa/constructor-ax/b26-*.txt`).
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b26_recursos_storage_2026-10.sql
+```
+
+Comprobación (editor SQL de producción, solo lectura):
+
+```sql
+select policyname, roles, cmd from pg_policies
+where schemaname = 'storage' and tablename = 'objects'
+  and (qual like '%recursos%' or with_check like '%recursos%') order by cmd;
+-- Dos filas: "recursos: borrado de la propia cuenta" {authenticated} DELETE
+--            "recursos: lectura de la propia cuenta" {authenticated} SELECT
+select count(*) from storage.objects where bucket_id = 'recursos';   -- igual que antes (4 el 2026-09-29)
+```
+
+Si falla: el script revierte todo y las políticas viejas se quedan; se reintenta a otra hora.
+
 ## 2. Secretos de las Edge Functions
 
 Supabase → Edge Functions → Secrets (o `supabase secrets list --project-ref cluvaxxqvhtxxiwctpnl`).
