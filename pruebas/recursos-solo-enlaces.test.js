@@ -78,6 +78,19 @@ ok("archivos de antes: el bloque existe oculto y se muestra solo si hay alguno",
 		/if \(!path\) \{ quitarDeArchivos\(parseInt\(btn\.dataset\.index, 10\)\); return; \}/.test(cp), true);
 	ok("aria-label: «Quitar archivo» y «Quitar enlace» (ya no «Eliminar archivo» ni «Eliminar link»)",
 		[/aria-label="Quitar archivo"/.test(cp), /aria-label="Quitar enlace"/.test(cp), /Eliminar archivo|Eliminar link/.test(cp)], [true, true, false]);
+	// Decisión de Jorge (2026-09-29): los enlaces importados de la tienda traen `nombre` y no `titulo`; el chip los pinta
+	// con link.titulo || link.nombre (antes, la URL cortada). Solo se pinta: lo que se guarda no cambia
+	{
+		const fn = cp.split("function renderLinks() {")[1].split("\n    }")[0];
+		ok("enlaces: el chip se pinta con titulo o, si no trae, con nombre (la URL cortada solo si no hay ninguno)",
+			/const nombreLink = \[link\.titulo, link\.nombre\]\.map\(function \(x\) \{ return String\(x \|\| ''\)\.trim\(\); \}\)\.find\(Boolean\);/.test(fn) &&
+			/const titulo = nombreLink \? nombreLink : truncarTexto\(link\.url \|\| '', 30\);/.test(fn) && /\$\{escapeHtml\(titulo\)\}/.test(fn), true);
+		const nombreDe = (link) => [link.titulo, link.nombre].map(function (x) { return String(x || "").trim(); }).find(Boolean) || "URL";
+		ok("enlaces: con titulo, con nombre (de la tienda), con los dos y sin ninguno",
+			[nombreDe({ titulo: "Mi libro", url: "u" }), nombreDe({ nombre: "Múltiples Lenguajes 1°", url: "u" }), nombreDe({ titulo: " ", nombre: "De la tienda", url: "u" }), nombreDe({ url: "u" })],
+			["Mi libro", "Múltiples Lenguajes 1°", "De la tienda", "URL"]);
+		ok("enlaces: renderLinks no cambia linksAgregados (solo pinta)", !/linksAgregados\s*=/.test(fn), true);
+	}
 	// Guardar sin cambios: el arreglo se guarda tal cual, con los materiales en su lugar
 	const PE = require("../js/proyecto-edicion.js");
 	const fila0 = { recursos: { archivos: archivos.slice(), links: [] } };
