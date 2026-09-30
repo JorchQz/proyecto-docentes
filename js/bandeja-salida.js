@@ -10,7 +10,7 @@
 		{ v: 3, clave, tipo, maestro_id, seq, capturado_en, datos, descripcion, captura_id,
 		  campos, vistos, relleno?, borrar?, intentado }
 	  tipo "asistencia"      datos { grupo_id, alumno_id, fecha, estado }
-	  tipo "registro"        datos { alumno_id, fecha, participacion, conducta, grupo_id? }   (cierre del día)
+	  tipo "registro"        datos { alumno_id, fecha, participacion, conducta, nota?, grupo_id? }   (cierre del día; nota = comentario, b25)
 	  tipo "registro_borrar" datos { alumno_id, fecha }                                      (se retira el cierre)
 	  tipo "calificacion"    datos { id?, fecha, fila }  (fila: la de calificaciones)
 	  campos  { campo: valor } solo lo que la maestra tocó (estado; participacion, conducta;
@@ -23,7 +23,7 @@
 
 	Marca por campo (supabase/mi_salon_b12_captura_id_2026-09.sql). Una columna uuid por grupo de
 	campos que Hoy escribe junto (MARCAS): asistencias.captura_id; registro_diario.
-	captura_participacion y captura_conducta; calificaciones.captura_semaforo (entrega + nivel),
+	captura_participacion, captura_conducta y captura_nota (b25); calificaciones.captura_semaforo (entrega + nivel),
 	captura_puntaje y captura_retroalimentacion.
 	  - Cada escritura de Hoy pone en los grupos que escribe un uuid NUEVO generado en el aparato
 	    (el mismo para todos los grupos de esa captura). Un insert pone en los grupos que la
@@ -131,7 +131,9 @@ var BandejaSalida = (function () {
 
 	var CAMPOS = {
 		asistencia: ["estado"],
-		registro: ["participacion", "conducta"],
+		// nota: el comentario del día (mi_salon_b25); es un campo OPCIONAL de la captura: una captura
+		// vieja de la cola sin `nota` sigue valiendo (el formato de la cola no cambia)
+		registro: ["participacion", "conducta", "nota"],
 		calificacion: ["estado_entrega", "nivel", "puntaje", "retroalimentacion", "revisar_en", "estado_en_clase", "completado_en"],
 		// Exámenes (mi_salon_b19): la respuesta tocada o escaneada (o la calificación a mano), los
 		// aciertos de un campo y "No presentó"
@@ -145,7 +147,7 @@ var BandejaSalida = (function () {
 	*/
 	var MARCAS = {
 		asistencia: [["captura_id", ["estado"]]],
-		registro: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]]],
+		registro: [["captura_participacion", ["participacion"]], ["captura_conducta", ["conducta"]], ["captura_nota", ["nota"]]],
 		// La revisión de una actividad incompleta (mi_salon_b17) va con el semáforo: se decide junta
 		calificacion: [["captura_semaforo", ["estado_entrega", "nivel", "revisar_en", "estado_en_clase", "completado_en"]], ["captura_puntaje", ["puntaje"]],
 			["captura_retroalimentacion", ["retroalimentacion"]]],
@@ -267,7 +269,7 @@ var BandejaSalida = (function () {
 		if (!e) return false;
 		var texto = String(e.message || "") + " " + String(e.details || "") + " " + String(e.hint || "");
 		var code = String(e.code || "");
-		return /captura_(id|participacion|conducta|semaforo|puntaje|retroalimentacion)/.test(texto) &&
+		return /captura_(id|participacion|conducta|nota|semaforo|puntaje|retroalimentacion)/.test(texto) &&
 			(code === "PGRST204" || code === "42703" || code === "PGRST100" || e.status === 400);
 	}
 
@@ -339,7 +341,7 @@ var BandejaSalida = (function () {
 	// examen_alumnos, el alumno sí presentó)
 	function predeterminado(tipo, f) {
 		var fam = familia(tipo);
-		if (fam === "registro") return 1;
+		if (fam === "registro") return f === "nota" ? null : 1;
 		if (fam === "examen_alumno" && f === "no_presento") return false;
 		return null;
 	}
@@ -352,7 +354,7 @@ var BandejaSalida = (function () {
 		if (!f) return null;
 		var fam = familia(tipo);
 		if (fam === "asistencia") return { estado: txt(f.asistencia_estado !== undefined ? f.asistencia_estado : f.estado) };
-		if (fam === "registro") return { participacion: num(f.participacion), conducta: num(f.conducta) };
+		if (fam === "registro") return { participacion: num(f.participacion), conducta: num(f.conducta), nota: txt(f.nota) };
 		if (fam === "calificacion") {
 			var v = { estado_entrega: txt(f.estado_entrega), nivel: txt(f.nivel), puntaje: num(f.puntaje), retroalimentacion: txt(f.retroalimentacion) };
 			// La revisión de la incompleta (mi_salon_b17), si la fila la trae (una fila sin esas llaves:
@@ -437,6 +439,10 @@ var BandejaSalida = (function () {
 			var pr = [];
 			if ("participacion" in v) pr.push("participación " + (g("participacion") === null ? "-" : g("participacion")));
 			if ("conducta" in v) pr.push("conducta " + (g("conducta") === null ? "-" : g("conducta")));
+			if ("nota" in v) {
+				var nota = g("nota");
+				pr.push(nota ? "comentario “" + (nota.length > 60 ? nota.slice(0, 57) + "..." : nota) + "”" : "sin comentario");
+			}
 			return pr.length ? pr.join(", ") : "sin cierre del día";
 		}
 		if (fam === "examen_respuesta") {
@@ -545,7 +551,8 @@ var BandejaSalida = (function () {
 	function normalizar(it) {
 		if (!it || it.v === FORMATO) return it;
 		var fam = familia(it.tipo);
-		var todos = CAMPOS[fam];
+		// Las capturas de antes de b25 no conocían la nota: no la tocan (sería pisar un comentario con null)
+		var todos = CAMPOS[fam].filter(function (f) { return !(fam === "registro" && f === "nota"); });
 		if (it.v === 2) {
 			var n2 = Object.assign({}, it, { v: FORMATO, vistos: {} });
 			Object.keys(it.vistos || {}).forEach(function (f) {
@@ -771,10 +778,10 @@ var BandejaSalida = (function () {
 			},
 		},
 		registro: {
-			tabla: "registro_diario", columnas: "participacion, conducta", conflicto: "maestro_id,alumno_id,fecha",
+			tabla: "registro_diario", columnas: "participacion, conducta, nota", conflicto: "maestro_id,alumno_id,fecha",
 			llave: function (it) { return [["maestro_id", it.maestro_id], ["alumno_id", it.datos.alumno_id], ["fecha", it.datos.fecha]]; },
 			nueva: function (it, v) {
-				return { maestro_id: it.maestro_id, alumno_id: it.datos.alumno_id, fecha: it.datos.fecha, participacion: v.participacion, conducta: v.conducta };
+				return { maestro_id: it.maestro_id, alumno_id: it.datos.alumno_id, fecha: it.datos.fecha, participacion: v.participacion, conducta: v.conducta, nota: v.nota };
 			},
 		},
 		calificacion: {
@@ -1034,7 +1041,7 @@ var BandejaSalida = (function () {
 			return conMarca ? conMarcas(it, f) : f;
 		});
 		var res = await sb.from(op.tabla).upsert(filas, { onConflict: op.conflicto, ignoreDuplicates: true })
-			.select("alumno_id, fecha, participacion, conducta" + (conMarca ? ", " + columnasMarca("registro").join(", ") : ""));
+			.select("alumno_id, fecha, participacion, conducta, nota" + (conMarca ? ", " + columnasMarca("registro").join(", ") : ""));
 		if (res.error) throw fallo(res);
 		var puestas = {};
 		(res.data || []).forEach(function (f) { puestas[f.alumno_id + "|" + f.fecha] = f; });

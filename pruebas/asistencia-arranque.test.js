@@ -73,11 +73,14 @@ function escenario(opciones) {
 			select() { return this; }, order() { return this; }, limit() { return this; }, range() { return this; },
 			eq(c, v) { this._filtros[c] = v; return this; },
 			in(c, v) { this._in = [c, v]; return this; },
+			// is / not: el retiro del cierre no borra una fila con comentario (mi_salon_b25)
+			is(c, v) { this._filtros[c + ".is"] = v; return this; },
+			not(c, op, v) { this._filtros[c + ".not." + op] = v; return this; },
 			maybeSingle() { return this; },
 			upsert(filas) { this._op = "upsert"; this._filas = [].concat(filas); return this; },
 			delete() { this._op = "delete"; return this; },
 			insert(f) { this._op = "insert"; this._filas = [].concat(f); return this; },
-			update() { this._op = "update"; return this; },
+			update(v) { this._op = "update"; this._filas = [v]; return this; },
 			then(resolver) {
 				const self = this;
 				return espera(opciones.lento || 1).then(function () {
@@ -164,6 +167,12 @@ const activo = (e, alumno, valor) => new RegExp("data-alumno='" + alumno + "' da
 		const retiro = e.escrituras.filter((w) => w.tabla === "registro_diario" && w.op === "delete");
 		ok("una falta retira su cierre 1 y 1 del día (como en Hoy)", retiro.length === 1 && retiro[0].in[1].join() === "al-2" &&
 			retiro[0].filtros.participacion === 1 && retiro[0].filtros.conducta === 1 && retiro[0].filtros.fecha === HOY);
+		// Fase 3: una fila con COMENTARIO no se borra; solo se le quitan la participación y la conducta por defecto
+		ok("el retiro solo borra las filas SIN comentario (nota is null)", retiro[0].filtros["nota.is"] === null);
+		const sinPuntos = e.escrituras.filter((w) => w.tabla === "registro_diario" && w.op === "update");
+		ok("y a las filas con comentario les deja participación y conducta en null (el comentario se queda)",
+			sinPuntos.length === 1 && sinPuntos[0].in[1].join() === "al-2" && sinPuntos[0].filas[0].participacion === null && sinPuntos[0].filas[0].conducta === null &&
+			!("nota" in sinPuntos[0].filas[0]) && sinPuntos[0].filtros.participacion === 1 && sinPuntos[0].filtros.conducta === 1 && sinPuntos[0].filtros["nota.not.is"] === null);
 
 		// Volver a tocarla: se quita y se borra
 		e.tocar("al-2", "ausente");

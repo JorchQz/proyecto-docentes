@@ -60,17 +60,22 @@ const alumnos = [
 const cuerpoCierre = [
 	"var window = { OrdenLista: O };",
 	"var alumnos = ALUMNOS; var registro = REGISTRO; var asistencia = ASISTENCIA_HOY; var registroGuardado = GUARDADO;",
+	"var notasPendientes = PENDIENTES; var NOTA_MAX = 500;",
 	extraerLista("NIVELES"),
 	extraerFuncion("esc"), extraerFuncion("chip"), extraerFuncion("faltoHoy"),
-	extraerFuncion("columnasCierre"), extraerFuncion("encabezadoCierre"), extraerFuncion("celdaCierre"), extraerFuncion("filaCierre"),
+	extraerFuncion("columnasCierre"), extraerFuncion("encabezadoCierre"), extraerFuncion("celdaCierre"),
+	extraerFuncion("textoNota"), extraerFuncion("celdaNota"), extraerFuncion("filaCierre"),
 	"return { encabezadoCierre: encabezadoCierre, filaCierre: filaCierre, ordenar: function () { return O.ordenar(alumnos).map(filaCierre).join(''); } };",
 ].join("\n");
-const fabricaCierre = (registro, asis, guardado) => new Function("O", "ALUMNOS", "REGISTRO", "ASISTENCIA_HOY", "GUARDADO", cuerpoCierre)(ORDEN, alumnos, registro, asis, guardado);
+const fabricaCierre = (registro, asis, guardado, pendientes) => new Function("O", "ALUMNOS", "REGISTRO", "ASISTENCIA_HOY", "GUARDADO", "PENDIENTES", cuerpoCierre)(ORDEN, alumnos, registro, asis, guardado, pendientes || {});
 const cierre = fabricaCierre({ a1: { participacion: 2, conducta: 0 } }, { a2: "ausente", a4: "justificada" }, { a1: true });
 const encabezado = cierre.encabezadoCierre();
 ok("cierre: encabezado fijo (sticky top-14) solo desde md", /class='hidden md:grid [^']*sticky top-14/.test(encabezado), true);
-ok("cierre: las cinco columnas, en orden", ["No.", "Grado", "Nombre", "Participación", "Conducta"].map((t) => encabezado.indexOf(">" + t + "<")).every((n, i, a) => n !== -1 && (i === 0 || n > a[i - 1])), true);
-ok("cierre: Participación y Conducta con colores distintos", /bg-violet-100[^>]*>Participación/.test(encabezado) && /bg-teal-100[^>]*>Conducta/.test(encabezado), true);
+ok("cierre: las seis columnas, en orden (la sexta, Comentarios)", ["No.", "Grado", "Nombre", "Participación", "Conducta", "Comentarios"].map((t) => encabezado.indexOf(">" + t + "<")).every((n, i, a) => n !== -1 && (i === 0 || n > a[i - 1])), true);
+ok("cierre: Participación, Conducta y Comentarios con colores distintos", /bg-violet-100[^>]*>Participación/.test(encabezado) && /bg-teal-100[^>]*>Conducta/.test(encabezado) && /bg-amber-100[^>]*>Comentarios/.test(encabezado), true);
+ok("cierre: desde md cinco columnas y desde xl (1280 px) seis, con Comentarios la ancha",
+	/md:grid-cols-\[2\.75rem_3\.25rem_minmax\(0,1fr\)_10\.5rem_10\.5rem\] xl:grid-cols-\[2\.75rem_3\.25rem_minmax\(0,1fr\)_10\.5rem_10\.5rem_minmax\(0,1\.3fr\)\]/.test(encabezado) &&
+	/hidden xl:block bg-amber-100[^>]*>Comentarios/.test(encabezado), true);
 const filas = cierre.ordenar();
 const nombres = (filas.match(/font-medium text-gray-800 md:px-2 md:py-2'>([^<]+)</g) || []).map((x) => x.replace(/.*>([^<]+)<$/, "$1"));
 ok("cierre: el orden de la lista (1° alfabético y luego 2°)", nombres, ["ÁVILA LUIS", "MUÑOZ ANA", "RUIZ SOL", "ZAPATA EVA"]);
@@ -104,7 +109,38 @@ const leyenda = pagina.replace(/\s+/g, " ");
 ok("leyenda de Participación", leyenda.indexOf("0 = no participó · 1 = participó · 2 = participó de forma destacada. El 1 y el 2 valen el día completo; el 2 se menciona en la boleta.") !== -1, true);
 ok("leyenda de Conducta", leyenda.indexOf("0 = necesita apoyo · 1 = adecuada · 2 = destacada. Se informa en las observaciones y no cuenta en la calificación.") !== -1, true);
 ok("la leyenda está antes de la lista del cierre", pagina.indexOf("cierreLeyenda") < pagina.indexOf('id="cierreLista"'), true);
-ok("todavía sin la columna de Comentarios (es de la Fase 3)", !/Comentario/i.test(cierre.encabezadoCierre()) && !/Comentario/.test(pagina), true);
+// Fase 3: la columna de Comentarios (registro_diario.nota, mi_salon_b25)
+ok("comentarios: cada alumno tiene su caja (44 px), también quien faltó", (filas.match(/<textarea /g) || []).length === 4 &&
+	/data-cierre-nota='a2'/.test(filaAusente) && /data-cierre-nota='a4'/.test(filaJustificada) && (filas.match(/<textarea [^>]*class='[^']*min-h-\[44px\]/g) || []).length === 4, true);
+ok("comentarios: quien faltó tiene su caja pero sigue sin chips", !/data-cierre='/.test(filaAusente) && /data-cierre-nota='a2'/.test(filaAusente), true);
+ok("comentarios: la caja lleva su etiqueta (oculta solo desde xl, donde la dice el encabezado) y un nombre accesible", /<label for='cierreNota-a1' class='xl:hidden[^']*'>Comentarios<\/label>/.test(filaAna) && /aria-label='Comentario del día de MUÑOZ ANA'/.test(filaAna), true);
+ok("comentarios: de md a xl la caja ocupa una fila debajo (col-span-5); desde xl, su columna", /data-cierre-columna='nota'/.test(filaAna) && /md:col-span-5 md:px-2 md:pb-2 xl:col-span-1/.test(filaAna), true);
+ok("comentarios: la caja va después de la conducta (orden de las columnas)", filaAna.indexOf("data-cierre='conducta'") < filaAna.indexOf("data-cierre-nota='a1'"), true);
+const conNota = fabricaCierre({ a1: { participacion: 1, conducta: 1, nota: "Trajo <material>" }, a2: { participacion: null, conducta: null, nota: "Enfermo" } },
+	{ a2: "ausente" }, { a1: true, a2: true }).ordenar();
+const cA1 = conNota.split("data-cierre-fila='a1'")[1].split("data-cierre-fila=")[0];
+const cA2 = conNota.split("data-cierre-fila='a2'")[1].split("data-cierre-fila=")[0];
+ok("comentarios: lo guardado se ve dentro de la caja (y escapado)", />Trajo &lt;material&gt;<\/textarea>/.test(cA1), true);
+ok("comentarios: quien faltó con solo su comentario se ve «Faltó» SIN chips ni «Quitar del cierre» (no es un cierre capturado)",
+	/>Faltó</.test(cA2) && !/data-cierre='/.test(cA2) && cA2.indexOf("Quitar del cierre") === -1 && />Enfermo<\/textarea>/.test(cA2), true);
+const pend = fabricaCierre({ a1: { participacion: 1, conducta: 1, nota: "guardado" } }, {}, { a1: true }, { a1: { texto: "escribiendo…", timer: 0 } }).ordenar();
+ok("comentarios: lo que se está escribiendo gana sobre lo guardado (Hoy se vuelve a dibujar en cada toque)", />escribiendo…<\/textarea>/.test(pend) && !/>guardado<\/textarea>/.test(pend), true);
+const conFilaNota = fabricaCierre({ a2: { participacion: 2, conducta: 1, nota: "Faltó pero ya había participado" } }, { a2: "ausente" }, { a2: true }).ordenar();
+const fN = conFilaNota.split("data-cierre-fila='a2'")[1].split("data-cierre-fila=")[0];
+ok("comentarios: faltó con fila 2/1 y comentario: chips, comentario y «Quitar del cierre» juntos, el botón después de la caja",
+	(fN.match(/data-cierre='(participacion|conducta)'/g) || []).length === 6 && fN.indexOf("data-cierre-nota='a2'") < fN.indexOf("Quitar del cierre") && />Faltó pero ya había participado<\/textarea>/.test(fN), true);
+ok("comentarios: 'Quitar del cierre' conserva el comentario (solo quita participación y conducta) y sin comentario borra la fila",
+	/vQuitar && vQuitar\.nota\)\s*\{\s*vQuitar\.participacion = null;\s*vQuitar\.conducta = null;\s*guardarRegistro\(idQuitar, \["participacion", "conducta"\]\);\s*\} else \{\s*delete registro\[idQuitar\];[\s\S]{0,120}guardar\("registro_borrar"/.test(fuente), true);
+ok("comentarios: se guarda tras una pausa (1 s) o al salir de la caja, y funciona con el campo nota por la cola",
+	/notasPendientes\[id\] = \{ texto: ta\.value, timer: setTimeout\(function \(\) \{ guardarNota\(id\); \}, 1000\) \};/.test(fuente) &&
+	/addEventListener\("focusout"[\s\S]{0,200}guardarNota\(ta\.dataset\.cierreNota\)/.test(fuente) && /guardarRegistro\(alumnoId, "nota"\)/.test(fuente), true);
+ok("comentarios: lo escrito y aún no guardado cuenta como pendiente (recargar pide confirmación) y se guarda con las retroalimentaciones",
+	/!Object\.keys\(notasPendientes \|\| \{\}\)\.length\) return;/.test(fuente) && /function guardarRetrosPendientes\(\) \{[\s\S]{0,200}guardarNotasPendientes\(\)/.test(fuente), true);
+ok("comentarios: guardar el comentario no dibuja de nuevo la lista (no se pierde el foco)", extraerFuncion("guardarNota").indexOf("renderCierre()") === -1, true);
+ok("comentarios: renderCierre conserva el foco y el cursor de la caja que se está escribiendo", /activo\.dataset\.cierreNota[\s\S]{0,900}setSelectionRange\(foco\.ini, foco\.fin\)/.test(extraerFuncion("renderCierre")), true);
+ok("comentarios: la fila de comentario no cuenta como cierre guardado (cierreGuardado pide participación y conducta)",
+	/return !!registroGuardado\[alumnoId\] && !!v && v\.participacion !== null && v\.participacion !== undefined &&\s*v\.conducta !== null && v\.conducta !== undefined;/.test(fuente), true);
+ok("comentarios: la leyenda de la página explica la columna, también para quien faltó", /En Comentarios puedes anotar algo del día de cada alumno, también de quien faltó/.test(leyenda), true);
 
 // ── 3. Asistencia plegada: el resumen ────────────────────────────────────────
 const cuerpoAsis = [
