@@ -4,7 +4,8 @@
 	  1. Crear proyecto ya no ofrece subir archivos: sin input de archivo, sin subida a Storage, sin
 	     clave-archivo.js; queda "Agregar enlace" con su ayuda (Google Drive recomendado). Los archivos
 	     que se subieron antes (recursos.archivos) se siguen viendo, se pueden quitar como antes y se
-	     guardan tal cual.
+	     guardan tal cual. Los materiales en texto de los proyectos de la tienda (también en
+	     recursos.archivos, sin path ni url) van en "Materiales", con su texto y su X (R35).
 	  2. Ninguna página del SaaS sube archivos a Storage.
 	  3. El visor (js/visor-recursos.js) solo abre libros de CONALITEG; Drive (archivo, carpeta, Docs,
 	     Slides, Hojas) y cualquier otro sitio se abren en otra pestaña. El toque en un enlace de Drive no
@@ -41,7 +42,52 @@ ok("Crear proyecto: ayuda junto a «Agregar enlace» (tú, sin género, Google D
 ok("Crear proyecto: el enlace sigue siendo solo http(s)", /if \(!\/\^https\?:\\\/\\\/\/i\.test\(url\)\) \{/.test(cp), true);
 // Archivos de antes
 ok("archivos de antes: el bloque existe oculto y se muestra solo si hay alguno",
-	/<div class="resource-files-wrap hidden">/.test(cp) && /recursosFilesWrap\.classList\.toggle\('hidden', archivosSubidos\.length === 0\)/.test(cp), true);
+	/<div class="resource-files-wrap hidden">/.test(cp) && /recursosFilesWrap\.classList\.toggle\('hidden', archivos\.length === 0\)/.test(cp), true);
+
+/*
+	R35: los proyectos importados de la tienda traen en recursos.archivos MATERIALES en texto ("Dado grande",
+	el código de un anexo), sin path ni url (135 de 1560 sesiones del catálogo). Salían como chips vacíos bajo
+	"Archivos que subiste antes" con una X que no hacía nada. Ahora: archivo de antes = objeto con path o url;
+	lo demás con texto va en "Materiales", con su texto y una X que lo quita de la sesión.
+*/
+{
+	const fuente = (nombre) => { const i = cp.indexOf("function " + nombre + "("); return cp.slice(i, cp.indexOf("\n    }", i) + 6); };
+	const f = new Function(fuente("esArchivoSubido") + "\n" + fuente("textoMaterial") + "\nreturn { esArchivoSubido: esArchivoSubido, textoMaterial: textoMaterial };")();
+	const archivos = [
+		"Dado grande",
+		"ANX-2627-T2-1-2-P08-S08-01",
+		{ nombre: "3° 'B' guía.pdf", path: "recursos/u/t/sesion_1/3-B-guia.pdf", url: "https://x.supabase.co/storage/v1/object/sign/recursos/x?token=t" },
+		{ nombre: "Sin ruta.pdf", path: null, url: "https://x.supabase.co/storage/v1/object/sign/recursos/y?token=t" },
+		{ nombre: "Tarjetas de suma/resta" },
+		null, "", "   ",
+	];
+	ok("clasificación: archivos de antes = objetos con path o url",
+		archivos.map((x, i) => f.esArchivoSubido(x) ? i : -1).filter((i) => i >= 0), [2, 3]);
+	ok("clasificación: materiales = lo demás con texto (los vacíos no se pintan y se guardan tal cual)",
+		archivos.filter((x) => !f.esArchivoSubido(x)).map(f.textoMaterial).filter(Boolean), ["Dado grande", "ANX-2627-T2-1-2-P08-S08-01", "Tarjetas de suma/resta"]);
+	ok("Materiales: bloque oculto que se muestra solo si hay alguno, con rótulo «Materiales»",
+		/<div class="resource-materiales-wrap hidden">\s*<div class="text-xs font-semibold text-gray-500 mb-2">Materiales<\/div>/.test(cp) &&
+		/recursosMaterialesWrap\.classList\.toggle\('hidden', materiales\.length === 0\)/.test(cp), true);
+	ok("Materiales: el chip muestra su texto escapado y su X (44 px, «Quitar material») lo quita de la sesión",
+		/<span class="min-w-0 break-words">\$\{escapeHtml\(texto\)\}<\/span>/.test(cp) &&
+		/class="resource-remove-material shrink-0[^"]*h-11 w-11[^"]*" data-index="\$\{a\.index\}" aria-label="Quitar material"/.test(cp) &&
+		/closest\('\.resource-remove-material'\);\s*if \(!btn\) return;\s*quitarDeArchivos\(parseInt\(btn\.dataset\.index, 10\)\);/.test(cp), true);
+	ok("quitar de recursos.archivos arma un arreglo nuevo (se ve como cambio al guardar)",
+		/archivosSubidos = archivosSubidos\.filter\(function \(_, i\) \{ return i !== index; \}\);/.test(cp), true);
+	ok("un archivo de antes sin ruta en Storage también se quita (solo de la sesión)",
+		/if \(!path\) \{ quitarDeArchivos\(parseInt\(btn\.dataset\.index, 10\)\); return; \}/.test(cp), true);
+	ok("aria-label: «Quitar archivo» y «Quitar enlace» (ya no «Eliminar archivo» ni «Eliminar link»)",
+		[/aria-label="Quitar archivo"/.test(cp), /aria-label="Quitar enlace"/.test(cp), /Eliminar archivo|Eliminar link/.test(cp)], [true, true, false]);
+	// Guardar sin cambios: el arreglo se guarda tal cual, con los materiales en su lugar
+	const PE = require("../js/proyecto-edicion.js");
+	const fila0 = { recursos: { archivos: archivos.slice(), links: [] } };
+	const enPantalla = fila0.recursos.archivos.slice();
+	ok("guardar sin cambios con materiales y archivos: nada que guardar",
+		Object.keys(PE.cambiosDeSesion({ recursos: { archivos: enPantalla, links: [] } }, fila0, { recursos: { archivos: enPantalla, links: [] } })), []);
+	const sinDado = enPantalla.filter((_, i) => i !== 0);
+	ok("quitar «Dado grande»: se guarda recursos sin ese material y con lo demás en su orden",
+		[Object.keys(PE.cambiosDeSesion({ recursos: { archivos: sinDado, links: [] } }, fila0, { recursos: { archivos: enPantalla, links: [] } })), sinDado[0], sinDado.length], [["recursos"], "ANX-2627-T2-1-2-P08-S08-01", 7]);
+}
 ok("archivos de antes: rótulo «Archivos que subiste antes»", /Archivos que subiste antes/.test(cp), true);
 ok("archivos de antes: se cargan del proyecto o del borrador",
 	/block\._cargarRecursos\(data\._archivos \|\| recursos\.archivos \|\| \[\], data\._links \|\| recursos\.links \|\| \[\]\)/.test(cp) &&
