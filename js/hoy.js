@@ -132,6 +132,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		el.classList.remove("hidden");
 	}
 
+	// Deja a la vista el aviso de arriba (#hoyMensaje): el mismo desplazamiento de "Ver detalle" del aviso fijo
+	function irAlMensaje() {
+		var el = document.getElementById("hoyMensaje");
+		if (!el || !el.scrollIntoView) return;
+		if (el.style) el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
+		if (el.setAttribute) el.setAttribute("tabindex", "-1");
+		el.scrollIntoView({ block: "start", behavior: "smooth" });
+		try { el.focus({ preventScroll: true }); } catch (_) { /* sin foco */ }
+	}
+
+	/*
+		Por qué no se pudo hacer una acción que el docente tocó abajo (Terminar sesión, Finalizar jornada, Pasar a un
+		proyecto, Trabajar hoy o Quitar de hoy): el aviso sale arriba, y a 390 px solo se veía la barra ámbar de "Sin
+		señal" (R36). Se muestra y la página se desplaza hasta él.
+	*/
+	function avisoALaVista(texto) {
+		mensaje("error", texto);
+		irAlMensaje();
+	}
+
 	/*
 		Por qué falló algo, en español y sin tecnicismos. El texto técnico de la base (en inglés, p. ej.
 		"column … does not exist" si falta una migración) va solo a la consola. Los mensajes propios
@@ -342,12 +362,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		ver.addEventListener("click", function () {
 			if (caja.parentNode) caja.parentNode.removeChild(caja);
 			reservarEspacio();
-			var el = document.getElementById("hoyMensaje");
-			if (!el || !el.scrollIntoView) return;
-			el.style.scrollMarginTop = "8rem"; // la barra de arriba es fija
-			el.setAttribute("tabindex", "-1");
-			el.scrollIntoView({ block: "start", behavior: "smooth" });
-			try { el.focus({ preventScroll: true }); } catch (_) {}
+			irAlMensaje();
 		});
 		var cerrar = document.createElement("button");
 		cerrar.type = "button";
@@ -1799,7 +1814,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
 			if (sinSenal()) {
-				mensaje("error", "Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+				avisoALaVista("Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 				return;
 			}
 			// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
@@ -1809,7 +1824,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			btn.disabled = false;
 			btn.textContent = etiqueta;
 			if (envio !== "ok") {
-				mensaje("error", envio === "red" || envio === "servidor" || envio === "pendiente"
+				avisoALaVista(envio === "red" || envio === "servidor" || envio === "pendiente"
 					? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
 					: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
 				return;
@@ -2193,28 +2208,27 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var destino = todasLasSesiones.filter(function (s) { return s.id === sesionId; })[0];
 			var abierta = destino ? window.SesionTerminar.enCursoDe(todasLasSesiones.filter(function (x) { return !esSuelta(x); }), destino.proyecto_id) : [];
 			if (abierta.length) {
-				mensaje("error", "Primero termina la sesión " + abierta.map(function (x) { return x.numero_sesion; }).join(", ") + " de este proyecto; después empiezas la siguiente.");
+				avisoALaVista("Primero termina la sesión " + abierta.map(function (x) { return x.numero_sesion; }).join(", ") + " de este proyecto; después empiezas la siguiente.");
 				return;
 			}
 		}
 		btn.disabled = true;
 		try {
 			// La pantalla se recarga al final: primero debe quedar guardado todo lo que ya
-			// se capturó (antes la recarga cortaba la cola y se perdían marcas)
+			// se capturó (antes la recarga cortaba la cola y se perdían marcas). Siempre esperarCola (R36): también lo
+			// que se acaba de encolar (la retroalimentación o el comentario a medio escribir), que pendientes() no cuenta
 			guardarRetrosPendientes(); // lo que se está escribiendo entra a la cola
 			if (sinSenal()) { avisoSinSenal(btn, poner); return; }
-			if (bandeja && bandeja.pendientes()) {
-				btn.textContent = "Guardando lo capturado...";
-				// No se espera para siempre: si la cola se atora (sin red, error del servidor,
-				// sesión), se dice qué pasa y el botón vuelve
-				var envio = await bandeja.esperarEnvio();
-				if (envio !== "ok") {
-					if (envio === "red" || envio === "servidor") { avisoSinSenal(btn, poner, envio); return; }
-					btn.disabled = false;
-					btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
-					mensaje("error", "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
-					return;
-				}
+			btn.textContent = "Guardando lo capturado...";
+			// No se espera para siempre: si la cola se atora (sin red, error del servidor,
+			// sesión), se dice qué pasa y el botón vuelve; la sesión no cambia
+			var envio = await esperarCola();
+			if (envio !== "ok") {
+				if (envio === "red" || envio === "servidor" || envio === "pendiente") { avisoSinSenal(btn, poner, envio); return; }
+				btn.disabled = false;
+				btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
+				avisoALaVista("Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+				return;
 			}
 			btn.textContent = poner ? "Agregando..." : "Quitando...";
 			// Quitar de hoy la regresa como estaba: sin fecha y pendiente (no "activa")
@@ -2229,7 +2243,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			}
 			btn.disabled = false;
 			btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
-			mensaje("error", "No se pudo actualizar la sesión: " + textoError(err));
+			avisoALaVista("No se pudo actualizar la sesión: " + textoError(err));
 		}
 	}
 
@@ -2243,7 +2257,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		btn.disabled = false;
 		btn.textContent = poner ? "Trabajar hoy" : "Quitar de hoy";
 		var accion = poner ? "agregar la sesión a hoy" : "quitar la sesión de hoy";
-		mensaje("error", motivo === "servidor"
+		avisoALaVista(motivo === "servidor"
 			? "No se pudo guardar lo capturado por ahora (el servidor no respondió bien) y sin eso no se puede " + accion +
 				". Lo capturado sigue guardado en este dispositivo y se reintentará solo. Vuelve a intentarlo en un momento."
 			: "Sin señal: no se puede " + accion + " en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
@@ -2965,12 +2979,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var producto = productoPorId(productoId);
 		if (!producto || !window.PasarAProyecto) return;
 		guardarRetrosPendientes();
-		if (sinSenal()) { mensaje("error", "Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
+		if (sinSenal()) { avisoALaVista("Pasar a un proyecto necesita señal. " + TEXTO_SIN_SENAL.replace("Esto necesita señal. ", "")); return; }
 		// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
 		origen.disabled = true;
 		var envio = await esperarCola();
 		origen.disabled = false;
-		if (envio !== "ok") { mensaje("error", "Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
+		if (envio !== "ok") { avisoALaVista("Primero hay que enviar lo capturado y ahora no se pudo. Lo capturado sigue guardado en este dispositivo; inténtalo en un momento."); return; }
 		var proyecto = proyectoPorId[(producto.sesion || {}).proyecto_id] || {};
 		window.PasarAProyecto.abrir({
 			sb: window.sb, maestroId: user.id, grupoId: grupo.id, trimestre: proyecto.trimestre || grupo.trimestre_actual,
@@ -3515,7 +3529,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		try {
 			guardarRetrosPendientes(); // lo que se está escribiendo (retroalimentaciones y comentarios) entra a la cola
 			if (sinSenal()) {
-				mensaje("error", "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+				avisoALaVista("Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
 				return;
 			}
 			// Siempre (sin mirar pendientes(): lo que se acaba de encolar aún no cuenta ahí)
@@ -3524,7 +3538,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var envio = await esperarCola();
 			btn.disabled = false;
 			btn.textContent = etiqueta;
-			if (envio !== "ok") { mensaje("error", textoSinEnviar(envio)); return; }
+			if (envio !== "ok") { avisoALaVista(textoSinEnviar(envio)); return; }
 			mensaje("", "");
 			var faltantes = faltantesDeLaJornada();
 			if (faltantes.completo) {
@@ -3533,7 +3547,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var r = await registrarJornada(faltantes);
 				btn.disabled = false;
 				btn.textContent = etiqueta;
-				if (!r.ok) { mensaje("error", r.texto); return; }
+				if (!r.ok) { avisoALaVista(r.texto); return; }
 				renderJornada();
 				mensaje("info", "Jornada finalizada a las " + horaDe(jornadaHoy.cerrada_en) + ".");
 				return;

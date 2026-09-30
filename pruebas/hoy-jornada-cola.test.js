@@ -8,7 +8,10 @@
 	    de la última respuesta de calificaciones (sin red: no se termina ni se recarga).
 	  - "Pasar a un proyecto" una actividad suelta con una retroalimentación a medio escribir: el diálogo de pasar
 	    se abre DESPUÉS de la última respuesta de calificaciones (sin red: no se abre).
-	Escenarios: jornada-lenta, jornada-red, terminar-lenta, terminar-red, pasar-lenta, pasar-red (cada uno en su proceso).
+	  - "Trabajar hoy" y "Quitar de hoy" con una retroalimentación a medio escribir: la sesión cambia DESPUÉS de la
+	    última respuesta de calificaciones (sin red: no cambia ni se recarga).
+	Sin red, además, la página se desplaza hasta el aviso (a 390 px el aviso de arriba no se veía).
+	Escenarios: jornada-, terminar-, pasar-, trabajar- y quitar- con lenta o red (cada uno en su proceso).
 	Con js/hoy.js de d7a1911 (antes de la corrección) fallan todos:
 	  git show d7a1911:js/hoy.js > /tmp/hoy-viejo.js && node pruebas/hoy-jornada-cola.test.js /tmp/hoy-viejo.js
 
@@ -59,6 +62,7 @@ if (!ESCENARIO) {
 		ok("jornada sin red: si lo capturado no llega a la base, NO se escribe la jornada", R.linea.filter((x) => x.tabla === "jornadas").length === 0 && R.jornadas === 0, JSON.stringify(R.linea));
 		ok("jornada sin red: avisa que el día no se marcó", /el día no se marcó/.test(R.mensaje), R.mensaje);
 		ok("jornada sin red: Hoy no dice que se finalizó", !R.estado, R.estado);
+		ok("jornada sin red: la página se desplaza hasta el aviso", R.alaVista >= 1, String(R.alaVista));
 	}
 
 	// Terminar sesión
@@ -79,6 +83,7 @@ if (!ESCENARIO) {
 		ok("terminar sin red: si lo capturado no llega a la base, NO se termina la sesión ni se recarga",
 			tiempos(TR, "sesiones", "pide").length === 0 && TR.sesionEstado === "activa" && TR.recargas === 0 && !TR.modal, JSON.stringify(TR.linea));
 		ok("terminar sin red: avisa que no se puede terminar la sesión", /no se puede terminar la sesión/.test(TR.mensaje), TR.mensaje);
+		ok("terminar sin red: la página se desplaza hasta el aviso", TR.alaVista >= 1, String(TR.alaVista));
 	}
 
 	// Pasar a un proyecto
@@ -96,7 +101,33 @@ if (!ESCENARIO) {
 	if (PR) {
 		ok("pasar sin red: si lo capturado no llega a la base, NO se abre el diálogo de pasar", PR.pasarAbierto === null, String(PR.pasarAbierto));
 		ok("pasar sin red: avisa que primero hay que enviar lo capturado", /Primero hay que enviar lo capturado/.test(PR.mensaje), PR.mensaje);
+		ok("pasar sin red: la página se desplaza hasta el aviso", PR.alaVista >= 1, String(PR.alaVista));
 	}
+
+	// Trabajar hoy y Quitar de hoy
+	[["trabajar", "Trabajar hoy", { fecha: "hoy", estado: "activa" }, { fecha: null, estado: "pendiente" }, /no se puede agregar la sesión a hoy/],
+		["quitar", "Quitar de hoy", { fecha: null, estado: "pendiente" }, { fecha: "hoy", estado: "activa" }, /no se puede quitar la sesión de hoy/]].forEach(([acc, nombre, despues, antes, aviso]) => {
+		const Lx = correr(acc + "-lenta");
+		ok(nombre + " lenta: el escenario terminó", !!Lx);
+		if (Lx) {
+			const calResp = tiempos(Lx, "calificaciones", "resp");
+			const pideS = tiempos(Lx, "sesiones", "pide");
+			ok(nombre + " lenta: la sesión cambia DESPUÉS de la última respuesta de calificaciones (la retroalimentación ya está en la base)",
+				pideS.length === 1 && calResp.length && pideS[0] >= ultima(calResp) && Lx.calificaciones.some((c) => c.retroalimentacion === "Muy bien, sigue así"),
+				"sesión a los " + pideS.join(",") + " ms; última respuesta de calificaciones a los " + ultima(calResp) + " ms");
+			ok(nombre + " lenta: la sesión quedó " + JSON.stringify(despues) + " y la pantalla se recarga",
+				Lx.sesion && (despues.fecha ? Lx.sesion.fecha === Lx.hoy : Lx.sesion.fecha === null) && Lx.sesion.estado_sesion === despues.estado && Lx.recargas === 1, JSON.stringify(Lx.sesion) + " · recargas " + Lx.recargas);
+			ok(nombre + " lenta: sin errores en consola", Lx.errores.length === 0, JSON.stringify(Lx.errores.slice(0, 3)));
+		}
+		const Rx = correr(acc + "-red");
+		ok(nombre + " sin red: el escenario terminó", !!Rx);
+		if (Rx) {
+			ok(nombre + " sin red: si lo capturado no llega a la base, la sesión NO cambia ni se recarga",
+				tiempos(Rx, "sesiones", "pide").length === 0 && Rx.sesion && (antes.fecha ? Rx.sesion.fecha === Rx.hoy : Rx.sesion.fecha === null) && Rx.sesion.estado_sesion === antes.estado && Rx.recargas === 0,
+				JSON.stringify(Rx.sesion) + " · " + JSON.stringify(Rx.linea));
+			ok(nombre + " sin red: avisa (el mismo texto de siempre) y la página se desplaza hasta el aviso", aviso.test(Rx.mensaje) && Rx.alaVista >= 1, Rx.mensaje + " · a la vista " + Rx.alaVista);
+		}
+	});
 	console.log(fallos === 0 ? "\nTODAS PASAN" : "\n" + fallos + " FALLAS");
 	process.exit(fallos ? 1 : 0);
 }
@@ -119,6 +150,9 @@ function crearElemento(id) {
 		querySelectorAll: function () { return []; },
 		closest: function () { return null; },
 		contains: function () { return false; },
+		setAttribute: function () {},
+		focus: function () {},
+		scrollIntoView: function () { this._alaVista = (this._alaVista || 0) + 1; },
 	};
 }
 const elementos = {};
@@ -167,12 +201,20 @@ const DATOS = {
 if (ACCION === "terminar") {
 	DATOS.proyectos = [{ id: "p1", titulo: "Proyecto", estado: "activo", trimestre: 1, tipo: "proyecto", grados: ["1"] }];
 	DATOS.sesiones = [{ id: "s1", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "activa", maestro_id: "m1" }];
+} else if (ACCION === "trabajar" || ACCION === "quitar") {
+	DATOS.proyectos = [{ id: "p1", titulo: "Proyecto", estado: "activo", trimestre: 1, tipo: "proyecto", grados: ["1"] }];
+	DATOS.sesiones = [
+		{ id: "s0", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "completada", maestro_id: "m1" },
+		ACCION === "trabajar"
+			? { id: "s1", numero_sesion: 2, fecha: null, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "pendiente", maestro_id: "m1" }
+			: { id: "s1", numero_sesion: 2, fecha: HOY, campo_formativo: "Lenguajes", momento: "Desarrollo", proyecto_id: "p1", estado_sesion: "activa", maestro_id: "m1" },
+	];
 } else if (ACCION === "pasar") {
 	DATOS.proyectos = [{ id: "suel", titulo: "Actividades del trimestre", estado: "completado", trimestre: 1, tipo: "sueltas", grados: ["1"] }];
 	DATOS.sesiones = [{ id: "s1", numero_sesion: 1, fecha: HOY, campo_formativo: "Lenguajes", proyecto_id: "suel", estado_sesion: "activa", maestro_id: "m1" }];
 }
 if (ACCION !== "jornada") {
-	DATOS.productos_sesion = [{ id: "pr1", sesion_id: "s1", tipo: "trabajo", nombre: "Cartel", grados: ["1"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1, activo: true, created_at: HOY + "T08:00:00-06:00" }];
+	DATOS.productos_sesion = [{ id: "pr1", sesion_id: ACCION === "trabajar" || ACCION === "quitar" ? "s0" : "s1", tipo: "trabajo", nombre: "Cartel", grados: ["1"], modalidad: "compartida", campo: "LEN", fecha_entrega: null, orden: 1, activo: true, created_at: HOY + "T08:00:00-06:00" }];
 }
 const LENTAS = ["registro_diario", "calificaciones"];
 const RETRASO = MODO === "lenta" ? 400 : 20;
@@ -271,12 +313,15 @@ const evento = (selector, el) => ({ target: { closest: (s) => (s === selector ? 
 		// Una retroalimentación a medio escribir (sin esperar la pausa de 1 s) y, enseguida, el botón
 		const ta = { dataset: { retroalimentacion: "pr1", alumno: "al-1" }, value: "Muy bien, sigue así" };
 		(elementos.sesionesLista._listeners.input || []).forEach((fn) => fn(evento("textarea[data-retroalimentacion]", ta)));
-		const boton = ACCION === "terminar"
-			? { dataset: { terminarSesion: "s1" }, textContent: "Terminar sesión 1", disabled: false }
-			: { dataset: { pasarProyecto: "pr1" }, textContent: "Pasar a un proyecto", disabled: false };
-		const sel = ACCION === "terminar" ? "button[data-terminar-sesion]" : "button[data-pasar-proyecto]";
+		const botones = {
+			terminar: [{ dataset: { terminarSesion: "s1" }, textContent: "Terminar sesión 1", disabled: false }, "button[data-terminar-sesion]"],
+			pasar: [{ dataset: { pasarProyecto: "pr1" }, textContent: "Pasar a un proyecto", disabled: false }, "button[data-pasar-proyecto]"],
+			trabajar: [{ dataset: { trabajarHoy: "s1" }, textContent: "Trabajar hoy", disabled: false }, "button[data-trabajar-hoy], button[data-quitar-hoy]"],
+			quitar: [{ dataset: { quitarHoy: "s1" }, textContent: "Quitar de hoy", disabled: false }, "button[data-trabajar-hoy], button[data-quitar-hoy]"],
+		};
+		const [boton, sel] = botones[ACCION];
 		(elementos.sesionesLista._listeners.click || []).forEach((fn) => fn(evento(sel, boton)));
-		listo = () => (recargas || pasarAbierto !== null || /no se puede|Primero hay que enviar/.test((elementos.hoyMensaje || {}).textContent || "")) && !boton.disabled;
+		listo = () => recargas || ((pasarAbierto !== null || /no se puede|Primero hay que enviar/.test((elementos.hoyMensaje || {}).textContent || "")) && !boton.disabled);
 	}
 	const fin = Date.now() + 15000;
 	while (Date.now() < fin) {
@@ -288,8 +333,9 @@ const evento = (selector, el) => ({ target: { closest: (s) => (s === selector ? 
 		linea: linea, registro: bd.registro_diario.map((f) => ({ alumno_id: f.alumno_id, participacion: f.participacion, conducta: f.conducta, nota: f.nota })),
 		calificaciones: bd.calificaciones.map((c) => ({ alumno_id: c.alumno_id, producto_sesion_id: c.producto_sesion_id, retroalimentacion: c.retroalimentacion })),
 		jornadas: bd.jornadas.length, estado: (elementos.jornadaEstadoTexto || {}).textContent || "",
-		sesionEstado: (bd.sesiones[0] || {}).estado_sesion || null, recargas: recargas, modal: modal, pasarAbierto: pasarAbierto,
-		mensaje: (elementos.hoyMensaje || {}).textContent || "", errores: errores,
+		sesionEstado: (bd.sesiones.find((x) => x.id === "s1") || {}).estado_sesion || null, recargas: recargas, modal: modal, pasarAbierto: pasarAbierto,
+		sesion: (function () { const x = bd.sesiones.find((y) => y.id === "s1"); return x ? { fecha: x.fecha, estado_sesion: x.estado_sesion } : null; })(), hoy: HOY,
+		mensaje: (elementos.hoyMensaje || {}).textContent || "", alaVista: (elementos.hoyMensaje || {})._alaVista || 0, errores: errores,
 	}));
 	process.exit(0);
 })().catch((e) => {

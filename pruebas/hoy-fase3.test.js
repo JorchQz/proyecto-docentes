@@ -102,7 +102,7 @@ const fin = extraerFuncion(hoy, "finalizarJornada");
 const reg = extraerFuncion(hoy, "registrarJornada");
 ok("finalizar: primero guarda lo que está a medio escribir (retros y comentarios)", fin.indexOf("guardarRetrosPendientes()") !== -1 &&
 	fin.indexOf("guardarRetrosPendientes()") < fin.indexOf("sinSenal()"), true);
-ok("finalizar: sin señal avisa y no llega a marcar (retorna antes de registrar)", /if \(sinSenal\(\)\) \{\s*mensaje\("error", "Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó\.[\s\S]{0,200}return;/.test(fin), true);
+ok("finalizar: sin señal avisa y no llega a marcar (retorna antes de registrar)", /if \(sinSenal\(\)\) \{\s*avisoALaVista\("Sin señal: para finalizar la jornada hace falta señal, y el día no se marcó\.[\s\S]{0,200}return;/.test(fin), true);
 // R36 F1: lo que el propio botón encola (comentario a medio escribir, relleno 1 y 1) se espera SIEMPRE, sin mirar pendientes()
 const colaEspera = extraerFuncion(hoy, "esperarCola");
 ok("guardar() devuelve la promesa de encolar y la anota en «encolando» (bandeja.agregar es asíncrono)",
@@ -112,7 +112,7 @@ ok("esperarCola: espera lo que se encola y después SIEMPRE bandeja.esperarEnvio
 	/return "pendiente";/.test(colaEspera), true);
 ok("finalizar: guarda lo escrito, espera la cola completa (sin revisar pendientes()) y si no llegó todo avisa y NO marca el día",
 	fin.indexOf("guardarRetrosPendientes()") < fin.indexOf("esperarCola()") && !/bandeja\.pendientes\(\)/.test(fin) &&
-	/var envio = await esperarCola\(\);[\s\S]{0,200}if \(envio !== "ok"\) \{ mensaje\("error", textoSinEnviar\(envio\)\); return; \}/.test(fin), true);
+	/var envio = await esperarCola\(\);[\s\S]{0,200}if \(envio !== "ok"\) \{ avisoALaVista\(textoSinEnviar\(envio\)\); return; \}/.test(fin), true);
 ok("registrar: completa el cierre, espera la cola completa (lo recién encolado incluido) y solo entonces escribe la jornada",
 	reg.indexOf("completarCierre()") < reg.indexOf("esperarCola()") && reg.indexOf("esperarCola()") < reg.indexOf('from("jornadas")') && !/bandeja\.pendientes\(\)/.test(reg) &&
 	/if \(sinSenal\(\)\) return \{ ok: false/.test(reg) && /if \(envio !== "ok"\) return \{ ok: false, texto: textoSinEnviar\(envio\) \};/.test(reg), true);
@@ -125,8 +125,21 @@ ok("Terminar sesión: guarda lo escrito, espera la cola completa (sin pendientes
 	term.indexOf("esperarCola()") < term.indexOf("abrirModal("), true);
 ok("Pasar a un proyecto: guarda lo escrito, espera la cola completa (sin pendientes()) y si no llegó todo no abre el diálogo",
 	pasar.indexOf("guardarRetrosPendientes()") < pasar.indexOf("esperarCola()") && !/bandeja\.pendientes\(\)/.test(pasar) &&
-	/if \(envio !== "ok"\) \{ mensaje\("error", "Primero hay que enviar lo capturado[^}]*return; \}/.test(pasar) &&
+	/if \(envio !== "ok"\) \{ avisoALaVista\("Primero hay que enviar lo capturado[^}]*return; \}/.test(pasar) &&
 	pasar.indexOf("esperarCola()") < pasar.indexOf("PasarAProyecto.abrir("), true);
+// Hallazgos de R36: "Trabajar hoy" y "Quitar de hoy" esperan igual; los avisos de estas acciones quedan a la vista
+const fechar = extraerFuncion(hoy, "fecharSesion");
+ok("Trabajar hoy / Quitar de hoy: guarda lo escrito, espera la cola completa (sin pendientes()) y si no llegó todo la sesión no cambia",
+	fechar.indexOf("guardarRetrosPendientes()") < fechar.indexOf("esperarCola()") && !/bandeja\.pendientes\(\)/.test(fechar) &&
+	/var envio = await esperarCola\(\);\s*if \(envio !== "ok"\) \{[\s\S]{0,500}return;\s*\}/.test(fechar) && fechar.indexOf("esperarCola()") < fechar.indexOf('from("sesiones").update'), true);
+ok("irAlMensaje: el mismo desplazamiento de «Ver detalle» (margen por la barra fija, foco sin saltar) y «Ver detalle» lo usa",
+	/el\.style\.scrollMarginTop = "8rem";[\s\S]{0,120}el\.scrollIntoView\(\{ block: "start", behavior: "smooth" \}\);[\s\S]{0,80}el\.focus\(\{ preventScroll: true \}\)/.test(extraerFuncion(hoy, "irAlMensaje")) &&
+	/ver\.addEventListener\("click", function \(\) \{[\s\S]{0,150}irAlMensaje\(\);/.test(hoy), true);
+ok("avisoALaVista: muestra el mismo mensaje de error y lleva la página hasta él",
+	/mensaje\("error", texto\);\s*irAlMensaje\(\);/.test(extraerFuncion(hoy, "avisoALaVista")), true);
+ok("los avisos de error de Terminar, Finalizar, Pasar, Trabajar y Quitar de hoy van con avisoALaVista (ninguno se queda solo arriba)",
+	["terminarSesion", "finalizarJornada", "pasarAProyecto", "fecharSesion", "avisoSinSenal"].map((n) => [n, !/mensaje\("error"/.test(extraerFuncion(hoy, n)) && /avisoALaVista\(/.test(extraerFuncion(hoy, n))]),
+	["terminarSesion", "finalizarJornada", "pasarAProyecto", "fecharSesion", "avisoSinSenal"].map((n) => [n, true]));
 ok("textoSinEnviar: siempre dice que el día no se marcó (o que la sesión no está activa)",
 	["red", "servidor", "pendiente", "acceso"].every((e) => /el día no se marcó/.test(new Function(extraerFuncion(hoy, "textoSinEnviar") + "\nreturn textoSinEnviar;")()(e))), true);
 ok("registrar: upsert por grupo y fecha, con el resumen de lo que faltaba",
