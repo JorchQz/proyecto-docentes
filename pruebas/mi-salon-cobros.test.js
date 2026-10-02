@@ -245,11 +245,11 @@ function ok(nombre, real, esperado) {
 	ok("orden de Mi Salón: todo en la base (mi_salon_aplicar_pago); solo LEE marketplace_ordenes (si ya esta reembolsada no corre la RPC) y no escribe ni toca accesos de la tienda", salon.log, ["mi_salon_ordenes:select", "marketplace_ordenes:select", "rpc:mi_salon_aplicar_pago"]);
 	ok("los datos del pago que llegan a la base (referencia y ficha de OXXO)", [argsMs.p_orden_id, argsMs.p_pago.id, argsMs.p_pago.status, argsMs.p_pago.referencia, argsMs.p_pago.ticket_url, rSalon.estado],
 		["o2", "9001", "pending", "4455667788", "https://www.mercadopago.com.mx/payments/9001/ticket", "pendiente"]);
-	ok("webhook repetido de Mi Salón: sin correo (ya_procesada)", await (async () => {
+	ok("webhook repetido de Mi Salón (ya_procesada): intenta apartar el correo (si la primera respuesta se perdió, sale ahora) pero el apartado ya existente lo frena: no se manda otro", await (async () => {
 		const s = falso((t) => t === "mi_salon_ordenes" ? { data: { orden_id: "o2" } } : (t === "rpc:mi_salon_aplicar_pago" ? { data: { ok: true, estado: "pagado", ya_procesada: true, accesos_creados: 0, docente_id: "u2" } } : { data: null }));
 		const r = await pagos_ts.procesarPago(s, Object.assign({}, pagoOxxo, { status: "approved" }), { resendKey: "re_x", siteUrl: "https://jissez.com" });
 		return [r.yaProcesada, s.log.includes("auth:getUserById"), s.log.includes("mi_salon_correos:upsert")];
-	})(), [true, false, false]);
+	})(), [true, true, true]);
 	ok("helpers del correo", [ms_ts.fechaLarga("2027-04-09"), ms_ts.pesos(199), ms_ts.pesos(199.5), ms_ts.nombrePeriodo({ ciclo: "2027-2028", periodo: "T1" }, "2026-2027"), ms_ts.textoCobertura([{ ciclo: "2026-2027", periodos: ["T1", "T2"] }])],
 		["9 de abril de 2027", "$199", "$199.50", "primer trimestre del ciclo 2027-2028", "T1 y T2 del ciclo 2026-2027"]);
 	const correo = ms_ts.htmlConfirmacion({ nombre: "Trimestre", monto: 199, tipo_precio: "fundador", vence: "2027-04-09", compra_tardia: true, siguiente: { ciclo: "2026-2027", periodo: "T2" },

@@ -47,6 +47,7 @@ globalThis.fetch = async (url, init) => {
 		const f = mpFalla.shift();
 		if (f === "red") throw new TypeError("fetch failed");
 		if (f === "timeout") { const e = new Error("The operation was aborted due to timeout"); e.name = "TimeoutError"; throw e; }
+		if (f === "cuerpo") return new Response(new ReadableStream({ start(c) { c.error(new Error("socket hang up")); } }), { status: 200 });
 		return new Response("{}", { status: f });
 	}
 	let m = /^https:\/\/api\.mercadopago\.com\/v1\/payments\/(\w+)$/.exec(u);
@@ -144,6 +145,8 @@ function crearCliente(db) {
 				const clave = a.p_orden_id + ":" + a.p_pago.id;
 				const ya = db.t.mi_salon_pagos.includes(clave);
 				if (!ya) db.t.mi_salon_pagos.push(clave);
+				// La base aplicó el pago pero la respuesta se pierde (timeout de la llamada): el reintento ve ya_procesada
+				if (!ya && falla(db, "rpc:mi_salon_aplicar_pago", "rpc-perdida")) return { data: null, error: ERR };
 				return { data: { ok: true, estado: "pagado", ya_procesada: ya, accesos_creados: ya ? 0 : 1, docente_id: "u2", vence: "2026-12-18", cobertura: [] }, error: null };
 			}
 			return { data: null, error: null };
@@ -394,6 +397,63 @@ async function confirmar(cuerpo) {
 		reg("Mi Salon: reembolso y despues un approved viejo: 200, orden reembolsada, mi_salon_aplicar_pago NO corre, 0 correos ni pagos nuevos",
 			{ st: mv.map((x) => x.status), estado: bd.t.marketplace_ordenes[0].estado, rpcNuevas: bd.log.filter((x) => x === "rpc:mi_salon_aplicar_pago").length - llamadas, nuevos: { c: correos.length - c0, p: bd.t.mi_salon_pagos.length - p0 } },
 			{ st: [200, 200], estado: "reembolsado", rpcNuevas: 0, nuevos: { c: 0, p: 0 } });
+		// 12. approved y pending simultaneos: queda pagada y 1 solo correo
+		// el pending llega con distinto retraso respecto al approved (0 a 14 turnos): siempre queda pagada, 1 correo
+		const malos = [];
+		for (let retraso = 0; retraso <= 14; retraso++) {
+			sembrarTienda();
+			const ap = pago("t1");
+			const pe = pago("t1", { status: "pending" });
+			await Promise.all([webhook(ap), (async () => { for (let i = 0; i < retraso; i++) await cede(); return webhook(pe); })()]);
+			const r = resumen();
+			if (bd.t.marketplace_ordenes[0].estado !== "pagado" || r.pagadas !== 1 || r.accesos !== 2 || r.correos !== 1) malos.push({ retraso, estado: bd.t.marketplace_ordenes[0].estado, r });
+		}
+		reg("tienda: approved y pending simultaneos con 15 retrasos distintos del pending: siempre queda pagada, 2 accesos y 1 correo", malos, []);
+		sembrarTienda();
+		bd.t.marketplace_ordenes[0].estado = "pagado";
+		cf = await confirmar({ orden_id: "t1", accion: "cancelar" });
+		reg("confirmar-pago: cancelar una orden pagada -> 409 y sigue pagada", { st: cf.status, estado: bd.t.marketplace_ordenes[0].estado }, { st: 409, estado: "pagado" });
+
+		// 13. Corte al LEER el cuerpo de Mercado Pago = pasajero
+		sembrarTienda();
+		id = pago("t1");
+		mpFalla.push("cuerpo");
+		let cu = await webhook(id);
+		const esc13 = bd.log.filter((x) => !x.endsWith(":select")).length;
+		const cu2 = await webhook(id);
+		reg("MP corta al leer el cuerpo: 503 sin escribir; el reintento da 200 pagado con 1 correo", { a: cu.status, escrituras: esc13, b: cu2.status + ":" + cu2.data.estado, r: resumen() }, { a: 503, escrituras: 0, b: "200:pagado", r: { pagadas: 1, accesos: 2, correos: 1 } });
+		sembrarTienda();
+		id = pago("t1");
+		mpFalla.push("cuerpo");
+		cf = await confirmar({ payment_id: id });
+		reg("confirmar-pago: corte al leer el cuerpo -> 200 transitorio", { st: cf.status, tr: cf.data.resultados[0].transitorio }, { st: 200, tr: true });
+		sembrarTienda();
+		bd.t.marketplace_ordenes[0].created_at = new Date(Date.now() - 5 * 3600 * 1000).toISOString();
+		id = pago("t1");
+		mpFalla.push("cuerpo");
+		cf = await confirmar({ orden_id: "t1" });
+		reg("confirmar-pago por orden: corte al leer la busqueda -> transitorio y la orden no se descarta", { tr: cf.data.resultados[0].transitorio, est: bd.t.marketplace_ordenes[0].estado }, { tr: true, est: "pendiente" });
+
+		// 14. Reparacion simultanea de pedidos: orden ya pagada con un pedido sin activar y tres llamadas a la vez
+		sembrarTienda({ pedido: true });
+		bd.t.marketplace_ordenes[0].estado = "pagado";
+		id = pago("t1");
+		rs = await Promise.all([webhook(id), webhook(id), confirmar({ payment_id: id })]);
+		reg("tienda ya pagada con un pedido sin activar, tres llamadas simultaneas: el pedido se activa una vez y hay 2 correos (cliente y admin)",
+			{ st: rs.map((x) => x.status), pedido: bd.t.marketplace_pedidos[0].estado, correos: correos.map((x) => x.a).sort() },
+			{ st: [200, 200, 200], pedido: "pendiente", correos: ["admin@ejemplo.mx", "docente@ejemplo.mx"] });
+
+		// 15. Mi Salon: la base aplico el pago pero la respuesta se perdio; el reintento manda el correo (una vez)
+		sembrarSalon();
+		bd.fallas.push({ t: "rpc:mi_salon_aplicar_pago", op: "rpc-perdida", veces: 1 });
+		id = pago("m1", { monto: 199 });
+		const l1 = await webhook(id);
+		const trasPerdida = { pagos: bd.t.mi_salon_pagos.length, correos: correos.length };
+		const l2 = await webhook(id);
+		const l3s = await Promise.all([webhook(id), webhook(id), confirmar({ payment_id: id })]);
+		reg("Mi Salon: respuesta perdida de la RPC: 503 sin correo; el reintento (ya_procesada) manda el correo; los demas, simultaneos o no, no lo repiten",
+			{ l1: l1.status, trasPerdida, l2: l2.status + ":" + !!l2.data.yaProcesada, otros: l3s.map((x) => x.status), pagos: bd.t.mi_salon_pagos.length, correos: correos.length },
+			{ l1: 503, trasPerdida: { pagos: 1, correos: 0 }, l2: "200:true", otros: [200, 200, 200], pagos: 1, correos: 1 });
 		reg("nada salio a internet", red, []);
 
 		hablar();

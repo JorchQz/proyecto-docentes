@@ -7,7 +7,20 @@ Solo con el OK de Jorge en ese momento. Se corre desde la raíz del repo, con la
 ```
 git rev-parse --short HEAD          # anotar el hash que se despliega
 for t in pruebas/*.test.js; do node $t | tail -1; done      # todas deben decir TODAS PASAN
-supabase functions list --project-ref cluvaxxqvhtxxiwctpnl   # anotar la versión actual de cada una (para la reversa)
+supabase functions list --project-ref cluvaxxqvhtxxiwctpnl   # anotar la versión actual de cada una
+
+# RESPALDO real de lo que corre hoy (carpeta FUERA del repo; cada descarga trae la función y su _shared)
+mkdir C:\respaldo-edge-AAAA-MM-DD && cd C:\respaldo-edge-AAAA-MM-DD
+supabase functions download webhook-mercadopago --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions download confirmar-pago      --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions download avisos-pedidos      --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions download completar-pedido    --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions download redactar-boleta     --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions download comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl   # si ya existe en producción
+# (bienvenida-mi-salon y avisos-mi-salon son nuevas: no hay nada que respaldar)
+# Verificar que cada carpeta bajó con su index.ts; volver a la raíz del repo para desplegar.
+# Secretos: confirmar que MAIL_ADMIN está en la lista (solo muestra nombres): supabase secrets list --project-ref cluvaxxqvhtxxiwctpnl
+# b29 (mi_salon_aplicar_pago): ver docs/PRODUCCION-MI-SALON.md, "Aparte: b29"; es compatible con la versión vieja y la nueva.
 ```
 
 ## 1. Despliegue, en este orden (las que cobran primero, `comprar-mi-salon` al final)
@@ -38,15 +51,18 @@ supabase functions list --project-ref cluvaxxqvhtxxiwctpnl     # las ocho con la
   `select o.id from marketplace_ordenes o where o.estado = 'pagado' and not exists (select 1 from marketplace_accesos a where a.orden_id = o.id) and not exists (select 1 from mi_salon_ordenes m where m.orden_id = o.id) and not exists (select 1 from marketplace_pedidos p where p.orden_id = o.id);` (0 filas; las órdenes solo de pedido personalizado entregan al completarse el pedido).
 
 ## 3. Reversa
-Volver a desplegar la versión anterior (sin tocar la base), desde un checkout del commit anterior
-al cambio (`2dc7135`, o el hash anotado en el paso 0):
+Volver a desplegar lo respaldado en el paso 0 (sin tocar la base). IMPORTANTE: desde la carpeta del
+respaldo no existe `supabase/config.toml` del repo, así que `verify_jwt = false` se pasa a mano con
+`--no-verify-jwt` (las cuatro lo llevan en el repo; sin esa bandera el webhook de Mercado Pago recibiría 401):
 ```
-git worktree add ../reversa-edge 2dc7135
-cd ../reversa-edge
-supabase functions deploy webhook-mercadopago --project-ref cluvaxxqvhtxxiwctpnl
-supabase functions deploy confirmar-pago      --project-ref cluvaxxqvhtxxiwctpnl
-supabase functions deploy avisos-pedidos      --project-ref cluvaxxqvhtxxiwctpnl
-supabase functions deploy completar-pedido    --project-ref cluvaxxqvhtxxiwctpnl
+cd C:\respaldo-edge-AAAA-MM-DD
+supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy confirmar-pago      --no-verify-jwt --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy avisos-pedidos      --no-verify-jwt --project-ref cluvaxxqvhtxxiwctpnl
+supabase functions deploy completar-pedido    --no-verify-jwt --project-ref cluvaxxqvhtxxiwctpnl
 ```
+Comprobar después: `supabase functions list` (versión nueva = la del respaldo) y que el webhook responde
+401 (firma) y no 401 de JWT: una llamada sin cuerpo desde fuera debe decir "Firma inválida" o "ignored",
+no "Missing authorization header".
 La versión anterior responde 200 (y pierde el aviso) ante una falla pasajera; `confirmar-pago` lo repara
 cuando la persona vuelve o pulsa "Ya pagué, verificar". `comprar-mi-salon` puede quedarse desplegada.

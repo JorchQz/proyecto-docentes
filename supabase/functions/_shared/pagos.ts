@@ -75,6 +75,15 @@ async function fetchMp(url: string, mpToken: string): Promise<Response> {
   return resp;
 }
 
+/** Lee el cuerpo JSON: un corte o timeout al leerlo (o un cuerpo truncado) también es pasajero. */
+async function jsonMp(resp: Response): Promise<any> {
+  try {
+    return await resp.json();
+  } catch (err) {
+    throw new ErrorMpPasajero("No se pudo leer la respuesta de Mercado Pago: " + (err instanceof Error ? err.message : String(err)));
+  }
+}
+
 /**
  * Consulta un pago concreto en la API de Mercado Pago.
  * null = definitivo (no existe: 404, u otro 4xx que reintentar no arregla). Lanza ErrorMpPasajero
@@ -89,10 +98,10 @@ export async function consultarPago(
     mpToken,
   );
   if (!resp.ok) {
-    console.error("MP payment fetch failed:", paymentId, resp.status, await resp.text());
+    console.error("MP payment fetch failed:", paymentId, resp.status, await resp.text().catch(() => ""));
     return null;
   }
-  return await resp.json();
+  return await jsonMp(resp);
 }
 
 /**
@@ -112,10 +121,10 @@ export async function buscarPagoPorOrden(
   // Lanza ErrorMpPasajero si falla de forma pasajera: no es "sin pago" (no debe abandonar la orden).
   const resp = await fetchMp(url, mpToken);
   if (!resp.ok) {
-    console.error("MP payment search failed:", ordenId, resp.status, await resp.text());
+    console.error("MP payment search failed:", ordenId, resp.status, await resp.text().catch(() => ""));
     return null;
   }
-  const data = await resp.json();
+  const data = await jsonMp(resp);
   const results: Record<string, any>[] = data?.results || [];
   if (!results.length) return null;
   return results.find((p) => p.status === "approved") || results[0];
@@ -228,7 +237,11 @@ export async function procesarPago(
     const { error: errPend } = await admin
       .from("marketplace_ordenes")
       .update({ estado: nuevoEstado, referencia_pago: paymentId })
-      .eq("id", ordenId);
+      .eq("id", ordenId)
+      // Condicionado: un aviso pending/rejected simultáneo con el approved no regresa una orden ya
+      // pagada (ni causa un segundo correo de compra) ni una reembolsada.
+      .neq("estado", "pagado")
+      .neq("estado", "reembolsado");
     if (errPend) {
       console.error("No se pudo guardar el estado del pago (falla pasajera):", ordenId, errPend);
       return {
@@ -257,7 +270,9 @@ export async function procesarPago(
     await admin
       .from("marketplace_ordenes")
       .update({ estado: "pendiente", referencia_pago: paymentId })
-      .eq("id", ordenId);
+      .eq("id", ordenId)
+      .neq("estado", "pagado")
+      .neq("estado", "reembolsado");
     return {
       ok: false,
       estado: "pendiente",

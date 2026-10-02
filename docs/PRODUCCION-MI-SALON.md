@@ -311,6 +311,46 @@ alter table public.sesiones drop column if exists terminada_en;
 (`scripts/aplicar-migraciones-prod.js` no lleva una cadena fija: recibe los archivos como argumentos, así que b27 solo
 se agrega a las listas de esta guía. Va aparte de la cadena de `delete_own_account`: no la redefine.)
 
+## Aparte: b29, un aviso viejo no revive una orden reembolsada
+
+`supabase/mi_salon_b29_pago_reembolsado_2026-10.sql` (constructor BD, 2026-10-02). Redefine
+`mi_salon_aplicar_pago` (la de b22: misma firma, mismos permisos, solo `service_role`) con dos cambios:
+(1) dentro de su `for update` de la orden, si la orden ya está `reembolsado` y el aviso NO es de reembolso
+(approved, pending, rejected...) devuelve "ya procesada" sin marcar pagada, sin insertar accesos y sin
+apartar correo; (2) la respuesta "ya procesada" de una orden pagada suma `tipo_precio` y `cobertura` para
+que el reintento pueda mandar el correo de confirmación completo (ver abajo). Es aditiva e idempotente
+(`create or replace`), va DESPUÉS de b22 y **antes de desplegar las Edge Functions del paso 3** o justo
+después (las funciones nuevas ya protegen por su lado; con la función vieja solo falta la protección de la
+base contra una carrera de milisegundos). Solo con el OK de Jorge:
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b29_pago_reembolsado_2026-10.sql
+```
+
+Probada en pruebas (aplicada y con 15 comprobaciones SQL dentro de una transacción revertida): orden normal
+igual que antes (approved crea el acceso, el mismo aviso otra vez da ya_procesada con 0 accesos nuevos);
+orden reembolsada + approved / pending / rejected / in_process o un approved de otro pago: ya_procesada,
+0 accesos, estado intacto; refunded repetido idempotente; monto parcial y orden inexistente como antes.
+
+Comprobación (editor SQL de producción, solo lectura):
+
+```sql
+select position('b29' in pg_get_functiondef('public.mi_salon_aplicar_pago(uuid,jsonb)'::regprocedure)) > 0 as con_b29,  -- true
+       has_function_privilege('authenticated', 'public.mi_salon_aplicar_pago(uuid,jsonb)', 'execute')    as publica; -- false
+```
+
+Reversa: volver a la definición de `supabase/mi_salon_b22_cobros_2026-09.sql` (la sección `create or replace
+function public.mi_salon_aplicar_pago`, más sus `revoke` y `grant`), pegada en el editor SQL. No hay datos que
+deshacer.
+
+**Correo cuando la respuesta se pierde.** Si `mi_salon_aplicar_pago` confirma el pago pero la respuesta no
+llega (timeout), el reintento ve `ya_procesada`. Ahora, en ese caso, `_shared/mi-salon-pagos.ts` manda el
+correo de confirmación SI la fila `pago:<orden>` de `mi_salon_correos` no existe (el apartado es lo que evita
+duplicados, también con llamadas simultáneas; si el envío falla, el apartado se libera y el siguiente
+reintento lo manda). Límite: si la función se corta entre apartar y enviar, el apartado queda puesto y el
+correo no sale (`mi_salon_correos` no distingue "apartado" de "enviado"; saberlo exigiría una columna nueva,
+y no se hizo): es una ventana de milisegundos, y la docente tiene su acceso y la pantalla de Mi Salón lo dice.
+
 ## 2. Secretos de las Edge Functions
 
 Supabase → Edge Functions → Secrets (o `supabase secrets list --project-ref cluvaxxqvhtxxiwctpnl`).
@@ -323,6 +363,7 @@ Los de la tienda ya existen; confirmar que estén todos:
 | `SITE_URL` | comprar-mi-salon, avisos-mi-salon, bienvenida-mi-salon, pagos | `https://jissez.com` |
 | `RESEND_API_KEY` | correos (bienvenida, avisos, confirmación de pago) | el de la tienda |
 | `MAIL_FROM` | correos | el de la tienda |
+| `MAIL_ADMIN` | `_shared/pagos.ts` (aviso al negocio de un pedido personalizado nuevo) y avisos-pedidos | correo del negocio; sin él esos avisos no salen (la compra no se bloquea). Confirmar que existe: solo aparece el NOMBRE en `supabase secrets list` |
 | `CRON_SECRET` | avisos-mi-salon (y avisos-pedidos) | el mismo que ya usa avisos-pedidos |
 | `ANTHROPIC_API_KEY` | redactar-boleta (textos con IA) | **falta**; debe estar antes del 13 de noviembre |
 
@@ -389,11 +430,17 @@ supabase functions deploy comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl
   `confirmar-pago` llegó antes). Una orden con 503 y sin 200 posterior se revisa con el `select` de
   arriba (pendientes de más de 6 horas) y con "Ya pagué, verificar". Comandos exactos de despliegue,
   comprobación y reversa en orden: `scripts/desplegar-edge-mi-salon.md`.
-- **Reversa de este cambio** (si el webhook se comporta mal): volver a desplegar la versión anterior
-  de las funciones que procesan pagos, sin tocar la base: desde un checkout de `main` publicado antes
-  de este cambio (`2dc7135`), `supabase functions deploy webhook-mercadopago confirmar-pago avisos-pedidos
-  completar-pedido --project-ref cluvaxxqvhtxxiwctpnl`. La versión anterior no escribe nada que la nueva
-  necesite ni al revés (no hay migración), y las órdenes pendientes se aplican con el siguiente aviso.
+- **Respaldo ANTES de desplegar** (paso 0 de `scripts/desplegar-edge-mi-salon.md`): bajar lo que corre hoy
+  en producción de cada función que se va a redesplegar, a una carpeta FUERA de git:
+  `supabase functions download <función> --project-ref cluvaxxqvhtxxiwctpnl` (una por función; incluye
+  `_shared`), por ejemplo en `C:\respaldo-edge-2026-10-xx\`. Es el respaldo real: no depende de que un
+  commit de git coincida con lo desplegado.
+- **Reversa de este cambio** (si el webhook se comporta mal): redesplegar DESDE ese respaldo las funciones
+  que procesan pagos, sin tocar la base (`cd` a la carpeta del respaldo, `supabase functions deploy
+  webhook-mercadopago confirmar-pago avisos-pedidos completar-pedido --project-ref cluvaxxqvhtxxiwctpnl`;
+  los comandos exactos, en `scripts/desplegar-edge-mi-salon.md`). La versión anterior no escribe nada que la
+  nueva necesite ni al revés (no hay migración de este cambio; b29 es compatible con las dos versiones de
+  las funciones), y las órdenes pendientes se aplican con el siguiente aviso.
   OJO: con la versión anterior del webhook, `comprar-mi-salon` no debe seguir desplegada si esa versión
   no encamina Mi Salón; `2dc7135` sí la encamina (`esOrdenMiSalon`), pero devuelve 200 y pierde el aviso
   ante una falla pasajera (lo repara `confirmar-pago`).

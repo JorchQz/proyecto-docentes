@@ -131,9 +131,11 @@ export async function procesarPagoMiSalon(
   // deno-lint-ignore no-explicit-any
   const r = data as Record<string, any>;
 
-  // Correo de confirmación: solo cuando ESTE llamado creó el acceso (un webhook repetido o la
-  // verificación manual después del webhook no lo repiten). El correo nunca tumba la entrega.
-  if (r.estado === "pagado" && !r.ya_procesada && Number(r.accesos_creados) > 0) {
+  // Correo de confirmación: cuando ESTE llamado creó el acceso, o cuando la orden ya estaba aplicada
+  // pero el correo nunca quedó apartado (la respuesta de la primera llamada se perdió o el envío
+  // falló y se liberó el apartado). El apartado en mi_salon_correos (una fila por orden) evita que
+  // un webhook repetido o la verificación manual lo repitan. El correo nunca tumba la entrega.
+  if (r.estado === "pagado" && ((!r.ya_procesada && Number(r.accesos_creados) > 0) || r.ya_procesada)) {
     try {
       await avisarPagoMiSalon(admin, ordenId, r, opts);
     } catch (err) {

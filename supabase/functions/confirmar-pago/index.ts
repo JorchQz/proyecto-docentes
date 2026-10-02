@@ -109,7 +109,9 @@ Deno.serve(async (req: Request) => {
       await admin
         .from("marketplace_ordenes")
         .update({ estado: "fallido" })
-        .eq("id", ordenIdPedida);
+        .eq("id", ordenIdPedida)
+        .neq("estado", "pagado")
+        .neq("estado", "reembolsado");
       return jsonResponse({
         resultados: [{ orden_id: ordenIdPedida, ok: true, estado: "fallido", statusMp: "cancelada" }],
       });
