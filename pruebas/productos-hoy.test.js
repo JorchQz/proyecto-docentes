@@ -130,7 +130,7 @@ const dj = leer("js/dashboard.js");
 ok("Inicio: lee TODOS los proyectos activos (sin .limit(1))", /\.eq\("estado", "activo"\)\s*\.order\("created_at", \{ ascending: true \}\)\)\)/.test(dj) && !/\.limit\(1\)/.test(dj), true);
 ok("Inicio: una tarjeta por proyecto (renderProyectos → crearCardProyecto)", /proyectosActivos\.forEach\(\(proyecto\) =>/.test(dj) && /crearCardProyecto\(proyecto/.test(dj), true);
 ok("Inicio: terminar sesión es por proyecto (completa solo ese)",
-	/async function terminarSesion\(sesionId, notasCierre, proyecto\)/.test(dj) && /proyectoId: proyecto\.id/.test(dj) &&
+	/async function terminarSesion\(sesionId, notasCierre, proyecto, dia\)/.test(dj) && /proyectoId: proyecto\.id/.test(dj) &&
 	/\.eq\("proyecto_id", d\.proyectoId\)/.test(leer("js/sesion-terminar.js")) && /\.eq\("id", d\.proyectoId\)/.test(leer("js/sesion-terminar.js")), true);
 
 // ── 8. Actividad de otro campo o fuera de la sesión: contenido y PDA del catálogo (opcional) ──

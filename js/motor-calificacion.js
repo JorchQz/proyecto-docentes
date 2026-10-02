@@ -27,6 +27,10 @@
 	    (piso por grado, decisión 17b: 6 en 1°, 5 de 2° a 6°). El motor nunca redondea por su cuenta.
 	  - Participación y conducta (decisiones de Jorge, 2026-09-24): 1 (normal) y 2
 	    (destacado) valen el día completo; 0 vale 0. El 2 se nota en los textos.
+	  - Sesiones de varios días (Fase 5b, mi_salon_b27): la participación y la conducta se reparten en CADA día
+	    en que se trabajó una sesión (sesion_dias, su fecha, el día en que se terminó) entre sus campos, y una
+	    actividad de otro campo suma a su campo en su día. El día de una actividad y de una tarea sale de
+	    AlcanceHoy.diaTrabajo / baseTarea; el motor no vuelve a leer sesiones.fecha para eso.
 	  - Alumno dado de alta tarde: solo cuentan los productos con fecha desde su alta, y
 	    el examen solo si se aplicó desde su alta o si lo contestó
 	    (la regla vive en js/alcance-hoy.js; es la misma de Hoy, Inicio y Tareas).
@@ -270,7 +274,7 @@
 
 	function fechaProductoDe(p, fechaSesion) {
 		var A = alcance();
-		return A ? A.fechaProducto(fechaSesion[p.sesion_id], p.fecha_entrega) : null;
+		return A ? A.fechaDeProducto(p, fechaSesion[p.sesion_id]) : null;
 	}
 
 	// { alumnoId: "AAAA-MM-DD" | null }. Si quien llama no trae created_at, se lee aquí.
@@ -377,31 +381,65 @@
 		if (proyIds.length) {
 			sesiones = await todas(function () {
 				return sb.from("sesiones").select(detalle
-					? "id, fecha, campo_formativo, numero_sesion, proyecto_id, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo)), producto_sesion_pda(producto_sesion_id))"
-					: "id, fecha, campo_formativo").in("proyecto_id", proyIds).order("id");
+					? "id, fecha, terminada_en, estado_sesion, campo_formativo, numero_sesion, proyecto_id, sesiones_pda(id, pda_id, grado, criterio_aplicado, catalogo_pda(pda, catalogo_contenidos(campo_formativo)), producto_sesion_pda(producto_sesion_id))"
+					: "id, fecha, terminada_en, estado_sesion, campo_formativo, proyecto_id").in("proyecto_id", proyIds).order("id");
 			});
 		}
 		var sesionIds = sesiones.map(function (s) { return s.id; });
+		// Las sueltas llevan su marca desde ya: su día es el de su sesión (AlcanceHoy.diaTrabajo)
+		var tiposProyecto = {};
+		(proyRes.data || []).forEach(function (p) { tiposProyecto[p.id] = p.tipo; });
+		sesiones.forEach(function (s) { if (tiposProyecto[s.proyecto_id] === "sueltas") s.suelta = true; });
 
-		// Campos trabajados por fecha (para repartir participación y conducta)
-		var camposPorFecha = {}, fechaSesion = {};
-		sesiones.forEach(function (s) {
-			fechaSesion[s.id] = s.fecha || null;
-			if (!s.fecha) return;
-			var codigo = window.CamposFormativos ? window.CamposFormativos.corto(s.campo_formativo) : null;
-			if (!codigo) return;
-			if (!camposPorFecha[s.fecha]) camposPorFecha[s.fecha] = [];
-			if (camposPorFecha[s.fecha].indexOf(codigo) === -1) camposPorFecha[s.fecha].push(codigo);
-		});
-		var fechas = sesiones.map(function (s) { return s.fecha; }).filter(Boolean).sort();
+		// Los días reales en que se trabajó cada sesión (mi_salon_b27: sesion_dias)
+		var diasDeSesion = {};
+		if (sesionIds.length) {
+			var filasDias = await todas(function () {
+				return sb.from("sesion_dias").select("sesion_id, fecha").in("sesion_id", sesionIds).order("id");
+			});
+			filasDias.forEach(function (d) { (diasDeSesion[d.sesion_id] = diasDeSesion[d.sesion_id] || []).push(String(d.fecha).slice(0, 10)); });
+		}
 
 		var productos = [];
 		if (sesionIds.length) {
 			productos = await todas(function () {
-				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, activo, created_at, es_historico" + (detalle ? ", nombre, orden" : ""))
+				return sb.from("productos_sesion").select("id, sesion_id, tipo, campo, grados, fecha_entrega, fecha_trabajo, activo, created_at, es_historico" + (detalle ? ", nombre, orden" : ""))
 					.in("sesion_id", sesionIds).eq("activo", true).order("id");
 			});
 		}
+
+		/*
+			Campos trabajados por día (para repartir participación y conducta). Cada sesión cuenta con su campo en cada uno
+			de sus días (sesion_dias, su fecha y el día en que se terminó) y cada actividad, que no es tarea y tiene día
+			(AlcanceHoy.diaTrabajo), con el suyo en SU día: una actividad de otro campo suma a su campo en su día
+			(decisión de Jorge del 2026-10-02). Sin repetir un campo en un día. El rango de registro_diario y de las
+			asistencias cubre todos esos días.
+		*/
+		var camposPorFecha = {}, fechaSesion = {};
+		var diasTodos = {};
+		function marcarDia(dia, codigo) {
+			if (!dia) return;
+			diasTodos[dia] = true;
+			if (!codigo) return;
+			var l = camposPorFecha[dia] = camposPorFecha[dia] || [];
+			if (l.indexOf(codigo) === -1) l.push(codigo);
+		}
+		var corto = function (c) { return window.CamposFormativos ? window.CamposFormativos.corto(c) : null; };
+		sesiones.forEach(function (s) {
+			fechaSesion[s.id] = s; // la sesión entera: AlcanceHoy.diaTrabajo y baseTarea leen sus columnas
+			var codigo = corto(s.campo_formativo);
+			(diasDeSesion[s.id] || []).forEach(function (d) { marcarDia(d, codigo); });
+			marcarDia(s.fecha ? String(s.fecha).slice(0, 10) : null, codigo);
+			marcarDia(s.terminada_en ? String(s.terminada_en).slice(0, 10) : null, codigo);
+		});
+		productos.forEach(function (p) {
+			if (p.tipo === "tarea") return;
+			var ses = fechaSesion[p.sesion_id];
+			var dia = ses ? alcance().diaTrabajo(p, ses) : null;
+			if (!dia) return;
+			marcarDia(dia, corto(p.campo) || (ses && corto(ses.campo_formativo)));
+		});
+		var fechas = Object.keys(diasTodos).sort();
 
 		// Para quién es cada producto además de sus grados ("¿Para quién?", producto_sesion_alumnos,
 		// mi_salon_b17): las filas de estos alumnos (la regla de cada alumno solo mira las suyas)

@@ -85,12 +85,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Lecturas sin el tope de 1000 filas de Supabase (js/alcance-hoy.js): Tareas mira
 		// todos los proyectos del grupo, no solo los del alcance de "Hoy"
 		var sesiones = await window.AlcanceHoy.leerPorLotes(proyectos.map(function (p) { return p.id; }), function (lote) {
-			return window.sb.from("sesiones").select("id, numero_sesion, fecha, proyecto_id")
+			return window.sb.from("sesiones").select("id, numero_sesion, fecha, terminada_en, estado_sesion, proyecto_id")
 				.in("proyecto_id", lote).order("id");
 		});
 		if (!sesiones.length) return true;
 		var sesPorId = {};
-		sesiones.forEach(function (s) { sesPorId[s.id] = s; });
+		// Con la marca de suelta: AlcanceHoy.baseTarea (desde cuándo vence) distingue sueltas, en curso y terminadas
+		sesiones.forEach(function (s) { s.suelta = window.AlcanceHoy.esSueltas(proyPorId[s.proyecto_id]); sesPorId[s.id] = s; });
 
 		var prods = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
 			return window.sb.from("productos_sesion")
@@ -103,7 +104,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return Object.assign({}, t, {
 				sesion: s,
 				proyecto: proyPorId[s.proyecto_id] || {},
-				vence: window.AlcanceHoy.venceTarea(t.fecha_entrega, s.fecha, ajustes),
+				vence: window.AlcanceHoy.venceTarea(t.fecha_entrega, window.AlcanceHoy.baseTarea(s), ajustes),
 			});
 		});
 
@@ -138,7 +139,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		pendientes = pendientes.filter(function (c) { return activos[c.alumno_id]; });
 		var idsInc = Array.from(new Set(pendientes.map(function (c) { return c.producto_sesion_id; })));
 		var prodInc = await window.AlcanceHoy.leerPorLotes(idsInc, function (lote) {
-			return window.sb.from("productos_sesion").select("id, sesion_id, nombre, descripcion, grados, campo, fecha_entrega")
+			return window.sb.from("productos_sesion").select("id, sesion_id, tipo, nombre, descripcion, grados, campo, fecha_entrega, fecha_trabajo")
 				.eq("activo", true).in("id", lote).order("id");
 		});
 		prodInc.forEach(function (p) {
@@ -180,7 +181,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	// el motor y Qué le falta
 	function alumnosDe(t) {
 		return alumnos.filter(function (a) {
-			return window.AlcanceHoy.recibeProducto(a, t, asignaciones, t.sesion && t.sesion.fecha, calPorClave[a.id + "|" + t.id]);
+			return window.AlcanceHoy.recibeProducto(a, t, asignaciones, t.sesion, calPorClave[a.id + "|" + t.id]);
 		});
 	}
 
@@ -221,7 +222,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		if (t.porCompletar) return { total: t.porCompletar.length, revisados: 0, conteo: {}, estado: "por_completar" };
 		var s = situacionDe(alumnosDe(t), revisiones[t.id] || {}, t.vence, hoy);
 		// Registro histórico (Ponte al día, spec §4.3): lo que no se capturó no se pide en Hoy
-		if (s.estado === "por_revisar" && !window.AlcanceHoy.tareaPorRevisar(t, t.vence, hoy, t.sesion && t.sesion.fecha)) s.estado = "historica";
+		if (s.estado === "por_revisar" && !window.AlcanceHoy.tareaPorRevisar(t, t.vence, hoy, t.sesion)) s.estado = "historica";
 		if (s.estado === "por_revisar" && !window.AlcanceHoy.incluye(t.proyecto, grupoActual, hoy)) s.estado = "sin_revisar_cerrada";
 		return s;
 	}
@@ -273,6 +274,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? "<span class='text-xs text-gray-500'>" + (t.vence ? (t.vence <= hoy ? "Se revisa en Hoy desde el " : "Se revisa el ") + formatFecha(t.vence) : "Se revisa la siguiente clase") + "</span>"
 				: t.vence
 				? "<span class='text-xs text-gray-500'>" + (t.vence < hoy ? "Venció el " : t.vence === hoy ? "Vence hoy, " : "Vence el ") + formatFecha(t.vence) + "</span>"
+				: window.AlcanceHoy.sesionEnCurso(t.sesion)
+				// Sesión empezada y sin terminar (Fase 5b): vence el siguiente día de clase DESPUÉS de terminarla
+				? "<span class='text-xs text-gray-500'>Se revisa el día de clase siguiente a terminar la sesión " + esc(t.sesion.numero_sesion || "") + "</span>"
 				: "<span class='text-xs text-gray-500'>Toma fecha cuando trabajes la sesión " + esc(t.sesion.numero_sesion || "") + " en Hoy</span>";
 			var avance = t.porCompletar
 				? "<p class='text-sm text-gray-700'><b>" + s.total + "</b> " + (t.porCompletarSinEntregar === s.total

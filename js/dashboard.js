@@ -246,27 +246,31 @@ async function crearCardHoy() {
 	try {
 		// Días sin clase del grupo: las tareas vencen el siguiente día de clase (como en "Hoy")
 		const ajustes = await window.AlcanceHoy.leerAjustesCalendario(window.sb, user.id, grupoId);
-		const proys = await window.Lectura.uno(window.sb.from("proyectos").select("id")
+		const proys = await window.Lectura.uno(window.sb.from("proyectos").select("id, tipo")
 			.eq("maestro_id", user.id).eq("grupo_id", grupoId).or(window.AlcanceHoy.filtro(grupo, hoy)));
 		const proyIds = (proys || []).map((p) => p.id);
 		if (proyIds.length) {
 			// Lecturas sin el tope de 1000 filas de Supabase, igual que "Hoy" (js/alcance-hoy.js)
 			const leer = window.AlcanceHoy.leerPorLotes;
-			const ses = await leer(proyIds, (lote) => window.sb.from("sesiones").select("id, fecha").in("proyecto_id", lote).order("id"));
+			// La sesión entera (fecha, terminada_en, estado y si es suelta): el día de una actividad y desde cuándo vence una
+			// tarea salen de AlcanceHoy.diaTrabajo y baseTarea (sesiones de varios días, mi_salon_b27)
+			const sueltasIds = new Set((proys || []).filter((p) => window.AlcanceHoy.esSueltas(p)).map((p) => p.id));
+			const ses = await leer(proyIds, (lote) => window.sb.from("sesiones").select("id, fecha, terminada_en, estado_sesion, proyecto_id").in("proyecto_id", lote).order("id"));
 			const fechaSesion = {};
-			ses.forEach((s) => { fechaSesion[s.id] = s.fecha; });
-			const idsHoy = ses.filter((s) => s.fecha === hoy).map((s) => s.id);
+			ses.forEach((s) => { s.suelta = sueltasIds.has(s.proyecto_id); fechaSesion[s.id] = s; });
+			// Como "Hoy": las sesiones de hoy y las que se empezaron otro día y siguen sin terminar
+			const idsHoy = ses.filter((s) => s.fecha === hoy || window.AlcanceHoy.sesionEnCurso(s)).map((s) => s.id);
 			sesionesHoy = idsHoy.length;
 			// Las mismas sesiones que carga "Hoy": una tarea puede tener fecha de entrega aunque
 			// su sesión aún no tenga fecha
 			const idsSesiones = ses.map((s) => s.id);
 			if (idsSesiones.length) {
 				const prods = await leer(idsSesiones, (lote) => window.sb.from("productos_sesion")
-					.select("id, tipo, grados, sesion_id, fecha_entrega, created_at, es_historico").in("sesion_id", lote).eq("activo", true).order("id"));
+					.select("id, tipo, grados, sesion_id, fecha_entrega, fecha_trabajo, created_at, es_historico").in("sesion_id", lote).eq("activo", true).order("id"));
 				const trabajos = prods.filter((p) => p.tipo !== "tarea" && idsHoy.indexOf(p.sesion_id) !== -1);
 				// Las tareas del registro histórico no se piden (misma regla que "Hoy": AlcanceHoy.tareaPorRevisar)
 				const tareas = prods.filter((p) => {
-					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, fechaSesion[p.sesion_id], ajustes) : null;
+					const vence = p.tipo === "tarea" ? window.AlcanceHoy.venceTarea(p.fecha_entrega, window.AlcanceHoy.baseTarea(fechaSesion[p.sesion_id]), ajustes) : null;
 					return window.AlcanceHoy.tareaPorRevisar(p, vence, hoy, fechaSesion[p.sesion_id]);
 				});
 				const revisar = trabajos.concat(tareas);
@@ -284,7 +288,8 @@ async function crearCardHoy() {
 					las calificaciones y las asignaciones de los productos que tocan a esas faltas.
 				*/
 				const A = window.AlcanceHoy;
-				const fechasTrab = ses.map((s) => s.fecha).filter(Boolean).sort();
+				// Todos los días en que se trabajó algo (la fecha, la terminación y el día de cada actividad)
+					const fechasTrab = ses.map((s) => s.fecha).concat(ses.map((s) => s.terminada_en)).concat(prods.map((p) => p.fecha_trabajo)).filter(Boolean).sort();
 				if (fechasTrab.length) {
 					const asisIdx = A.indiceAsistencias(await A.leerAsistencias(window.sb, user.id, grupoId, fechasTrab[0]));
 					const conJust = alumnos.filter((a) => asisIdx[a.id] &&
@@ -547,13 +552,29 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto, hoy) {
 						return;
 					}
 					clearError();
+					// Si la sesión empezó otro día y hoy no se trabajó, el diálogo pregunta "¿La sesión se trabajó hoy?"
+					// (sus días y los días de sus actividades). lectura-opcional: solo decide si se pregunta; sin ella
+					// se termina con hoy, como siempre
+					let pregunta = null;
+					try {
+						const [dias, acts] = await Promise.all([
+							window.sb.from("sesion_dias").select("fecha").eq("maestro_id", user.id).eq("sesion_id", idSesion),
+							window.sb.from("productos_sesion").select("tipo, fecha_trabajo").eq("maestro_id", user.id).eq("sesion_id", idSesion).eq("activo", true),
+						]);
+						if (!dias.error && !acts.error) {
+							pregunta = window.SesionTerminar.preguntaDia({
+								sesion: sesion, hoy: getLocalDateISO(), dias: (dias.data || []).map((d) => d.fecha), productos: acts.data || [],
+							});
+						}
+					} catch (_) { /* sin la pregunta, se termina hoy */ }
 					window.SesionTerminar.abrirModal({
 						titulo: "Terminar la sesión " + (sesion.numero_sesion || ""),
 						sinCalificar: null,
 						etiquetaBoton: "Terminar sesión " + (sesion.numero_sesion || ""),
 						origen: btnTerminar,
-						alConfirmar: async function (notas) {
-							await terminarSesion(idSesion, notas, proyecto);
+						pregunta: pregunta,
+						alConfirmar: async function (notas, dia) {
+							await terminarSesion(idSesion, notas, proyecto, dia);
 						},
 					});
 				} finally {
@@ -624,11 +645,11 @@ async function esperarColaDelAparato() {
 }
 
 // ── 3. Terminar la sesión (de SU proyecto): js/sesion-terminar.js, el mismo de Hoy ──
-async function terminarSesion(sesionId, notasCierre, proyecto) {
+async function terminarSesion(sesionId, notasCierre, proyecto, dia) {
 	clearError();
 	try {
 		await window.SesionTerminar.terminar(window.sb, {
-			sesionId: sesionId, notas: notasCierre, proyectoId: proyecto.id, maestroId: user.id, hoy: getLocalDateISO(),
+			sesionId: sesionId, notas: notasCierre, proyectoId: proyecto.id, maestroId: user.id, hoy: getLocalDateISO(), dia: dia,
 		});
 	} catch (error) {
 		throw new Error("No se pudo terminar la sesión: " + ((error && error.message) || "error desconocido"));

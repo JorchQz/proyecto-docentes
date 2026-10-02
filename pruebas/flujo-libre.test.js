@@ -128,10 +128,11 @@ intentar("calendario", function () {
 	ok("venceTarea: después de un festivo (dejada el 15 de sep) → 17", A.venceTarea(null, "2026-09-15"), "2026-09-17");
 	ok("venceTarea: con los ajustes del grupo", A.venceTarea(null, "2026-09-24", [{ fecha: "2026-09-28", tipo: "otro" }]), "2026-09-29");
 	ok("Hoy, Inicio, Tareas y Qué le falta pasan los ajustes del grupo", [
-		/venceTarea\(t\.fecha_entrega, t\.sesion && t\.sesion\.fecha, ajustesCal\)/.test(leer("js/hoy.js")),
-		/venceTarea\(p\.fecha_entrega, fechaSesion\[p\.sesion_id\], ajustes\)/.test(leer("js/dashboard.js")),
-		/venceTarea\(t\.fecha_entrega, s\.fecha, ajustes\)/.test(leer("js/tareas.js")),
-		/venceTarea\(p\.fecha_entrega, s\.fecha \|\| null, e\.calendario \|\| \[\]\)/.test(leer("js/que-le-falta.js")),
+		// Fase 5b: la base de la tarea es AlcanceHoy.baseTarea(sesión), no sesiones.fecha (el día de terminación)
+		/venceTarea\(t\.fecha_entrega, window\.AlcanceHoy\.baseTarea\(t\.sesion\), ajustesCal\)/.test(leer("js/hoy.js")),
+		/venceTarea\(p\.fecha_entrega, window\.AlcanceHoy\.baseTarea\(fechaSesion\[p\.sesion_id\]\), ajustes\)/.test(leer("js/dashboard.js")),
+		/venceTarea\(t\.fecha_entrega, window\.AlcanceHoy\.baseTarea\(s\), ajustes\)/.test(leer("js/tareas.js")),
+		/venceTarea\(p\.fecha_entrega, A\.baseTarea\(s\), e\.calendario \|\| \[\]\)/.test(leer("js/que-le-falta.js")),
 	], [true, true, true, true]);
 	ok("las páginas cargan el calendario antes del alcance", ["hoy.html", "dashboard.html", "tareas.html", "reporte-alumno.html", "reportes.html", "planeacion.html"].filter(function (f) {
 		const h = leer(f), c = h.indexOf('src="js/calendario-sep.js"'), a = h.indexOf('src="js/alcance-hoy.js"');

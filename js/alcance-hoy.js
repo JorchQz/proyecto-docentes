@@ -104,8 +104,82 @@
 	*/
 	function venceTarea(fechaEntrega, fechaSesion, ajustes) {
 		if (fechaEntrega) return fechaEntrega;
-		if (!fechaSesion) return null;
-		return siguienteDiaDeClase(fechaSesion, ajustes);
+		// Puede llegar el día base ("AAAA-MM-DD", baseTarea) o la sesión misma (se calcula su base)
+		var base = fechaSesion && typeof fechaSesion === "object" ? baseTarea(fechaSesion) : fechaSesion;
+		if (!base) return null;
+		return siguienteDiaDeClase(base, ajustes);
+	}
+
+	/*
+		── El día de una actividad y la base de una tarea (Fase 5b, decisiones de Jorge del 2026-10-02; mi_salon_b27) ──
+		UNA sola regla del día, la que usan faltas, alta tarde, histórico, vencimiento, Qué le falta, Tareas, Inicio, la
+		vista del proyecto y el motor. Ya no se usa sesiones.fecha directo para esto (sigue siendo la bandera "empezada").
+		La sesión llega como el objeto { fecha, terminada_en, estado_sesion, suelta | proyecto_tipo } (los pedidos de las
+		pantallas traen esas columnas). Por compatibilidad también se acepta el texto "AAAA-MM-DD" o un objeto que solo
+		trae `fecha` (una sesión de UN día, como todo lo de antes de b27): su día es esa fecha.
+		  - diaTrabajo(producto, sesion): producto.fecha_trabajo; si no, en una suelta la fecha de su sesión; en una
+		    sesión terminada, terminada_en o, si es de antes de b27, fecha; en una sesión en curso o sin empezar, null
+		    ("por trabajar").
+		  - baseTarea(sesion): el día desde el que vence una tarea SIN fecha de entrega: sesión terminada, terminada_en
+		    (o fecha); suelta, fecha; en curso o sin empezar, null ("se revisa el día de clase siguiente a terminar la
+		    sesión").
+		"Terminada" = completada o con fecha anterior al corte (CORTE_EN_CURSO, el de js/sesion-terminar.js y el de la
+		función SQL sesion_terminada; pruebas/dias-sesion.test.js los ata). opciones.corte lo cambia.
+	*/
+	var CORTE_EN_CURSO = "2026-09-30";
+
+	function dia10(f) { return f ? String(f).slice(0, 10) : null; }
+
+	function sesionDe(s) {
+		if (!s) return null;
+		if (typeof s === "string") return { fecha: dia10(s), legacy: true };
+		var tipo = s.proyecto_tipo || (s.proyectos && s.proyectos.tipo) || null;
+		var completa = ("estado_sesion" in s) || ("terminada_en" in s) || s.suelta === true || ("proyecto_tipo" in s);
+		if (!completa) return { fecha: dia10(s.fecha), legacy: true };
+		return { fecha: dia10(s.fecha), terminada_en: dia10(s.terminada_en), estado_sesion: s.estado_sesion || null,
+			suelta: s.suelta === true || tipo === "sueltas" };
+	}
+
+	function sesionTerminada(sesion, opciones) {
+		var s = sesionDe(sesion);
+		if (!s || s.legacy) return false;
+		if (s.estado_sesion === "completada") return true;
+		return !!s.fecha && s.fecha < dia10((opciones && opciones.corte) || CORTE_EN_CURSO);
+	}
+
+	// Empezada (con fecha) y sin terminar; las sueltas no son sesiones en curso
+	function sesionEnCurso(sesion, opciones) {
+		var s = sesionDe(sesion);
+		if (!s || s.legacy || s.suelta || !s.fecha) return false;
+		return !sesionTerminada(s, opciones);
+	}
+
+	function diaTrabajo(producto, sesion, opciones) {
+		if (!producto) return null;
+		if (producto.fecha_trabajo) return dia10(producto.fecha_trabajo);
+		var s = sesionDe(sesion);
+		if (!s) return null;
+		if (s.legacy || s.suelta) return s.fecha || null;
+		if (sesionTerminada(s, opciones)) return s.terminada_en || s.fecha || null;
+		return null;
+	}
+
+	function baseTarea(sesion, opciones) {
+		var s = sesionDe(sesion);
+		if (!s) return null;
+		if (s.legacy || s.suelta) return s.fecha || null;
+		if (sesionTerminada(s, opciones)) return s.terminada_en || s.fecha || null;
+		return null;
+	}
+
+	// El día de un producto para faltas, alta tarde e histórico: actividad = su día de trabajo; tarea = la base desde la
+	// que vence. Sin ninguno, su fecha de entrega.
+	function diaBase(producto, sesion, opciones) {
+		if (!producto) return null;
+		return producto.tipo === "tarea" ? baseTarea(sesion, opciones) : diaTrabajo(producto, sesion, opciones);
+	}
+	function fechaDeProducto(producto, sesion, opciones) {
+		return diaBase(producto, sesion, opciones) || (producto && producto.fecha_entrega) || null;
 	}
 
 	/*
@@ -141,12 +215,13 @@
 
 	/*
 		recibeProducto(alumno, producto, asignaciones, fechaSesion, cal, alta) → boolean
+		fechaSesion: la sesión del producto ({ fecha, terminada_en, estado_sesion, ... }) o su fecha de un día (diaTrabajo).
 		alta: la fecha de alta del alumno ("AAAA-MM-DD"); por omisión alumno.alta.
 	*/
 	function recibeProducto(alumno, producto, asignaciones, fechaSesion, cal, alta) {
 		if (!asignadoA(alumno, producto, asignaciones)) return false;
 		var a = alta === undefined ? (alumno && alumno.alta) : alta;
-		return cuentaDesdeAlta(a || null, fechaProducto(fechaSesion, producto.fecha_entrega), cal);
+		return cuentaDesdeAlta(a || null, fechaDeProducto(producto, fechaSesion), cal);
 	}
 
 	/*
@@ -260,9 +335,12 @@
 		  tienen fecha de alta para esta regla: les cuenta todo. Tampoco los que se dieron de
 		  alta el mismo día que su grupo (el onboarding los agrega minutos después): una
 		  actividad suelta puede ser de un día anterior al grupo (decisión del 2026-09-26).
-		- Fecha del producto: la de su sesión, que es el día en que se trabajó o se dejó la
-		  tarea (una tarea que se dejó antes de que llegara no se le pidió, aunque venza
-		  después). Sin fecha de sesión, la de entrega; sin ninguna, cuenta.
+		- Fecha del producto (fechaDeProducto; Fase 5b): el día en que se trabajó la actividad
+		  (diaTrabajo) o desde el que vence la tarea (baseTarea: se dejó el día en que se terminó
+		  la sesión; una tarea que se dejó antes de que llegara no se le pidió, aunque venza
+		  después). Por trabajar (sin día) cuenta: aún se va a trabajar. Sin ninguna, la de
+		  entrega; sin ninguna, cuenta. fechaProducto(fechaSesion, fechaEntrega) es la regla de
+		  antes (sesión de un día).
 		- Excepción: una calificación FECHADA antes del alta sí cuenta. Es evidencia de que
 		  el alumno ya estaba (datos cargados después con su fecha real). Lo que se captura
 		  en "Hoy" lleva la fecha del día de captura, así que nunca cae en esta excepción.
@@ -507,7 +585,8 @@
 	function esHistorico(producto, fechaSesion) {
 		if (!producto) return false;
 		if (typeof producto.es_historico === "boolean") return producto.es_historico;
-		var f = fechaSesion || (producto.sesion && producto.sesion.fecha) || null;
+		// El día de la actividad (diaTrabajo; una tarea, su base). Por trabajar (null): aún no es histórica.
+		var f = fechaDeProducto(producto, fechaSesion || producto.sesion || null);
 		return esFechaHistorica(f, producto.created_at);
 	}
 	function tareaPorRevisar(producto, vence, hoyISO, fechaSesion) {
@@ -603,10 +682,10 @@
 	// Los días a los que pertenece un producto: el de su sesión (o su entrega) y, si es tarea, el que vence
 	function fechasDeProducto(producto, fechaSesion, ajustes) {
 		if (!producto) return [];
-		var f0 = fechaProducto(fechaSesion || null, producto.fecha_entrega || null);
+		var f0 = fechaDeProducto(producto, fechaSesion || null);
 		var salida = f0 ? [String(f0).slice(0, 10)] : [];
 		if (producto.tipo === "tarea") {
-			var v = venceTarea(producto.fecha_entrega || null, fechaSesion || null, ajustes);
+			var v = venceTarea(producto.fecha_entrega || null, baseTarea(fechaSesion || null), ajustes);
 			if (v && salida.indexOf(String(v).slice(0, 10)) === -1) salida.push(String(v).slice(0, 10));
 		}
 		return salida;
@@ -651,7 +730,7 @@
 			var hayJustificada = Object.keys(suya).some(function (f) { return estadoAsistencia(suya, f) === "justificada"; });
 			if (!hayJustificada) return;
 			(d.productos || []).forEach(function (p) {
-				var fechaSes = (d.fechaSesion && d.fechaSesion[p.sesion_id]) || (p.sesion && p.sesion.fecha) || null;
+				var fechaSes = (d.fechaSesion && d.fechaSesion[p.sesion_id]) || p.sesion || null;
 				var cal = califs[a.id + "|" + p.id];
 				if (!sinCalificar(cal)) return;
 				if (esHistorico(p, fechaSes)) return;
@@ -693,6 +772,8 @@
 		pendientesPorFalta: pendientesPorFalta, estadoPlazo: estadoPlazo, leerAsistencias: leerAsistencias,
 		diaMexico: diaMexico, esFechaHistorica: esFechaHistorica, esHistorico: esHistorico,
 		tareaPorRevisar: tareaPorRevisar, abrirParaCalificar: abrirParaCalificar,
+		CORTE_EN_CURSO: CORTE_EN_CURSO, sesionDe: sesionDe, sesionTerminada: sesionTerminada, sesionEnCurso: sesionEnCurso,
+		diaTrabajo: diaTrabajo, baseTarea: baseTarea, fechaDeProducto: fechaDeProducto,
 		filtro: filtro, incluye: incluye, venceTarea: venceTarea, siguienteDiaDeClase: siguienteDiaDeClase,
 		leerAjustesCalendario: leerAjustesCalendario,
 		leerPorLotes: leerPorLotes, resumenCierre: resumenCierre, faltantesJornada: faltantesJornada, tieneCierre: tieneCierre, nombreBreve: nombreBreve, listaBreve: listaBreve,

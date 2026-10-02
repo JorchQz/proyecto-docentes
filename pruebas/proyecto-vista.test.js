@@ -120,7 +120,7 @@ const filas = V.ordenarProductos(v.productosPorSesion.s1).map((p) => V.filaProdu
 ok("filaProducto: cuántos lo hacen y cuántos ya tienen calificación (una fila sin nada no cuenta)",
 	filas.map((f) => [f.producto.id, f.quien.n, f.calificados]), [["pN", 2, 1], ["pA", 2, 0], ["pM", 2, 0], ["t1", 3, 0], ["t2", 3, 0], ["pO", 6, 0]]);
 ok("filaProducto: una tarea de una sesión sin fecha se revisa después de trabajarla; con fecha, el siguiente día de clase",
-	[filas[3].vence, V.filaProducto(t1, Object.assign({}, ses1, { fecha: "2026-10-01" }), v).vence, V.filaProducto(Object.assign({}, t1, { fecha_entrega: HOY }), ses1, v).vence],
+	[filas[3].vence, V.filaProducto(t1, Object.assign({}, ses1, { fecha: "2026-10-01", estado_sesion: "completada" }), v).vence, V.filaProducto(Object.assign({}, t1, { fecha_entrega: HOY }), ses1, v).vence],
 	["se revisa el día de clase siguiente a la sesión", "se revisa el 2 oct", "se revisa hoy"]);
 ok("resumen para el material: cuántos alumnos hacen cada actividad y cada tarea", V.resumenMaterial(filas),
 	"4 actividades en clase: 2, 2, 2 y 6 alumnos · 2 tareas: 3 y 3 alumnos");

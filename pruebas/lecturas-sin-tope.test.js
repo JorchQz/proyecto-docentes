@@ -41,6 +41,8 @@ const ACOTADAS = [
 	["hoy.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
 	["dashboard.js", "asistencias", ".eq(\"fecha\", hoy)", "hoy, un grupo"],
 	["dashboard.js", "registro_diario", ".eq(\"fecha\", hoy)", "hoy"],
+	// Terminar sesión desde Inicio (Fase 5b): las actividades de UNA sesión, para saber si hoy se trabajó
+	["dashboard.js", "productos_sesion", ".eq(\"sesion_id\", idSesion)", "las actividades de una sesión"],
 	// "+ Actividad o tarea" de Hoy (Fase 4, 2026-09-29: el diálogo se sacó de js/hoy.js a js/actividad-nueva.js)
 	["actividad-nueva.js", "sesiones_pda", ".eq(\"sesion_id\", sesion.id)", "los PDA de una sesión (ligar lo que se agrega en clase)"],
 	["actividad-nueva.js", "catalogo_pda", ".eq(\"contenido_id\", c.id)", "los PDA de un contenido del catálogo (unos cuantos por grado)"],

@@ -275,19 +275,33 @@ const fila = (fecha, estado, upd) => ({ alumno_id: "x", fecha: fecha, asistencia
 	function sbT(quedan) {
 		return { from(t) {
 			const q = {
-				update(x) { escrito.push([t, x]); return q; }, select() { return q; }, eq() { return q; }, neq() { return q; }, or(f) { filtros.push(f); return q; },
+				update(x) { escrito.push([t, x]); return q; }, select() { return q; }, eq() { return q; }, neq() { return q; }, is() { return q; }, upsert(x) { escrito.push([t, x]); return q; }, or(f) { filtros.push(f); return q; },
 				then(a, b) { return Promise.resolve(t === "sesiones" && escrito.length && !q.contando ? { error: null, data: null, count: quedan } : { error: null, count: quedan }).then(a, b); },
 			};
 			return q;
 		} };
 	}
+	// Fase 5b: terminar también escribe terminada_en, el día de las actividades sin día y el día cerrado (sesion_dias);
+	// estas aserciones miran lo de siempre (sesión y proyecto) y abajo se prueba lo nuevo
+	const deSesion = () => escrito.filter((e) => e[0] === "sesiones" || e[0] === "proyectos");
 	let t = await ST.terminar(sbT(0), { sesionId: "s", notas: "n", proyectoId: "p", maestroId: "m", hoy: "2026-10-01" });
-	ok("terminar: sin sesiones por trabajar, el proyecto pasa a completado", [t.proyectoCompletado, escrito.map((e) => e[0] + ":" + (e[1].estado_sesion || e[1].estado))], [true, ["sesiones:completada", "proyectos:completado"]]);
+	ok("terminar (5b): escribe terminada_en, el día de las actividades sin día y el día cerrado",
+		[escrito.map((e) => e[0]), escrito[0][1].terminada_en, escrito[1][1].fecha_trabajo, escrito[2][1].fecha, !!escrito[2][1].cerrado_en],
+		[["sesiones", "productos_sesion", "sesion_dias", "proyectos"], "2026-10-01", "2026-10-01", "2026-10-01", true]);
+	ok("terminar (5b): el último día trabajado que se eligió (dia) manda sobre hoy", await (async () => {
+		escrito.length = 0;
+		await ST.terminar(sbT(2), { sesionId: "s", notas: "", proyectoId: "p", maestroId: "m", hoy: "2026-10-06", dia: "2026-10-02" });
+		const r = [escrito[0][1].terminada_en, escrito[1][1].fecha_trabajo, escrito[2][1].fecha];
+		escrito.length = 0;
+		await ST.terminar(sbT(0), { sesionId: "s", notas: "n", proyectoId: "p", maestroId: "m", hoy: "2026-10-01" });
+		return r;
+	})(), ["2026-10-02", "2026-10-02", "2026-10-02"]);
+	ok("terminar: sin sesiones por trabajar, el proyecto pasa a completado", [t.proyectoCompletado, deSesion().map((e) => e[0] + ":" + (e[1].estado_sesion || e[1].estado))], [true, ["sesiones:completada", "proyectos:completado"]]);
 	escrito.length = 0;
 	t = await ST.terminar(sbT(2), { sesionId: "s", notas: "", proyectoId: "p", maestroId: "m", hoy: "2026-10-01" });
-	ok("terminar: si quedan sesiones, el proyecto no se toca", [t.proyectoCompletado, escrito.map((e) => e[0])], [false, ["sesiones"]]);
+	ok("terminar: si quedan sesiones, el proyecto no se toca", [t.proyectoCompletado, deSesion().map((e) => e[0])], [false, ["sesiones"]]);
 
-	ok("terminar: la cuenta de sesiones por terminar excluye las anteriores al corte (activas de Fanny) sin escribir en ellas", [filtros[0], escrito.every((e) => e[1].estado_sesion === "completada" || e[1].estado === "completado")], ["fecha.is.null,fecha.gte.2026-09-30", true]);
+	ok("terminar: la cuenta de sesiones por terminar excluye las anteriores al corte (activas de Fanny) sin escribir en ellas", [filtros[0], deSesion().every((e) => e[1].estado_sesion === "completada" || e[1].estado === "completado")], ["fecha.is.null,fecha.gte.2026-09-30", true]);
 
 	// Hoy usa el módulo
 	const h = leer("js/hoy.js"), hh = leer("hoy.html");

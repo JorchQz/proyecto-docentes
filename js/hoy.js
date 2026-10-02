@@ -70,6 +70,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	var todasLasSesiones = [];      // todas las sesiones de los proyectos que mira Hoy (bloqueo de "Trabajar hoy")
 	var faltaVistos = {};           // "Por falta justificada" que se calificaron en esta visita (siguen a la vista para corregir)
 	var esperandoTerminar = false;  // se está terminando una sesión
+	// Sesiones de varios días (Fase 5b, mi_salon_b27): los días trabajados de las sesiones en curso (sesion_dias) como
+	// { sesionId: [{ fecha, cerrado_en }] }, los grupos "Trabajadas el lun 5" desplegados y que se está guardando una
+	// pregunta del día
+	var diasDeSesion = {};
+	var gruposDiaAbiertos = {};
+	var esperandoDia = false;
 	// Los campos de una calificación que captura Hoy (los mismos de la bandeja)
 	var CAMPOS_CAL = ["estado_entrega", "nivel", "puntaje", "retroalimentacion", "revisar_en", "estado_en_clase", "completado_en"];
 	// Lo que esta pantalla sabe que hay en la BASE, por llave de la bandeja: { marcas, valor }
@@ -758,12 +764,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// Sin el tope de 1000 filas de Supabase (js/alcance-hoy.js)
 		var sesiones = await window.AlcanceHoy.leerPorLotes(proyIds, function (lote) {
 			return window.sb.from("sesiones")
-				.select("id, numero_sesion, fecha, campo_formativo, momento, proyecto_id, estado_sesion")
+				.select("id, numero_sesion, fecha, terminada_en, campo_formativo, momento, proyecto_id, estado_sesion")
 				.in("proyecto_id", lote).order("id");
 		});
 		var sesionPorId = {};
 		sesiones.forEach(function (s) { sesionPorId[s.id] = s; });
 		(proyRes.data || []).forEach(function (p) { proyectoPorId[p.id] = p; });
+		// Las sueltas llevan su marca: el día de una actividad suelta es el de su sesión (AlcanceHoy.diaTrabajo)
+		sesiones.forEach(function (s) { s.suelta = window.AlcanceHoy.esSueltas(proyectoPorId[s.proyecto_id]); });
 		// Con varios proyectos activos, las de hoy van por proyecto y luego por número
 		// Las actividades sueltas van al final de las del día
 		todasLasSesiones = sesiones;
@@ -781,10 +789,23 @@ document.addEventListener("DOMContentLoaded", async function () {
 		*/
 		siguientes = window.ProductosHoy.siguientesPorProyecto(sesiones, proyRes.data || []);
 
+		// Los días trabajados de las sesiones en curso (mi_salon_b27: sesion_dias). Los pide la jornada ("Sigue"), la
+		// pregunta del día siguiente y "Terminar sesión" (el último día trabajado); sin tope de 1000 filas
+		var idsEnCurso = sesiones.filter(function (s) { return esEnCurso(s); }).map(function (s) { return s.id; });
+		if (idsEnCurso.length) {
+			var filasDias = await window.AlcanceHoy.leerPorLotes(idsEnCurso, function (lote) {
+				return window.sb.from("sesion_dias").select("sesion_id, fecha, cerrado_en")
+					.eq("maestro_id", user.id).in("sesion_id", lote).order("fecha").order("id");
+			});
+			filasDias.forEach(function (d) {
+				(diasDeSesion[d.sesion_id] = diasDeSesion[d.sesion_id] || []).push({ fecha: String(d.fecha).slice(0, 10), cerrado_en: d.cerrado_en || null });
+			});
+		}
+
 		if (!sesiones.length) return;
 		var productos = await window.AlcanceHoy.leerPorLotes(sesiones.map(function (s) { return s.id; }), function (lote) {
 			return window.sb.from("productos_sesion")
-				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, orden, created_at, es_historico, desde_ponte_al_dia")
+				.select("id, sesion_id, tipo, nombre, descripcion, grados, modalidad, campo, fecha_entrega, fecha_trabajo, orden, created_at, es_historico, desde_ponte_al_dia")
 				.in("sesion_id", lote).eq("activo", true)
 				.order("orden").order("id");
 		});
@@ -835,7 +856,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// aquí; AlcanceHoy.tareaPorRevisar, la misma regla de Inicio y Tareas)
 		tareas = productos.filter(function (p) {
 			if (p.tipo !== "tarea") return false;
-			return window.AlcanceHoy.tareaPorRevisar(p, venceDe(p), hoy, p.sesion && p.sesion.fecha);
+			return window.AlcanceHoy.tareaPorRevisar(p, venceDe(p), hoy, p.sesion);
 		}).sort(function (a, b) {
 			var fa = venceDe(a) || "";
 			var fb = venceDe(b) || "";
@@ -894,7 +915,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 			de una falta justificada queda pendiente con su plazo (AlcanceHoy, "Faltas"). Lectura opcional: si
 			falla, Hoy sigue sin esa parte y lo dice en su bloque.
 		*/
-		var fechasTrab = sesiones.map(function (s) { return s.fecha; }).filter(Boolean).sort();
+		// Todos los días en que se trabajó algo: la fecha de cada sesión, su terminación y el día de cada actividad
+		// (una sesión que se continuó otro día no se mira solo desde su primer día)
+		var fechasTrab = sesiones.map(function (s) { return s.fecha; })
+			.concat(sesiones.map(function (s) { return s.terminada_en; }))
+			.concat(productos.map(function (p) { return p.fecha_trabajo; })).filter(Boolean).sort();
 		if (fechasTrab.length) {
 			try {
 				// lectura-opcional: solo alimenta "Por falta justificada" y quién no aparece para calificar en un día
@@ -972,7 +997,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 	// ¿Su falta justificada deja pendiente este producto? (entonces se ve en "Por falta justificada")
 	function cubiertoPorJustificada(alumno, producto) {
-		var est = window.AlcanceHoy.estadoPorAsistencia(producto, producto.sesion && producto.sesion.fecha, asisDe(alumno.id), ajustesCal);
+		var est = window.AlcanceHoy.estadoPorAsistencia(producto, producto.sesion, asisDe(alumno.id), ajustesCal);
 		return !!(est && est.estado === "justificada");
 	}
 	// Una sesión de un proyecto (no una actividad suelta) empezada y sin terminar (js/sesion-terminar.js)
@@ -1040,11 +1065,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		El `tipo` lo pone el trigger calificaciones_tipo_desde_producto copiándolo del
 		producto. La fila se arma al capturar: es la foto de ese momento.
 	*/
+	// Lo que la base hace sola con la primera captura de una actividad sin día (trigger de mi_salon_b27: toma el día de la
+	// captura y lo agrega a los días de la sesión), reflejado aquí para que la pantalla lo agrupe sin recargar
+	function tomarDiaPorCaptura(producto, cal) {
+		if (!producto || producto.tipo === "tarea" || producto.fecha_trabajo) return;
+		if (!(cal && (cal.estado_entrega || cal.nivel || (cal.puntaje !== null && cal.puntaje !== undefined) || cal.retroalimentacion))) return;
+		if (!producto.sesion || !esEnCurso(producto.sesion)) return;
+		producto.fecha_trabajo = hoy;
+		agregarDiaLocal(producto.sesion.id, hoy);
+	}
+	function agregarDiaLocal(sesionId, fecha) {
+		var l = diasDeSesion[sesionId] = diasDeSesion[sesionId] || [];
+		if (!l.some(function (d) { return d.fecha === fecha; })) l.push({ fecha: fecha, cerrado_en: null });
+	}
+
 	function guardarCalificacion(alumno, producto, cambios) {
 		var clave = alumno.id + "|" + producto.id;
 		var actual = calificaciones[clave] || { alumno_id: alumno.id, producto_sesion_id: producto.id };
 		Object.keys(cambios).forEach(function (k) { actual[k] = cambios[k]; });
 		calificaciones[clave] = actual;
+		tomarDiaPorCaptura(producto, actual);
 
 		(function () {
 			var fila = {
@@ -1119,9 +1159,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 		}
 	}
 
+	// El día en que se trabajó una actividad (AlcanceHoy.diaTrabajo); una tarea, el día desde el que vence. null: por trabajar
+	function diaDeActividad(p) {
+		return window.AlcanceHoy.fechaDeProducto(p, p.sesion);
+	}
+
 	// Cuándo vence una tarea (calendario SEP y ajustes del grupo: js/alcance-hoy.js)
 	function venceDe(t) {
-		return window.AlcanceHoy.venceTarea(t.fecha_entrega, t.sesion && t.sesion.fecha, ajustesCal);
+		// Sin fecha de entrega vence el siguiente día de clase DESPUÉS de terminar la sesión (baseTarea); mientras sigue
+		// abierta no vence (null)
+		return window.AlcanceHoy.venceTarea(t.fecha_entrega, window.AlcanceHoy.baseTarea(t.sesion), ajustesCal);
 	}
 
 	/*
@@ -1131,7 +1178,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		después no ve como pendientes las tareas de antes).
 	*/
 	function alumnosDeProducto(producto) {
-		var fechaSesion = producto.sesion && producto.sesion.fecha;
+		var fechaSesion = producto.sesion; // la sesión entera: su día sale de AlcanceHoy.diaTrabajo
 		return alumnos.filter(function (a) {
 			return window.AlcanceHoy.recibeProducto(a, producto, asignaciones, fechaSesion, calificaciones[a.id + "|" + producto.id]);
 		});
@@ -1147,11 +1194,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 	*/
 	function alumnosParaCalificar(producto) {
 		var lista = alumnosDeProducto(producto);
-		var fechaSes = producto.sesion && producto.sesion.fecha;
+		// El día de la actividad (AlcanceHoy.diaTrabajo): en una sesión de varios días, el de CADA actividad, no el
+		// primero de la sesión; por trabajar (null) es hoy
+		var diaAct = producto.tipo === "tarea" ? null : window.AlcanceHoy.diaTrabajo(producto, producto.sesion);
 		// Lo de hoy, las tareas que se revisan hoy y las sesiones en curso (con la asistencia de SU día)
-		var delDia = producto.tipo === "tarea" || fechaSes === hoy || esEnCurso(producto.sesion);
+		var delDia = producto.tipo === "tarea" || diaAct === hoy || esEnCurso(producto.sesion);
 		if (!delDia) return lista;
-		var diaFalta = producto.tipo === "tarea" ? hoy : (fechaSes || hoy);
+		var diaFalta = producto.tipo === "tarea" ? hoy : (diaAct || hoy);
 		return lista.filter(function (a) {
 			if (window.ProductosHoy.tieneCaptura(calificaciones[a.id + "|" + producto.id])) return true;
 			// Faltó ese día, o su falta justificada lo deja pendiente (se ve en "Por falta justificada")
@@ -1528,7 +1577,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				}
 				var sesion = p.sesion || {};
 				var nota = (p.nombre || "Actividad") + " · " + (window.CamposFormativos ? window.CamposFormativos.largo(p.campo) : p.campo) +
-					(sesion.fecha ? " · " + (sinEntregar ? "sin entregar" : "incompleta") + " el " + fechaCorta(sesion.fecha) : "");
+					(diaDeActividad(p) ? " · " + (sinEntregar ? "sin entregar" : "incompleta") + " el " + fechaCorta(diaDeActividad(p)) : "");
 				return filaAlumno(al, controles, nota);
 			}).join("");
 		}
@@ -1745,6 +1794,135 @@ document.addEventListener("DOMContentLoaded", async function () {
 		repintarSesiones();
 	}
 
+	/*
+		Sesiones de varios días (Fase 5b, mi_salon_b27). En una sesión en curso empezada otro día, las actividades con día
+		anterior a hoy van en un grupo plegado por día ("Trabajadas el lun 5"; se pueden seguir calificando, con la
+		asistencia de ESE día) y las de hoy y las que faltan por trabajar quedan arriba, como siempre.
+	*/
+	function etiquetaDiaCorta(fecha) {
+		return window.SesionTerminar && window.SesionTerminar.etiquetaDia ? window.SesionTerminar.etiquetaDia(fecha) : fechaCorta(fecha);
+	}
+
+	function cuerpoDeProductos(ses, productos) {
+		if (esSuelta(ses) || !esEnCurso(ses)) return productos.map(function (p) { return bloqueProducto(p); }).join("");
+		var arriba = [], porDia = {};
+		productos.forEach(function (p) {
+			var d = window.AlcanceHoy.diaTrabajo(p, ses);
+			if (d && d < hoy) (porDia[d] = porDia[d] || []).push(p); else arriba.push(p);
+		});
+		var dias = Object.keys(porDia).sort();
+		var html = arriba.map(function (p) { return bloqueProducto(p); }).join("");
+		if (!arriba.length && dias.length) html = vacio("No hay actividades por trabajar hoy en esta sesión. Las de días anteriores están abajo.");
+		dias.forEach(function (d) {
+			var clave = ses.id + "|" + d, abierto = !!gruposDiaAbiertos[clave];
+			var sin = 0;
+			porDia[d].forEach(function (p) {
+				alumnosParaCalificar(p).forEach(function (al) { if (!estaCalificado(calificaciones[al.id + "|" + p.id])) sin++; });
+			});
+			var n = porDia[d].length;
+			html += "<div class='mb-3 rounded-xl border border-gray-200 bg-gray-50/60' data-grupo-dia='" + esc(clave) + "'>" +
+				"<button type='button' data-abrir-grupo-dia='" + esc(clave) + "' aria-expanded='" + (abierto ? "true" : "false") + "' class='w-full min-h-[44px] flex items-center gap-2 px-3 py-2 text-left rounded-xl hover:bg-gray-100'>" +
+				chevron(abierto) +
+				"<span class='min-w-0 flex-1 text-sm font-semibold text-gray-700'>Trabajadas el " + esc(etiquetaDiaCorta(d)) + "</span>" +
+				"<span class='shrink-0 text-xs font-semibold rounded-full px-2.5 py-1 " + (sin ? "bg-gray-100 text-gray-600" : "bg-emerald-50 text-emerald-700") + "'>" +
+				n + (n === 1 ? " actividad" : " actividades") + (sin ? " · " + sin + " sin calificar" : "") + "</span></button>" +
+				"<div class='" + (abierto ? "" : "hidden ") + "px-3 pb-2'>" + lineaFaltaron(d) +
+				porDia[d].map(function (p) { return bloqueProducto(p); }).join("") + "</div></div>";
+		});
+		return html;
+	}
+
+	// Las actividades (no tareas) de una sesión que siguen por trabajar: sin día
+	function porTrabajarDe(ses) {
+		return (productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea" && !p.fecha_trabajo; });
+	}
+
+	// "Esta actividad · 3° (todos)": el renglón de una casilla de "¿Qué se trabajó?"
+	function etiquetaActividad(p) {
+		var q = quienHaceDe(p).corto.corto;
+		return (p.nombre || "Actividad") + (q ? " · " + q : "");
+	}
+
+	// El primer día de la sesión que quedó sin cerrar (antes de hoy) y las actividades que le quedan por trabajar, o null
+	function diaSinCerrar(ses) {
+		if (!ses || esSuelta(ses) || !esEnCurso(ses)) return null;
+		var dias = (diasDeSesion[ses.id] || []).filter(function (d) { return d.fecha < hoy && !d.cerrado_en; })
+			.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
+		if (!dias.length) return null;
+		var pendientes = porTrabajarDe(ses);
+		return pendientes.length ? { fecha: dias[0].fecha, productos: pendientes } : null;
+	}
+
+	var marcasDia = {}; // "sesion|fecha" -> { productoId: true } casillas marcadas de la pregunta del día siguiente
+
+	// Una vez por día sin cerrar: "La sesión 3 se trabajó el lun 5 y no se cerró la jornada. ¿Qué actividades se trabajaron ese día?"
+	function bloquePreguntaDia(ses) {
+		var q = diaSinCerrar(ses);
+		if (!q) return "";
+		var clave = ses.id + "|" + q.fecha, marcas = marcasDia[clave] || {};
+		return "<div class='mb-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3' data-pregunta-dia='" + esc(q.fecha) + "' data-pregunta-sesion='" + esc(ses.id) + "'>" +
+			"<p class='text-sm font-semibold text-gray-800'>La sesión " + (ses.numero_sesion || "") + " se trabajó el " + esc(etiquetaDiaCorta(q.fecha)) +
+			" y no se cerró la jornada. ¿Qué actividades se trabajaron ese día?</p>" +
+			"<div class='mt-1'>" + q.productos.map(function (p) {
+				return "<label class='flex items-start gap-3 min-h-[44px] py-2 text-sm text-gray-700'>" +
+					"<input type='checkbox' data-dia-actividad='" + esc(p.id) + "' class='mt-0.5 h-5 w-5 shrink-0'" + (marcas[p.id] ? " checked" : "") + ">" +
+					"<span class='min-w-0 break-words'>" + esc(etiquetaActividad(p)) + "</span></label>";
+			}).join("") + "</div>" +
+			"<div class='mt-2 flex flex-col sm:flex-row gap-2'>" +
+			"<button type='button' data-dia-guardar class='min-h-[44px] px-5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60'>Guardar</button>" +
+			"<button type='button' data-dia-nada class='min-h-[44px] px-5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60'>No se trabajó nada más</button>" +
+			"</div></div>";
+	}
+
+	/*
+		Le pone `fecha` como día de trabajo a las actividades `ids` de la sesión (las que sigan sin día) y deja ese día
+		cerrado en sesion_dias (ya se confirmó qué se trabajó). Lanza el error: quien llama lo dice. También actualiza lo
+		que Hoy tiene en memoria.
+	*/
+	async function cerrarDiaDeSesion(ses, fecha, ids) {
+		if (ids.length) {
+			var r = await window.sb.from("productos_sesion").update({ fecha_trabajo: fecha })
+				.in("id", ids).eq("maestro_id", user.id).is("fecha_trabajo", null);
+			if (r.error) throw r.error;
+		}
+		var ahora = new Date().toISOString();
+		var c = await window.sb.from("sesion_dias")
+			.upsert({ sesion_id: ses.id, maestro_id: user.id, fecha: fecha, cerrado_en: ahora }, { onConflict: "sesion_id,fecha" });
+		if (c.error) throw c.error;
+		(productosPorSesion[ses.id] || []).forEach(function (p) {
+			if (ids.indexOf(p.id) !== -1 && !p.fecha_trabajo) p.fecha_trabajo = fecha;
+		});
+		agregarDiaLocal(ses.id, fecha);
+		diasDeSesion[ses.id].forEach(function (d) { if (d.fecha === fecha) d.cerrado_en = ahora; });
+		delete marcasDia[ses.id + "|" + fecha];
+	}
+
+	async function responderPreguntaDia(btn, nada) {
+		var caja = btn.closest("[data-pregunta-dia]");
+		if (!caja || esperandoDia) return;
+		var ses = todasLasSesiones.filter(function (s) { return s.id === caja.dataset.preguntaSesion; })[0];
+		var fecha = caja.dataset.preguntaDia;
+		if (!ses) return;
+		if (sinSenal()) {
+			avisoALaVista("Esto necesita señal. Lo que ya capturaste sigue guardado en este dispositivo; inténtalo cuando vuelva la señal.");
+			return;
+		}
+		var ids = nada ? [] : Array.prototype.slice.call(caja.querySelectorAll("input[data-dia-actividad]:checked")).map(function (c) { return c.dataset.diaActividad; });
+		esperandoDia = true;
+		Array.prototype.slice.call(caja.querySelectorAll("button")).forEach(function (b) { b.disabled = true; });
+		try {
+			await cerrarDiaDeSesion(ses, fecha, ids);
+			renderSesiones();
+			renderTareas();
+			renderPendientes();
+		} catch (e) {
+			Array.prototype.slice.call(caja.querySelectorAll("button")).forEach(function (b) { b.disabled = false; });
+			avisoALaVista("No se pudo guardar qué se trabajó ese día: " + textoError(e) + ".");
+		} finally {
+			esperandoDia = false;
+		}
+	}
+
 	function renderSesiones() {
 		var cont = document.getElementById("sesionesLista");
 		if (!sesionesHoy.length) {
@@ -1756,7 +1934,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			var productos = (productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo !== "tarea"; });
 			var tareasSesion = (productosPorSesion[ses.id] || []).filter(function (p) { return p.tipo === "tarea"; });
 			var cuerpo = productos.length
-				? productos.map(function (p) { return bloqueProducto(p); }).join("")
+				? cuerpoDeProductos(ses, productos)
 				: vacio("Esta sesión no tiene actividades para calificar. Agrega una con «Actividad o tarea».");
 			var proyecto = proyectoPorId[ses.proyecto_id];
 			var suelta = esSuelta(ses);
@@ -1787,7 +1965,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 					: "Agregar actividad o tarea a la sesión " + (ses.numero_sesion || "")) + "' " +
 				"class='inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border border-blue-300 text-sm font-semibold text-blue-700 hover:bg-blue-50'>" + iconoMas() + "Actividad o tarea</button>" +
 				"</span>" +
-				"</div>" + (ses.fecha === hoy || esEnCurso(ses) ? lineaFaltaron(ses.fecha) : "") + panelSecuencia(ses) + cuerpo + bloqueTareasDeSesion(tareasSesion) + pieSesion(ses) + "</div>";
+				"</div>" + (ses.fecha === hoy || esEnCurso(ses) ? lineaFaltaron(hoy) : "") + bloquePreguntaDia(ses) + panelSecuencia(ses) + cuerpo + bloqueTareasDeSesion(tareasSesion) + pieSesion(ses) + "</div>";
 		}).join("") + bloqueSiguientes();
 		var sinCalificar = 0;
 		sesionesHoy.forEach(function (ses) {
@@ -1830,6 +2008,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 		La espera es esperarCola (R36): también lo que se acaba de encolar (la retroalimentación a medio
 		escribir), que bandeja.pendientes() todavía no cuenta. Si algo no se pudo enviar, no se termina.
 	*/
+	// ¿Se pregunta "¿La sesión se trabajó hoy?" al terminarla? (js/sesion-terminar.js, preguntaDia)
+	function preguntaDeTerminar(ses) {
+		return window.SesionTerminar.preguntaDia({
+			sesion: ses, hoy: hoy,
+			dias: (diasDeSesion[ses.id] || []).map(function (d) { return d.fecha; }),
+			productos: productosPorSesion[ses.id] || [],
+		});
+	}
+
+	// Lo que Hoy sabe después de terminar una sesión sin recargar (la jornada sigue en la misma pantalla)
+	function marcarTerminadaLocal(ses, dia) {
+		ses.estado_sesion = "completada";
+		ses.terminada_en = dia;
+		(productosPorSesion[ses.id] || []).forEach(function (p) {
+			if (p.tipo !== "tarea" && !p.fecha_trabajo) p.fecha_trabajo = dia;
+		});
+		agregarDiaLocal(ses.id, dia);
+		diasDeSesion[ses.id].forEach(function (d) { if (d.fecha === dia) d.cerrado_en = new Date().toISOString(); });
+	}
+
 	async function terminarSesion(btn) {
 		var ses = todasLasSesiones.filter(function (s) { return s.id === btn.dataset.terminarSesion; })[0];
 		if (!ses || esperandoTerminar) return;
@@ -1859,9 +2057,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 				sinCalificar: sinCalificarDeSesion(ses),
 				etiquetaBoton: "Terminar sesión " + (ses.numero_sesion || ""),
 				origen: btn,
-				alConfirmar: async function (notas) {
+				// Si la sesión empezó otro día y hoy no se trabajó: "¿La sesión se trabajó hoy?"
+				pregunta: preguntaDeTerminar(ses),
+				alConfirmar: async function (notas, dia) {
 					try {
-						await window.SesionTerminar.terminar(window.sb, { sesionId: ses.id, notas: notas, proyectoId: ses.proyecto_id, maestroId: user.id, hoy: hoy });
+						await window.SesionTerminar.terminar(window.sb, { sesionId: ses.id, notas: notas, proyectoId: ses.proyecto_id, maestroId: user.id, hoy: hoy, dia: dia });
 					} catch (e) {
 						throw new Error("No se pudo terminar la sesión: " + textoError(e) + ".");
 					}
@@ -1952,12 +2152,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return filaAlumno(al, controles, nota) + detalleProducto(producto, al, cal);
 			}).join("");
 		}).join("");
+		// Cuándo faltaron: hoy, o el día en que se trabajó la actividad (una sesión de varios días)
+		var diaAct = producto.tipo === "tarea" ? null : window.AlcanceHoy.diaTrabajo(producto, producto.sesion);
+		var cuandoFaltaron = diaAct && diaAct < hoy && esEnCurso(producto.sesion) ? "el " + etiquetaDiaCorta(diaAct) : "hoy";
 		var sinFilas = alumnosDeProducto(producto).length
-			? "Quienes reciben esta actividad faltaron hoy: no aparecen para calificar."
+			? "Quienes reciben esta actividad faltaron " + cuandoFaltaron + ": no aparecen para calificar."
 			: "Nadie recibe esta actividad todavía. Usa «Para quién» para elegir a los alumnos.";
 		// Sin nadie que calificar: o nadie la recibe, o todos los que la reciben faltaron hoy
 		var etiquetaConteo = conteo.total ? conteo.hechos + " de " + conteo.total + " calificados"
-			: alumnosDeProducto(producto).length ? "Faltaron hoy" : "Sin alumnos";
+			: alumnosDeProducto(producto).length ? "Faltaron " + cuandoFaltaron : "Sin alumnos";
 		var terminada = conteo.total > 0 && conteo.hechos === conteo.total;
 		var quienHecho = quienHaceDe(producto);
 		return "<div class='mb-3 rounded-xl border border-gray-200' data-bloque-producto='" + esc(producto.id) + "'>" +
@@ -2007,7 +2210,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 				return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1 border-b border-gray-100 last:border-0'>" +
 					"<p class='text-sm text-gray-700'>" + esc(t.nombre) +
 					"<span class='text-sm font-semibold text-blue-700'> · " + esc(paraQuien(t)) + "</span>" +
-					(vence ? "<span class='block text-xs text-gray-500'>" + (vence === hoy ? "Se revisa hoy, arriba en Tareas por revisar" : "Se revisa el " + esc(fechaCorta(vence))) + "</span>" : "") +
+					(vence ? "<span class='block text-xs text-gray-500'>" + (vence === hoy ? "Se revisa hoy, arriba en Tareas por revisar" : "Se revisa el " + esc(fechaCorta(vence))) + "</span>"
+					// Sesión en curso: la tarea del plan se revisa el día de clase siguiente a terminarla (Fase 5b)
+					: (t.tipo === "tarea" && !t.fecha_entrega && esEnCurso(t.sesion)
+						? "<span class='block text-xs text-gray-500' data-tarea-al-terminar>Se revisa el día de clase siguiente a terminar la sesión</span>" : "")) +
 					"</p>" + botonesProducto(t) + "</div>";
 			}).join("") + "</div>";
 	}
@@ -2066,6 +2272,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 		var btnTerminar = e.target.closest("button[data-terminar-sesion]");
 		if (btnTerminar) { await terminarSesion(btnTerminar); return; }
+
+		// "Trabajadas el lun 5": abre o cierra el grupo (en memoria, para el siguiente dibujo)
+		var btnGrupoDia = e.target.closest("button[data-abrir-grupo-dia]");
+		if (btnGrupoDia) {
+			var claveDia = btnGrupoDia.dataset.abrirGrupoDia;
+			gruposDiaAbiertos[claveDia] = !gruposDiaAbiertos[claveDia];
+			repintarSesiones();
+			return;
+		}
+
+		// La pregunta del día siguiente: "Guardar" (lo marcado) o "No se trabajó nada más"
+		var btnDia = e.target.closest("button[data-dia-guardar], button[data-dia-nada]");
+		if (btnDia) { await responderPreguntaDia(btnDia, btnDia.hasAttribute("data-dia-nada")); return; }
 
 		// Abrir o cerrar una actividad: se cambia lo que se ve sin volver a dibujar (el foco y el
 		// desplazamiento se quedan) y se recuerda en productosAbiertos para el siguiente dibujo
@@ -2163,14 +2382,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 				? Object.assign({ estado_entrega: null, nivel: null }, sinIncompleta)
 				: window.AlcanceHoy.cambiosIncompleta("marcar", { hoy: hoy, ajustes: ajustesCal,
 					// Actividad histórica (de un día anterior al de su creación): no pasa a la siguiente clase
-					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion && producto.sesion.fecha) }));
+					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion) }));
 		} else if (btn.dataset.estado === "no_entregado") {
 			// No entregó en clase (decisión del 2026-09-29): vale 0 y pasa a revisión el siguiente día de
 			// clase, como Incompleta; tocarlo otra vez lo quita. En una actividad histórica no hay revisión.
 			guardarCalificacion(alumno, producto, cal.estado_entrega === "no_entregado"
 				? Object.assign({ estado_entrega: null, nivel: null }, sinIncompleta)
 				: window.AlcanceHoy.cambiosIncompleta("no_entregado", { hoy: hoy, ajustes: ajustesCal,
-					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion && producto.sesion.fecha) }));
+					historico: window.AlcanceHoy.esHistorico(producto, producto.sesion) }));
 		} else if (btn.dataset.estado) {
 			var nuevoEstado = cal.estado_entrega === btn.dataset.estado ? null : btn.dataset.estado;
 			guardarCalificacion(alumno, producto, Object.assign({ estado_entrega: nuevoEstado, nivel: null }, sinIncompleta));
@@ -2179,6 +2398,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 	});
 
 	sesionesCont.addEventListener("change", function (e) {
+		// Las casillas de la pregunta del día siguiente se recuerdan entre dibujos
+		var casilla = e.target.closest ? e.target.closest("input[data-dia-actividad]") : null;
+		if (casilla) {
+			var caja = casilla.closest("[data-pregunta-dia]");
+			if (caja) {
+				var claveMarcas = caja.dataset.preguntaSesion + "|" + caja.dataset.preguntaDia;
+				marcasDia[claveMarcas] = marcasDia[claveMarcas] || {};
+				marcasDia[claveMarcas][casilla.dataset.diaActividad] = casilla.checked;
+			}
+			return;
+		}
 		var sel = e.target.closest("select[data-puntaje]");
 		if (sel) {
 			var p = productoPorId(sel.dataset.puntaje);
@@ -2347,6 +2577,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var nuevo = r.nuevo;
 		var ses = r.suelta ? incorporarSesionSuelta(r.respuesta) : r.sesion;
 		nuevo.sesion = ses;
+		// Lo que hace la base al crearla (mi_salon_b27): dentro de una sesión en curso nace con el día de hoy; en una suelta, con el
+		// de su sesión; una tarea no toma día
+		if (nuevo.fecha_trabajo === undefined && nuevo.tipo !== "tarea" && ses) {
+			nuevo.fecha_trabajo = ses.suelta || esSuelta(ses) ? (ses.fecha || null)
+				: (esEnCurso(ses) ? (ses.fecha > hoy ? ses.fecha : hoy) : null);
+		}
 		productosAbiertos[nuevo.id] = true; // la que se acaba de agregar se ve abierta, lista para calificar
 		asignaciones[nuevo.id] = window.AlcanceHoy.indiceAsignaciones((r.filas || []).map(function (f) {
 			return { producto_sesion_id: nuevo.id, alumno_id: f.alumno_id, modo: f.modo };
@@ -2364,7 +2600,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			: r.suelta && nuevo.tipo !== "tarea" && r.fecha < hoy ? " Es del " + fechaCorta(r.fecha) + ": califícala aquí abajo." : "";
 		mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
 			paraQuien(nuevo) + "." + cuando +
-			(nuevo.tipo === "tarea" ? " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + "." : "") +
+			(nuevo.tipo === "tarea"
+				? (ses && !venceDe(nuevo) ? " Se revisa el día de clase siguiente a terminar la sesión."
+					: " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + ".")
+				: "") +
 			(r.sinPda ? " No se pudieron leer los PDA de la sesión: se agregó sin PDA; sus calificaciones cuentan igual para la boleta." : ""));
 	}
 
@@ -2382,7 +2621,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 		// De hoy o de un día que ya pasó (se califica ahora); la de un día que viene, ese día
 		if (!r.sesion.fecha || r.sesion.fecha > hoy) return null;
 		s = { id: r.sesion.id, numero_sesion: r.sesion.numero_sesion, fecha: r.sesion.fecha, campo_formativo: r.sesion.campo_formativo,
-			momento: null, proyecto_id: r.proyecto_id, estado_sesion: r.sesion.estado_sesion };
+			momento: null, proyecto_id: r.proyecto_id, estado_sesion: r.sesion.estado_sesion,
+			terminada_en: null, suelta: true };
 		sesionesHoy.push(s);
 		return s;
 	}
@@ -2790,11 +3030,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 	}
 
 	// Lo que falta del día, con las mismas reglas que las tarjetas de arriba (AlcanceHoy.faltantesJornada lo cuenta)
-	function faltantesDeLaJornada() {
+	// siguen: ids de las sesiones abiertas que el docente dijo que "Sigue el siguiente día de clase" (ya contestó por ellas)
+	function faltantesDeLaJornada(siguen) {
+		siguen = siguen || [];
 		var trabajos = [], tareasDia = [], esTarea = {};
 		sesionesHoy.forEach(function (ses) {
 			(productosPorSesion[ses.id] || []).forEach(function (p) {
 				if (p.tipo === "tarea") return; // las tareas que se dejan hoy se revisan otro día
+				// En una sesión de varios días, lo que sigue por trabajar (sin día) no se trabajó hoy: no falta calificarlo hoy
+				if (!p.fecha_trabajo && esEnCurso(ses)) return;
 				trabajos.push({ id: p.id, nombre: p.nombre, alumnos: alumnosParaCalificar(p).map(function (a) { return a.id; }) });
 			});
 		});
@@ -2812,7 +3056,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		itemsPorFalta().forEach(function (x) {
 			if (window.AlcanceHoy.sinCalificar(calificaciones[x.alumno.id + "|" + x.producto.id]) && !faltoHoy(x.alumno.id)) porFalta.push({ vence: x.vence || null });
 		});
-		var enCurso = sesionesHoy.filter(function (s) { return !esSuelta(s) && s.estado_sesion !== "completada"; }).map(function (s) {
+		var enCurso = sesionesHoy.filter(function (s) { return !esSuelta(s) && s.estado_sesion !== "completada" && siguen.indexOf(s.id) === -1; }).map(function (s) {
 			var pr = proyectoPorId[s.proyecto_id] || {};
 			return { id: s.id, numero_sesion: s.numero_sesion, titulo: pr.titulo || "" };
 		});
@@ -2924,6 +3168,96 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return { ok: true };
 	}
 
+	/*
+		Fase 5b: "Finalizar jornada" con una sesión de proyecto abierta. Por cada una, una tras otra y antes del diálogo de
+		faltantes: "La sesión N de «proyecto» sigue abierta." con "Sigue el siguiente día de clase" y "Terminarla ahora".
+		  - Sigue: "¿Qué se trabajó hoy?" con las actividades por trabajar (casillas); las que ya tienen día de hoy salen
+		    marcadas y fijas y las de días anteriores no salen. Al aceptar: fecha_trabajo = hoy a las marcadas y el día de hoy
+		    queda cerrado en sesion_dias; lo no marcado se queda por trabajar.
+		  - Terminarla ahora: el flujo de "Terminar sesión" (espera la cola) y después sigue la jornada.
+		Necesita señal (la jornada ya la pidió). → { continuar, siguen: [ids de las que siguen] }
+	*/
+	async function pasoSesionesAbiertas(origen) {
+		var abiertas = sesionesHoy.filter(function (s) { return !esSuelta(s) && esEnCurso(s); }).sort(function (a, b) {
+			var pa = (proyectoPorId[a.proyecto_id] || {}).titulo || "", pb = (proyectoPorId[b.proyecto_id] || {}).titulo || "";
+			return pa.localeCompare(pb, "es", { sensitivity: "base" }) || (a.numero_sesion || 0) - (b.numero_sesion || 0);
+		});
+		var siguen = [];
+		for (var i = 0; i < abiertas.length; i++) {
+			var ses = abiertas[i];
+			var titulo = (proyectoPorId[ses.proyecto_id] || {}).titulo;
+			var eleccion = await window.SesionTerminar.preguntar({
+				origen: origen,
+				titulo: "La sesión " + (ses.numero_sesion || "") + (titulo ? " de «" + window.AlcanceHoy.nombreBreve(titulo, 60) + "»" : "") + " sigue abierta.",
+				texto: "¿Se sigue trabajando otro día o ya la terminaste?",
+				botones: [
+					{ valor: "sigue", etiqueta: "Sigue el siguiente día de clase", primario: true },
+					{ valor: "terminar", etiqueta: "Terminarla ahora" },
+				],
+				cancelar: "Volver",
+			});
+			if (!eleccion) return { continuar: false, siguen: siguen };
+			if (eleccion === "terminar") {
+				if (!(await terminarDesdeJornada(ses, origen))) return { continuar: false, siguen: siguen };
+				continue;
+			}
+			var marcados = await window.SesionTerminar.elegirActividades({
+				origen: origen,
+				titulo: "¿Qué se trabajó hoy?",
+				texto: "Sesión " + (ses.numero_sesion || "") + (titulo ? " de «" + window.AlcanceHoy.nombreBreve(titulo, 60) + "»" : "") + ". Lo que no marques sigue por trabajar.",
+				items: (productosPorSesion[ses.id] || []).filter(function (p) {
+					return p.tipo !== "tarea" && (!p.fecha_trabajo || p.fecha_trabajo === hoy);
+				}).map(function (p) {
+					return { id: p.id, etiqueta: etiquetaActividad(p), marcado: false, fijo: p.fecha_trabajo === hoy };
+				}),
+				aceptar: "Aceptar",
+				cancelar: "Volver",
+				vacio: "No hay actividades por trabajar en esta sesión.",
+			});
+			if (!marcados) return { continuar: false, siguen: siguen };
+			try {
+				await cerrarDiaDeSesion(ses, hoy, marcados);
+			} catch (e) {
+				avisoALaVista("No se pudo guardar qué se trabajó hoy: " + textoError(e) + ". La jornada no se finalizó.");
+				return { continuar: false, siguen: siguen };
+			}
+			siguen.push(ses.id);
+			repintarSesiones();
+		}
+		return { continuar: true, siguen: siguen };
+	}
+
+	// "Terminarla ahora" desde la jornada: espera lo capturado, el diálogo de Terminar sesión y se queda en la pantalla
+	async function terminarDesdeJornada(ses, origen) {
+		guardarRetrosPendientes();
+		if (sinSenal()) { avisoALaVista("Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal."); return false; }
+		var envio = await esperarCola();
+		if (envio !== "ok") { avisoALaVista(textoSinEnviar(envio)); return false; }
+		return new Promise(function (resolver) {
+			var modal = window.SesionTerminar.abrirModal({
+				titulo: "Terminar la sesión " + (ses.numero_sesion || ""),
+				sinCalificar: sinCalificarDeSesion(ses),
+				etiquetaBoton: "Terminar sesión " + (ses.numero_sesion || ""),
+				origen: origen,
+				pregunta: preguntaDeTerminar(ses),
+				alCancelar: function () { resolver(false); },
+				alConfirmar: async function (notas, dia) {
+					try {
+						await window.SesionTerminar.terminar(window.sb, { sesionId: ses.id, notas: notas, proyectoId: ses.proyecto_id, maestroId: user.id, hoy: hoy, dia: dia });
+					} catch (e) {
+						throw new Error("No se pudo terminar la sesión: " + textoError(e) + ".");
+					}
+					marcarTerminadaLocal(ses, dia || hoy);
+					modal.cerrar();
+					repintarSesiones();
+					renderTareas();
+					renderPendientes();
+					resolver(true);
+				},
+			});
+		});
+	}
+
 	async function finalizarJornada(btn) {
 		if (esperandoJornada || !pintado) return;
 		esperandoJornada = true;
@@ -2942,7 +3276,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 			btn.textContent = etiqueta;
 			if (envio !== "ok") { avisoALaVista(textoSinEnviar(envio)); return; }
 			mensaje("", "");
-			var faltantes = faltantesDeLaJornada();
+			// Con una sesión de proyecto abierta, ANTES del diálogo de faltantes: ¿sigue otro día o se termina ahora?
+			var paso = await pasoSesionesAbiertas(btn);
+			if (!paso.continuar) return;
+			var faltantes = faltantesDeLaJornada(paso.siguen);
 			if (faltantes.completo) {
 				btn.disabled = true;
 				btn.textContent = "Finalizando...";

@@ -99,6 +99,8 @@ const EXCEPCIONES = {
 	examen_respuestas: "sus políticas de insert y update ya exigen que el examen (modo 'propio') y la pregunta de ESE examen sean del maestro y que el alumno sea suyo y del mismo grupo",
 	// B25 (supabase/mi_salon_b25_jornada_comentario_2026-10.sql): la jornada finalizada
 	jornadas: "sus políticas de insert y update ya exigen que el grupo sea del maestro",
+	// B27 (supabase/mi_salon_b27_sesiones_varios_dias_2026-10.sql): los días de una sesión
+	sesion_dias: "sus políticas de insert y update ya exigen ref_propia_sesion(sesion_id) y maestro_id = auth.uid()",
 	// B19 (supabase/mi_salon_b19_examenes_cola_2026-09.sql): "No presentó"
 	examen_alumnos: "sus políticas de insert y update ya exigen que el examen sea del maestro y que el alumno sea suyo y del mismo grupo que el examen",
 	// B20 (supabase/mi_salon_b20_registro_historico_2026-09.sql): nacen con la revisión en su política

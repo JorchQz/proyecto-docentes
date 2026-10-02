@@ -10,13 +10,17 @@
 	  - Terminar: espera a que se envíe lo capturado, dice cuántos quedan sin calificar, deja escribir
 	    notas (opcional), marca la sesión completada y, si a ese proyecto ya no le quedan sesiones, lo
 	    da por completado. Después Hoy abre la tarjeta azul con la siguiente.
-	  - La sesión que se continúa otro día conserva su fecha de inicio: sus tareas vencen contando desde
-	    ese día y el día que solo se continúa su campo no recibe participación (el motor no cambia).
+	  - Sesiones de varios días (Fase 5b, 2026-10-02; mi_salon_b27): la sesión que se continúa otro día conserva
+	    su fecha de inicio (sesiones.fecha, la bandera "empezada") y cada día que se trabaja queda en sesion_dias.
+	    Al TERMINARLA se escribe terminada_en (el día de México, o el último día trabajado si hoy no se trabajó:
+	    preguntaDia) y las actividades que sigan sin día toman ese día. Las tareas del plan, que no traen fecha de
+	    entrega, vencen el siguiente día de clase DESPUÉS de terminar la sesión (AlcanceHoy.baseTarea) y la
+	    participación cuenta en cada día trabajado (el motor lee sesion_dias).
 
 	Expone window.SesionTerminar (y module.exports para las pruebas):
 	  CORTE_EN_CURSO, enCurso(sesion, corte), enCursoDe(sesiones, proyectoId, corte),
 	  bloqueaSiguiente(sesiones, proyectoId, corte), etiquetaEmpezo(fecha, hoy), textoSinCalificar(n),
-	  abrirModal(opciones), terminar(sb, datos)
+	  preguntaDia(datos), etiquetaDia(fecha), abrirModal(opciones), terminar(sb, datos)
 */
 
 (function () {
@@ -62,6 +66,37 @@
 		return "Empezó el " + Number(m[3]) + " " + MESES_CORTOS[Number(m[2]) - 1];
 	}
 
+	// "lun 5": el día de la semana y el número, para los textos de los días de una sesión
+	var DIAS_SEMANA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+	function etiquetaDia(fecha) {
+		var f = dia(fecha);
+		var m = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+		if (!m) return "";
+		var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+		return DIAS_SEMANA[d.getDay()] + " " + Number(m[3]);
+	}
+
+	/*
+		preguntaDia({ sesion, dias, productos, hoy }) → { ultimoDia } | null
+		Al terminar una sesión que empezó otro día: si hoy no se trabajó (ninguna actividad con día de hoy y hoy no está en
+		sus días), el diálogo pregunta "¿La sesión se trabajó hoy?" y, si no, ese día es el último día trabajado.
+		dias: las fechas de sesion_dias; productos: las actividades activas (con fecha_trabajo). null: no se pregunta (empezó
+		hoy, o hoy sí se trabajó, o no hay ningún día anterior que ofrecer).
+	*/
+	function preguntaDia(d) {
+		d = d || {};
+		var hoy = dia(d.hoy), ses = d.sesion || {};
+		if (!hoy || !ses.fecha || dia(ses.fecha) >= hoy) return null;
+		var dias = (d.dias || []).map(dia).filter(Boolean);
+		(d.productos || []).forEach(function (p) {
+			if (p && p.tipo !== "tarea" && p.fecha_trabajo) dias.push(dia(p.fecha_trabajo));
+		});
+		dias.push(dia(ses.fecha));
+		if (dias.indexOf(hoy) !== -1) return null;
+		var previos = dias.filter(function (x) { return x < hoy; }).sort();
+		return previos.length ? { ultimoDia: previos[previos.length - 1] } : null;
+	}
+
 	function textoSinCalificar(n) {
 		if (n === null || n === undefined) return "";
 		n = Number(n);
@@ -76,10 +111,12 @@
 	}
 
 	/*
-		abrirModal({ titulo, sinCalificar, etiquetaBoton, origen, alConfirmar })
+		abrirModal({ titulo, sinCalificar, etiquetaBoton, origen, pregunta, alConfirmar })
 		Diálogo accesible (role="dialog", foco dentro, Esc cierra y el foco vuelve a `origen`).
-		alConfirmar(notas) es asíncrona: si lanza, el diálogo sigue abierto y dice el error. Devuelve
-		{ cerrar }.
+		pregunta (preguntaDia): { ultimoDia } agrega "¿La sesión se trabajó hoy?" con "Sí, hoy" y "No, se trabajó
+		por última vez el <día>".
+		alConfirmar(notas, dia) es asíncrona: dia es null (hoy) o el último día trabajado que eligió; si lanza, el
+		diálogo sigue abierto y dice el error. Devuelve { cerrar }.
 	*/
 	var numero = 0;
 	function abrirModal(op) {
@@ -96,6 +133,11 @@
 			"<p class='text-sm text-gray-500 mt-1'>Marca la sesión como trabajada; la siguiente queda lista para empezar.</p>" +
 			(texto ? "<p class='mt-2 text-sm font-medium " + (op.sinCalificar > 0 ? "text-amber-700" : "text-emerald-700") + "' data-sin-calificar>" + esc(texto) + "</p>" : "") +
 			"</div>" +
+			(op.pregunta && op.pregunta.ultimoDia
+				? "<fieldset class='px-5 pt-4' data-pregunta-dia><legend class='text-sm font-semibold text-gray-800 mb-2'>¿La sesión se trabajó hoy?</legend>" +
+				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='hoy' checked class='h-5 w-5'> Sí, hoy</label>" +
+				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='" + esc(op.pregunta.ultimoDia) + "' class='h-5 w-5'> No, se trabajó por última vez el " + esc(etiquetaDia(op.pregunta.ultimoDia)) + "</label></fieldset>"
+				: "") +
 			"<div class='p-5'><label for='" + id + "-n' class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
 			"<textarea id='" + id + "-n' rows='3' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea>" +
 			"<p id='" + id + "-e' class='hidden mt-3 text-sm text-red-700' role='alert'></p></div>" +
@@ -116,8 +158,13 @@
 			if (fondo.parentNode) fondo.parentNode.removeChild(fondo);
 			if (previo && previo.focus) { try { previo.focus(); } catch (_) { /* sin foco */ } }
 		}
+		// Cancelar, Esc o tocar fuera: cierra y avisa (op.alCancelar; la jornada espera la respuesta)
+		function cancelar() {
+			cerrar();
+			if (op.alCancelar) op.alCancelar();
+		}
 		function teclas(e) {
-			if (e.key === "Escape" && !ocupado) { e.stopPropagation(); cerrar(); return; }
+			if (e.key === "Escape" && !ocupado) { e.stopPropagation(); cancelar(); return; }
 			if (e.key !== "Tab") return;
 			var lista = Array.prototype.slice.call(caja.querySelectorAll("button, textarea")).filter(function (x) { return !x.disabled; });
 			if (!lista.length) return;
@@ -126,8 +173,8 @@
 			else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
 		}
 		document.addEventListener("keydown", teclas, true);
-		btnNo.addEventListener("click", function () { if (!ocupado) cerrar(); });
-		fondo.addEventListener("click", function (e) { if (e.target === fondo && !ocupado) cerrar(); });
+		btnNo.addEventListener("click", function () { if (!ocupado) cancelar(); });
+		fondo.addEventListener("click", function (e) { if (e.target === fondo && !ocupado) cancelar(); });
 		btnOk.addEventListener("click", async function () {
 			if (ocupado) return;
 			ocupado = true;
@@ -137,7 +184,9 @@
 			btnOk.textContent = "Terminando...";
 			error.classList.add("hidden");
 			try {
-				await op.alConfirmar(area.value.trim());
+				var elegido = fondo.querySelector("input[name='" + id + "-d']:checked");
+				// El día en que se terminó: hoy, salvo que diga que hoy no se trabajó (entonces, el último día trabajado)
+				await op.alConfirmar(area.value.trim(), elegido && elegido.value !== "hoy" ? elegido.value : null);
 			} catch (e) {
 				error.textContent = (e && e.message) ? e.message : "No se pudo terminar la sesión.";
 				error.classList.remove("hidden");
@@ -152,9 +201,104 @@
 	}
 
 	/*
-		terminar(sb, { sesionId, notas, proyectoId, maestroId, hoy }) → { proyectoCompletado }
-		Marca la sesión completada (con sus notas) y, si a ESE proyecto ya no le queda ninguna sin
-		terminar, lo da por completado (los demás proyectos activos no se tocan). Lanza el error.
+		── Los pasos de "Finalizar jornada" con una sesión abierta (Fase 5b) ──
+		Dos diálogos accesibles en una promesa (role="dialog", foco dentro, Esc o "Volver" resuelven null y el foco vuelve a
+		`origen`):
+		  preguntar({ origen, titulo, texto, botones: [{ valor, etiqueta, primario }], cancelar }) → valor | null
+		  elegirActividades({ origen, titulo, texto, items: [{ id, etiqueta, marcado, fijo }], aceptar, cancelar, vacio })
+		    → [ids marcados por quien responde, sin los fijos] | null
+		Se arman con el mismo cuerpo que abrirModal (botones de 44 px, sin emojis).
+	*/
+	function dialogo(op, cuerpoHtml, pieHtml, alListo) {
+		var previo = op.origen || document.activeElement;
+		var id = "pasoSesion" + (++numero);
+		var fondo = document.createElement("div");
+		fondo.className = "fixed inset-0 z-[70] bg-black/40 flex items-end sm:items-center justify-center sm:p-4";
+		fondo.innerHTML =
+			"<div role='dialog' aria-modal='true' aria-labelledby='" + id + "-t' class='bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[92vh] overflow-y-auto'>" +
+			"<div class='p-5 border-b border-gray-100'><h2 id='" + id + "-t' class='text-lg font-bold text-gray-800 break-words'>" + esc(op.titulo) + "</h2>" +
+			(op.texto ? "<p class='text-sm text-gray-500 mt-1'>" + esc(op.texto) + "</p>" : "") + "</div>" +
+			cuerpoHtml +
+			"<div class='p-5 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2'>" + pieHtml + "</div></div>";
+		document.body.appendChild(fondo);
+		var caja = fondo.firstChild;
+		var terminado = false;
+		function cerrar(valor) {
+			if (terminado) return;
+			terminado = true;
+			document.removeEventListener("keydown", teclas, true);
+			if (fondo.parentNode) fondo.parentNode.removeChild(fondo);
+			if (previo && previo.focus) { try { previo.focus(); } catch (_) { /* sin foco */ } }
+			alListo(valor);
+		}
+		function teclas(e) {
+			if (e.key === "Escape") { e.stopPropagation(); cerrar(null); return; }
+			if (e.key !== "Tab") return;
+			var lista = Array.prototype.slice.call(caja.querySelectorAll("button, input")).filter(function (x) { return !x.disabled; });
+			if (!lista.length) return;
+			var primero = lista[0], ultimo = lista[lista.length - 1];
+			if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+			else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+		}
+		document.addEventListener("keydown", teclas, true);
+		fondo.addEventListener("click", function (e) { if (e.target === fondo) cerrar(null); });
+		var primerBoton = fondo.querySelector("button, input");
+		setTimeout(function () { if (primerBoton && primerBoton.focus) primerBoton.focus(); }, 0);
+		return { fondo: fondo, cerrar: cerrar };
+	}
+
+	function preguntar(op) {
+		op = op || {};
+		return new Promise(function (resolver) {
+			var botones = (op.botones || []).map(function (b, i) {
+				return "<button type='button' data-paso-valor='" + esc(b.valor) + "' class='min-h-[44px] px-5 rounded-xl font-semibold " +
+					(b.primario ? "bg-blue-600 text-white hover:bg-blue-700" : "border border-gray-300 text-gray-700 hover:bg-gray-50") + "'>" + esc(b.etiqueta) + "</button>";
+			}).join("");
+			var d = dialogo(op, "",
+				"<button type='button' data-paso-cancelar class='min-h-[44px] px-5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50'>" + esc(op.cancelar || "Volver") + "</button>" + botones,
+				resolver);
+			d.fondo.addEventListener("click", function (e) {
+				var b = e.target.closest ? e.target.closest("button") : null;
+				if (!b) return;
+				if (b.hasAttribute("data-paso-cancelar")) d.cerrar(null);
+				else if (b.hasAttribute("data-paso-valor")) d.cerrar(b.getAttribute("data-paso-valor"));
+			});
+		});
+	}
+
+	function elegirActividades(op) {
+		op = op || {};
+		return new Promise(function (resolver) {
+			var items = op.items || [];
+			var lista = items.length ? items.map(function (it, i) {
+				return "<label class='flex items-start gap-3 min-h-[44px] py-2 text-sm text-gray-700'>" +
+					"<input type='checkbox' data-paso-item='" + esc(it.id) + "' class='mt-0.5 h-5 w-5 shrink-0'" + (it.marcado || it.fijo ? " checked" : "") + (it.fijo ? " disabled" : "") + ">" +
+					"<span class='min-w-0 break-words'>" + esc(it.etiqueta) + (it.fijo ? " <span class='text-xs text-gray-400'>· ya se trabajó hoy</span>" : "") + "</span></label>";
+			}).join("") : "<p class='text-sm text-gray-500'>" + esc(op.vacio || "No hay actividades por trabajar.") + "</p>";
+			var d = dialogo(op, "<div class='p-5 flex flex-col' data-paso-lista>" + lista + "</div>",
+				"<button type='button' data-paso-cancelar class='min-h-[44px] px-5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50'>" + esc(op.cancelar || "Volver") + "</button>" +
+				"<button type='button' data-paso-aceptar class='min-h-[44px] px-5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700'>" + esc(op.aceptar || "Aceptar") + "</button>",
+				resolver);
+			d.fondo.addEventListener("click", function (e) {
+				var b = e.target.closest ? e.target.closest("button") : null;
+				if (!b) return;
+				if (b.hasAttribute("data-paso-cancelar")) d.cerrar(null);
+				else if (b.hasAttribute("data-paso-aceptar")) {
+					var marcados = Array.prototype.slice.call(d.fondo.querySelectorAll("input[data-paso-item]"))
+						.filter(function (c) { return c.checked && !c.disabled; }).map(function (c) { return c.getAttribute("data-paso-item"); });
+					d.cerrar(marcados);
+				}
+			});
+		});
+	}
+
+	/*
+		terminar(sb, { sesionId, notas, proyectoId, maestroId, hoy, dia }) → { proyectoCompletado }
+		Marca la sesión completada (con sus notas y terminada_en = dia, o hoy), les pone ese día a las actividades
+		activas que no son tarea y siguen sin día (fecha_trabajo) y deja ese día cerrado en sesion_dias (mi_salon_b27).
+		Si a ESE proyecto ya no le queda ninguna sin terminar, lo da por completado (los demás proyectos activos no se
+		tocan). Lanza el error. El orden importa poco a propósito: una actividad sin día en una sesión terminada se lee
+		como terminada_en, así que un corte entre pasos deja lo mismo que si se hubieran escrito.
 	*/
 	// La lectura común (js/lectura.js: lanza el error); sin ella (pruebas en node), una equivalente
 	var Lectura = (typeof window !== "undefined" && window.Lectura) || {
@@ -165,10 +309,19 @@
 		},
 	};
 	async function terminar(sb, d) {
+		var diaFin = dia(d.dia || d.hoy) || null;
 		var r = await sb.from("sesiones")
-			.update({ estado_sesion: "completada", notas_cierre: d.notas || null })
+			.update({ estado_sesion: "completada", notas_cierre: d.notas || null, terminada_en: diaFin })
 			.eq("id", d.sesionId).eq("maestro_id", d.maestroId);
 		if (r.error) throw r.error;
+		if (diaFin) {
+			var a = await sb.from("productos_sesion").update({ fecha_trabajo: diaFin })
+				.eq("sesion_id", d.sesionId).eq("maestro_id", d.maestroId).eq("activo", true).neq("tipo", "tarea").is("fecha_trabajo", null);
+			if (a.error) throw a.error;
+			var b = await sb.from("sesion_dias")
+				.upsert({ sesion_id: d.sesionId, maestro_id: d.maestroId, fecha: diaFin, cerrado_en: new Date().toISOString() }, { onConflict: "sesion_id,fecha" });
+			if (b.error) throw b.error;
+		}
 		var consulta = sb.from("sesiones").select("id", { count: "exact", head: true })
 			// Las anteriores al corte cuentan como terminadas (Fanny nunca les dio "Terminar": siguen `activa`);
 			// sin esto el proyecto no pasaría a completado al terminar la última. No se escribe nada en esas filas.
@@ -185,7 +338,7 @@
 
 	var api = {
 		CORTE_EN_CURSO: CORTE_EN_CURSO, enCurso: enCurso, enCursoDe: enCursoDe, bloqueaSiguiente: bloqueaSiguiente,
-		etiquetaEmpezo: etiquetaEmpezo, textoSinCalificar: textoSinCalificar, abrirModal: abrirModal, terminar: terminar,
+		etiquetaEmpezo: etiquetaEmpezo, etiquetaDia: etiquetaDia, preguntaDia: preguntaDia, preguntar: preguntar, elegirActividades: elegirActividades, textoSinCalificar: textoSinCalificar, abrirModal: abrirModal, terminar: terminar,
 	};
 	if (typeof window !== "undefined") window.SesionTerminar = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

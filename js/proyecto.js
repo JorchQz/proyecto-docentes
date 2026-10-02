@@ -61,22 +61,46 @@
 		El estado de una sesión, con la misma regla de Hoy (js/sesion-terminar.js):
 		  en curso  → con fecha, sin terminar y desde el corte: "En curso desde hoy" / "En curso desde el 29 sep";
 		  terminada → completada, o con fecha anterior al corte (Fanny las trabajó antes de "Terminar sesión"):
-		              "Terminada" y "Se trabajó el 29 sep" (la base no guarda el día en que se terminó: es el día en
-		              que se trabajó; si se continuó otro día, el primero);
+		              "Terminada" y "Terminada el 29 sep" (terminada_en, mi_salon_b27). Las de antes de b27 no guardan
+		              ese día: "Se trabajó el 29 sep" (su fecha). Con dos días trabajados o más (sesion_dias), también
+		              "Se trabajó el lun 5 y el mar 6", en curso o terminada;
 		  pendiente → sin fecha ("Iniciar" el proyecto la deja activa y sin fecha: sigue pendiente).
 		→ { clave: "pendiente" | "en_curso" | "terminada", texto, detalle }
 	*/
-	function estadoSesion(s, hoy, corte) {
-		if (!s) return { clave: "pendiente", texto: "Pendiente", detalle: "" };
+	function estadoSesion(s, hoy, corte, dias) {
+		if (!s) return { clave: "pendiente", texto: "Pendiente", detalle: "", diasTexto: "" };
 		var ST = raiz.SesionTerminar;
 		var enCurso = ST ? ST.enCurso(s, corte) : (!!s.fecha && s.estado_sesion !== "completada");
+		// Sesiones de varios días (mi_salon_b27): "Se trabajó el lun 5 y el mar 6", con los días de sesion_dias
+		var diasTexto = textoDias(dias);
 		if (enCurso) {
-			return { clave: "en_curso", texto: dia(s.fecha) === dia(hoy) ? "En curso desde hoy" : "En curso desde el " + fechaCorta(s.fecha), detalle: "" };
+			return { clave: "en_curso", texto: dia(s.fecha) === dia(hoy) ? "En curso desde hoy" : "En curso desde el " + fechaCorta(s.fecha), detalle: "", diasTexto: diasTexto };
 		}
 		if (s.estado_sesion === "completada" || s.fecha) {
-			return { clave: "terminada", texto: "Terminada", detalle: s.fecha ? "Se trabajó el " + fechaCorta(s.fecha) : "" };
+			// Terminada el día que se terminó (terminada_en); las de antes de b27 no lo guardan: "Se trabajó el <fecha>"
+			if (s.terminada_en) return { clave: "terminada", texto: "Terminada", detalle: "Terminada el " + fechaCorta(s.terminada_en), diasTexto: diasTexto };
+			return { clave: "terminada", texto: "Terminada", detalle: diasTexto || (s.fecha ? "Se trabajó el " + fechaCorta(s.fecha) : ""), diasTexto: "" };
 		}
-		return { clave: "pendiente", texto: "Pendiente", detalle: "" };
+		return { clave: "pendiente", texto: "Pendiente", detalle: "", diasTexto: "" };
+	}
+
+	// "lun 5": el día de la semana y el número (js/sesion-terminar.js); sin él, "5 oct"
+	function etiquetaDia(f) {
+		var ST = raiz.SesionTerminar;
+		return ST && ST.etiquetaDia ? ST.etiquetaDia(f) : fechaCorta(f);
+	}
+
+	// "Se trabajó el lun 5 y el mar 6" (dos días o más; con uno solo no hace falta)
+	function textoDias(dias) {
+		var vistos = {};
+		var l = (dias || []).map(function (d) { return dia(typeof d === "string" ? d : (d && d.fecha)); }).filter(function (d) {
+			if (!d || vistos[d]) return false;
+			vistos[d] = true;
+			return true;
+		}).sort();
+		if (l.length < 2) return "";
+		var partes = l.map(function (d) { return "el " + etiquetaDia(d); });
+		return "Se trabajó " + (partes.length === 2 ? partes.join(" y ") : partes.slice(0, -1).join(", ") + " y " + partes[partes.length - 1]);
 	}
 
 	// Trabajada = con fecha o con calificaciones (la regla de Crear proyecto: ProyectoEdicion.sesionTrabajada)
@@ -116,10 +140,15 @@
 		var calificados = (v.alumnos || []).filter(function (a) { return estaCalificado((v.calIdx || {})[a.id + "|" + p.id]); }).length;
 		var vence = null;
 		if (esTarea(p)) {
-			var f = raiz.AlcanceHoy.venceTarea(p.fecha_entrega, ses && ses.fecha, v.ajustes || []);
-			vence = f ? (f === v.hoy ? "se revisa hoy" : "se revisa el " + fechaCorta(f)) : "se revisa el día de clase siguiente a la sesión";
+			// Sin fecha de entrega vence el siguiente día de clase DESPUÉS de terminar la sesión (AlcanceHoy.baseTarea)
+			var f = raiz.AlcanceHoy.venceTarea(p.fecha_entrega, raiz.AlcanceHoy.baseTarea(ses || null), v.ajustes || []);
+			vence = f ? (f === v.hoy ? "se revisa hoy" : "se revisa el " + fechaCorta(f))
+				: (raiz.AlcanceHoy.sesionEnCurso(ses || null) ? "se revisa el día de clase siguiente a terminar la sesión" : "se revisa el día de clase siguiente a la sesión");
 		}
-		return { producto: p, quien: quien, corto: raiz.ParaQuien.quienHaceCorto(quien), calificados: calificados, vence: vence };
+		// El día en que se trabajó una actividad (AlcanceHoy.diaTrabajo) o "por trabajar"
+		var diaAct = esTarea(p) ? null : raiz.AlcanceHoy.diaTrabajo(p, ses || null);
+		var trabajo = esTarea(p) ? "" : (diaAct ? "trabajada el " + etiquetaDia(diaAct) : "por trabajar");
+		return { producto: p, quien: quien, corto: raiz.ParaQuien.quienHaceCorto(quien), calificados: calificados, vence: vence, trabajo: trabajo };
 	}
 
 	// Para el material: "3 actividades en clase: 2, 8 y 6 alumnos · 2 tareas: 9 y 7 alumnos"
@@ -209,6 +238,7 @@
 			quienHtml(f) + "</p>" +
 			"<p class='mt-1 text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5'>" +
 			"<span data-tipo>" + esc(tipoTexto(p)) + (f.vence ? " · " + esc(f.vence) : "") + "</span>" +
+			(f.trabajo ? "<span data-dia-trabajo>" + esc(f.trabajo) + "</span>" : "") +
 			"<span class='font-semibold text-gray-700' data-cuantos>" + esc(plural(f.quien.n, "alumno", "alumnos")) + "</span>" +
 			"<span data-calificados>" + esc(plural(f.calificados, "calificado", "calificados")) + "</span>" +
 			(otroCampo ? "<span>" + esc(otroCampo) + "</span>" : "") +
@@ -227,7 +257,7 @@
 		(?sesion=) sale abierta y resaltada.
 	*/
 	function htmlSesion(ses, v) {
-		var est = estadoSesion(ses, v.hoy, v.corte);
+		var est = estadoSesion(ses, v.hoy, v.corte, (v.diasPorSesion || {})[ses.id]);
 		var abiertas = v.abiertas || {};
 		var abierta = Object.prototype.hasOwnProperty.call(abiertas, ses.id) ? !!abiertas[ses.id] : (est.clave !== "terminada" || ses.id === v.pedida);
 		var productos = ordenarProductos((v.productosPorSesion || {})[ses.id] || []);
@@ -269,7 +299,8 @@
 			"</span></button>" +
 			"<span class='shrink-0 self-start sm:self-auto flex flex-col items-start sm:items-end gap-0.5 px-1'>" +
 			"<span data-estado-sesion='" + est.clave + "' class='inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold " + CLASE_ESTADO[est.clave] + "'>" + esc(est.texto) + "</span>" +
-			(est.detalle ? "<span class='text-xs text-gray-500'>" + esc(est.detalle) + "</span>" : "") +
+			(est.detalle ? "<span class='text-xs text-gray-500' data-estado-detalle>" + esc(est.detalle) + "</span>" : "") +
+			(est.diasTexto && est.diasTexto !== est.detalle ? "<span class='text-xs text-gray-500' data-dias-trabajados>" + esc(est.diasTexto) + "</span>" : "") +
 			"</span></div>" +
 			"<div id='" + esc(cuerpoId) + "' class='" + (abierta ? "" : "hidden ") + "border-t border-gray-100 p-3 sm:p-4'>" +
 			(trabajada(ses, v.conCalificaciones)
@@ -455,7 +486,7 @@
 
 		// Las sesiones del proyecto con su secuencia, sus productos activos, su "para quién" y sus calificaciones
 		async function leerSesionesYProductos() {
-			var columnas = window.SecuenciaSesion.COLUMNAS + ", proyecto_id, numero_sesion, fecha, campo_formativo, momento, duracion, estado_sesion";
+			var columnas = window.SecuenciaSesion.COLUMNAS + ", proyecto_id, numero_sesion, fecha, campo_formativo, momento, duracion, estado_sesion, terminada_en";
 			var sesiones = await window.LeerTodo.paginas(function () {
 				return window.sb.from("sesiones").select(columnas)
 					.eq("proyecto_id", proyecto.id).eq("maestro_id", user.id).order("numero_sesion").order("id");
@@ -463,9 +494,16 @@
 			var ids = sesiones.map(function (s) { return s.id; });
 			var productos = ids.length ? await window.AlcanceHoy.leerPorLotes(ids, function (lote) {
 				return window.sb.from("productos_sesion")
-					.select("id, sesion_id, tipo, nombre, grados, modalidad, campo, fecha_entrega, orden, origen, created_at")
+					.select("id, sesion_id, tipo, nombre, grados, modalidad, campo, fecha_entrega, fecha_trabajo, orden, origen, created_at")
 					.in("sesion_id", lote).eq("activo", true).order("orden").order("id");
 			}) : [];
+			// Los días en que se trabajó cada sesión (mi_salon_b27: sesion_dias): "Se trabajó el lun 5 y el mar 6"
+			var filasDias = ids.length ? await window.AlcanceHoy.leerPorLotes(ids, function (lote) {
+				return window.sb.from("sesion_dias").select("sesion_id, fecha")
+					.eq("maestro_id", user.id).in("sesion_id", lote).order("fecha").order("id");
+			}) : [];
+			v.diasPorSesion = {};
+			filasDias.forEach(function (d) { (v.diasPorSesion[d.sesion_id] = v.diasPorSesion[d.sesion_id] || []).push(String(d.fecha).slice(0, 10)); });
 			var idsProd = productos.map(function (p) { return p.id; });
 			var asig = idsProd.length ? await window.AlcanceHoy.leerPorLotes(idsProd, function (lote) {
 				return window.sb.from("producto_sesion_alumnos").select("producto_sesion_id, alumno_id, modo")

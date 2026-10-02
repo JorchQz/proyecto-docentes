@@ -67,6 +67,7 @@ Aparte, después de la 12:
 | # | Archivo | Qué hace |
 |---|---|---|
 | 13 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
+| 14 | `supabase/mi_salon_b27_sesiones_varios_dias_2026-10.sql` | sesiones de varios días (Fase 5b): `sesiones.terminada_en`, `productos_sesion.fecha_trabajo`, tabla `sesion_dias`, triggers y respaldo; ver "Fase 5b" abajo (va después de b25 y antes de su frontend) |
 
 NO se aplican en producción: `mi_salon_b21c_piloto_pruebas_2026-09.sql` (cuentas QA, solo pruebas)
 y `mi_salon_b22_avisos_cron_2026-09.sql` (va en el paso 4).
@@ -225,6 +226,70 @@ select count(*) from storage.objects where bucket_id = 'recursos';   -- igual qu
 ```
 
 Si falla: el script revierte todo y las políticas viejas se quedan; se reintenta a otra hora.
+
+## Aparte: b27, las sesiones de varios días (Fase 5b)
+
+**Falta b27** (Fase 5b del plan de Fanny, 2026-10-02), la migración de las sesiones de varios días
+(`supabase/mi_salon_b27_sesiones_varios_dias_2026-10.sql`). Va **DESPUÉS de b25 y ANTES del frontend de la
+Fase 5b** (el Hoy, Inicio, Proyecto y motor nuevos leen `sesiones.terminada_en`, `productos_sesion.fecha_trabajo` y
+`sesion_dias`). Es aditiva e idempotente y el frontend anterior sigue igual con ella (no lee ninguna columna nueva;
+los triggers solo llenan datos nuevos). **Antes de aplicarla, medir su impacto** con la consulta de solo lectura
+`scripts/medir-b27.sql` (editor SQL de producción): por grupo, cuántas sesiones en curso, cuántas actividades activas
+tienen un campo distinto del de su sesión (la única diferencia aceptada en la calificación) y cuántas filas llenaría
+su respaldo. Solo con el OK de Jorge, a hora de poco uso:
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b27_sesiones_varios_dias_2026-10.sql
+```
+
+Qué hace, en una transacción: dos columnas nulas (`sesiones.terminada_en`, `productos_sesion.fecha_trabajo`), la
+tabla `sesion_dias` (RLS por `maestro_id`, `ref_propia_sesion` y candado de solo lectura), la función
+`sesion_terminada(sesiones)` (completada o con fecha anterior al corte 2026-09-30), tres triggers
+(`sesiones_dias_trabajo` sobre `sesiones.fecha`; `marca_historico_productos`, la de b20 más el día de la actividad;
+`calificaciones_dia_actividad`), `mover_producto_a_sesion` (la de b19a más una línea) y el respaldo: a las actividades de
+las sueltas y de las sesiones terminadas les pone el día de su sesión, a las de las sesiones en curso con captura el
+primer día de captura (las demás quedan "por trabajar") y crea un `sesion_dias` por cada sesión de proyecto con fecha
+(cerrado si está terminada; abierto si sigue en curso: Hoy preguntará qué se trabajó ese día). Correrla dos veces no
+cambia nada.
+
+Comprobación de b27 (editor SQL de producción, solo lectura; todo lo de la derecha debe coincidir):
+
+```sql
+select
+  (select count(*) from information_schema.columns where table_schema = 'public'
+     and ((table_name = 'sesiones' and column_name = 'terminada_en')
+       or (table_name = 'productos_sesion' and column_name = 'fecha_trabajo')))   as columnas,        -- 2
+  to_regclass('public.sesion_dias') is not null                                    as tabla,           -- true
+  (select count(*) from pg_policies where tablename = 'sesion_dias')               as politicas,       -- 7 (4 propias + 3 del candado)
+  (select count(distinct tablename) from pg_policies where policyname like 'acceso_mi_salon%') as tablas_candado, -- 47 (46 de b25 + sesion_dias)
+  (select count(*) from pg_trigger where tgname in ('sesiones_dias_trabajo', 'calificaciones_dia_actividad') and not tgisinternal) as triggers, -- 2
+  position('fecha_trabajo' in pg_get_functiondef('public.marca_historico_productos'::regproc)) > 0 as historico_con_dia, -- true
+  position('fecha_trabajo' in pg_get_functiondef('public.mover_producto_a_sesion'::regproc)) > 0   as mover_con_dia,     -- true
+  -- el respaldo no deja actividades de sesiones terminadas sin día (salvo tareas y las quitadas): debe dar 0
+  (select count(*) from public.productos_sesion ps join public.sesiones s on s.id = ps.sesion_id
+     join public.proyectos p on p.id = s.proyecto_id
+   where p.tipo = 'proyecto' and public.sesion_terminada(s) and ps.activo and ps.tipo <> 'tarea'
+     and ps.fecha_trabajo is null and s.fecha is not null)                         as sin_respaldo;    -- 0
+```
+
+Reversa de b27 (a mano, solo si hiciera falta; el frontend de la Fase 5b dejaría de funcionar y el anterior no se
+entera; no borra datos de calificación):
+
+```sql
+drop trigger if exists calificaciones_dia_actividad on public.calificaciones;
+drop trigger if exists sesiones_dias_trabajo on public.sesiones;
+drop function if exists public.calificaciones_dia_actividad();
+drop function if exists public.sesiones_dias_trabajo();
+-- marca_historico_productos: volver a la de supabase/mi_salon_b20_registro_historico_2026-09.sql (create or replace)
+-- mover_producto_a_sesion: volver a la de supabase/mi_salon_b19a_integridad_2026-09.sql (create or replace)
+drop table if exists public.sesion_dias;
+drop function if exists public.sesion_terminada(public.sesiones);
+alter table public.productos_sesion drop column if exists fecha_trabajo;
+alter table public.sesiones drop column if exists terminada_en;
+```
+
+(`scripts/aplicar-migraciones-prod.js` no lleva una cadena fija: recibe los archivos como argumentos, así que b27 solo
+se agrega a las listas de esta guía. Va aparte de la cadena de `delete_own_account`: no la redefine.)
 
 ## 2. Secretos de las Edge Functions
 

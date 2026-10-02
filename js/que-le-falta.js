@@ -148,7 +148,7 @@
 		function productoHistorico(p) {
 			var s = sesionPorId[p.sesion_id] || {};
 			if (grupoAlta && s.fecha && s.fecha < grupoAlta) return true;
-			return !!(A && A.esHistorico && A.esHistorico(p, s.fecha || null));
+			return !!(A && A.esHistorico && A.esHistorico(p, s.id ? s : null));
 		}
 		var historicoPorSesion = {};
 		(det.productos || []).forEach(function (p) {
@@ -234,8 +234,9 @@
 			// Sin revisar: solo si ya le tocaba (sesión dada; la tarea, ya vencida: el siguiente día
 			// de clase del calendario SEP y los ajustes del grupo, e.calendario)
 			var cuando = item.tarea
-				? (A ? A.venceTarea(p.fecha_entrega, s.fecha || null, e.calendario || []) : (p.fecha_entrega || s.fecha || null))
-				: (s.fecha || null);
+				? (A ? A.venceTarea(p.fecha_entrega, A.baseTarea(s), e.calendario || []) : (p.fecha_entrega || s.fecha || null))
+				// el día en que se trabajó la actividad (por trabajar, null: aún no es pendiente)
+				: (A ? A.diaTrabajo(p, s) : (s.fecha || null));
 			if (!cuando || cuando > hoy) return;
 			campos[c].porRevisar.push(Object.assign(item, { estado: "sin_revisar" }));
 		});
