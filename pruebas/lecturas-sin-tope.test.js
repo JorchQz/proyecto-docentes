@@ -48,6 +48,8 @@ const ACOTADAS = [
 	["actividad-nueva.js", "catalogo_pda", ".eq(\"contenido_id\", c.id)", "los PDA de un contenido del catálogo (unos cuantos por grado)"],
 	["ponte-al-dia.js", "catalogo_pda", ".eq(\"contenido_id\", contenido.id)", "los PDA de un contenido del catálogo (unos cuantos por grado): la actividad histórica, como en Hoy"],
 	["crear_proyecto.js", "sesiones", ".eq('proyecto_id', id)", "las sesiones de un proyecto"],
+	// "Cambiar PDA" (2026-10-02): los PDA de UNA sesión en UN grado, para saber cuáles se pueden borrar
+	["crear_proyecto.js", "sesiones_pda", ".eq('sesion_id', id)", "los PDA de una sesión en un grado (unos cuantos)"],
 	["evaluacion_diagnostica.js", "evaluacion_diagnostica", ".eq(\"momento\", momentoActual)", "un grupo en un momento: uno por alumno"],
 	["evaluacion_formativa.js", "evaluacion_formativa", ".eq(\"sesion_id\", sesionId)", "una sesión"],
 	["evaluacion_formativa.js", "sesiones_pda", ".eq(\"sesion_id\", sesionId)", "una sesión"],

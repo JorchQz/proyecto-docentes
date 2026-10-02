@@ -1718,6 +1718,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         }
       });
 
+      // Lo que se estaba cambiando con "Cambiar PDA" se vuelve a pintar tras reconstruir el bloque
+      recordarEditoresPda(block);
+
       // Eliminar bloque PDA anterior
       const oldPdaBlock = sessionBody.querySelector('.pda-block');
       if (oldPdaBlock) oldPdaBlock.remove();
@@ -1789,7 +1792,8 @@ document.addEventListener("DOMContentLoaded", async function () {
       const select = block.querySelector(`.pda-block select[name="pda_select_grado_${grado}"]`);
       if (!select) return;
       const cont = select.parentElement;
-      if (!cont || cont.querySelector('.pda-varios')) return;
+      if (!cont || cont.querySelector('.pda-varios, .pda-editor')) return;
+      const editable = block.dataset.trabajada !== '1';
       [select, cont.querySelector(`#sugerencia_grado_${grado}`), cont.querySelector(`[name="criterio_grado_${grado}"]`)].forEach(function (el) {
         if (!el) return;
         el.classList.add('hidden');
@@ -1806,9 +1810,181 @@ document.addEventListener("DOMContentLoaded", async function () {
             (p.criterio_aplicado ? `<span class="block text-xs text-gray-500">Criterio: ${escapeHtml(p.criterio_aplicado)}</span>` : '') +
             '</li>';
         }).join('') + '</ul>' +
-        `<p class="mt-2 text-xs text-gray-500">Aquí no se cambian uno por uno: al guardar, los ${suyos.length} se conservan tal como están.</p>`;
+        (editable
+          ? `<p class="mt-2 text-xs text-gray-500">Si no los cambias, al guardar los ${suyos.length} se conservan tal como están.</p>` +
+            `<button type="button" class="pda-cambiar mt-2 min-h-[44px] px-4 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-600">Cambiar PDA</button>`
+          : `<p class="mt-2 text-xs text-gray-500">Aquí no se cambian uno por uno: al guardar, los ${suyos.length} se conservan tal como están.</p>`);
       cont.appendChild(caja);
+      if (!editable) return;
+      const pedida = block._pdaEdicion && block._pdaEdicion[grado];
+      const abrir = function (filas) { abrirEditorPda(block, grado, cont, caja, suyos, filas); };
+      caja.querySelector('.pda-cambiar').addEventListener('click', function () { abrir(null); });
+      // Ya se estaba cambiando (se volvió del paso 2): se regresa a lo que se tenía
+      if (pedida) abrir(pedida);
     });
+  }
+
+  /*
+    "Cambiar PDA" (2026-10-02): en una sesión sin trabajar, la lista de un grado con 2 o más PDA se vuelve
+    editable: un renglón por PDA (su selector, su criterio y "Quitar"), "+ Agregar PDA", sin repetir un PDA
+    en el grado. La docente edita SU copia del proyecto. Lo que se guarda lo arma payloadDeBloque
+    (entradasDeEditorPda) y lo aplica el materializador por (sesión, PDA, grado): un PDA que se conserva
+    es la misma fila de sesiones_pda (su evidencia y sus ligas siguen), uno nuevo crea fila y uno quitado
+    se borra solo si nada lo referencia (protegerPdaQuitados). Los productos del grado se ligan a todos los
+    PDA del grado: el PDA que reemplaza a otro hereda sus ligas; al quitar sin reemplazo se quedan con los demás.
+  */
+  function opcionesDePdaDeGrado(select, suyos) {
+    const opciones = Array.from(select.options).filter(function (o) { return o.value; }).map(function (o) {
+      return { valor: o.value, texto: o.textContent };
+    });
+    // Un PDA que ya tiene la sesión pero la lista de su contenido ya no ofrece se puede conservar
+    suyos.forEach(function (p) {
+      if (!p.pda_id || opciones.some(function (o) { return o.valor === String(p.pda_id); })) return;
+      const cat = (catalogoPDA || []).find(function (c) { return String(c.id) === String(p.pda_id); });
+      opciones.push({ valor: String(p.pda_id), texto: p.pda_texto || (cat && cat.pda) || 'PDA sin texto' });
+    });
+    return opciones;
+  }
+
+  function refrescarOpcionesPda(editor) {
+    const filas = Array.from(editor.querySelectorAll('.pda-ed-fila'));
+    const usados = filas.map(function (f) { return f.querySelector('.pda-ed-select').value; });
+    filas.forEach(function (f, i) {
+      Array.from(f.querySelector('.pda-ed-select').options).forEach(function (o) {
+        // Un PDA ya elegido en otro renglón no se repite en el grado
+        o.disabled = !!o.value && usados.some(function (u, j) { return j !== i && u === o.value; });
+      });
+    });
+    const solo = filas.length === 1;
+    filas.forEach(function (f) { f.querySelector('.pda-ed-quitar').setAttribute('aria-label', solo ? 'Quitar el último PDA de este grado' : 'Quitar este PDA'); });
+  }
+
+  function agregarFilaPda(editor, opciones, grado, entrada, valores) {
+    const fila = document.createElement('div');
+    fila.className = 'pda-ed-fila rounded-lg border border-gray-200 bg-white p-3';
+    fila._entrada = entrada || null;
+    fila.innerHTML =
+      '<div class="flex flex-col sm:flex-row gap-2 sm:items-start">' +
+        `<select class="pda-ed-select w-full sm:flex-1 min-w-0 min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" aria-label="PDA de ${grado}°">` +
+          `<option value="">Selecciona PDA para ${grado}°...</option>` +
+          opciones.map(function (o) { return `<option value="${escapeHtml(o.valor)}">${escapeHtml(o.texto)}</option>`; }).join('') +
+        '</select>' +
+        '<button type="button" class="pda-ed-quitar shrink-0 min-h-[44px] px-4 rounded-xl border border-gray-300 bg-white text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500">Quitar</button>' +
+      '</div>' +
+      '<div class="pda-ed-sugerencia hidden text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1"></div>' +
+      `<textarea rows="2" class="pda-ed-criterio w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 mt-2" placeholder="Criterio de evaluación para ${grado}°..." aria-label="Criterio de evaluación para ${grado}°"></textarea>`;
+    const select = fila.querySelector('.pda-ed-select');
+    const criterio = fila.querySelector('.pda-ed-criterio');
+    const sugerencia = fila.querySelector('.pda-ed-sugerencia');
+    const inicial = valores || entrada;
+    if (inicial) {
+      select.value = inicial.pda_id ? String(inicial.pda_id) : '';
+      criterio.value = inicial.criterio_aplicado || '';
+    }
+    // El criterio que ya traía el renglón (o el que se puso solo) es del PDA de ese momento: si no se
+    // tocó y se cambia el PDA, se quita para que el nuevo PDA ofrezca el suyo
+    criterio.dataset.base = criterio.value;
+    criterio.addEventListener('input', function () { delete criterio.dataset.base; });
+    select.addEventListener('change', function () {
+      if (select.dataset.alAbrir !== '1' && criterio.dataset.base !== undefined && criterio.value === criterio.dataset.base) criterio.value = '';
+      refrescarOpcionesPda(editor);
+    });
+    conectarCriterios(select, sugerencia, criterio, function (v) { criterio.dataset.base = v; });
+    fila.querySelector('.pda-ed-quitar').addEventListener('click', function () {
+      fila.remove();
+      refrescarOpcionesPda(editor);
+      const aviso = editor.querySelector('.pda-ed-aviso');
+      if (aviso) aviso.classList.toggle('hidden', !!editor.querySelector('.pda-ed-fila'));
+    });
+    editor.querySelector('.pda-ed-filas').appendChild(fila);
+    refrescarOpcionesPda(editor);
+    if (select.value) {
+      // Sugerencias del PDA que ya tiene, sin autollenar nada
+      select.dataset.alAbrir = '1';
+      select.dispatchEvent(new Event('change'));
+    }
+    return fila;
+  }
+
+  function abrirEditorPda(block, grado, cont, caja, suyos, filasPedidas) {
+    const select = cont.querySelector(`select[name="pda_select_grado_${grado}"]`);
+    const opciones = opcionesDePdaDeGrado(select, suyos);
+    const editor = document.createElement('div');
+    editor.className = 'pda-editor rounded-xl border border-blue-200 bg-white px-3 py-3';
+    editor.dataset.grado = String(grado);
+    editor.innerHTML =
+      `<p class="text-sm font-semibold text-gray-800">PDA de ${grado}° en esta sesión</p>` +
+      '<p class="mt-1 text-xs text-gray-500">Cambia el PDA de un renglón, ajusta su criterio, quítalo o agrega otro. No se puede repetir un PDA en el mismo grado. Se guarda al guardar el proyecto.</p>' +
+      '<div class="pda-ed-filas mt-3 space-y-3"></div>' +
+      '<p class="pda-ed-aviso hidden mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Sin PDA: al guardar, la sesión quedaría sin PDA de este grado y te lo preguntaremos.</p>' +
+      '<div class="mt-3 flex flex-wrap gap-2">' +
+        '<button type="button" class="pda-ed-agregar min-h-[44px] px-4 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-600">+ Agregar PDA</button>' +
+        '<button type="button" class="pda-ed-descartar min-h-[44px] px-4 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400">Descartar cambios</button>' +
+      '</div>';
+    caja.classList.add('hidden');
+    cont.appendChild(editor);
+    const inicio = filasPedidas || suyos.map(function (p) { return { entrada: p, valores: null }; });
+    inicio.forEach(function (f) { agregarFilaPda(editor, opciones, grado, f.entrada, f.valores); });
+    editor.querySelector('.pda-ed-agregar').addEventListener('click', function () {
+      const f = agregarFilaPda(editor, opciones, grado, null);
+      editor.querySelector('.pda-ed-aviso').classList.add('hidden');
+      f.querySelector('.pda-ed-select').focus();
+    });
+    editor.querySelector('.pda-ed-descartar').addEventListener('click', function () {
+      editor.remove();
+      caja.classList.remove('hidden');
+      if (block._pdaEdicion) delete block._pdaEdicion[grado];
+      const b = caja.querySelector('.pda-cambiar');
+      if (b) b.focus();
+    });
+    editor.querySelector('.pda-ed-aviso').classList.toggle('hidden', !!editor.querySelector('.pda-ed-fila'));
+  }
+
+  // Lo que dice el editor de un grado como entradas de pda_sesion (null: ese grado no se está cambiando).
+  // Un renglón que sigue igual devuelve su entrada guardada tal cual (mismo objeto: guardar sin cambios no escribe).
+  function entradasDeEditorPda(block, grado) {
+    const editor = block.querySelector(`.pda-editor[data-grado="${grado}"]`);
+    if (!editor) return null;
+    const entradas = [];
+    editor.querySelectorAll('.pda-ed-fila').forEach(function (fila) {
+      const pdaId = fila.querySelector('.pda-ed-select').value || null;
+      const criterio = fila.querySelector('.pda-ed-criterio').value.trim() || null;
+      if (!pdaId && !criterio) return;
+      const antes = fila._entrada;
+      if (antes && String(antes.pda_id || '') === String(pdaId || '') && (antes.criterio_aplicado || null) === criterio) {
+        entradas.push(antes);
+        return;
+      }
+      const cat = (catalogoPDA || []).find(function (c) { return String(c.id) === String(pdaId); });
+      const mismoPda = antes && String(antes.pda_id || '') === String(pdaId || '');
+      entradas.push({
+        grado: Number(grado),
+        pda_id: pdaId,
+        pda_texto: cat ? cat.pda : (mismoPda ? antes.pda_texto || null : (function () {
+          const o = Array.from(fila.querySelector('.pda-ed-select').options).find(function (x) { return x.value === pdaId; });
+          return o ? o.textContent : null;
+        })()),
+        criterio_aplicado: criterio,
+      });
+    });
+    return entradas.concat((block._pdaProtegidos || []).filter(function (p) { return Number(p.grado) === Number(grado); }));
+  }
+
+  // Guarda lo que se está cambiando de cada editor para volver a pintarlo (rebuildAllPdaBlocks lo borra)
+  function recordarEditoresPda(block) {
+    const previo = {};
+    block.querySelectorAll('.pda-editor').forEach(function (ed) {
+      previo[ed.dataset.grado] = Array.from(ed.querySelectorAll('.pda-ed-fila')).map(function (fila) {
+        return {
+          entrada: fila._entrada,
+          valores: {
+            pda_id: fila.querySelector('.pda-ed-select').value || null,
+            criterio_aplicado: fila.querySelector('.pda-ed-criterio').value.trim() || null,
+          },
+        };
+      });
+    });
+    block._pdaEdicion = previo;
   }
 
   // Sugerencias de criterio desde banco_criterios_pda (las 2-5 variantes reales
@@ -1820,7 +1996,12 @@ document.addEventListener("DOMContentLoaded", async function () {
     const sugerencia = scope.querySelector(`#sugerencia_grado_${grado}`);
     const criterioTextarea = scope.querySelector(`[name="criterio_grado_${grado}"]`);
     if (!select || !sugerencia || !criterioTextarea) return;
+    conectarCriterios(select, sugerencia, criterioTextarea);
+  }
 
+  // El selector de criterios de un PDA (también el de cada renglón de "Cambiar PDA"). alFijar(valor)
+  // avisa cuando el criterio se puso solo (el sugerido) o se tocó una sugerencia.
+  function conectarCriterios(select, sugerencia, criterioTextarea, alFijar) {
     select.addEventListener('change', async function () {
       // Al abrir un proyecto guardado (restoreSessionBlocks) se muestran las sugerencias, pero no
       // se autollena el criterio: abrir y guardar sin cambios no escribe nada
@@ -1858,6 +2039,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       // Autollenar con la variante más usada solo si el maestro no ha escrito nada (y no al abrir)
       if (!alAbrir && !criterioTextarea.value.trim()) {
         criterioTextarea.value = variantes[0].criterio_texto;
+        if (alFijar) alFijar(criterioTextarea.value);
       }
 
       sugerencia.innerHTML =
@@ -1876,6 +2058,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           const v = variantes[parseInt(btn.dataset.criterioIdx, 10)];
           if (!v) return;
           criterioTextarea.value = v.criterio_texto;
+          if (alFijar) alFijar(criterioTextarea.value);
           if (v.id) {
             window.sb.rpc('incrementar_uso_criterio', { p_id: v.id })
               .then(function () {}, function () {});
@@ -2957,6 +3140,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           const pda = (catalogoPDA || []).find(function(p) { return p.id === pdaId; });
           return {
             grado: gNum,
+            lista: entradasDeEditorPda(block, gNum) || undefined,
             representable: representable,
             entrada: !pdaId && !criterio ? null : { grado: gNum, pda_id: pdaId, pda_texto: pda ? pda.pda : null, criterio_aplicado: criterio },
           };
@@ -2965,6 +3149,83 @@ document.addEventListener("DOMContentLoaded", async function () {
       })(),
       observaciones:           g('observaciones'),
     };
+  }
+
+  /*
+    "Cambiar PDA": un PDA que la docente quitó se borra SOLO si nada lo referencia
+    (ProyectoEdicion.motivoDeProteccion: evaluación formativa o una liga hecha a mano). Si algo lo
+    referencia se queda en la lista de la sesión (block._pdaProtegidos, que payloadDeBloque agrega) y
+    se avisa por qué después de guardar. Las ligas del plan no lo protegen: pasan al PDA que reemplazó.
+  */
+  let avisosGuardado = [];
+  async function protegerPdaQuitados(lista, existe) {
+    const PE = window.ProyectoEdicion;
+    for (let i = 0; i < lista.length; i++) {
+      const block = lista[i];
+      block._pdaProtegidos = [];
+      const id = block.dataset.sesionId;
+      const editores = Array.from(block.querySelectorAll('.pda-editor'));
+      if (!id || !existe[id] || !editores.length) continue;
+      const campo = window.CamposFormativos.corto(block.querySelector('[name="campo_formativo"]')?.value || '');
+      for (const ed of editores) {
+        const grado = Number(ed.dataset.grado);
+        const antes = PE.pdaGuardadosDeGrado(existe[id].pda_sesion, grado);
+        const quitados = PE.cambiosDePda(antes, entradasDeEditorPda(block, grado) || []).quitados;
+        if (!quitados.length) continue;
+        const filas = await window.Lectura.uno(window.sb.from('sesiones_pda')
+          .select('id, pda_id, grado, criterio_aplicado').eq('sesion_id', id).eq('grado', grado));
+        const suyas = (filas || []).filter(function (f) {
+          return quitados.some(function (q) { return PE.clavePda(q) === PE.clavePda(f); });
+        });
+        if (!suyas.length) continue;
+        const ids = suyas.map(function (f) { return f.id; });
+        const evaluaciones = await window.LeerTodo.porLotes(ids, function (lote) {
+          return window.sb.from('evaluacion_formativa').select('sesion_pda_id').in('sesion_pda_id', lote).order('id');
+        });
+        const ligas = (await window.LeerTodo.porLotes(ids, function (lote) {
+          return window.sb.from('producto_sesion_pda').select('sesion_pda_id, productos_sesion(campo, grados)')
+            .in('sesion_pda_id', lote).order('sesion_pda_id').order('producto_sesion_id');
+        })).map(function (l) {
+          return { sesion_pda_id: l.sesion_pda_id, campo: l.productos_sesion && l.productos_sesion.campo, grados: l.productos_sesion && l.productos_sesion.grados };
+        });
+        suyas.forEach(function (f) {
+          const motivo = PE.motivoDeProteccion(f, { evaluaciones: evaluaciones, ligas: ligas }, campo);
+          if (!motivo) return;
+          const entrada = quitados.find(function (q) { return PE.clavePda(q) === PE.clavePda(f); });
+          block._pdaProtegidos.push(entrada);
+          const cat = (catalogoPDA || []).find(function (c) { return String(c.id) === String(f.pda_id); });
+          avisosGuardado.push('En la sesión ' + (i + 1) + ' el PDA «' + String(entrada.pda_texto || (cat && cat.pda) || 'sin texto').slice(0, 90) +
+            '» de ' + grado + '° se quedó: ' + (motivo === 'evaluacion'
+              ? 'ya tiene evaluación formativa.'
+              : 'una actividad lo tiene ligado a mano.'));
+        });
+      }
+    }
+  }
+
+  // Lo que "Cambiar PDA" no admite antes de guardar: un PDA repetido en el grado (error) o un grado que
+  // se queda sin PDA (se pide confirmar). → { error, foco } | { sinPda: [textos] } | {}
+  function revisarPdaEditados(blocks) {
+    const sinPda = [];
+    const lista = Array.from(blocks);
+    for (let i = 0; i < lista.length; i++) {
+      const editores = Array.from(lista[i].querySelectorAll('.pda-editor'));
+      for (const ed of editores) {
+        const vistos = {};
+        let con = 0;
+        for (const fila of Array.from(ed.querySelectorAll('.pda-ed-fila'))) {
+          const sel = fila.querySelector('.pda-ed-select');
+          if (sel.value || fila.querySelector('.pda-ed-criterio').value.trim()) con++;
+          if (!sel.value) continue;
+          if (vistos[sel.value]) {
+            return { error: 'En la sesión ' + (i + 1) + ', el mismo PDA está dos veces en ' + ed.dataset.grado + '°. Cambia o quita uno de los dos para guardar.', foco: sel, bloque: lista[i] };
+          }
+          vistos[sel.value] = true;
+        }
+        if (!con) sinPda.push('la sesión ' + (i + 1) + ' quedaría sin PDA de ' + ed.dataset.grado + '°');
+      }
+    }
+    return { sinPda: sinPda };
   }
 
   function errorHumano(texto) {
@@ -3089,6 +3350,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         throw errorHumano('Este proyecto ya se está trabajando: su trimestre no cambia y no se quitan sus grados ni sus campos formativos (sí puedes agregar). Recarga la página; no se guardó nada.');
       }
     }
+
+    // "Cambiar PDA": un PDA quitado que algo referencia se queda (y se avisa)
+    await protegerPdaQuitados(lista, existe);
 
     // Qué escribir de cada sesión: solo lo que cambió respecto a lo que hay en la base
     const existentes = [];
@@ -3238,6 +3502,21 @@ document.addEventListener("DOMContentLoaded", async function () {
       return;
     }
 
+    // "Cambiar PDA": sin PDA repetidos en un grado; un grado sin PDA se confirma
+    const pdaRev = revisarPdaEditados(blocks);
+    if (pdaRev.error) {
+      msgEl.className = 'mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm';
+      msgEl.textContent = pdaRev.error;
+      msgEl.classList.remove('hidden');
+      const body = pdaRev.bloque && pdaRev.bloque.querySelector('.session-body');
+      if (body && body.classList.contains('hidden')) pdaRev.bloque.querySelector('.session-toggle')?.click();
+      if (pdaRev.foco && pdaRev.foco.focus) pdaRev.foco.focus();
+      return;
+    }
+    if (pdaRev.sinPda && pdaRev.sinPda.length &&
+        !window.confirm('Al guardar, ' + pdaRev.sinPda.join(' y ') + '. ¿Guardar así?')) return;
+
+    avisosGuardado = [];
     guardando = true;
     btn.disabled = true;
     btn.textContent = 'Guardando...';
@@ -3277,10 +3556,11 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
 
       msgEl.className = 'mt-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm';
-      msgEl.textContent = 'Proyecto guardado correctamente. Redirigiendo...';
+      msgEl.textContent = 'Proyecto guardado correctamente.' + (avisosGuardado.length ? ' ' + avisosGuardado.join(' ') : '') + ' Redirigiendo...';
       msgEl.classList.remove('hidden');
       clearDraft();
-      setTimeout(() => { window.location.href = 'planeacion.html'; }, 1800);
+      // Con avisos (un PDA que se quedó y por qué) se da más tiempo para leerlos
+      setTimeout(() => { window.location.href = 'planeacion.html'; }, avisosGuardado.length ? 9000 : 1800);
 
     } catch (err) {
       // Un aviso ya manejado ("Mientras editabas…") no es un error de la página (R25a)

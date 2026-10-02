@@ -328,9 +328,54 @@
 	function pdaGuardadosDeGrado(original, grado) {
 		return (Array.isArray(original) ? original : []).filter(function (p) { return p && Number(p.grado) === Number(grado); });
 	}
+	/*
+		Cambiar PDA (2026-10-02): lo que le pasa a lo ya guardado cuando la docente edita la lista de un
+		grado. cambiosDePda(antes, despues) → { conservados, nuevos, quitados } por pda_id (la fila de
+		sesiones_pda se identifica por sesión, PDA y grado: un PDA que se conserva es la MISMA fila y
+		solo se actualiza su criterio; uno nuevo crea fila; uno quitado se borra si nada lo referencia).
+		Una entrada sin pda_id (solo criterio) se identifica por su criterio.
+	*/
+	function clavePda(p) {
+		return p && p.pda_id ? "p|" + p.pda_id : "c|" + String(p && p.criterio_aplicado || "").trim();
+	}
+	function cambiosDePda(antes, despues) {
+		var a = {}, d = {};
+		(antes || []).forEach(function (p) { a[clavePda(p)] = p; });
+		(despues || []).forEach(function (p) { d[clavePda(p)] = p; });
+		return {
+			conservados: Object.keys(d).filter(function (k) { return a[k]; }).map(function (k) { return d[k]; }),
+			nuevos: Object.keys(d).filter(function (k) { return !a[k]; }).map(function (k) { return d[k]; }),
+			quitados: Object.keys(a).filter(function (k) { return !d[k]; }).map(function (k) { return a[k]; }),
+		};
+	}
+	/*
+		Un PDA quitado SOLO se borra si nada lo referencia (decisión del 2026-10-02). Lo referencia:
+		  - evaluación formativa (evaluacion_formativa.sesion_pda_id), o
+		  - una liga producto_sesion_pda que el plan NO haría solo: de un producto DEL CAMPO de la sesión
+		    pero de otro grado (lo ligó la docente a mano, p. ej. una actividad de 2° con un PDA de 1°).
+		Las ligas del plan (producto del campo de la sesión y de ese grado) NO lo protegen: se mueven
+		al PDA que reemplazó (materializarSesiones liga cada producto con todos los PDA de su grado).
+		Tampoco una liga de un producto de OTRO campo: materializarSesiones ya la quita de un PDA del plan
+		(es lo que sobra al cambiar el campo de la sesión), así que no es una referencia que se conserve.
+		refs: { evaluaciones: [{ sesion_pda_id }], ligas: [{ sesion_pda_id, campo, grados }] }
+		→ "evaluacion" | "liga" | null
+	*/
+	function motivoDeProteccion(spda, refs, campoSesion) {
+		refs = refs || {};
+		if ((refs.evaluaciones || []).some(function (e) { return e.sesion_pda_id === spda.id; })) return "evaluacion";
+		var manual = (refs.ligas || []).some(function (l) {
+			if (l.sesion_pda_id !== spda.id || l.campo !== campoSesion) return false;
+			var grados = (l.grados || []).map(function (g) { return parseInt(g, 10); });
+			return grados.indexOf(Number(spda.grado)) === -1;
+		});
+		return manual ? "liga" : null;
+	}
 	function pdaSesionConservando(leidas, original) {
 		var out = [];
 		(leidas || []).forEach(function (l) {
+			// "Cambiar PDA" (grado con 2 o más PDA, sesión sin trabajar): la docente editó la lista de
+			// ese grado y esa lista, tal cual, es la que se guarda (puede quedar con 1 o con 0)
+			if (Array.isArray(l.lista)) { l.lista.forEach(function (p) { out.push(p); }); return; }
 			var suyos = pdaGuardadosDeGrado(original, l.grado);
 			if (l.representable && suyos.length < 2) { if (l.entrada) out.push(l.entrada); return; }
 			suyos.forEach(function (p) { out.push(p); });
@@ -466,6 +511,7 @@
 		textoDeCampo: textoDeCampo, seccionAlAbrir: seccionAlAbrir,
 		modoTareasAlAbrir: modoTareasAlAbrir, tareasDelCierre: tareasDelCierre,
 		actividadesDeSeccion: actividadesDeSeccion, pdaSesionConservando: pdaSesionConservando, pdaGuardadosDeGrado: pdaGuardadosDeGrado,
+		cambiosDePda: cambiosDePda, motivoDeProteccion: motivoDeProteccion, clavePda: clavePda,
 		actualizarSinTrabajar: actualizarSinTrabajar, guardarSesiones: guardarSesiones, avisoCarrera: avisoCarrera,
 		CAMPOS_PLAN_SESION: CAMPOS_PLAN_SESION, copiaDeSesion: copiaDeSesion, trimestreDeCopia: trimestreDeCopia,
 	};
