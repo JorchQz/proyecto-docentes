@@ -1187,6 +1187,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 			window.ProductosHoy.etiquetaGrados(producto.grados);
 	}
 
+	/*
+		Quién hace un producto, lo mismo que dice la vista del proyecto (ParaQuien.quienHace): "3° (todos)" o sus nombres,
+		y en corto (los 3 primeros + "+ N más") para el renglón, que es un botón y no admite otro botón dentro.
+	*/
+	function quienHaceDe(producto) {
+		var q = window.ParaQuien.quienHace(producto, asignaciones[producto.id] || {}, alumnos);
+		return { quien: q, corto: window.ParaQuien.quienHaceCorto(q) };
+	}
+
 	function esSuelta(sesion) {
 		return !!sesion && window.AlcanceHoy.esSueltas(proyectoPorId[sesion.proyecto_id]);
 	}
@@ -1950,6 +1959,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var etiquetaConteo = conteo.total ? conteo.hechos + " de " + conteo.total + " calificados"
 			: alumnosDeProducto(producto).length ? "Faltaron hoy" : "Sin alumnos";
 		var terminada = conteo.total > 0 && conteo.hechos === conteo.total;
+		var quienHecho = quienHaceDe(producto);
 		return "<div class='mb-3 rounded-xl border border-gray-200' data-bloque-producto='" + esc(producto.id) + "'>" +
 			// El renglón: se toca para abrir o cerrar (aria-expanded); no lleva data-producto, que es del semáforo
 			"<button type='button' data-abrir-producto='" + esc(producto.id) + "' aria-expanded='" + (abierto ? "true" : "false") + "' " +
@@ -1958,12 +1968,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 			"<span class='min-w-0 flex-1 text-sm font-medium text-gray-700 break-words'>" + esc(producto.nombre) +
 			// Para quién: sus grados (en multigrado salían bloques iguales sin decir de qué grado
 			// eran) y los alumnos incluidos o excluidos
-			"<span class='text-sm font-semibold text-blue-700'> · " + esc(paraQuien(producto)) + "</span>" +
+			"<span class='text-sm font-semibold text-blue-700' data-quien> · " + esc(quienHecho.corto.corto) + "</span>" +
 			"<span class='text-xs text-gray-400 ml-2'>" + esc(producto.campo || "") + "</span></span>" +
 			"<span data-conteo-calificados class='shrink-0 text-xs font-semibold rounded-full px-2.5 py-1 " +
 			(terminada ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600") + "'>" + etiquetaConteo + "</span>" +
 			"</button>" +
 			"<div id='cuerpo-prod-" + esc(producto.id) + "' class='" + (abierto ? "" : "hidden ") + "px-3 pb-2'>" +
+			// Con más de 3 nombres el renglón dice "+ N más": aquí, al abrir, la lista completa
+			(quienHecho.corto.resto.length ? "<p class='mb-1 text-sm text-gray-700 break-words' data-lo-hacen>Lo hacen: " + esc(quienHecho.quien.texto) + "</p>" : "") +
 			"<div class='flex sm:justify-end'>" + botonesProducto(producto) + "</div>" +
 			(filas || vacio(sinFilas)) + "</div></div>";
 	}

@@ -82,10 +82,30 @@ ok("con los de la sesión a la vista, el contenido del catálogo no repite los P
 	/if \(conContenidosDeSesion\(visibles\)\) visibles\.forEach\(function \(r\) \{ if \(r\.pda_id\) yaArriba\[r\.pda_id \+ "\|" \+ Number\(r\.grado\)\] = true; \}\);/.test(js) &&
 	/Sus PDA de estos grados ya están arriba, entre los de esta sesión\./.test(js), true);
 const elec = js.split("function eleccionPda() {")[1].split("\n\t\t}")[0];
-ok("al agregar, la cuenta de antes de la Fase 4: los PDA marcados de la sesión (salvo con «Cambiar») más los marcados del catálogo",
-	/var deSesion = conContenidosDeSesion\(visibles\) \? visibles\.filter\(marcadoSesion\)/.test(elec) &&
-	/var deCatalogo = \(pda\.pdaContenido \|\| \[\]\)\.filter\(function \(p\) \{ return pda\.marcadosCatalogo\[p\.id\] && g\.indexOf\(Number\(p\.grado\)\) !== -1; \}\)/.test(elec) &&
+ok("al agregar, la cuenta de antes de la Fase 4 (fuera): los PDA marcados de la sesión (salvo con «Cambiar») más los marcados del catálogo; dentro, solo los de la sesión",
+	/var deSesion = pdaDeSesionALigar\(visibles, \{ fijo: fijo, modo: pda\.modo, tocados: pda\.tocadosSesion \}\);/.test(elec) &&
+	/var deCatalogo = fijo \? \[\] : \(pda\.pdaContenido \|\| \[\]\)\.filter\(function \(p\) \{ return pda\.marcadosCatalogo\[p\.id\] && g\.indexOf\(Number\(p\.grado\)\) !== -1; \}\)/.test(elec) &&
 	/if \(pda\.spda === null\) return null;/.test(elec), true);
+
+// ── 7. Dentro del proyecto todo es de la sesión (decisión de Jorge, 2026-10-02) ──
+const marcada = (id, grado) => ({ id, grado, marcado: true }), noMarcada = (id, grado) => ({ id, grado, marcado: false });
+const visiblesEj = [marcada("a", 1), noMarcada("b", 1), marcada("c", 2)];
+ok("pdaDeSesionALigar dentro (fijo): exactamente los marcados por la regla, aunque el docente haya tocado algo o el modo sea otro",
+	[N.pdaDeSesionALigar(visiblesEj, { fijo: true }), N.pdaDeSesionALigar(visiblesEj, { fijo: true, modo: "cambiar", tocados: { a: false, b: true } })], [["a", "c"], ["a", "c"]]);
+ok("pdaDeSesionALigar fuera: lo que marcó el docente, o la regla si no lo tocó; con «Cambiar», ninguno de la sesión",
+	[N.pdaDeSesionALigar(visiblesEj, { modo: "sesion", tocados: {} }), N.pdaDeSesionALigar(visiblesEj, { modo: "otro", tocados: { a: false, b: true } }),
+		N.pdaDeSesionALigar(visiblesEj, { modo: "cambiar", tocados: {} }), N.pdaDeSesionALigar([], { modo: "sesion" })], [["a", "c"], ["b", "c"], [], []]);
+ok("campoGuardado: dentro, el campo de la sesión (aunque el selector diga otro); fuera, el elegido",
+	[N.campoGuardado({ fijo: true, campoSesion: "LEN", campoElegido: "SAB" }), N.campoGuardado({ fijo: false, campoSesion: "LEN", campoElegido: "SAB" })], ["LEN", "SAB"]);
+ok("dentro: el campo se ve como texto y el selector queda deshabilitado y oculto", /refs\.campoFijo\.textContent = fijo \? "Campo formativo: " \+ campoLargo\(cs\) : "";/.test(js) &&
+	/sel\.disabled = fijo;/.test(js) && /function campoFijo\(\) \{ return st\.modo === "dentro" && !!st\.sesion && !!campoSesion\(\); \}/.test(js), true);
+ok("dentro: contenido y PDA de solo lectura (casillas marcadas y deshabilitadas, sin buscador, sin Cambiar ni + Otro contenido)",
+	/if \(campoFijo\(\)\) \{ pintarPdaFijos\(visibles\); return; \}/.test(js) && /name='pdaSesionFijo' disabled checked/.test(js) &&
+	!/data-cambiar-contenido|data-otro-contenido/.test(js.split("function pintarPdaFijos(visibles) {")[1].split("function pintarResultados()")[0]) &&
+	/refs\.buscador\.classList\.add\("hidden"\);/.test(js.split("function pintarPdaFijos(visibles) {")[1].split("function pintarResultados()")[0]), true);
+ok("dentro, sin PDA para esos grados: el texto de siempre y se guarda sin PDA", js.indexOf("Esta sesión no tiene PDA para ese grado: se guarda sin PDA.") !== -1, true);
+ok("al cambiar el interruptor o la sesión, el campo vuelve a ser el del modo (nada «tocado» sobrevive)", /st\.campoTocado = false;[\s\S]{0,200}quitarContenido\(\);\s*llenarCampos\(\);/.test(js), true);
+ok("al agregar, el campo que se guarda sale de campoGuardado", /campo: campoGuardado\(\{ fijo: campoFijo\(\), campoSesion: campoSesion\(\), campoElegido: refs\.campo\.value \}\),/.test(js), true);
 ok("desde un bloque de sueltas: en lugar del día, a qué bloque va (va a esa sesión)",
 	/if \(suelta\) \{\s*var bloque = document\.createElement\("p"\);\s*bloque\.setAttribute\("data-bloque-suelta", "1"\);/.test(js) &&
 	/refs\.diaCont\.classList\.toggle\("hidden", st\.modo !== "fuera" \|\| tarea \|\| !!suelta\);/.test(js) && /fecha: st\.modo === "fuera" && !suelta \? refs\.dia\.value : null,/.test(js), true);

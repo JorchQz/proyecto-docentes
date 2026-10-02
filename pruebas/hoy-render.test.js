@@ -55,7 +55,7 @@ const calificaciones = {
 };
 
 const cuerpo = [
-	"var window = { AlcanceHoy: ALCANCE, ProductosHoy: PH };",
+	"var window = { AlcanceHoy: ALCANCE, ProductosHoy: PH, ParaQuien: PQ };",
 	"var alumnos = ALUMNOS;",
 	"var calificaciones = CALIFICACIONES;",
 	"var detallesAbiertos = DETALLES;",
@@ -82,6 +82,7 @@ const cuerpo = [
 	extraerFuncion("chevron"),
 	extraerFuncion("notaTrabajaCon"),
 	extraerFuncion("paraQuien"),
+	extraerFuncion("quienHaceDe"),
 	extraerFuncion("esSuelta"),
 	extraerFuncion("notaIncompleta"),
 	extraerFuncion("fechaCorta"),
@@ -95,7 +96,11 @@ const cuerpo = [
 
 const fabrica = new Function("ALUMNOS", "CALIFICACIONES", "DETALLES", "ALCANCE", "PH", "ASIGNACIONES", "ABIERTOS", "ASISTENCIA_HOY", cuerpo);
 const PH = require("../js/productos-hoy.js");
-const api = fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, {}, {});
+// El renglón dice quién hace cada producto con ParaQuien (hoy.html lo carga; sin window, lee lo global)
+global.ProductosHoy = PH;
+global.AlcanceHoy = ALCANCE;
+global.PQ = require("../js/para-quien.js");
+const api =fabrica(alumnos, calificaciones, {}, ALCANCE, PH, {}, {}, {});
 
 const producto = { id: "prod-1", nombre: "Cartel del cuento", campo: "LEN", grados: ["2", "3"], tipo: "trabajo" };
 let html = "";
@@ -121,8 +126,19 @@ ok("producto de un grado: un solo alumno", soloTercero.indexOf("ALUMNO DE SEGUND
 ok("producto de un grado: sin encabezado de grado", (soloTercero.match(/° grado/g) || []).length, 0);
 
 // Rotulado con sus grados (2026-09-26): en multigrado salían bloques iguales sin decir el grado
-ok("el producto de un grado dice «· 3°»", /Problemas<span[^>]*> · 3°<\/span>/.test(soloTercero), true);
-ok("el producto multigrado dice «· 2° y 3°»", /Cartel del cuento<span[^>]*> · 2° y 3°<\/span>/.test(html), true);
+// 2026-10-02: el renglón dice lo mismo que la vista del proyecto (ParaQuien.quienHace): «3° (todos)» o los nombres
+ok("el producto de un grado dice «· 3° (todos)»", /Problemas<span[^>]*> · 3° \(todos\)<\/span>/.test(soloTercero), true);
+ok("el producto multigrado dice «· 2° y 3° (todos)»", /Cartel del cuento<span[^>]*> · 2° y 3° \(todos\)<\/span>/.test(html), true);
+ok("con todos, el cuerpo no lleva «Lo hacen:»", html.indexOf("data-lo-hacen") === -1, true);
+// Quien lo hace por nombre: 3 nombres y «+ N más» en el renglón (es un botón: sin otro botón dentro); al abrir, la lista completa
+const cinco = ["ANA", "BETO", "CARLA", "DANIEL", "ELENA"].map((n, i) => ({ id: "n" + i, nombre_completo: n, grado: 1, num_lista: i + 1 }));
+const porNombre = { id: "prod-7", nombre: "Tarjeta", campo: "LEN", grados: [], tipo: "trabajo" };
+const htmlCinco = fabrica(cinco, {}, {}, ALCANCE, PH, { "prod-7": { n0: "incluir", n1: "incluir", n2: "incluir", n3: "incluir", n4: "incluir" } }, {}, {}).bloqueProducto(porNombre);
+const renglon = (htmlCinco.match(/<button type='button' data-abrir-producto[\s\S]*?<\/button>/) || [""])[0];
+ok("cinco nombres: el renglón dice «ANA, BETO, CARLA + 2 más» y no lleva otro botón", [/ · ANA, BETO, CARLA \+ 2 más</.test(renglon), /DANIEL/.test(renglon), (renglon.match(/<button/g) || []).length].join(), "true,false,1");
+ok("cinco nombres: al abrir, la primera línea del cuerpo dice «Lo hacen:» con todos", /id='cuerpo-prod-prod-7'[^>]*><p [^>]*data-lo-hacen>Lo hacen: ANA, BETO, CARLA, DANIEL, ELENA<\/p>/.test(htmlCinco), true);
+const htmlTres = fabrica(cinco, {}, {}, ALCANCE, PH, { "prod-7": { n0: "incluir", n1: "incluir", n2: "incluir" } }, {}, {}).bloqueProducto(porNombre);
+ok("tres nombres: todos en el renglón y sin «Lo hacen:»", [/ · ANA, BETO, CARLA</.test(htmlTres), /data-lo-hacen/.test(htmlTres), /\+ \d+ más/.test(htmlTres)].join(), "true,false,false");
 ok("cada producto ofrece Renombrar y Quitar (44 px)",
 	/data-renombrar='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero) && /data-quitar-producto='prod-2'[^>]*min-h-\[44px\]/.test(soloTercero), true);
 

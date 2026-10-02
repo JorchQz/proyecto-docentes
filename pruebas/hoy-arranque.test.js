@@ -275,7 +275,8 @@ new Function(codigo)();
 	const trasProblemas = sesiones.split("Problemas de 3°").slice(1).join("").split("Tareas de esta sesión")[0];
 	ok("para quién: el de 2° incluido en una actividad de 3° aparece y «Trabaja con 3°»",
 		/ALUMNO DE SEGUNDO[\s\S]*Trabaja con 3°/.test(trasProblemas), true);
-	ok("para quién: el rótulo dice «3° + 1 alumno de 2°»", sesiones.indexOf("Problemas de 3°<span class='text-sm font-semibold text-blue-700'> · 3° + 1 alumno de 2°") !== -1, true);
+	// 2026-10-02: el renglón dice quién la hace como la vista del proyecto (ParaQuien.quienHace): los nombres
+	ok("para quién: el renglón dice quiénes la hacen (el de 2° incluido y los de 3°)", sesiones.indexOf("Problemas de 3°<span class='text-sm font-semibold text-blue-700' data-quien> · ALUMNO DE SEGUNDO, ALUMNO DE TERCERO</span>") !== -1, true);
 	ok("para quién: cada actividad ofrece «Para quién»", sesiones.indexOf("data-para-quien='pr4'") !== -1, true);
 	ok("incompleta: cada actividad en clase ofrece «Incompleta»", sesiones.indexOf("data-producto='pr1' data-alumno='al-3' data-incompleta='1'") !== -1, true);
 	const pend = elementos.pendientesLista ? elementos.pendientesLista.innerHTML : "";

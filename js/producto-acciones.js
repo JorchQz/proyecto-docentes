@@ -119,7 +119,7 @@
 		var avisoConCal = avisoConCalificaciones(producto.nombre);
 		// Se calificó mientras el diálogo estaba abierto (otra pestaña u otro aparato: R25a-r09)
 		var avisoMientras = avisoCarrera(producto.nombre);
-		if (conCapturaAqui()) { o.mensaje("error", avisoConCal); return; }
+		if (conCapturaAqui()) { o.avisoALaVista(avisoConCal); return; }
 		if (sinSenal()) { o.avisoALaVista("Quitar necesita señal. " + restoSinSenal(TEXTO_SIN_SENAL)); return; }
 		if (origen) origen.disabled = true;
 		var enBaseCon = 0;
@@ -132,7 +132,7 @@
 			return;
 		}
 		if (origen) origen.disabled = false;
-		if (enBaseCon > 0) { o.mensaje("error", avisoConCal); return; }
+		if (enBaseCon > 0) { o.avisoALaVista(avisoConCal); return; }
 		return PQ().abrirDialogo({
 			origen: origen,
 			textoError: o.textoError,
@@ -153,12 +153,12 @@
 						return false;
 					}
 				}
-				if (yaCalificado) { o.mensaje("error", avisoMientras); return; }
+				if (yaCalificado) { o.avisoALaVista(avisoMientras); return; }
 				var upd = await o.sb.from("productos_sesion").update({ activo: false })
 					.eq("id", producto.id).eq("maestro_id", o.maestroId);
 				if (upd.error) {
 					if (String(upd.error.hint || "") === "producto_con_calificaciones" || /se calific/i.test(String(upd.error.message || ""))) {
-						o.mensaje("error", avisoMientras);
+						o.avisoALaVista(avisoMientras);
 						return;
 					}
 					avisar(sinSenal() ? TEXTO_SIN_SENAL : "No se pudo quitar: " + o.textoError(upd.error) + ".");

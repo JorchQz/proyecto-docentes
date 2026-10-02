@@ -21,6 +21,8 @@
 	    La clave es la del materializador (tipo, grados y, en tareas, nombre) más el número de
 	    repetición: si la maestra cambia el texto de una tarea o los grados, la clave cambia y ese
 	    renglón vuelve al predeterminado (los alumnos de su grado).
+	  ParaQuien.quienHaceCorto(quien, max = 3) → { corto, resto, n }
+	    Los primeros 3 nombres + " + N más" (resto: los que faltan); con 3 o menos, o por grado, el texto de quienHace.
 	  ParaQuien.quierenPorOmision(grados, alumnos, asignacion) → { alumnoId: true }
 	  ParaQuien.bloqueados(productoId, alumnos, calificaciones) → { alumnoId: true } (con captura)
 	  ParaQuien.asignacionDe(grados, alumnos, quieren) → { alumnoId: modo } (filasDeEdicion)
@@ -124,6 +126,20 @@
 			texto: porNombre ? lista.map(function (a) { return String(a.nombre_completo || "").trim(); }).join(", ") : r,
 			n: lista.length, alumnos: lista, porNombre: porNombre, resumen: r,
 		};
+	}
+
+	/*
+		Lo mismo en corto (2026-10-02): con más de `max` (3) nombres, los primeros `max` y " + N más".
+		quien: lo que devuelve quienHace. → { corto, resto: [los nombres que faltan], n: cuántos faltan }
+		Con `max` o menos nombres, o si no es por nombre ("1° (todos)", "Nadie"...), corto = quien.texto y resto = [].
+	*/
+	function quienHaceCorto(quien, max) {
+		var m = max === undefined || max === null ? 3 : Number(max);
+		var q = quien || {};
+		var nombres = q.porNombre ? (q.alumnos || []).map(function (a) { return String(a.nombre_completo || "").trim(); }) : [];
+		if (!q.porNombre || nombres.length <= m) return { corto: q.texto === undefined ? "" : q.texto, resto: [], n: 0 };
+		var resto = nombres.slice(m);
+		return { corto: nombres.slice(0, m).join(", ") + " + " + resto.length + " más", resto: resto, n: resto.length };
 	}
 
 	function quierenPorOmision(grados, alumnos, asignacion) {
@@ -349,7 +365,7 @@
 	var api = {
 		claveHueco: claveHueco, etiquetaHueco: etiquetaHueco, renglonesDeSesion: renglonesDeSesion,
 		quierenPorOmision: quierenPorOmision, bloqueados: bloqueados, indiceCalificaciones: indiceCalificaciones,
-		asignacionDe: asignacionDe, mismaAsignacion: mismaAsignacion, resumen: resumen, quienHace: quienHace,
+		asignacionDe: asignacionDe, mismaAsignacion: mismaAsignacion, resumen: resumen, quienHace: quienHace, quienHaceCorto: quienHaceCorto,
 		esc: esc, listaAlumnosHtml: listaAlumnosHtml, abrirDialogo: abrirDialogo, elegir: elegir,
 	};
 	raiz.ParaQuien = api;

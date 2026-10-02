@@ -175,6 +175,7 @@ require("../js/grupo-activo.js");
 require("../js/alcance-hoy.js");
 require("../js/productos-hoy.js");
 require("../js/orden-lista.js");
+require("../js/para-quien.js"); // Hoy dice quién hace cada producto con ParaQuien (hoy.html lo carga)
 require("../js/texto-sesion.js");
 require("../js/secuencia-sesion.js");
 require("../js/sesion-terminar.js");

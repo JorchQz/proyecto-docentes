@@ -2509,9 +2509,12 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (hayTrabajo) {
         const aviso = document.getElementById('avisoEnCurso');
         if (aviso) {
-          aviso.textContent = 'Este proyecto ya se está trabajando. Puedes agregar sesiones y corregir las que aún no trabajas. ' +
+          // Para agregar una actividad o una tarea: la vista del proyecto (enlace relativo) o Hoy
+          aviso.innerHTML = 'Este proyecto ya se está trabajando. Puedes agregar sesiones y corregir las que aún no trabajas. ' +
             'En las sesiones ya trabajadas (con fecha o con calificaciones) puedes corregir el texto; su campo formativo, sus PDA y sus tareas quedan como se calificaron. ' +
-            'Para agregar en plena clase una actividad o una tarea, usa Hoy.';
+            'Para agregar una actividad o una tarea, hazlo desde ' + (proyectoId
+              ? '<a href="proyecto.html?id=' + encodeURIComponent(proyectoId) + '" class="font-semibold underline">la vista del proyecto</a>'
+              : 'la vista del proyecto') + ' o desde Hoy.';
           aviso.classList.remove('hidden');
         }
         bloquearPaso1EnCurso(proyecto);
@@ -2589,9 +2592,12 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (!body.querySelector('.aviso-trabajada')) {
       const aviso = document.createElement('p');
       aviso.className = 'aviso-trabajada text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3';
-      aviso.textContent = (sesion.fecha ? 'Se trabajó el ' + fechaLegible(sesion.fecha) + '. ' : 'Ya tiene calificaciones. ') +
+      // Texto fijo + enlace relativo a la vista del proyecto en esta sesión (nada viene del usuario)
+      aviso.innerHTML = (sesion.fecha ? 'Se trabajó el ' + fechaLegible(sesion.fecha) + '. ' : 'Ya tiene calificaciones. ') +
         'Puedes corregir su texto; su campo formativo, sus PDA y sus tareas quedan como se calificaron. ' +
-        'Para agregar una actividad o una tarea a esta sesión, hazlo desde Hoy.';
+        'Para agregar una actividad o una tarea a esta sesión, hazlo desde ' + (proyectoId && block.dataset.sesionId
+          ? '<a href="proyecto.html?id=' + encodeURIComponent(proyectoId) + '&sesion=' + encodeURIComponent(block.dataset.sesionId) + '" class="font-semibold underline">la vista del proyecto</a>'
+          : 'la vista del proyecto') + ' o desde Hoy.';
       body.insertBefore(aviso, body.firstChild);
       const etiqueta = block.querySelector('.session-label');
       if (etiqueta && !block.querySelector('.session-trabajada')) {

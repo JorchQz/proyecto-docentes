@@ -524,16 +524,43 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto, hoy) {
 			btnTerminar.className = "min-h-[44px] px-4 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50";
 			btnTerminar.textContent = "Terminar sesión " + (sesion.numero_sesion || "");
 			btnTerminar.setAttribute("aria-label", "Terminar la sesión " + (sesion.numero_sesion || "") + " de " + (proyecto.titulo || "este proyecto"));
-			btnTerminar.addEventListener("click", function () {
-				window.SesionTerminar.abrirModal({
-					titulo: "Terminar la sesión " + (sesion.numero_sesion || ""),
-					sinCalificar: null,
-					etiquetaBoton: "Terminar sesión " + (sesion.numero_sesion || ""),
-					origen: btnTerminar,
-					alConfirmar: async function (notas) {
-						await terminarSesion(idSesion, notas, proyecto);
-					},
-				});
+			btnTerminar.addEventListener("click", async function () {
+				// Igual que en Hoy: antes de terminar, lo capturado que sigue en la cola de este aparato llega a la base
+				if (esperandoTerminar) return;
+				esperandoTerminar = true;
+				const etiqueta = btnTerminar.textContent;
+				try {
+					clearError();
+					if (sinSenalInicio()) {
+						avisoALaVista("Sin señal: no se puede terminar la sesión en este momento. Lo que ya capturaste sigue guardado en este dispositivo. Inténtalo de nuevo cuando haya señal.");
+						return;
+					}
+					btnTerminar.disabled = true;
+					btnTerminar.textContent = "Guardando lo capturado...";
+					const envio = await esperarColaDelAparato();
+					btnTerminar.disabled = false;
+					btnTerminar.textContent = etiqueta;
+					if (envio !== "ok") {
+						avisoALaVista(envio === "red" || envio === "servidor" || envio === "pendiente"
+							? "Todavía no se pudo enviar lo capturado, así que no se puede terminar la sesión. Sigue guardado en este dispositivo y se reintentará solo; inténtalo de nuevo en un momento."
+							: "Primero hay que enviar lo capturado y tu sesión no está activa. Vuelve a iniciar sesión e inténtalo de nuevo; lo capturado sigue guardado en este dispositivo.");
+						return;
+					}
+					clearError();
+					window.SesionTerminar.abrirModal({
+						titulo: "Terminar la sesión " + (sesion.numero_sesion || ""),
+						sinCalificar: null,
+						etiquetaBoton: "Terminar sesión " + (sesion.numero_sesion || ""),
+						origen: btnTerminar,
+						alConfirmar: async function (notas) {
+							await terminarSesion(idSesion, notas, proyecto);
+						},
+					});
+				} finally {
+					esperandoTerminar = false;
+					btnTerminar.disabled = false;
+					btnTerminar.textContent = etiqueta;
+				}
 			});
 			acciones.appendChild(btnTerminar);
 		}
@@ -566,6 +593,34 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto, hoy) {
 	plan.appendChild(cuerpo);
 	card.appendChild(plan);
 	return card;
+}
+
+/*
+	Lo capturado en Hoy o en Exámenes que sigue en la cola de este aparato (js/bandeja-salida.js). Inicio no captura nada:
+	la bandeja se crea SOLO al tocar "Terminar sesión" (no al cargar Inicio), se habilita su envío (iniciar) y se espera a
+	que todo llegue a la base (esperarEnvio): "ok", o el estado que lo impidió ("red", "servidor", "sesion", "cuenta"...).
+*/
+let esperandoTerminar = false;
+let bandejaTerminar = null;
+function sinSenalInicio() {
+	return (typeof navigator !== "undefined" && navigator.onLine === false) || !!(bandejaTerminar && bandejaTerminar.estado() === "red");
+}
+async function esperarColaDelAparato() {
+	if (!window.BandejaSalida || !user) return "ok";
+	try {
+		if (!bandejaTerminar) {
+			bandejaTerminar = window.BandejaSalida.crear({
+				sb: window.sb,
+				auth: window.Lectura && window.Lectura.authDirecto ? window.Lectura.authDirecto : null,
+				maestroId: user.id,
+			});
+		}
+		bandejaTerminar.iniciar();
+		return await bandejaTerminar.esperarEnvio();
+	} catch (err) {
+		console.error("inicio: no se pudo revisar la cola del dispositivo", err);
+		return "pendiente";
+	}
 }
 
 // ── 3. Terminar la sesión (de SU proyecto): js/sesion-terminar.js, el mismo de Hoy ──
@@ -617,6 +672,13 @@ function showError(msg) {
 		container.prepend(alerta);
 	}
 	alerta.textContent = msg;
+}
+
+// El aviso a la vista del docente (Inicio es larga: el área de error queda arriba, fuera de la pantalla)
+function avisoALaVista(msg) {
+	showError(msg);
+	const alerta = document.getElementById("flowError");
+	if (alerta && alerta.scrollIntoView) alerta.scrollIntoView({ block: "center" });
 }
 
 function clearError() {

@@ -70,6 +70,24 @@ ok("quienHace: nadie → el resumen de siempre", [PQ.quienHace({ id: "x", grados
 ok("quienHace: la regla es la de siempre (un incluido de otro grado sí, un excluido no)",
 	PQ.quienHace({ id: "y", grados: ["1"] }, { a1: "excluir", b2: "incluir" }, alumnos).alumnos.map((a) => a.id), ["a2", "a3", "b2"]);
 
+// ── 1b. quienHaceCorto (2026-10-02): tres nombres y «+ N más» ──
+const grupoDe = (n) => Array.from({ length: n }, (_, i) => ({ id: "g" + i, nombre_completo: "NOMBRE " + String(i + 1).padStart(2, "0"), grado: 1, num_lista: i + 1 }));
+const porNombres = (n) => {
+	const al = grupoDe(n + 1); // uno más que no se elige: así no es «todos»
+	const asig = {};
+	al.slice(0, n).forEach((a) => { asig[a.id] = "incluir"; });
+	return PQ.quienHace({ id: "q" + n, grados: [] }, asig, al);
+};
+ok("quienHaceCorto: 0 nombres (nadie) → el texto de quienHace y sin resto", [PQ.quienHaceCorto(porNombres(0)).resto, PQ.quienHaceCorto(porNombres(0)).corto === porNombres(0).texto, PQ.quienHaceCorto(porNombres(0)).n], [[], true, 0]);
+ok("quienHaceCorto: 1 nombre → el nombre, sin resto", PQ.quienHaceCorto(porNombres(1)), { corto: "NOMBRE 01", resto: [], n: 0 });
+ok("quienHaceCorto: 3 nombres → los 3, sin resto", PQ.quienHaceCorto(porNombres(3)), { corto: "NOMBRE 01, NOMBRE 02, NOMBRE 03", resto: [], n: 0 });
+ok("quienHaceCorto: 4 nombres → 3 + «+ 1 más» y el que falta", PQ.quienHaceCorto(porNombres(4)), { corto: "NOMBRE 01, NOMBRE 02, NOMBRE 03 + 1 más", resto: ["NOMBRE 04"], n: 1 });
+const q16 = PQ.quienHaceCorto(porNombres(16));
+ok("quienHaceCorto: 16 nombres → 3 + «+ 13 más» y los 13 que faltan, en el orden de la lista",
+	[q16.corto, q16.n, q16.resto.length, q16.resto[0], q16.resto[12]], ["NOMBRE 01, NOMBRE 02, NOMBRE 03 + 13 más", 13, 13, "NOMBRE 04", "NOMBRE 16"]);
+ok("quienHaceCorto: por grado («1° (todos)») → el texto tal cual, sin resto", PQ.quienHaceCorto(PQ.quienHace(t1, {}, alumnos)), { corto: "1° (todos)", resto: [], n: 0 });
+ok("quienHaceCorto: otro máximo", PQ.quienHaceCorto(porNombres(5), 2).corto, "NOMBRE 01, NOMBRE 02 + 3 más");
+
 // ── 2. Estado de la sesión (la regla de Hoy: SesionTerminar.enCurso con su corte) ──
 const HOY = "2026-10-05", CORTE = ST.CORTE_EN_CURSO;
 ok("estado: sin fecha → Pendiente (también si «Iniciar» la dejó activa)",
@@ -151,6 +169,12 @@ ok("?sesion=: la pedida sale abierta (aunque esté terminada) y resaltada", [/da
 ok("lo que el docente plegó o abrió se respeta al volver a dibujar", /id='cuerpo-ses-s1' class='hidden /.test(V.htmlSesion(ses1, Object.assign({}, v, { abiertas: { s1: false } }))), true);
 ok("sesión sin actividades ni secuencia: lo dice", [/Esta sesión no tiene actividades calificables\. Agrega una con «Actividad o tarea»\./.test(V.htmlSesion({ id: "s9", numero_sesion: 9 }, v)),
 	/Esta sesión no trae secuencia registrada/.test(V.htmlSesion({ id: "s9", numero_sesion: 9 }, v))], [true, true]);
+// «Quién hace» con más de 3 nombres: 3 y un botón «+ N más» de 44 px con aria-expanded; data-quien lleva el texto visible
+const cuatro = V.htmlSesion(ses1, Object.assign({}, v, { asignaciones: Object.assign({}, v.asignaciones, { pM: { a1: "incluir", a2: "incluir", a3: "incluir", b1: "incluir" } }) }));
+ok("sesión: con 4 nombres, 3 y «+ 1 más» (botón de 44 px, aria-expanded, aria-label); con 2 o 3, sin botón",
+	[/data-quien>: <span data-quien-texto>BRAVO CHAVEZ GERMAN, PARRA MARIN MIRIAM, SALAS PINO AMELIA<\/span> <button type='button' data-quien-mas='1'/.test(cuatro),
+		/data-quien-mas='1' data-corto='[^']*' data-completo='BRAVO CHAVEZ GERMAN, PARRA MARIN MIRIAM, SALAS PINO AMELIA, IBAÑEZ PLATA DARIO' aria-expanded='false' aria-label='Ver 1 alumno más' class='[^']*min-h-\[44px\][^']*'>\+ 1 más<\/button>/.test(cuatro),
+		/data-quien-mas/.test(h)], [true, true, false]);
 ok("sesión: escapa lo que viene de la base", /&lt;b&gt;/.test(V.htmlSesion({ id: "s8", numero_sesion: 8, campo_formativo: "<b>x</b>" }, v)) && !/<b>x<\/b>/.test(V.htmlSesion({ id: "s8", numero_sesion: 8, campo_formativo: "<b>x</b>" }, v)), true);
 
 // ── 5. El índice ──
@@ -199,7 +223,7 @@ let ultimoDialogo = null;
 	c.o.sb = sbFalso([], c.reg.sb);
 	await PA.quitar(c.o);
 	ok("Quitar: con algo capturado en la pantalla no se quita (ni se pregunta a la base)",
-		[c.reg.mensajes, c.reg.sb.length], [[["error", "«Cartel» ya tiene calificaciones, así que no se puede quitar. Si el nombre no es el correcto, usa Renombrar."]], 0]);
+		[c.reg.vista, c.reg.mensajes, c.reg.sb.length], [["«Cartel» ya tiene calificaciones, así que no se puede quitar. Si el nombre no es el correcto, usa Renombrar."], [], 0]);
 
 	c = contexto({ sinSenal: () => true });
 	c.o.sb = sbFalso([], c.reg.sb);
@@ -215,8 +239,8 @@ let ultimoDialogo = null;
 	const lectura = c.reg.sb[0];
 	ok("Quitar: revisa la base (calificaciones de ESE producto con algo capturado) y, con calificaciones, no abre el diálogo",
 		[lectura.tabla, lectura.ops.filter((x) => x[0] === "eq").map((x) => x[1] + "=" + x[2]), /estado_entrega\.not\.is\.null,nivel\.not\.is\.null,puntaje\.not\.is\.null,retroalimentacion\.not\.is\.null/.test(lectura.ops.find((x) => x[0] === "or")[1]),
-			ultimoDialogo, c.reg.mensajes[0][0], c.o.origen.disabled],
-		["calificaciones", ["maestro_id=m1", "producto_sesion_id=pX"], true, null, "error", false]);
+			ultimoDialogo, c.reg.vista.length, c.reg.mensajes.length, c.o.origen.disabled],
+		["calificaciones", ["maestro_id=m1", "producto_sesion_id=pX"], true, null, 1, 0, false]);
 
 	c = contexto();
 	c.o.sb = sbFalso([{ count: null, error: { message: "sin red" } }], c.reg.sb);
@@ -230,15 +254,15 @@ let ultimoDialogo = null;
 	ok("Quitar: el diálogo pide confirmar, en rojo", [ultimoDialogo.titulo, ultimoDialogo.aceptar, ultimoDialogo.peligro], ["¿Quitar «Cartel»?", "Quitar", true]);
 	await ultimoDialogo.alAceptar({}, () => {});
 	ok("Quitar: vuelve a revisar justo antes de escribir; si ya se calificó, «Mientras decidías…» y no escribe",
-		[c.reg.mensajes, c.reg.sb.filter((q) => q.ops.some((x) => x[0] === "update")).length],
-		[[["error", "Mientras decidías, se calificó «Cartel»; no se quitó. Recarga la página para ver esa calificación."]], 0]);
+		[c.reg.vista, c.reg.mensajes, c.reg.sb.filter((q) => q.ops.some((x) => x[0] === "update")).length],
+		[["Mientras decidías, se calificó «Cartel»; no se quitó. Recarga la página para ver esa calificación."], [], 0]);
 
 	// La base lo rechaza (trigger productos_sesion_no_quitar_calificado, pista producto_con_calificaciones)
 	c = contexto();
 	c.o.sb = sbFalso([{ count: 0, error: null }, { count: 0, error: null }, { data: null, error: { message: "x", hint: "producto_con_calificaciones" } }], c.reg.sb);
 	await PA.quitar(c.o);
 	await ultimoDialogo.alAceptar({}, () => {});
-	ok("Quitar: si la base lo rechaza con «producto_con_calificaciones», el mismo aviso", c.reg.mensajes[0], ["error", "Mientras decidías, se calificó «Cartel»; no se quitó. Recarga la página para ver esa calificación."]);
+	ok("Quitar: si la base lo rechaza con «producto_con_calificaciones», el mismo aviso", [c.reg.vista, c.reg.mensajes], [["Mientras decidías, se calificó «Cartel»; no se quitó. Recarga la página para ver esa calificación."], []]);
 
 	let quitado = 0;
 	c = contexto({ alQuitar: () => { quitado++; } });

@@ -17,9 +17,18 @@
 	Orden de los campos: nombre, qué es (con el día en que se revisa, si es tarea), para quién (Grupo / Grado(s) /
 	Alumno(s)), campo formativo, contenido y PDA.
 
-	Contenido y PDA (opcional). La lectura de los PDA de la sesión trae su contenido del catálogo
-	(catalogo_pda(pda, contenido_id, catalogo_contenidos(id, contenido, campo_formativo))): salen ya elegidos los
-	contenidos de la sesión para el campo, cada uno con sus PDA marcados por la regla de siempre
+	Dentro del proyecto la actividad comparte TODO con la sesión (decisión de Jorge, 2026-10-02, corrige la Fase 4):
+	  - el campo formativo es el de la sesión, de solo lectura ("Campo formativo: Lenguajes"); si la sesión no tiene
+	    campo (caso raro) se deja el selector;
+	  - el contenido y los PDA son los de la sesión, de solo lectura: se muestran los PDA que se van a ligar, que son
+	    los de la regla de siempre (ProductosHoy.pdaDeSesionParaActividad, los marcados por omisión) y se recalculan al
+	    cambiar "¿Para quién?". Sin casillas que se puedan desmarcar, sin "Cambiar", sin "+ Otro contenido" y sin
+	    buscador. Sin PDA para esos grados: "Esta sesión no tiene PDA para ese grado: se guarda sin PDA."
+	Fuera del proyecto (también abierto desde un bloque de "Actividades del trimestre") queda como en la Fase 4:
+
+	Contenido y PDA fuera del proyecto (opcional). La lectura de los PDA de la sesión trae su contenido del catálogo
+	(catalogo_pda(pda, contenido_id, catalogo_contenidos(id, contenido, campo_formativo))): en un bloque de sueltas
+	salen ya elegidos los contenidos de la sesión para el campo, cada uno con sus PDA marcados por la regla de siempre
 	(ProductosHoy.pdaDeSesionParaActividad). Con ellos, dos botones:
 	  - "+ Otro contenido": abre el buscador SIN quitar lo de la sesión y se suman, como era el diálogo antes de la
 	    Fase 4 (los PDA de la sesión y los del contenido del catálogo; los que ya están arriba no se repiten abajo);
@@ -47,7 +56,7 @@
 	  revisaAlTrabajar   true: una TAREA de una sesión que aún no se trabaja (sin fecha) no pide día de revisión: se
 	                     revisa el siguiente día de clase después de trabajar la sesión, como las tareas del plan
 	                     (fecha_entrega null; ProductosHoy.validarNuevo con sinFechaRevision)
-	Puras (pruebas/actividad-nueva.test.js): contenidosDeSesion, destino, conCampo.
+	Puras (pruebas/actividad-nueva.test.js): contenidosDeSesion, destino, conCampo, campoGuardado, pdaDeSesionALigar.
 */
 
 (function () {
@@ -116,6 +125,32 @@
 		d = d || {};
 		if (d.modo === "dentro") return "sesion";
 		return d.suelta ? "sesion" : "suelta";
+	}
+
+	/*
+		El campo formativo que se guarda. Dentro del proyecto (fijo) es el de la sesión; si no, el que eligió el docente.
+		d: { fijo, campoSesion, campoElegido }
+	*/
+	function campoGuardado(d) {
+		d = d || {};
+		return d.fijo ? d.campoSesion : d.campoElegido;
+	}
+
+	/*
+		Los PDA de la sesión que se ligan (ids de sesiones_pda). visibles: los de pdaDeSesionParaActividad (con
+		`marcado`, la regla de siempre). d: { fijo, modo ("sesion" | "otro" | "cambiar"), tocados: { id: bool } }.
+		  fijo (dentro del proyecto): exactamente los marcados por la regla; lo que el docente "tocó" no cuenta;
+		  si no: los marcados por el docente o, si no los tocó, por la regla; con "Cambiar", ninguno de la sesión.
+	*/
+	function pdaDeSesionALigar(visibles, d) {
+		d = d || {};
+		var lista = visibles || [];
+		if (d.fijo) return lista.filter(function (r) { return !!r.marcado; }).map(function (r) { return r.id; });
+		if (d.modo === "cambiar" || !lista.length) return [];
+		var tocados = d.tocados || {};
+		return lista.filter(function (r) {
+			return Object.prototype.hasOwnProperty.call(tocados, r.id) ? tocados[r.id] : !!r.marcado;
+		}).map(function (r) { return r.id; });
 	}
 
 	// ── Contenidos del catálogo (se leen una vez por página) ─────────────────
@@ -205,6 +240,8 @@
 			var s = sesionPda();
 			return s ? corto(s.campo_formativo) : null;
 		}
+		// Dentro del proyecto el campo y los PDA son los de la sesión (solo lectura). Sin campo en la sesión (caso raro): como en fuera
+		function campoFijo() { return st.modo === "dentro" && !!st.sesion && !!campoSesion(); }
 		function porOmision() {
 			var s = sesionPda();
 			return s && ctx.gradosDeLaSesion ? ctx.gradosDeLaSesion(s) : gradosGrupo;
@@ -389,7 +426,8 @@
 		// ── Campo formativo ──
 		function llenarCampos() {
 			var sel = refs.campo, cs = campoSesion();
-			var valor = st.campoTocado ? sel.value : (cs || "");
+			var fijo = campoFijo();
+			var valor = !fijo && st.campoTocado ? sel.value : (cs || "");
 			sel.innerHTML = "";
 			if (!valor) {
 				var elige = document.createElement("option");
@@ -404,6 +442,13 @@
 				sel.appendChild(o);
 			});
 			sel.value = valor;
+			// Dentro del proyecto: el campo de la sesión, como texto (el selector no se ve ni se puede cambiar)
+			sel.disabled = fijo;
+			if (refs.campoCont) refs.campoCont.classList.toggle("hidden", fijo);
+			if (refs.campoFijo) {
+				refs.campoFijo.classList.toggle("hidden", !fijo);
+				refs.campoFijo.textContent = fijo ? "Campo formativo: " + campoLargo(cs) : "";
+			}
 		}
 
 		// ── Contenido y PDA (opcional) ──
@@ -552,6 +597,7 @@
 				return;
 			}
 			var visibles = deSesionVisibles();
+			if (campoFijo()) { pintarPdaFijos(visibles); return; }
 			var enSesion = conContenidosDeSesion(visibles);
 			refs.pdaSesion.innerHTML = "";
 			refs.pdaSesion.classList.toggle("hidden", !enSesion);
@@ -590,6 +636,46 @@
 			refs.busca.disabled = !campo || pda.errorCatalogo;
 			pintarResultados();
 			pintarContenido();
+		}
+
+		/*
+			Dentro del proyecto: el contenido y los PDA de la sesión, de solo lectura. Se ven los que se van a ligar (los
+			marcados por la regla de siempre, pdaDeSesionALigar) como casillas marcadas y deshabilitadas.
+		*/
+		function pintarPdaFijos(visibles) {
+			var ligar = {};
+			pdaDeSesionALigar(visibles, { fijo: true }).forEach(function (id) { ligar[id] = true; });
+			refs.pdaSesion.innerHTML = "";
+			refs.pdaSesion.classList.remove("hidden");
+			refs.buscador.classList.add("hidden");
+			refs.volver.classList.add("hidden");
+			if (pda.errorSpda) {
+				refs.pdaSesion.innerHTML = "<p class='text-sm text-gray-600'>No se pudieron leer los PDA de esta sesión: se guarda sin PDA.</p>";
+				return;
+			}
+			var hay = false;
+			contenidosDeSesion(visibles).forEach(function (g) {
+				var propios = g.pda.filter(function (r) { return ligar[r.id]; });
+				if (!propios.length) return;
+				if (!hay) {
+					hay = true;
+					refs.pdaSesion.insertAdjacentHTML("beforeend", "<p class='text-xs text-gray-500'>De esta sesión (se ligan estos PDA):</p>");
+				}
+				var caja = document.createElement("div");
+				caja.className = "flex flex-col gap-2 rounded-xl bg-gray-50 border border-gray-200 p-2";
+				caja.setAttribute("data-contenido-sesion", g.id || "");
+				caja.innerHTML = "<p class='text-sm text-gray-800 px-1'><span class='block text-xs text-gray-500'>" + (g.id ? "Contenido" : "Otros criterios de la sesión") + "</span>" +
+					(g.id ? esc(g.contenido || "Contenido del catálogo") : "") + "</p>";
+				propios.forEach(function (r) {
+					var l = document.createElement("label");
+					l.className = "flex items-start gap-3 min-h-[44px] rounded-xl border border-gray-200 bg-white px-3 py-2.5";
+					l.innerHTML = "<input type='checkbox' name='pdaSesionFijo' disabled checked class='h-5 w-5 mt-0.5 shrink-0 text-blue-600 rounded'>" +
+						"<span class='text-sm text-gray-800'><span class='font-semibold'>" + Number(r.grado) + "°</span> · " + esc(textoPda(r)) + "</span>";
+					caja.appendChild(l);
+				});
+				refs.pdaSesion.appendChild(caja);
+			});
+			if (!hay) refs.pdaSesion.innerHTML = "<p class='text-sm text-gray-600' data-sin-pda='1'>Esta sesión no tiene PDA para ese grado: se guarda sin PDA.</p>";
 		}
 
 		function pintarResultados() {
@@ -704,8 +790,10 @@
 			if (pda.spda === null) return null; // no se leyeron los de la sesión: como antes (sin PDA)
 			var g = gradosElegidos();
 			var visibles = deSesionVisibles();
-			var deSesion = conContenidosDeSesion(visibles) ? visibles.filter(marcadoSesion).map(function (r) { return r.id; }) : [];
-			var deCatalogo = (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
+			var fijo = campoFijo();
+			var deSesion = pdaDeSesionALigar(visibles, { fijo: fijo, modo: pda.modo, tocados: pda.tocadosSesion });
+			// Dentro del proyecto no hay buscador: nada del catálogo
+			var deCatalogo = fijo ? [] : (pda.pdaContenido || []).filter(function (p) { return pda.marcadosCatalogo[p.id] && g.indexOf(Number(p.grado)) !== -1; })
 				.map(function (p) { return { pda_id: p.id, grado: Number(p.grado) }; });
 			return { deSesion: deSesion, deCatalogo: deCatalogo, spdaSesion: pda.spda };
 		}
@@ -714,6 +802,7 @@
 		function cambioDeContexto() {
 			pda.modo = "sesion";
 			pda.tocadosSesion = {};
+			st.campoTocado = false; // el interruptor o la sesión cambian: el campo vuelve a ser el de la sesión (dentro) o el del bloque (fuera)
 			quitarContenido();
 			llenarCampos();
 			aplicarOmisionPara();
@@ -775,13 +864,19 @@
 				var campo = document.createElement("label");
 				campo.className = "flex flex-col gap-1 text-sm font-medium text-gray-700";
 				campo.textContent = "Campo formativo";
+				refs.campoCont = campo;
 				var sel = document.createElement("select");
 				sel.setAttribute("data-campo", "1");
 				sel.className = "min-h-[44px] w-full rounded-xl border border-gray-300 px-3 text-base font-normal text-gray-800 bg-white";
 				refs.campo = sel;
+				var campoFijoTxt = document.createElement("p");
+				campoFijoTxt.setAttribute("data-campo-fijo", "1");
+				campoFijoTxt.className = "hidden rounded-xl bg-gray-50 border border-gray-200 px-3 py-2.5 text-sm text-gray-800";
+				refs.campoFijo = campoFijoTxt;
 				llenarCampos();
 				campo.appendChild(sel);
 				cuerpo.appendChild(campo);
+				cuerpo.appendChild(campoFijoTxt);
 
 				construirPda(cuerpo);
 				pintarDonde();
@@ -811,7 +906,7 @@
 				var datos = {
 					nombre: refs.nombre.value,
 					tipo: tipoElegido(),
-					campo: refs.campo.value,
+					campo: campoGuardado({ fijo: campoFijo(), campoSesion: campoSesion(), campoElegido: refs.campo.value }),
 					grados: plan.grados,
 					incluidos: plan.incluidos,
 					fechaRevision: refs.fecha.value,
@@ -862,6 +957,7 @@
 
 	var api = {
 		abrir: abrir, contenidosDeSesion: contenidosDeSesion, destino: destino, conCampo: conCampo,
+		campoGuardado: campoGuardado, pdaDeSesionALigar: pdaDeSesionALigar,
 	};
 	raiz.ActividadNueva = api;
 	if (typeof module !== "undefined" && module.exports) module.exports = api;

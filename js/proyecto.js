@@ -119,7 +119,7 @@
 			var f = raiz.AlcanceHoy.venceTarea(p.fecha_entrega, ses && ses.fecha, v.ajustes || []);
 			vence = f ? (f === v.hoy ? "se revisa hoy" : "se revisa el " + fechaCorta(f)) : "se revisa el día de clase siguiente a la sesión";
 		}
-		return { producto: p, quien: quien, calificados: calificados, vence: vence };
+		return { producto: p, quien: quien, corto: raiz.ParaQuien.quienHaceCorto(quien), calificados: calificados, vence: vence };
 	}
 
 	// Para el material: "3 actividades en clase: 2, 8 y 6 alumnos · 2 tareas: 9 y 7 alumnos"
@@ -171,6 +171,33 @@
 			"class='min-h-[44px] px-3 rounded-lg text-sm text-red-600 hover:bg-red-50'>Quitar</button></div>";
 	}
 
+	/*
+		Quién lo hace: con más de 3 nombres, los 3 primeros y "+ N más" (un botón que despliega la lista completa en el
+		mismo renglón y la vuelve a plegar). data-quien lleva siempre el texto visible.
+	*/
+	function quienHtml(f) {
+		var c = f.corto || { corto: f.quien.texto, resto: [], n: 0 };
+		if (!c.resto.length) return "<span class='text-gray-700' data-quien>: " + esc(f.quien.texto) + "</span>";
+		var primeros = c.corto.slice(0, c.corto.length - (" + " + c.n + " más").length);
+		return "<span class='text-gray-700' data-quien>: <span data-quien-texto>" + esc(primeros) + "</span> " +
+			"<button type='button' data-quien-mas='" + c.n + "' data-corto='" + esc(primeros) + "' data-completo='" + esc(f.quien.texto) + "' " +
+			"aria-expanded='false' aria-label='" + etiquetaVerMas(c.n) + "' " +
+			"class='inline-flex items-center min-h-[44px] px-2 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-600'>+ " + c.n + " más</button></span>";
+	}
+
+	function etiquetaVerMas(n) { return Number(n) === 1 ? "Ver 1 alumno más" : "Ver los " + n + " alumnos más"; }
+
+	// El botón "+ N más": despliega o pliega los nombres en el mismo renglón (sin repintar)
+	function alternarQuien(b) {
+		var abierto = b.getAttribute("aria-expanded") === "true";
+		var n = b.getAttribute("data-quien-mas");
+		var texto = b.parentNode.querySelector("[data-quien-texto]");
+		if (texto) texto.textContent = abierto ? b.getAttribute("data-corto") : b.getAttribute("data-completo");
+		b.setAttribute("aria-expanded", abierto ? "false" : "true");
+		b.setAttribute("aria-label", abierto ? etiquetaVerMas(n) : "Ver menos alumnos");
+		b.textContent = abierto ? "+ " + n + " más" : "Ver menos";
+	}
+
 	function htmlProducto(f, ses) {
 		var p = f.producto;
 		var CF = raiz.CamposFormativos;
@@ -179,7 +206,7 @@
 		var otroCampo = p.campo && campoSesion && p.campo !== campoSesion ? (CF ? CF.largo(p.campo) : p.campo) : "";
 		return "<li class='py-3' data-producto-vista='" + esc(p.id) + "'>" +
 			"<p class='text-sm text-gray-800 break-words'><span class='font-semibold'>" + esc(p.nombre || "Sin nombre") + "</span>" +
-			"<span class='text-gray-700' data-quien>: " + esc(f.quien.texto) + "</span></p>" +
+			quienHtml(f) + "</p>" +
 			"<p class='mt-1 text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5'>" +
 			"<span data-tipo>" + esc(tipoTexto(p)) + (f.vence ? " · " + esc(f.vence) : "") + "</span>" +
 			"<span class='font-semibold text-gray-700' data-cuantos>" + esc(plural(f.quien.n, "alumno", "alumnos")) + "</span>" +
@@ -638,6 +665,8 @@
 		}
 
 		sesionesEl.addEventListener("click", async function (e) {
+			var mas = e.target.closest("button[data-quien-mas]");
+			if (mas) { e.stopPropagation(); alternarQuien(mas); return; }
 			var b = e.target.closest("button[data-plegar]");
 			if (b) { ponerAbierta(b.dataset.plegar, b.getAttribute("aria-expanded") !== "true"); return; }
 			b = e.target.closest("button[data-agregar]");
