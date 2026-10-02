@@ -3194,7 +3194,8 @@ document.addEventListener("DOMContentLoaded", async function () {
           const entrada = quitados.find(function (q) { return PE.clavePda(q) === PE.clavePda(f); });
           block._pdaProtegidos.push(entrada);
           const cat = (catalogoPDA || []).find(function (c) { return String(c.id) === String(f.pda_id); });
-          avisosGuardado.push('En la sesión ' + (i + 1) + ' el PDA «' + String(entrada.pda_texto || (cat && cat.pda) || 'sin texto').slice(0, 90) +
+          const textoPda = String(entrada.pda_texto || (cat && cat.pda) || 'sin texto');
+          avisosGuardado.push('En la sesión ' + (i + 1) + ' el PDA «' + (textoPda.length > 90 ? textoPda.slice(0, 89).trimEnd() + '…' : textoPda) +
             '» de ' + grado + '° se quedó: ' + (motivo === 'evaluacion'
               ? 'ya tiene evaluación formativa.'
               : 'una actividad lo tiene ligado a mano.'));
@@ -3222,7 +3223,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           }
           vistos[sel.value] = true;
         }
-        if (!con) sinPda.push('la sesión ' + (i + 1) + ' quedaría sin PDA de ' + ed.dataset.grado + '°');
+        if (!con) sinPda.push('la sesión ' + (i + 1) + ' quedaría sin PDA de ' + ed.dataset.grado + '° (si alguno ya tiene evaluación formativa o una actividad ligada, ese se conserva y te lo diremos)');
       }
     }
     return { sinPda: sinPda };
