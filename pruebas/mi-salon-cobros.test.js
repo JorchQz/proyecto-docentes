@@ -207,12 +207,13 @@ function ok(nombre, real, esperado) {
 		if (t === "marketplace_ordenes" && op === "select") return { data: { id: "o1", estado: "pendiente", user_id: "u1", monto_total: 100 }, error: null };
 		if (t === "marketplace_orden_items") return { data: [{ producto_id: "p1", tipo: "pdf", marketplace_productos: { tipo_paquete: "trimestre" } }], error: null };
 		if (t === "marketplace_accesos" && op === "upsert") { upsertAccesos = q.args; return { error: null }; }
+		if (t === "marketplace_ordenes" && op === "update") return { data: [{ id: "o1" }], error: null };
 		if (t === "marketplace_pedidos") return { data: [], error: null };
 		return { data: null, error: null };
 	});
 	const rTienda = await pagos_ts.procesarPago(tienda, { id: 55, external_reference: "o1", status: "approved", transaction_amount: 100, currency_id: "MXN" }, {});
-	ok("tienda aprobada: mismo camino de siempre (se agregan la lectura de mi_salon_ordenes al principio y la de sus renglones antes de marcarla pagada, R27b)", tienda.log,
-		["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_orden_items:select", "marketplace_ordenes:update", "marketplace_orden_items:select", "marketplace_accesos:upsert", "marketplace_pedidos:select", "rpc:marketplace_aplicar_precios"]);
+	ok("tienda aprobada: mismo camino de siempre (se agregan la lectura de mi_salon_ordenes al principio y la de sus renglones, R27b; R29: los accesos van ANTES de marcarla pagada)", tienda.log,
+		["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_orden_items:select", "marketplace_orden_items:select", "marketplace_accesos:upsert", "marketplace_ordenes:update", "marketplace_pedidos:select", "rpc:marketplace_aplicar_precios"]);
 	// R27b: una orden de la tienda SIN renglones no se marca pagada (queda pendiente, sin accesos)
 	const tiendaVacia = falso((t, op) => t === "marketplace_ordenes" && op === "select" ? { data: { id: "o1", estado: "pendiente", user_id: "u1", monto_total: 100 }, error: null } : (t === "marketplace_orden_items" ? { data: [], error: null } : { data: null, error: null }));
 	const rVacia = await pagos_ts.procesarPago(tiendaVacia, { id: 58, external_reference: "o1", status: "approved", transaction_amount: 100, currency_id: "MXN" }, {});

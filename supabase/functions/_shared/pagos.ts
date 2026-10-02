@@ -8,6 +8,13 @@
 //
 // Ambas terminan en `procesarPago()`, que es idempotente: se puede llamar
 // mil veces con el mismo pago sin duplicar accesos ni correos.
+//
+// Falla pasajera vs. regla de negocio (R29, decisión de Jorge del 2026-09-26): cuando la base no
+// responde (lectura o escritura fallida, timeout, 5xx de PostgREST) `procesarPago()` devuelve
+// `transitorio: true` (o lanza, si la falla ocurre al decidir si la orden es de Mi Salón) SIN marcar
+// la orden como pagada, y el webhook responde 503 para que Mercado Pago reintente el mismo aviso.
+// Una regla de negocio (orden desconocida, monto parcial, pago rechazado, ya procesada) es
+// definitiva: `transitorio` queda ausente y el webhook responde 200.
 
 import type { Cliente } from "./db.ts";
 import {
@@ -40,6 +47,9 @@ export interface ResultadoPago {
   /** detalle de MP para mostrar mensajes precisos (p. ej. "esperando pago en OXXO") */
   detalleMp?: string;
   error?: string;
+  /** true si falló la base, no una regla de negocio: la orden no quedó pagada y reintentar puede
+   *  resolverlo. El webhook responde 503 para que Mercado Pago reintente. */
+  transitorio?: boolean;
 }
 
 /** Consulta un pago concreto en la API de Mercado Pago. */
@@ -111,12 +121,18 @@ export async function procesarPago(
     return await procesarPagoMiSalon(admin, pago, opts);
   }
 
-  const { data: orden } = await admin
+  const { data: orden, error: errOrden } = await admin
     .from("marketplace_ordenes")
     .select("id, estado, user_id, monto_total")
     .eq("id", ordenId)
     .maybeSingle();
 
+  // Una lectura fallida no es "orden desconocida": se reintenta (antes se confundían y el aviso se
+  // perdía con un 200).
+  if (errOrden) {
+    console.error("No se pudo leer la orden (falla pasajera):", ordenId, errOrden);
+    return { ok: false, estado: "pendiente", transitorio: true, error: "No se pudo leer la orden" };
+  }
   if (!orden) {
     return { ok: false, estado: "pendiente", error: "Orden no encontrada" };
   }
@@ -125,18 +141,30 @@ export async function procesarPago(
   if (status === "refunded" || status === "charged_back") {
     // 'reembolsado' (no 'fallido'): así el estado de cuenta del cupón la
     // muestra como devolución y el trigger sella reembolsado_en.
-    await admin
+    // Cada paso es idempotente: si alguno falla, el reintento lo termina (no deja el acceso vivo).
+    const { error: errEstado } = await admin
       .from("marketplace_ordenes")
       .update({ estado: "reembolsado", referencia_pago: paymentId })
       .eq("id", ordenId);
-    await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
+    const { error: errQuitar } = await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
     // Un pedido personalizado devuelto se cancela (si ya estaba entregado, el
     // acceso se acaba de retirar arriba).
-    await admin
+    const { error: errPedidos } = await admin
       .from("marketplace_pedidos")
       .update({ estado: "cancelado", updated_at: new Date().toISOString() })
       .eq("orden_id", ordenId)
       .neq("estado", "cancelado");
+    if (errEstado || errQuitar || errPedidos) {
+      console.error("Reembolso a medias (falla pasajera):", { ordenId, errEstado, errQuitar, errPedidos });
+      return {
+        ok: false,
+        estado: "reembolsado",
+        transitorio: true,
+        statusMp: status,
+        detalleMp: detalle,
+        error: "No se pudo registrar el reembolso completo",
+      };
+    }
     // La venta deja de contar para el escalón de lanzamiento.
     await recalcularPrecios(admin);
     return { ok: true, estado: "reembolsado", statusMp: status, detalleMp: detalle };
@@ -144,6 +172,15 @@ export async function procesarPago(
 
   // ── Ya estaba pagada: no repetir nada ────────────────────────────────────
   if (orden.estado === "pagado") {
+    // Reparación: si un intento anterior marcó la orden pagada pero no pudo pasar a la cola sus pedidos
+    // personalizados (lectura o escritura fallida), este aviso repetido termina el trabajo. Es
+    // idempotente: solo toca pedidos que siguen en 'pendiente_pago' y avisa solo si él los activó.
+    try {
+      await activarPedidosDeOrden(admin, ordenId, orden.user_id, opts);
+    } catch (err) {
+      console.error("No se pudieron activar los pedidos de una orden ya pagada (falla pasajera):", ordenId, err);
+      return { ok: false, estado: "pagado", transitorio: true, statusMp: status || "approved", error: "No se pudieron activar los pedidos" };
+    }
     return {
       ok: true,
       estado: "pagado",
@@ -156,10 +193,21 @@ export async function procesarPago(
   if (status !== "approved") {
     const nuevoEstado: EstadoOrden =
       status === "rejected" || status === "cancelled" ? "fallido" : "pendiente";
-    await admin
+    const { error: errPend } = await admin
       .from("marketplace_ordenes")
       .update({ estado: nuevoEstado, referencia_pago: paymentId })
       .eq("id", ordenId);
+    if (errPend) {
+      console.error("No se pudo guardar el estado del pago (falla pasajera):", ordenId, errPend);
+      return {
+        ok: false,
+        estado: nuevoEstado,
+        transitorio: true,
+        statusMp: status,
+        detalleMp: detalle,
+        error: "No se pudo guardar el estado del pago",
+      };
+    }
     return { ok: true, estado: nuevoEstado, statusMp: status, detalleMp: detalle };
   }
 
@@ -202,25 +250,51 @@ export async function procesarPago(
       ok: false,
       estado: "pendiente",
       statusMp: status,
+      // Sin poder leerlos es una falla pasajera (se reintenta); sin renglones es definitivo.
+      transitorio: errRenglones ? true : undefined,
       error: errRenglones ? "No se pudieron leer los renglones de la orden" : "La orden no tiene renglones",
     };
   }
 
-  // ── Pago aprobado: marcar y entregar ─────────────────────────────────────
-  await admin
+  // ── Pago aprobado: entregar y después marcar (R29) ───────────────────────
+  // Primero los accesos (upsert que no duplica) y DESPUÉS 'pagado': si algo falla en medio, la orden
+  // sigue pendiente y el reintento termina el trabajo. Al revés, una orden 'pagado' sin accesos
+  // quedaría "ya procesada" para siempre.
+  let accesos: number;
+  try {
+    accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
+  } catch (err) {
+    console.error("No se pudieron otorgar los accesos (falla pasajera); la orden sigue pendiente:", ordenId, err);
+    return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, error: "No se pudieron otorgar los accesos" };
+  }
+
+  // Solo UNA llamada pasa la orden a 'pagado' (por la condición del update): si el webhook y
+  // confirmar-pago llegan juntos, la otra ve 0 filas y responde ya procesada, sin segundo correo.
+  const { data: marcadas, error: errMarcar } = await admin
     .from("marketplace_ordenes")
     .update({ estado: "pagado", referencia_pago: paymentId })
-    .eq("id", ordenId);
-
-  const accesos = await otorgarAccesosDeOrden(admin, ordenId, orden.user_id);
+    .eq("id", ordenId)
+    .neq("estado", "pagado")
+    .select("id");
+  if (errMarcar) {
+    console.error("No se pudo marcar la orden pagada (falla pasajera); los accesos ya están:", ordenId, errMarcar);
+    return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, error: "No se pudo marcar la orden pagada" };
+  }
+  if (!marcadas || !marcadas.length) {
+    return { ok: true, estado: "pagado", yaProcesada: true, statusMp: status };
+  }
 
   // Pedidos personalizados de esta orden: pasan a la cola y se avisa por correo
   // al cliente y al negocio. Nunca bloquea la entrega del resto.
+  // Si la base falla aquí la orden ya quedó pagada y con accesos: se termina el resto (precios y
+  // correo) y se responde transitorio; el reintento cae en "ya estaba pagada" y activa los pedidos.
   let pedidosActivados = 0;
+  let falloPedidos = false;
   try {
     pedidosActivados = await activarPedidosDeOrden(admin, ordenId, orden.user_id, opts);
   } catch (err) {
-    console.error("activar pedidos falló (no bloquea la entrega):", err);
+    falloPedidos = true;
+    console.error("activar pedidos falló (falla pasajera; el reintento los activa):", err);
   }
 
   // Escalón de lanzamiento: si esta venta cruzó los 50 o los 100 paquetes de
@@ -234,6 +308,9 @@ export async function procesarPago(
     console.error("aviso por correo falló (no bloquea la entrega):", err);
   }
 
+  if (falloPedidos) {
+    return { ok: false, estado: "pagado", transitorio: true, accesos, statusMp: status, error: "No se pudieron activar los pedidos" };
+  }
   return { ok: true, estado: "pagado", accesos: accesos + pedidosActivados, statusMp: status };
 }
 
@@ -291,11 +368,13 @@ export async function activarPedidosDeOrden(
   userId: string,
   opts: { siteUrl?: string; resendKey?: string },
 ): Promise<number> {
-  const { data: pedidos } = await admin
+  const { data: pedidos, error: errPedidos } = await admin
     .from("marketplace_pedidos")
     .select("id, numero_pedido, nivel, organizacion, grados, grados_combo, campos_formativos, contenido_ids, pda_ids, metodologia, fecha_necesaria, notas, nombre_cliente, precio")
     .eq("orden_id", ordenId)
     .eq("estado", "pendiente_pago");
+  // Lanza si la base falla: leer mal no es "no hay pedidos" (el pedido se quedaría sin activar).
+  if (errPedidos) throw new Error("No se pudieron leer los pedidos de la orden: " + (errPedidos.message || "error"));
   if (!pedidos || !pedidos.length) return 0;
 
   const { data: cfgRow } = await admin
@@ -308,13 +387,17 @@ export async function activarPedidosDeOrden(
   const email = userRes?.user?.email || null;
 
   let n = 0;
+  let fallos = 0;
   for (const p of pedidos) {
-    const { error } = await admin
+    // El update condicionado decide quién lo activó: dos llamadas simultáneas no mandan dos correos.
+    const { data: activado, error } = await admin
       .from("marketplace_pedidos")
       .update({ estado: "pendiente", pagado_en: ahora.toISOString(), fecha_compromiso_entrega: compromiso, updated_at: ahora.toISOString() })
       .eq("id", p.id)
-      .eq("estado", "pendiente_pago");
-    if (error) { console.error("activar pedido falló:", p.id, error); continue; }
+      .eq("estado", "pendiente_pago")
+      .select("id");
+    if (error) { fallos++; console.error("activar pedido falló:", p.id, error); continue; }
+    if (!activado || !activado.length) continue;
     n++;
 
     // Textos de contenidos y PDAs para el correo (ids → texto).
@@ -363,6 +446,8 @@ export async function activarPedidosDeOrden(
       await enviarCorreo(opts.resendKey, destinoAdmin, "Nuevo pedido personalizado " + p.numero_pedido, html);
     }
   }
+  // Alguno no se pudo activar: que el llamador lo reintente (los ya activados no se repiten).
+  if (fallos) throw new Error("No se pudieron activar " + fallos + " pedido(s) de la orden " + ordenId);
   return n;
 }
 
@@ -411,16 +496,17 @@ export function tiposDeAcceso(tipoItem: string, tipoPaquete: string | null): str
     : ["pdf", "anexos"];
 }
 
-/** Otorga los accesos que corresponden a los items de una orden. */
+/** Otorga los accesos que corresponden a los items de una orden. Lanza si la base falla. */
 export async function otorgarAccesosDeOrden(
   admin: Cliente,
   ordenId: string,
   userId: string,
 ): Promise<number> {
-  const { data: items } = await admin
+  const { data: items, error: errItems } = await admin
     .from("marketplace_orden_items")
     .select("producto_id, tipo, marketplace_productos(tipo_paquete)")
     .eq("orden_id", ordenId);
+  if (errItems) throw new Error("No se pudieron leer los renglones de la orden: " + (errItems.message || "error"));
 
   const accesos: Array<Record<string, unknown>> = [];
   for (const item of items || []) {
@@ -447,10 +533,8 @@ export async function otorgarAccesosDeOrden(
       onConflict: "user_id,producto_id,tipo",
       ignoreDuplicates: true,
     });
-  if (error) {
-    console.error("upsert de accesos falló:", error);
-    return 0;
-  }
+  // Lanza (R29): quien llama no debe marcar la orden pagada sin sus accesos.
+  if (error) throw new Error("upsert de accesos falló: " + (error.message || "error"));
   return accesos.length;
 }
 
