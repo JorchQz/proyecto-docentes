@@ -169,7 +169,10 @@
 			var lista = Array.prototype.slice.call(caja.querySelectorAll("button, textarea, input[type='radio']")).filter(function (x) { return !x.disabled; });
 			if (!lista.length) return;
 			var primero = lista[0], ultimo = lista[lista.length - 1];
-			if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+			// Los radios de la pregunta son un solo paso de Tab: el foco puede estar en cualquiera de ellos (R41)
+			var enPrimero = document.activeElement === primero ||
+				(primero.type === "radio" && document.activeElement && document.activeElement.name === primero.name);
+			if (e.shiftKey && enPrimero) { e.preventDefault(); ultimo.focus(); }
 			else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
 		}
 		document.addEventListener("keydown", teclas, true);
