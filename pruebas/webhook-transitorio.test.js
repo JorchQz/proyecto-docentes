@@ -215,14 +215,14 @@ async function avisar(db, id, cabeceras) {
 		ok("webhook: 503 solo por falla pasajera (excepción de procesarPago o resultado.transitorio); firma 401; el catch general sigue en 200",
 			[(hook.match(/, 503\)/g) || []).length, /resultado = await procesarPago\([^)]*\);\s*\} catch \(err\) \{[\s\S]*?, 503\);/.test(hook), /if \(resultado\.transitorio\) \{[\s\S]*?return jsonResponse\(resultado, 503\);/.test(hook),
 				/jsonResponse\(\{ error: "Firma inválida" \}, 401\)/.test(hook), /jsonResponse\(\{ error: mensajeError\(err\) \}, 200\);\s*\}\s*\}\);\s*$/.test(hook)],
-			[2, true, true, true, true]);
+			[3, true, true, true, true]);
 		const pagosTs = leer("supabase/functions/_shared/pagos.ts");
 		ok("pagos.ts: 'transitorio: true' solo en fallas de la base, nunca en las reglas (orden no encontrada, importe, sin renglones leídos bien)",
 			[/if \(errOrden\) \{[\s\S]{0,200}transitorio: true/.test(pagosTs), /error: "Orden no encontrada" \}/.test(pagosTs), /"El importe o la moneda del pago no coinciden con la orden",\s*\};/.test(pagosTs),
 				/transitorio: errRenglones \? true : undefined/.test(pagosTs)], [true, true, true, true]);
 		ok("pagos.ts: accesos ANTES de marcar pagada, y el update condicionado (neq estado pagado) decide quién manda el correo",
 			pagosTs.indexOf("otorgarAccesosDeOrden(admin, ordenId, orden.user_id)") < pagosTs.indexOf('.update({ estado: "pagado", referencia_pago: paymentId })') &&
-			/\.update\(\{ estado: "pagado", referencia_pago: paymentId \}\)\s*\.eq\("id", ordenId\)\s*\.neq\("estado", "pagado"\)\s*\.select\("id"\)/.test(pagosTs), true);
+			/\.update\(\{ estado: "pagado", referencia_pago: paymentId \}\)\s*\.eq\("id", ordenId\)\s*\.neq\("estado", "pagado"\)\s*\.neq\("estado", "reembolsado"\)\s*\.select\("id"\)/.test(pagosTs), true);
 		ok("mi-salon-pagos.ts: error de la RPC → transitorio; esOrdenMiSalon sigue lanzando salvo 42P01/PGRST205",
 			[/if \(error \|\| !data\) \{[\s\S]{0,700}transitorio: true/.test(leer("supabase/functions/_shared/mi-salon-pagos.ts")), /throw new Error\("No se pudo saber si la orden/.test(leer("supabase/functions/_shared/mi-salon-pagos.ts"))], [true, true]);
 		ok("nada salió a internet (Mercado Pago y Resend simulados)", red, []);

@@ -96,6 +96,19 @@ export async function procesarPagoMiSalon(
   const ordenId = String(pago.external_reference || "");
   const status = String(pago.status || "");
   const detalle = String(pago.status_detail || "");
+  // Una orden ya reembolsada no se revive con un aviso viejo (approved, pending...): definitivo, sin
+  // llamar a mi_salon_aplicar_pago. El reembolso mismo (refunded / charged_back) sí pasa a la base,
+  // que lo aplica de forma idempotente. La regla se decide aquí, sin cambiar SQL.
+  if (status !== "refunded" && status !== "charged_back") {
+    const { data: o, error: errO } = await admin.from("marketplace_ordenes").select("estado").eq("id", ordenId).maybeSingle();
+    if (errO) {
+      console.error("No se pudo leer la orden de Mi Salón (falla pasajera):", ordenId, errO);
+      return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, detalleMp: detalle, error: "No se pudo leer la orden" };
+    }
+    if (o && o.estado === "reembolsado") {
+      return { ok: true, estado: "reembolsado", yaProcesada: true, statusMp: status, detalleMp: detalle };
+    }
+  }
   const { data, error } = await admin.rpc("mi_salon_aplicar_pago", {
     p_orden_id: ordenId,
     p_pago: datosDelPago(pago),

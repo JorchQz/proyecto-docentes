@@ -27,6 +27,7 @@ import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import {
   buscarPagoPorOrden,
   consultarPago,
+  ErrorMpPasajero,
   procesarPago,
   type ResultadoPago,
 } from "../_shared/pagos.ts";
@@ -116,7 +117,14 @@ Deno.serve(async (req: Request) => {
 
     // ── Caso 1: viene payment_id (regreso directo desde Mercado Pago) ───────
     if (paymentIdPedido) {
-      const pago = await consultarPago(paymentIdPedido, mpToken);
+      let pago: Record<string, any> | null;
+      try {
+        pago = await consultarPago(paymentIdPedido, mpToken);
+      } catch (err) {
+        if (!(err instanceof ErrorMpPasajero)) throw err;
+        console.error("confirmar-pago: falla pasajera al consultar a Mercado Pago:", mensajeError(err));
+        return jsonResponse({ resultados: [{ ok: false, estado: "pendiente", transitorio: true, error: "Estamos confirmando tu pago" }] });
+      }
       if (!pago) {
         return jsonResponse({ error: "No se pudo consultar el pago en Mercado Pago" }, 502);
       }
@@ -155,7 +163,16 @@ Deno.serve(async (req: Request) => {
 
     const resultados = [];
     for (const ordenId of ordenIds) {
-      const pago = await buscarPagoPorOrden(ordenId, mpToken);
+      let pago: Record<string, any> | null;
+      try {
+        pago = await buscarPagoPorOrden(ordenId, mpToken);
+      } catch (err) {
+        if (!(err instanceof ErrorMpPasajero)) throw err;
+        // Mercado Pago no respondió: no es "sin pago" (no se abandona la orden), se sigue confirmando.
+        console.error("confirmar-pago: falla pasajera al buscar el pago en Mercado Pago:", ordenId, mensajeError(err));
+        resultados.push({ orden_id: ordenId, ok: false, estado: "pendiente", transitorio: true, error: "Estamos confirmando tu pago" });
+        continue;
+      }
       if (!pago) {
         // Sin ningún pago en MP: o acaba de empezar, o se abandonó el intento.
         const abandonada = await descartarSiAbandonada(admin, ordenId);

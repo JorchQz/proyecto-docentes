@@ -242,7 +242,7 @@ function ok(nombre, real, esperado) {
 	const pagoOxxo = { id: 9001, external_reference: "o2", status: "pending", status_detail: "pending_waiting_payment", transaction_amount: 199, currency_id: "MXN",
 		payment_method_id: "oxxo", payment_type_id: "ticket", transaction_details: { payment_method_reference_id: "4455667788", external_resource_url: "https://www.mercadopago.com.mx/payments/9001/ticket" } };
 	const rSalon = await pagos_ts.procesarPago(salon, pagoOxxo, {});
-	ok("orden de Mi Salón: todo en la base (mi_salon_aplicar_pago); no toca marketplace_ordenes ni accesos de la tienda", salon.log, ["mi_salon_ordenes:select", "rpc:mi_salon_aplicar_pago"]);
+	ok("orden de Mi Salón: todo en la base (mi_salon_aplicar_pago); solo LEE marketplace_ordenes (si ya esta reembolsada no corre la RPC) y no escribe ni toca accesos de la tienda", salon.log, ["mi_salon_ordenes:select", "marketplace_ordenes:select", "rpc:mi_salon_aplicar_pago"]);
 	ok("los datos del pago que llegan a la base (referencia y ficha de OXXO)", [argsMs.p_orden_id, argsMs.p_pago.id, argsMs.p_pago.status, argsMs.p_pago.referencia, argsMs.p_pago.ticket_url, rSalon.estado],
 		["o2", "9001", "pending", "4455667788", "https://www.mercadopago.com.mx/payments/9001/ticket", "pendiente"]);
 	ok("webhook repetido de Mi Salón: sin correo (ya_procesada)", await (async () => {

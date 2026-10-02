@@ -9,6 +9,8 @@
 //
 // Códigos de respuesta (R29, decisión de Jorge del 2026-09-26):
 //   401 → firma inválida.
+//   503 → también si Mercado Pago o la red fallan al consultar el pago (5xx, 429, timeout): no se
+//         escribe nada. Un 404 (pago inexistente) es definitivo y sigue en 200.
 //   503 → falla pasajera al procesar el pago (la base no respondió: no se pudo leer la orden ni saber
 //         si es de Mi Salón, timeout, 5xx de PostgREST, escritura fallida). La orden NO quedó
 //         pagada; Mercado Pago reintenta el mismo aviso solo y `procesarPago()` es idempotente, así
@@ -22,6 +24,7 @@ import { crearAdmin, mensajeError } from "../_shared/db.ts";
 import { jsonResponse } from "../_shared/cors.ts";
 import {
   consultarPago,
+  ErrorMpPasajero,
   firmaWebhookValida,
   procesarPago,
   type ResultadoPago,
@@ -74,7 +77,17 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ignored: true, motivo: "sin payment id" });
     }
 
-    const pago = await consultarPago(paymentId, mpToken);
+    let pago: Record<string, any> | null;
+    try {
+      pago = await consultarPago(paymentId, mpToken);
+    } catch (err) {
+      if (!(err instanceof ErrorMpPasajero)) throw err;
+      // Mercado Pago (5xx, 429, timeout) o la red fallaron: no se escribió nada; MP reintenta el aviso.
+      console.error("webhook: falla pasajera al consultar a Mercado Pago, 503 para que MP reintente", {
+        paymentId, error: mensajeError(err),
+      });
+      return jsonResponse({ ok: false, transitorio: true, error: mensajeError(err) }, 503);
+    }
     if (!pago) {
       return jsonResponse({ error: "No se pudo consultar el pago" });
     }

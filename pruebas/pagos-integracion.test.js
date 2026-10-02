@@ -40,8 +40,15 @@ globalThis.Deno = { env: { get: (k) => ENV[k] }, serve: (h) => { handlers.push(h
 const pagosMP = {};
 let correos = [];
 const red = [];
+const mpFalla = []; // cada consulta a Mercado Pago consume una: "red", "timeout", 500, 503, 429
 globalThis.fetch = async (url, init) => {
 	const u = String(url);
+	if (u.startsWith("https://api.mercadopago.com/") && mpFalla.length) {
+		const f = mpFalla.shift();
+		if (f === "red") throw new TypeError("fetch failed");
+		if (f === "timeout") { const e = new Error("The operation was aborted due to timeout"); e.name = "TimeoutError"; throw e; }
+		return new Response("{}", { status: f });
+	}
 	let m = /^https:\/\/api\.mercadopago\.com\/v1\/payments\/(\w+)$/.exec(u);
 	if (m) return new Response(JSON.stringify(pagosMP[m[1]] || {}), { status: pagosMP[m[1]] ? 200 : 404 });
 	m = /^https:\/\/api\.mercadopago\.com\/v1\/payments\/search\?.*external_reference=(\w+)/.exec(u);
@@ -130,6 +137,10 @@ function crearCliente(db) {
 			if (falla(db, "rpc:" + n, "rpc")) return { data: null, error: ERR };
 			if (n === "mi_salon_aplicar_pago") {
 				// Una transacción: atómica e idempotente por (pago, orden), como mi_salon_aplicar_pago (b22)
+				if (a.p_pago.status === "refunded") {
+					db.t.marketplace_ordenes.forEach((o) => { if (o.id === a.p_orden_id) o.estado = "reembolsado"; });
+					return { data: { ok: true, estado: "reembolsado", docente_id: "u2" }, error: null };
+				}
 				const clave = a.p_orden_id + ":" + a.p_pago.id;
 				const ya = db.t.mi_salon_pagos.includes(clave);
 				if (!ya) db.t.mi_salon_pagos.push(clave);
@@ -316,6 +327,73 @@ async function confirmar(cuerpo) {
 		bd.t.marketplace_ordenes[0].estado = "pagado";
 		d = await webhook(pago("t1"));
 		reg("definitivo: ya procesada -> 200", { st: d.status, y: d.data.yaProcesada }, { st: 200, y: true });
+		// 10. Falla pasajera al consultar a Mercado Pago (red, timeout, 429, 5xx): 503 sin escribir; 404 definitivo
+		for (const f of ["red", "timeout", 503, 500, 429]) {
+			sembrarTienda();
+			id = pago("t1");
+			mpFalla.push(f);
+			const a = await webhook(id);
+			const escrituras = bd.log.filter((x) => !x.endsWith(":select")).length;
+			const b = await webhook(id);
+			reg("MP falla al consultar (" + f + "): 503 sin escribir nada; el reintento da 200 pagado, 2 accesos, 1 correo",
+				{ a: a.status, escrituras, b: b.status + ":" + b.data.estado, r: resumen() }, { a: 503, escrituras: 0, b: "200:pagado", r: { pagadas: 1, accesos: 2, correos: 1 } });
+		}
+		sembrarSalon();
+		id = pago("m1", { monto: 199 });
+		mpFalla.push("red");
+		let m1 = await webhook(id);
+		let m2 = await webhook(id);
+		reg("Mi Salon: falla de red al consultar a MP: 503 y luego 200 pagado con 1 acceso y 1 correo", { a: m1.status, b: m2.status + ":" + m2.data.accesos, pagos: bd.t.mi_salon_pagos.length, correos: correos.length }, { a: 503, b: "200:1", pagos: 1, correos: 1 });
+		sembrarTienda();
+		d = await webhook("999999");
+		reg("MP responde 404 (pago inexistente): 200 definitivo, sin 503", d.status, 200);
+		sembrarTienda();
+		id = pago("t1");
+		mpFalla.push("red");
+		cf = await confirmar({ payment_id: id });
+		reg("confirmar-pago con payment_id: falla de red de MP -> 200 transitorio (no error)", { st: cf.status, tr: cf.data.resultados[0].transitorio, est: cf.data.resultados[0].estado }, { st: 200, tr: true, est: "pendiente" });
+		cf = await confirmar({ payment_id: id });
+		reg("confirmar-pago: el reintento da pagado", { est: cf.data.resultados[0].estado, r: resumen() }, { est: "pagado", r: { pagadas: 1, accesos: 2, correos: 1 } });
+		sembrarTienda();
+		bd.t.marketplace_ordenes[0].created_at = new Date(Date.now() - 5 * 3600 * 1000).toISOString();
+		id = pago("t1");
+		mpFalla.push(503);
+		cf = await confirmar({ orden_id: "t1" });
+		reg("confirmar-pago por orden: MP 503 al buscar el pago -> transitorio y la orden vieja NO se descarta como abandonada",
+			{ st: cf.status, tr: cf.data.resultados[0].transitorio, est: bd.t.marketplace_ordenes[0].estado }, { st: 200, tr: true, est: "pendiente" });
+
+		// 11. Un approved viejo NO revive una orden reembolsada (ni entrega, ni correo)
+		sembrarTienda();
+		id = pago("t1");
+		await webhook(id);
+		const idRef = pago("t1", { status: "refunded" });
+		await webhook(idRef);
+		const antes = { c: correos.length, m: bd.marcados.length };
+		const viejo = await webhook(id);
+		const viejos = await Promise.all([webhook(id), webhook(id), confirmar({ payment_id: id })]);
+		reg("tienda: reembolso y despues un approved viejo (solo y simultaneos): 200, sigue reembolsada, 0 accesos, 0 correos ni marcados nuevos",
+			{ st: [viejo.status, ...viejos.map((x) => x.status)], estado: bd.t.marketplace_ordenes[0].estado, accesos: bd.t.marketplace_accesos.length, nuevos: { c: correos.length - antes.c, m: bd.marcados.length - antes.m } },
+			{ st: [200, 200, 200, 200], estado: "reembolsado", accesos: 0, nuevos: { c: 0, m: 0 } });
+		for (const orden of ["interleavings"]) {
+			// aprobado y reembolso a la vez sobre una orden pendiente: pase lo que pase, termina reembolsada y sin accesos
+			sembrarTienda();
+			const ia = pago("t1");
+			const ir = pago("t1", { status: "refunded" });
+			await Promise.all([webhook(ia), webhook(ir), webhook(ia)]);
+			reg("tienda: approved y refunded simultaneos sobre una orden pendiente: termina reembolsada con 0 accesos",
+				{ estado: bd.t.marketplace_ordenes[0].estado, accesos: bd.t.marketplace_accesos.length }, { estado: "reembolsado", accesos: 0 });
+		}
+		sembrarSalon();
+		id = pago("m1", { monto: 199 });
+		await webhook(id);
+		const idRs = pago("m1", { status: "refunded", monto: 199 });
+		await webhook(idRs);
+		const llamadas = bd.log.filter((x) => x === "rpc:mi_salon_aplicar_pago").length;
+		const c0 = correos.length, p0 = bd.t.mi_salon_pagos.length;
+		const mv = await Promise.all([webhook(id), webhook(id)]);
+		reg("Mi Salon: reembolso y despues un approved viejo: 200, orden reembolsada, mi_salon_aplicar_pago NO corre, 0 correos ni pagos nuevos",
+			{ st: mv.map((x) => x.status), estado: bd.t.marketplace_ordenes[0].estado, rpcNuevas: bd.log.filter((x) => x === "rpc:mi_salon_aplicar_pago").length - llamadas, nuevos: { c: correos.length - c0, p: bd.t.mi_salon_pagos.length - p0 } },
+			{ st: [200, 200], estado: "reembolsado", rpcNuevas: 0, nuevos: { c: 0, p: 0 } });
 		reg("nada salio a internet", red, []);
 
 		hablar();

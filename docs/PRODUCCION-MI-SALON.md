@@ -373,6 +373,13 @@ supabase functions deploy comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl
   `transitorio: true` y la pantalla dice "Estamos confirmando tu pago" (antes: un 500 "Error interno").
   El frontend que muestra ese mensaje (`tienda/js/mis-compras.js`, `tienda/js/mi-salon-compra.js`) sale
   con el paso 5 y es compatible con las dos versiones de la función.
+- Segunda pasada del 2-oct: (c) si Mercado Pago o la red fallan al consultar el pago (5xx, 429, timeout,
+  red) el webhook responde 503 sin escribir nada (un 404, pago inexistente, sigue en 200) y
+  `confirmar-pago` lo muestra como "Estamos confirmando tu pago" sin abandonar la orden; (d) un aviso
+  `approved` (o pendiente) viejo sobre una orden ya `reembolsado` responde 200 definitivo: no entrega
+  accesos ni manda correo, tanto en la tienda como en Mi Salón (ahí se decide en la función, leyendo la
+  orden antes de llamar a `mi_salon_aplicar_pago`; sin cambios de SQL). Si el reembolso llega en medio de
+  una entrega, los accesos recién escritos se retiran.
 - La URL del webhook de Mercado Pago no cambia.
 - Comprobación: Supabase → Edge Functions muestra las ocho con la versión de hoy; en los registros
   de `webhook-mercadopago`, la siguiente venta de la tienda se procesa como siempre (`webhook

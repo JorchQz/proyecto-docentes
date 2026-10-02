@@ -52,17 +52,44 @@ export interface ResultadoPago {
   transitorio?: boolean;
 }
 
-/** Consulta un pago concreto en la API de Mercado Pago. */
+/** Falla pasajera al hablar con Mercado Pago (5xx, 429, timeout, red): reintentar lo resuelve. */
+export class ErrorMpPasajero extends Error {}
+
+const TIEMPO_MP_MS = 10_000;
+
+/** fetch a Mercado Pago: lanza ErrorMpPasajero si la red falla, vence el tiempo, 429 o 5xx. */
+async function fetchMp(url: string, mpToken: string): Promise<Response> {
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      headers: { Authorization: "Bearer " + mpToken },
+      signal: AbortSignal.timeout(TIEMPO_MP_MS),
+    });
+  } catch (err) {
+    throw new ErrorMpPasajero("No se pudo consultar a Mercado Pago: " + (err instanceof Error ? err.message : String(err)));
+  }
+  if (resp.status === 429 || resp.status >= 500) {
+    const texto = await resp.text().catch(() => "");
+    throw new ErrorMpPasajero("Mercado Pago respondió " + resp.status + ": " + texto.slice(0, 200));
+  }
+  return resp;
+}
+
+/**
+ * Consulta un pago concreto en la API de Mercado Pago.
+ * null = definitivo (no existe: 404, u otro 4xx que reintentar no arregla). Lanza ErrorMpPasajero
+ * si Mercado Pago o la red fallan de forma pasajera (el webhook responde 503 y se reintenta).
+ */
 export async function consultarPago(
   paymentId: string,
   mpToken: string,
 ): Promise<Record<string, any> | null> {
-  const resp = await fetch(
+  const resp = await fetchMp(
     "https://api.mercadopago.com/v1/payments/" + encodeURIComponent(paymentId),
-    { headers: { Authorization: "Bearer " + mpToken } },
+    mpToken,
   );
   if (!resp.ok) {
-    console.error("MP payment fetch failed:", paymentId, await resp.text());
+    console.error("MP payment fetch failed:", paymentId, resp.status, await resp.text());
     return null;
   }
   return await resp.json();
@@ -82,11 +109,10 @@ export async function buscarPagoPorOrden(
   const url =
     "https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&external_reference=" +
     encodeURIComponent(ordenId);
-  const resp = await fetch(url, {
-    headers: { Authorization: "Bearer " + mpToken },
-  });
+  // Lanza ErrorMpPasajero si falla de forma pasajera: no es "sin pago" (no debe abandonar la orden).
+  const resp = await fetchMp(url, mpToken);
   if (!resp.ok) {
-    console.error("MP payment search failed:", ordenId, await resp.text());
+    console.error("MP payment search failed:", ordenId, resp.status, await resp.text());
     return null;
   }
   const data = await resp.json();
@@ -168,6 +194,12 @@ export async function procesarPago(
     // La venta deja de contar para el escalón de lanzamiento.
     await recalcularPrecios(admin);
     return { ok: true, estado: "reembolsado", statusMp: status, detalleMp: detalle };
+  }
+
+  // ── Ya reembolsada: un aviso viejo (approved, pending...) no la revive ───
+  // (el reembolso y el contracargo se atendieron arriba). Definitivo: 200, sin accesos ni correos.
+  if (orden.estado === "reembolsado") {
+    return { ok: true, estado: "reembolsado", yaProcesada: true, statusMp: status, detalleMp: detalle };
   }
 
   // ── Ya estaba pagada: no repetir nada ────────────────────────────────────
@@ -275,12 +307,26 @@ export async function procesarPago(
     .update({ estado: "pagado", referencia_pago: paymentId })
     .eq("id", ordenId)
     .neq("estado", "pagado")
+    .neq("estado", "reembolsado")
     .select("id");
   if (errMarcar) {
     console.error("No se pudo marcar la orden pagada (falla pasajera); los accesos ya están:", ordenId, errMarcar);
     return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, error: "No se pudo marcar la orden pagada" };
   }
   if (!marcadas || !marcadas.length) {
+    // 0 filas: otra llamada la marcó pagada, o un reembolso llegó en medio (entonces los accesos que
+    // se acaban de escribir se retiran: un aviso viejo no revive una orden reembolsada).
+    const { data: ahora, error: errAhora } = await admin.from("marketplace_ordenes").select("estado").eq("id", ordenId).maybeSingle();
+    if (errAhora) {
+      return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, error: "No se pudo confirmar el estado de la orden" };
+    }
+    if (ahora && ahora.estado === "reembolsado") {
+      const { error: errQuitar } = await admin.from("marketplace_accesos").delete().eq("orden_id", ordenId);
+      if (errQuitar) {
+        return { ok: false, estado: "reembolsado", transitorio: true, statusMp: status, error: "No se pudieron retirar los accesos" };
+      }
+      return { ok: true, estado: "reembolsado", yaProcesada: true, statusMp: status };
+    }
     return { ok: true, estado: "pagado", yaProcesada: true, statusMp: status };
   }
 
