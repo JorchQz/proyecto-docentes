@@ -141,6 +141,17 @@ function entrada(extra) {
 	const tarde = Q.calcular(entrada({ detalle: { sesiones: SESIONES, productos: [], calificaciones: {}, alta: "2026-09-20" }, avancePda: [] }));
 	ok("alta el 20: el PDA de la sesión del 15 no cuenta; el de la del 24 sí", [tarde.campos.LEN.pda.length, tarde.campos.SAB.pda.length], [0, 1]);
 
+	// ── Alta tarde en una sesión de varios días (b27, Fase 5c) ────────────────
+	// La sesión 4 empezó el 15 y terminó el 16: un alumno dado de alta el 16 cuenta lo que se trabajó desde su alta
+	const DOS_DIAS = [Object.assign({}, SESIONES[0], { estado_sesion: "completada", terminada_en: "2026-09-16" })];
+	const dosDias = (alta, extra) => Q.calcular(entrada({ detalle: Object.assign({ sesiones: DOS_DIAS, productos: [], calificaciones: {}, alta: alta }, extra || {}), avancePda: [] }));
+	ok("2 días, alta el 16 (segundo día): los PDA de la sesión cuentan", dosDias("2026-09-16").campos.LEN.pda.length > 0, true);
+	ok("2 días, alta el 17 (después de terminar): no cuentan", dosDias("2026-09-17").campos.LEN.pda.length, 0);
+	ok("1 día, alta el 16: no cuentan (igual que antes)", Q.calcular(entrada({ detalle: { sesiones: SESIONES.slice(0, 1), productos: [], calificaciones: {}, alta: "2026-09-16" }, avancePda: [] })).campos.LEN.pda.length, 0);
+	const enCurso = [Object.assign({}, SESIONES[0], { fecha: "2026-09-24", estado_sesion: "en_curso" })];
+	const prodDia2 = [{ id: "pd2", sesion_id: "s4", tipo: "trabajo", campo: "LEN", nombre: "Dia 2", fecha_trabajo: "2026-09-25", orden: 1 }];
+	ok("en curso: el día de una actividad (25) decide el alta (25)", Q.calcular(entrada({ detalle: { sesiones: enCurso, productos: prodDia2, calificaciones: {}, alta: "2026-09-25" }, avancePda: [] })).campos.LEN.pda.length > 0, true);
+
 	// ── PDA sin evidencia con productos ligados (R18) ─────────────────────────
 	// Un PDA no es pendiente del alumno si todos sus productos ligados (producto_sesion_pda) para
 	// ese alumno están justificados, en "no aplica" o sin revisar; lo sin revisar queda solo

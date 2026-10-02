@@ -160,10 +160,26 @@
 			if (grupoAlta && s.fecha && s.fecha < grupoAlta) return true;
 			return historicoPorSesion[s.id] === true;
 		}
-		// Sesión ya trabajada: con fecha, esa fecha ya llegó y es desde el alta del alumno
+		/*
+			El último día en que se trabajó la sesión (sesiones de varios días, b27): el más tardío entre su fecha, su día de
+			terminación (si ya terminó) y el día de cada actividad suya (AlcanceHoy.diaTrabajo). Con una sesión de un día es
+			su fecha. Un alumno dado de alta el día 2 cuenta lo que se trabajó desde su alta: ese día decide el alta tarde.
+		*/
+		var productosDeSesion = {};
+		(det.productos || []).forEach(function (p) { (productosDeSesion[p.sesion_id] = productosDeSesion[p.sesion_id] || []).push(p); });
+		function ultimoDiaTrabajado(s) {
+			var ultimo = String(s.fecha).slice(0, 10);
+			if (!A || !A.diaTrabajo) return ultimo;
+			var dias = (productosDeSesion[s.id] || []).filter(function (p) { return p.tipo !== "tarea"; })
+				.map(function (p) { return A.diaTrabajo(p, s); });
+			if (A.sesionTerminada && A.sesionTerminada(s) && s.terminada_en) dias.push(String(s.terminada_en).slice(0, 10));
+			dias.forEach(function (d) { if (d && String(d).slice(0, 10) > ultimo) ultimo = String(d).slice(0, 10); });
+			return ultimo;
+		}
+		// Sesión ya trabajada: con fecha, esa fecha ya llegó y su último día trabajado es desde el alta del alumno
 		function trabajada(s) {
 			if (!s || !s.fecha || s.fecha > hoy) return false;
-			return !A || !det.alta || A.cuentaDesdeAlta(det.alta, s.fecha, null);
+			return !A || !det.alta || A.cuentaDesdeAlta(det.alta, ultimoDiaTrabajado(s), null);
 		}
 
 		// ── Productos ──

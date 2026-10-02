@@ -81,7 +81,6 @@ const cuerpo = [
 	extraerFuncion("resumenCalificados"),
 	extraerFuncion("chevron"),
 	extraerFuncion("notaTrabajaCon"),
-	extraerFuncion("paraQuien"),
 	extraerFuncion("quienHaceDe"),
 	extraerFuncion("esSuelta"),
 	extraerFuncion("notaIncompleta"),

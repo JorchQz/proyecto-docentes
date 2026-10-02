@@ -189,7 +189,7 @@ const diario = (r, c) => r.porAlumno.x.porCampo[c].rubros.participacion.diario;
 	ok("motor: falta del martes — A (logrado) más C (0): 1 de 2; E por trabajar no cuenta", [Math.round(tr.fraccion * 1000) / 1000, tr.entrega.esperados + "/" + tr.entrega.entregados], [0.5, "2/1"]);
 
 	// ── 6. preguntaDia y etiquetaDia ────────────────────────────────────────
-	ok("etiquetaDia: el día de la semana y el número", [ST.etiquetaDia("2026-10-05"), ST.etiquetaDia("2026-10-06"), ST.etiquetaDia("2026-10-10")], ["lun 5", "mar 6", "sáb 10"]);
+	ok("etiquetaDia: el día de la semana y el número", [ST.etiquetaDia("2026-10-05"), ST.etiquetaDia("2026-10-06"), ST.etiquetaDia("2026-10-10")], ["lun 5 oct", "mar 6 oct", "sáb 10 oct"]);
 	ok("preguntaDia: empezó hoy → no se pregunta", ST.preguntaDia({ sesion: { fecha: "2026-10-05" }, dias: ["2026-10-05"], productos: [], hoy: "2026-10-05" }), null);
 	ok("preguntaDia: empezó el lun y hoy (mié) no se trabajó → último día trabajado", ST.preguntaDia({ sesion: { fecha: "2026-10-05" }, dias: ["2026-10-05", "2026-10-06"], productos: [], hoy: "2026-10-07" }), { ultimoDia: "2026-10-06" });
 	ok("preguntaDia: una actividad con día de hoy → no se pregunta", ST.preguntaDia({ sesion: { fecha: "2026-10-05" }, dias: ["2026-10-05"], productos: [{ tipo: "trabajo", fecha_trabajo: "2026-10-07" }], hoy: "2026-10-07" }), null);
