@@ -135,7 +135,7 @@
 			"</div>" +
 			(op.pregunta && op.pregunta.ultimoDia
 				? "<fieldset class='px-5 pt-4' data-pregunta-dia><legend class='text-sm font-semibold text-gray-800 mb-2'>¿La sesión se trabajó hoy?</legend>" +
-				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='hoy' checked class='h-5 w-5'> Sí, hoy</label>" +
+				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='hoy' class='h-5 w-5'> Sí, hoy</label>" +
 				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='" + esc(op.pregunta.ultimoDia) + "' class='h-5 w-5'> No, se trabajó por última vez el " + esc(etiquetaDia(op.pregunta.ultimoDia)) + "</label></fieldset>"
 				: "") +
 			"<div class='p-5'><label for='" + id + "-n' class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
@@ -177,6 +177,13 @@
 		fondo.addEventListener("click", function (e) { if (e.target === fondo && !ocupado) cancelar(); });
 		btnOk.addEventListener("click", async function () {
 			if (ocupado) return;
+			// Con la pregunta del día no hay opción por omisión (R40): un día de terminación falso movería la participación
+			var elegido = fondo.querySelector("input[name='" + id + "-d']:checked");
+			if (op.pregunta && op.pregunta.ultimoDia && !elegido) {
+				error.textContent = "Elige si la sesión se trabajó hoy.";
+				error.classList.remove("hidden");
+				return;
+			}
 			ocupado = true;
 			btnOk.disabled = true;
 			btnNo.disabled = true;
@@ -184,7 +191,6 @@
 			btnOk.textContent = "Terminando...";
 			error.classList.add("hidden");
 			try {
-				var elegido = fondo.querySelector("input[name='" + id + "-d']:checked");
 				// El día en que se terminó: hoy, salvo que diga que hoy no se trabajó (entonces, el último día trabajado)
 				await op.alConfirmar(area.value.trim(), elegido && elegido.value !== "hoy" ? elegido.value : null);
 			} catch (e) {
