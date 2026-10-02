@@ -66,14 +66,14 @@
 		return "Empezó el " + Number(m[3]) + " " + MESES_CORTOS[Number(m[2]) - 1];
 	}
 
-	// "lun 5": el día de la semana y el número, para los textos de los días de una sesión
+	// "lun 5 oct": el día de la semana, el número y el mes; la ÚNICA forma de nombrar un día de una sesión de varios días
 	var DIAS_SEMANA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 	function etiquetaDia(fecha) {
 		var f = dia(fecha);
 		var m = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 		if (!m) return "";
 		var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
-		return DIAS_SEMANA[d.getDay()] + " " + Number(m[3]);
+		return DIAS_SEMANA[d.getDay()] + " " + Number(m[3]) + " " + MESES_CORTOS[Number(m[2]) - 1];
 	}
 
 	/*
@@ -134,13 +134,13 @@
 			(texto ? "<p class='mt-2 text-sm font-medium " + (op.sinCalificar > 0 ? "text-amber-700" : "text-emerald-700") + "' data-sin-calificar>" + esc(texto) + "</p>" : "") +
 			"</div>" +
 			(op.pregunta && op.pregunta.ultimoDia
-				? "<fieldset class='px-5 pt-4' data-pregunta-dia><legend class='text-sm font-semibold text-gray-800 mb-2'>¿La sesión se trabajó hoy?</legend>" +
+				? "<fieldset class='px-5 pt-4' data-pregunta-dia aria-describedby='" + id + "-e'><legend class='text-sm font-semibold text-gray-800 mb-2'>¿La sesión se trabajó hoy?</legend>" +
 				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='hoy' class='h-5 w-5'> Sí, hoy</label>" +
 				"<label class='flex items-center gap-3 min-h-[44px] text-sm text-gray-700'><input type='radio' name='" + id + "-d' value='" + esc(op.pregunta.ultimoDia) + "' class='h-5 w-5'> No, se trabajó por última vez el " + esc(etiquetaDia(op.pregunta.ultimoDia)) + "</label></fieldset>"
 				: "") +
 			"<div class='p-5'><label for='" + id + "-n' class='block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'>Notas (opcional)</label>" +
 			"<textarea id='" + id + "-n' rows='3' class='w-full border border-gray-300 rounded-xl p-3 text-sm min-h-[72px] resize-none' placeholder='¿Algo diferente a lo planeado?'></textarea>" +
-			"<p id='" + id + "-e' class='hidden mt-3 text-sm text-red-700' role='alert'></p></div>" +
+			"<p id='" + id + "-e' class='hidden mt-3 text-sm text-red-700' role='alert' aria-live='assertive'></p></div>" +
 			"<div class='p-5 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2'>" +
 			"<button type='button' data-terminar-cancelar class='min-h-[44px] border border-gray-300 text-gray-700 px-4 rounded-xl font-medium hover:bg-gray-50'>Cancelar</button>" +
 			"<button type='button' data-terminar-confirmar class='min-h-[44px] bg-blue-600 text-white px-5 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-60'>" + esc(op.etiquetaBoton || "Terminar sesión") + "</button>" +
@@ -166,10 +166,13 @@
 		function teclas(e) {
 			if (e.key === "Escape" && !ocupado) { e.stopPropagation(); cancelar(); return; }
 			if (e.key !== "Tab") return;
-			var lista = Array.prototype.slice.call(caja.querySelectorAll("button, textarea")).filter(function (x) { return !x.disabled; });
+			var lista = Array.prototype.slice.call(caja.querySelectorAll("button, textarea, input[type='radio']")).filter(function (x) { return !x.disabled; });
 			if (!lista.length) return;
 			var primero = lista[0], ultimo = lista[lista.length - 1];
-			if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+			// Los radios de la pregunta son un solo paso de Tab: el foco puede estar en cualquiera de ellos (R41)
+			var enPrimero = document.activeElement === primero ||
+				(primero.type === "radio" && document.activeElement && document.activeElement.name === primero.name);
+			if (e.shiftKey && enPrimero) { e.preventDefault(); ultimo.focus(); }
 			else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
 		}
 		document.addEventListener("keydown", teclas, true);
@@ -180,8 +183,12 @@
 			// Con la pregunta del día no hay opción por omisión (R40): un día de terminación falso movería la participación
 			var elegido = fondo.querySelector("input[name='" + id + "-d']:checked");
 			if (op.pregunta && op.pregunta.ultimoDia && !elegido) {
-				error.textContent = "Elige si la sesión se trabajó hoy.";
 				error.classList.remove("hidden");
+				error.textContent = "";
+				// El texto se pone después de mostrar el aviso para que el lector de pantalla lo anuncie
+				setTimeout(function () { error.textContent = "Elige si la sesión se trabajó hoy."; }, 30);
+				var primerRadio = fondo.querySelector("input[name='" + id + "-d']");
+				if (primerRadio) primerRadio.focus();
 				return;
 			}
 			ocupado = true;
@@ -202,7 +209,12 @@
 				btnOk.textContent = etiqueta;
 			}
 		});
-		setTimeout(function () { if (area && area.focus) area.focus(); }, 0);
+		// El foco inicial va a la pregunta del día si existe (el primer radio, sin elegir nada por él); si no, a las notas
+		var primerRadioInicial = fondo.querySelector("input[name='" + id + "-d']");
+		setTimeout(function () {
+			var inicial = primerRadioInicial || area;
+			if (inicial && inicial.focus) inicial.focus();
+		}, 0);
 		return { cerrar: cerrar };
 	}
 

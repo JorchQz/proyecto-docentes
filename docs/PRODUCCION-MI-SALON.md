@@ -68,6 +68,7 @@ Aparte, después de la 12:
 |---|---|---|
 | 13 | `supabase/mi_salon_b21b_piloto_produccion_2026-09.sql` | acceso `piloto` todo el ciclo a soporte.jissez@gmail.com y a Fanny (sarayval034@gmail.com) |
 | 14 | `supabase/mi_salon_b27_sesiones_varios_dias_2026-10.sql` | sesiones de varios días (Fase 5b): `sesiones.terminada_en`, `productos_sesion.fecha_trabajo`, tabla `sesion_dias`, triggers y respaldo; ver "Fase 5b" abajo (va después de b25 y antes de su frontend) |
+| 15 | `supabase/mi_salon_b28_revoke_anon_2026-10.sql` | quita permisos de `anon` a las tablas de Mi Salón que no los usan (solo permisos; ver "b28" abajo; va después de b27 y es independiente del frontend) |
 
 NO se aplican en producción: `mi_salon_b21c_piloto_pruebas_2026-09.sql` (cuentas QA, solo pruebas)
 y `mi_salon_b22_avisos_cron_2026-09.sql` (va en el paso 4).
@@ -290,6 +291,45 @@ alter table public.sesiones drop column if exists terminada_en;
 
 (`scripts/aplicar-migraciones-prod.js` no lleva una cadena fija: recibe los archivos como argumentos, así que b27 solo
 se agrega a las listas de esta guía. Va aparte de la cadena de `delete_own_account`: no la redefine.)
+
+## Aparte: b28, quitar permisos de anon (hallazgo de BB)
+
+**Falta b28** (`supabase/mi_salon_b28_revoke_anon_2026-10.sql`). Solo quita permisos (`revoke`): no toca datos, políticas ni
+funciones, es idempotente y el frontend no cambia (ninguna de estas tablas se lee sin sesión). RLS ya impedía el acceso
+real de anon; esto quita además el permiso por omisión del esquema. Con el OK de Jorge:
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b28_revoke_anon_2026-10.sql
+```
+
+Qué quita a `anon`: todo en `jornadas`, `mi_salon_avisos`, `mi_salon_accesos`, `mi_salon_correos` y `mi_salon_ordenes`; y todo lo que
+no sea SELECT en `mi_salon_periodos`, `mi_salon_precios` y `jissez_config` (esas tres las lee la tienda pública sin sesión y
+se quedan con SELECT). No toca `marketplace_*`, catálogos ni vistas `v_*` (aparte: siguen con permisos de anon por omisión;
+quien lo decida debe revisar primero qué usa la tienda sin sesión).
+
+Comprobación (editor SQL de producción, solo lectura; la columna `anon` debe dar lo de la derecha):
+
+```sql
+select t, has_table_privilege('anon', 'public.' || t, 'select') as anon_select, has_table_privilege('anon', 'public.' || t, 'insert') as anon_insert
+from unnest(array['jornadas','mi_salon_avisos','mi_salon_accesos','mi_salon_correos','mi_salon_ordenes',
+                  'mi_salon_periodos','mi_salon_precios','jissez_config']) t order by t;
+-- anon_insert: false en las 8. anon_select: false en las 5 primeras; true en mi_salon_periodos, mi_salon_precios y jissez_config.
+```
+
+Y sin sesión: `tienda/index.html`, el catálogo y `tienda/conoce-mi-salon.html` (precios y "Quedan N lugares") cargan igual.
+
+Reversa (los grant exactos que había; en producción confirmar antes con `information_schema.role_table_grants` que eran los mismos):
+
+```sql
+grant delete, insert, references, select, trigger, truncate, update on public.jornadas to anon;
+grant delete, insert, references, select, trigger, truncate, update on public.mi_salon_avisos to anon;
+grant references, select, trigger, truncate on public.mi_salon_accesos to anon;
+grant references, select, trigger, truncate on public.mi_salon_correos to anon;
+grant references, select, trigger, truncate on public.mi_salon_ordenes to anon;
+grant delete, insert, update, truncate, references, trigger on public.mi_salon_periodos to anon;
+grant delete, insert, update, truncate, references, trigger on public.mi_salon_precios to anon;
+grant truncate, references, trigger on public.jissez_config to anon;
+```
 
 ## 2. Secretos de las Edge Functions
 

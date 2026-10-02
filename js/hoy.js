@@ -1218,7 +1218,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var dia = fecha || hoy;
 		var ausentes = (window.OrdenLista ? window.OrdenLista.ordenar(alumnos) : alumnos).filter(function (a) { return faltoEnDia(a.id, dia); });
 		if (!ausentes.length) return "";
-		var cuando = dia === hoy ? "hoy" : "el " + fechaCorta(dia);
+		var cuando = dia === hoy ? "hoy" : "el " + etiquetaDiaCorta(dia);
 		return "<p class='text-xs text-gray-600 mb-2' data-faltaron-hoy>" + (ausentes.length === 1 ? "Faltó " : "Faltaron ") + cuando + ": " +
 			"<span class='font-medium'>" + ausentes.map(function (a) { return esc(a.nombre_completo); }).join(", ") + "</span>" +
 			" · no aparecen para calificar</p>";
@@ -1230,12 +1230,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 		return g ? "Trabaja con " + g : "";
 	}
 
-	// El rótulo de para quién es un producto ("3° y 4°", "2 alumnos de 3°", "2° + 2 alumnos de 3°")
-	function paraQuien(producto) {
-		return window.ProductosHoy.resumenPara(producto, asignaciones[producto.id], alumnos) ||
-			window.ProductosHoy.etiquetaGrados(producto.grados);
-	}
-
 	/*
 		Quién hace un producto, lo mismo que dice la vista del proyecto (ParaQuien.quienHace): "3° (todos)" o sus nombres,
 		y en corto (los 3 primeros + "+ N más") para el renglón, que es un botón y no admite otro botón dentro.
@@ -1243,6 +1237,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 	function quienHaceDe(producto) {
 		var q = window.ParaQuien.quienHace(producto, asignaciones[producto.id] || {}, alumnos);
 		return { quien: q, corto: window.ParaQuien.quienHaceCorto(q) };
+	}
+
+	// Para los avisos de "para quién quedó": con nombres, "para 3 alumnos"; por grado, el texto del grado ("1° (todos)")
+	function paraQuienAviso(producto) {
+		var q = quienHaceDe(producto).quien;
+		return q.porNombre ? q.n + (q.n === 1 ? " alumno" : " alumnos") : q.texto;
 	}
 
 	function esSuelta(sesion) {
@@ -1408,7 +1408,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return "<div>" +
 				"<div class='flex items-center justify-between gap-2 mb-1'>" +
 				"<p class='font-semibold text-gray-800 text-sm'>" + esc(t.nombre) +
-				"<span class='text-blue-700'> · " + esc(paraQuien(t)) + "</span></p>" +
+				"<span class='text-blue-700'> · " + esc(quienHaceDe(t).corto.corto) + "</span></p>" +
 				(atrasada ? "<span class='text-xs text-amber-600 shrink-0'>vencía el " + esc(fechaCorta(vence)) + "</span>" : "") +
 				"</div>" + (filas || vacio("Nadie por revisar en esta tarea: quienes faltaron hoy no aparecen aquí.")) + "</div>";
 		}).join("");
@@ -2209,7 +2209,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				var vence = venceDe(t);
 				return "<div class='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1 border-b border-gray-100 last:border-0'>" +
 					"<p class='text-sm text-gray-700'>" + esc(t.nombre) +
-					"<span class='text-sm font-semibold text-blue-700'> · " + esc(paraQuien(t)) + "</span>" +
+					"<span class='text-sm font-semibold text-blue-700'> · " + esc(quienHaceDe(t).corto.corto) + "</span>" +
 					(vence ? "<span class='block text-xs text-gray-500'>" + (vence === hoy ? "Se revisa hoy, arriba en Tareas por revisar" : "Se revisa el " + esc(fechaCorta(vence))) + "</span>"
 					// Sesión en curso: la tarea del plan se revisa el día de clase siguiente a terminarla (Fase 5b)
 					: (t.tipo === "tarea" && !t.fecha_entrega && esEnCurso(t.sesion)
@@ -2599,7 +2599,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 		var cuando = r.suelta && nuevo.tipo !== "tarea" && r.fecha > hoy ? " Aparece en Hoy el " + fechaCorta(r.fecha) + " para calificarla."
 			: r.suelta && nuevo.tipo !== "tarea" && r.fecha < hoy ? " Es del " + fechaCorta(r.fecha) + ": califícala aquí abajo." : "";
 		mensaje("info", (nuevo.tipo === "tarea" ? "Se agregó la tarea «" : "Se agregó la actividad «") + nuevo.nombre + "» para " +
-			paraQuien(nuevo) + "." + cuando +
+			paraQuienAviso(nuevo) + "." + cuando +
 			(nuevo.tipo === "tarea"
 				? (ses && !venceDe(nuevo) ? " Se revisa el día de clase siguiente a terminar la sesión."
 					: " Se revisa el " + fechaCorta(ses ? venceDe(nuevo) : nuevo.fecha_entrega) + ".")
@@ -2676,7 +2676,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 				renderTareas();
 				renderPendientes();
 				renderSesiones();
-				mensaje("info", "«" + producto.nombre + "» ahora es para " + paraQuien(producto) + ".");
+				mensaje("info", "«" + producto.nombre + "» ahora es para " + paraQuienAviso(producto) + ".");
 			},
 		});
 	}

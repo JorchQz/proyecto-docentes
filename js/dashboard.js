@@ -289,7 +289,7 @@ async function crearCardHoy() {
 				*/
 				const A = window.AlcanceHoy;
 				// Todos los días en que se trabajó algo (la fecha, la terminación y el día de cada actividad)
-					const fechasTrab = ses.map((s) => s.fecha).concat(ses.map((s) => s.terminada_en)).concat(prods.map((p) => p.fecha_trabajo)).filter(Boolean).sort();
+				const fechasTrab = ses.map((s) => s.fecha).concat(ses.map((s) => s.terminada_en)).concat(prods.map((p) => p.fecha_trabajo)).filter(Boolean).sort();
 				if (fechasTrab.length) {
 					const asisIdx = A.indiceAsistencias(await A.leerAsistencias(window.sb, user.id, grupoId, fechasTrab[0]));
 					const conJust = alumnos.filter((a) => asisIdx[a.id] &&
@@ -623,8 +623,11 @@ function crearCardSesion(sesion, esDeHoy, proyecto, planAbierto, hoy) {
 */
 let esperandoTerminar = false;
 let bandejaTerminar = null;
+let escuchaOnlineInicio = false;
+// Solo lo que dice el aparato: un "red" que dejó un intento anterior NO cuenta (puede haber vuelto la señal); con señal,
+// esperarColaDelAparato reintenta (iniciar) antes de decidir, y al volver la red la bandeja reenvía sola (online).
 function sinSenalInicio() {
-	return (typeof navigator !== "undefined" && navigator.onLine === false) || !!(bandejaTerminar && bandejaTerminar.estado() === "red");
+	return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 async function esperarColaDelAparato() {
 	if (!window.BandejaSalida || !user) return "ok";
@@ -635,6 +638,10 @@ async function esperarColaDelAparato() {
 				auth: window.Lectura && window.Lectura.authDirecto ? window.Lectura.authDirecto : null,
 				maestroId: user.id,
 			});
+		}
+		if (!escuchaOnlineInicio) {
+			escuchaOnlineInicio = true;
+			window.addEventListener("online", function () { if (bandejaTerminar) bandejaTerminar.procesar(); });
 		}
 		bandejaTerminar.iniciar();
 		return await bandejaTerminar.esperarEnvio();
