@@ -325,7 +325,8 @@ if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded
 		} catch (_) { r = null; }
 		await cargar();
 		pintar();
-		var estado = r && r.estado;
+		// Falla pasajera del servidor: ni éxito ni error, "estamos confirmando" (cae en el último bloque).
+		var estado = r && !r.transitorio ? r.estado : null;
 		var e = datos.estado || {};
 		res.classList.remove("hidden");
 		if (estado === "pagado") {

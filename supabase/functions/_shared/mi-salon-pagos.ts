@@ -31,6 +31,7 @@ export interface ResultadoPagoMiSalon {
   statusMp?: string;
   detalleMp?: string;
   error?: string;
+  transitorio?: boolean;
   miSalon?: Record<string, unknown>;
 }
 
@@ -42,7 +43,12 @@ const TABLA_NO_EXISTE = new Set(["42P01", "PGRST205"]);
  * tabla no existe (migración b22 sin aplicar). Cualquier otro error (timeout, 503 de PostgREST, red)
  * se LANZA (R27b): antes devolvía false y el pago de Mi Salón se iba por el camino de la tienda, la
  * orden quedaba 'pagado' sin acceso y los reintentos decían yaProcesada. Al lanzar, la orden sigue
- * pendiente, el webhook responde error (Mercado Pago reintenta) y confirmar-pago la repara.
+ * pendiente y sin tocar. Cómo se repara (R29): el webhook responde 503 y Mercado Pago vuelve a mandar
+ * el MISMO aviso por su cuenta; el primer reintento que encuentra la base bien aplica el pago
+ * (idempotente: un acceso y un correo). Si mientras tanto la docente vuelve de Mercado Pago o pulsa
+ * "Ya pagué, verificar", confirmar-pago lo aplica igual (y si también le falla, responde 500 y
+ * puede volver a intentarlo). Antes de R29 el webhook respondía 200 y el aviso se perdía: solo lo
+ * reparaba confirmar-pago.
  */
 export async function esOrdenMiSalon(admin: Cliente, ordenId: string): Promise<boolean> {
   const { data, error } = await admin
@@ -90,20 +96,46 @@ export async function procesarPagoMiSalon(
   const ordenId = String(pago.external_reference || "");
   const status = String(pago.status || "");
   const detalle = String(pago.status_detail || "");
+  // Una orden ya reembolsada no se revive con un aviso viejo (approved, pending...): definitivo, sin
+  // llamar a mi_salon_aplicar_pago. El reembolso mismo (refunded / charged_back) sí pasa a la base,
+  // que lo aplica de forma idempotente. La regla se decide aquí, sin cambiar SQL.
+  if (status !== "refunded" && status !== "charged_back") {
+    const { data: o, error: errO } = await admin.from("marketplace_ordenes").select("estado").eq("id", ordenId).maybeSingle();
+    if (errO) {
+      console.error("No se pudo leer la orden de Mi Salón (falla pasajera):", ordenId, errO);
+      return { ok: false, estado: "pendiente", transitorio: true, statusMp: status, detalleMp: detalle, error: "No se pudo leer la orden" };
+    }
+    if (o && o.estado === "reembolsado") {
+      return { ok: true, estado: "reembolsado", yaProcesada: true, statusMp: status, detalleMp: detalle };
+    }
+  }
   const { data, error } = await admin.rpc("mi_salon_aplicar_pago", {
     p_orden_id: ordenId,
     p_pago: datosDelPago(pago),
   });
+  // Las reglas de negocio (orden desconocida, importe o moneda que no cuadran, pago sin id) vuelven
+  // DENTRO de data con ok=false y son definitivas. Un error de la llamada (timeout, 5xx de PostgREST,
+  // red) es una falla pasajera: la función corre en una transacción, así que no dejó nada a medias,
+  // y el webhook responde 503 para que Mercado Pago reintente (R29).
   if (error || !data) {
-    console.error("mi_salon_aplicar_pago falló:", ordenId, error);
-    return { ok: false, estado: "pendiente", statusMp: status, detalleMp: detalle, error: error?.message || "Sin respuesta" };
+    console.error("mi_salon_aplicar_pago falló (falla pasajera):", ordenId, error);
+    return {
+      ok: false,
+      estado: "pendiente",
+      transitorio: true,
+      statusMp: status,
+      detalleMp: detalle,
+      error: error?.message || "Sin respuesta",
+    };
   }
   // deno-lint-ignore no-explicit-any
   const r = data as Record<string, any>;
 
-  // Correo de confirmación: solo cuando ESTE llamado creó el acceso (un webhook repetido o la
-  // verificación manual después del webhook no lo repiten). El correo nunca tumba la entrega.
-  if (r.estado === "pagado" && !r.ya_procesada && Number(r.accesos_creados) > 0) {
+  // Correo de confirmación: cuando ESTE llamado creó el acceso, o cuando la orden ya estaba aplicada
+  // pero el correo nunca quedó apartado (la respuesta de la primera llamada se perdió o el envío
+  // falló y se liberó el apartado). El apartado en mi_salon_correos (una fila por orden) evita que
+  // un webhook repetido o la verificación manual lo repitan. El correo nunca tumba la entrega.
+  if (r.estado === "pagado" && ((!r.ya_procesada && Number(r.accesos_creados) > 0) || r.ya_procesada)) {
     try {
       await avisarPagoMiSalon(admin, ordenId, r, opts);
     } catch (err) {

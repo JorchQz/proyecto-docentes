@@ -165,6 +165,26 @@ empezando cada una con `begin; set local lock_timeout = '5s';` y terminando con 
 corre cada pegada como un bloque). La consulta final de b21b debe devolver dos filas, origen
 `piloto`, vence `2027-07-30`.
 
+**Diferencia importante con el script:** el script aplica las 11 en UNA transacción (o entran todas o
+ninguna). Pegándolas una por una, cada migración es su propia transacción: si falla, por ejemplo, la
+7, esa se revierte entera, pero la 1 a la 6 ya quedaron aplicadas y la 8 a la 11 no. La cadena queda
+a medias. Si pasa:
+
+1. No seguir con la siguiente ni saltarse la que falló (las de después dependen de las de antes: b22
+   usa las tablas de b21 y b23 trae la versión final de `delete_own_account`).
+2. Si el editor dice `current transaction is aborted`, correr `rollback;` antes de cualquier otra
+   cosa. La migración que falló no dejó nada: su `begin`/`commit` la revirtió completa.
+3. Anotar cuál fue la última que terminó en `Success` y leer el error de la que falló. Si es
+   `lock_timeout` (tabla ocupada), volver a pegar ESA misma más tarde, a otra hora de poco uso; si es
+   otra cosa, parar y reproducirlo en pruebas antes de seguir.
+4. Cuando pase, continuar con las que faltan, en orden. Repetir una que ya había entrado no hace daño
+   (todas son idempotentes).
+5. Mientras la cadena esté a medias, **no pasar al paso 3** (Edge Functions) **ni al 5** (frontend).
+   Lo que ya entró es aditivo y el interruptor de Mi Salón sigue apagado, pero cada punto intermedio
+   de la cadena no se probó por separado (solo la cadena completa): completarla cuanto antes, de
+   preferencia el mismo día.
+6. La cadena está completa cuando la comprobación final de abajo da todos sus valores esperados.
+
 Comprobación final (editor SQL de producción, solo lectura):
 
 ```sql
@@ -331,6 +351,46 @@ grant delete, insert, update, truncate, references, trigger on public.mi_salon_p
 grant truncate, references, trigger on public.jissez_config to anon;
 ```
 
+## Aparte: b29, un aviso viejo no revive una orden reembolsada
+
+`supabase/mi_salon_b29_pago_reembolsado_2026-10.sql` (constructor BD, 2026-10-02). Redefine
+`mi_salon_aplicar_pago` (la de b22: misma firma, mismos permisos, solo `service_role`) con dos cambios:
+(1) dentro de su `for update` de la orden, si la orden ya está `reembolsado` y el aviso NO es de reembolso
+(approved, pending, rejected...) devuelve "ya procesada" sin marcar pagada, sin insertar accesos y sin
+apartar correo; (2) la respuesta "ya procesada" de una orden pagada suma `tipo_precio` y `cobertura` para
+que el reintento pueda mandar el correo de confirmación completo (ver abajo). Es aditiva e idempotente
+(`create or replace`), va DESPUÉS de b22 y **antes de desplegar las Edge Functions del paso 3** o justo
+después (las funciones nuevas ya protegen por su lado; con la función vieja solo falta la protección de la
+base contra una carrera de milisegundos). Solo con el OK de Jorge:
+
+```
+node scripts/aplicar-migraciones-prod.js supabase/mi_salon_b29_pago_reembolsado_2026-10.sql
+```
+
+Probada en pruebas (aplicada y con 15 comprobaciones SQL dentro de una transacción revertida): orden normal
+igual que antes (approved crea el acceso, el mismo aviso otra vez da ya_procesada con 0 accesos nuevos);
+orden reembolsada + approved / pending / rejected / in_process o un approved de otro pago: ya_procesada,
+0 accesos, estado intacto; refunded repetido idempotente; monto parcial y orden inexistente como antes.
+
+Comprobación (editor SQL de producción, solo lectura):
+
+```sql
+select position('b29' in pg_get_functiondef('public.mi_salon_aplicar_pago(uuid,jsonb)'::regprocedure)) > 0 as con_b29,  -- true
+       has_function_privilege('authenticated', 'public.mi_salon_aplicar_pago(uuid,jsonb)', 'execute')    as publica; -- false
+```
+
+Reversa: volver a la definición de `supabase/mi_salon_b22_cobros_2026-09.sql` (la sección `create or replace
+function public.mi_salon_aplicar_pago`, más sus `revoke` y `grant`), pegada en el editor SQL. No hay datos que
+deshacer.
+
+**Correo cuando la respuesta se pierde.** Si `mi_salon_aplicar_pago` confirma el pago pero la respuesta no
+llega (timeout), el reintento ve `ya_procesada`. Ahora, en ese caso, `_shared/mi-salon-pagos.ts` manda el
+correo de confirmación SI la fila `pago:<orden>` de `mi_salon_correos` no existe (el apartado es lo que evita
+duplicados, también con llamadas simultáneas; si el envío falla, el apartado se libera y el siguiente
+reintento lo manda). Límite: si la función se corta entre apartar y enviar, el apartado queda puesto y el
+correo no sale (`mi_salon_correos` no distingue "apartado" de "enviado"; saberlo exigiría una columna nueva,
+y no se hizo): es una ventana de milisegundos, y la docente tiene su acceso y la pantalla de Mi Salón lo dice.
+
 ## 2. Secretos de las Edge Functions
 
 Supabase → Edge Functions → Secrets (o `supabase secrets list --project-ref cluvaxxqvhtxxiwctpnl`).
@@ -343,6 +403,7 @@ Los de la tienda ya existen; confirmar que estén todos:
 | `SITE_URL` | comprar-mi-salon, avisos-mi-salon, bienvenida-mi-salon, pagos | `https://jissez.com` |
 | `RESEND_API_KEY` | correos (bienvenida, avisos, confirmación de pago) | el de la tienda |
 | `MAIL_FROM` | correos | el de la tienda |
+| `MAIL_ADMIN` | `_shared/pagos.ts` (aviso al negocio de un pedido personalizado nuevo) y avisos-pedidos | correo del negocio; sin él esos avisos no salen (la compra no se bloquea). Confirmar que existe: solo aparece el NOMBRE en `supabase secrets list` |
 | `CRON_SECRET` | avisos-mi-salon (y avisos-pedidos) | el mismo que ya usa avisos-pedidos |
 | `ANTHROPIC_API_KEY` | redactar-boleta (textos con IA) | **falta**; debe estar antes del 13 de noviembre |
 
@@ -368,14 +429,61 @@ supabase functions deploy comprar-mi-salon    --project-ref cluvaxxqvhtxxiwctpnl
 
 - Nuevas: `bienvenida-mi-salon` (b21), `comprar-mi-salon` y `avisos-mi-salon` (b22).
 - Otra vez: `redactar-boleta` (exige acceso vigente, b21) y las que importan `_shared/pagos.ts`, que
-  cambió (una orden de Mi Salón va por `_shared/mi-salon-pagos.ts`; si no se puede saber si una
-  orden es de Mi Salón por una falla pasajera, la orden queda pendiente y se repara sola con
-  confirmar-pago o el siguiente aviso de Mercado Pago; una orden de la tienda sin renglones ya no
-  se marca pagada; las demás órdenes de la tienda siguen igual): `webhook-mercadopago`,
+  cambió (una orden de Mi Salón va por `_shared/mi-salon-pagos.ts`; una orden de la tienda sin
+  renglones ya no se marca pagada; en la tienda los accesos se escriben antes de marcar la orden
+  pagada; las demás órdenes de la tienda siguen igual): `webhook-mercadopago`,
   `confirmar-pago`, `avisos-pedidos` y `completar-pedido`.
+- **Falla pasajera al procesar un pago** (la base no responde: timeout, 5xx de PostgREST, no se pudo
+  saber si la orden es de Mi Salón). Cómo se repara de verdad: la orden NO se marca pagada ni se
+  entrega nada, y el webhook responde **503** (antes respondía 200 y el aviso se perdía). Con el 503,
+  Mercado Pago vuelve a mandar el mismo aviso por su cuenta; el primer reintento que encuentra la
+  base bien entrega una sola vez (un acceso, un correo; los siguientes dicen "ya procesada"). Aparte,
+  confirmar-pago lo aplica cuando la docente o el comprador vuelve de Mercado Pago o pulsa "Ya pagué,
+  verificar". Las respuestas definitivas siguen en 200 (orden desconocida, ya procesada, pago
+  rechazado, importe o moneda que no cuadran) y la firma inválida en 401. Para revisar: en los
+  registros de `webhook-mercadopago`, buscar `falla pasajera`; y órdenes que siguen pendientes horas
+  después: `select o.id, o.created_at, (m.orden_id is not null) as mi_salon from marketplace_ordenes o
+  left join mi_salon_ordenes m on m.orden_id = o.id where o.estado = 'pendiente' and o.created_at <
+  now() - interval '6 hours' order by o.created_at desc limit 20;` y buscar cada `id` en Mercado Pago
+  (referencia externa): si ahí está aprobado, pedir a la persona que pulse "Ya pagué, verificar".
+- Revisión del 2-oct (retoma de R29, constructor BD): además, (a) los pedidos personalizados de una
+  orden se pasan a la cola con la misma garantía: si la base falla justo al activarlos, la orden ya
+  está pagada y con accesos, la respuesta es 503 y el aviso repetido (que cae en "ya procesada") termina
+  de activarlos; solo avisa por correo quien los activa (update condicionado), así tres llamadas
+  simultáneas mandan un correo; (b) `confirmar-pago` ante una falla pasajera responde 200 con
+  `transitorio: true` y la pantalla dice "Estamos confirmando tu pago" (antes: un 500 "Error interno").
+  El frontend que muestra ese mensaje (`tienda/js/mis-compras.js`, `tienda/js/mi-salon-compra.js`) sale
+  con el paso 5 y es compatible con las dos versiones de la función.
+- Segunda pasada del 2-oct: (c) si Mercado Pago o la red fallan al consultar el pago (5xx, 429, timeout,
+  red) el webhook responde 503 sin escribir nada (un 404, pago inexistente, sigue en 200) y
+  `confirmar-pago` lo muestra como "Estamos confirmando tu pago" sin abandonar la orden; (d) un aviso
+  `approved` (o pendiente) viejo sobre una orden ya `reembolsado` responde 200 definitivo: no entrega
+  accesos ni manda correo, tanto en la tienda como en Mi Salón (ahí se decide en la función, leyendo la
+  orden antes de llamar a `mi_salon_aplicar_pago`; sin cambios de SQL). Si el reembolso llega en medio de
+  una entrega, los accesos recién escritos se retiran.
 - La URL del webhook de Mercado Pago no cambia.
 - Comprobación: Supabase → Edge Functions muestra las ocho con la versión de hoy; en los registros
-  de `webhook-mercadopago`, la siguiente venta de la tienda se procesa como siempre.
+  de `webhook-mercadopago`, la siguiente venta de la tienda se procesa como siempre (`webhook
+  procesado` con `estado: pagado`). Si hubo una falla pasajera: en Logs de `webhook-mercadopago`
+  aparece `webhook: falla pasajera ... 503 para que MP reintente` (estado 503) y, minutos después, para
+  la MISMA orden (campo `orden`) un `webhook procesado` con estado 200 (`pagado`, o `yaProcesada` si
+  `confirmar-pago` llegó antes). Una orden con 503 y sin 200 posterior se revisa con el `select` de
+  arriba (pendientes de más de 6 horas) y con "Ya pagué, verificar". Comandos exactos de despliegue,
+  comprobación y reversa en orden: `scripts/desplegar-edge-mi-salon.md`.
+- **Respaldo ANTES de desplegar** (paso 0 de `scripts/desplegar-edge-mi-salon.md`): bajar lo que corre hoy
+  en producción de cada función que se va a redesplegar, a una carpeta FUERA de git:
+  `supabase functions download <función> --project-ref cluvaxxqvhtxxiwctpnl` (una por función; incluye
+  `_shared`), por ejemplo en `C:\respaldo-edge-2026-10-xx\`. Es el respaldo real: no depende de que un
+  commit de git coincida con lo desplegado.
+- **Reversa de este cambio** (si el webhook se comporta mal): redesplegar DESDE ese respaldo las funciones
+  que procesan pagos, sin tocar la base (`cd` a la carpeta del respaldo, `supabase functions deploy
+  webhook-mercadopago confirmar-pago avisos-pedidos completar-pedido --project-ref cluvaxxqvhtxxiwctpnl`;
+  los comandos exactos, en `scripts/desplegar-edge-mi-salon.md`). La versión anterior no escribe nada que la
+  nueva necesite ni al revés (no hay migración de este cambio; b29 es compatible con las dos versiones de
+  las funciones), y las órdenes pendientes se aplican con el siguiente aviso.
+  OJO: con la versión anterior del webhook, `comprar-mi-salon` no debe seguir desplegada si esa versión
+  no encamina Mi Salón; `2dc7135` sí la encamina (`esOrdenMiSalon`), pero devuelve 200 y pierde el aviso
+  ante una falla pasajera (lo repara `confirmar-pago`).
 
 ## Si falla a medias
 

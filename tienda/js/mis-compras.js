@@ -204,12 +204,19 @@ document.addEventListener("DOMContentLoaded", async function () {
 			return;
 		}
 
-		var pagado = resultados.some(function (r) { return r.estado === "pagado"; });
-		var enProceso = resultados.some(function (r) { return r.estado === "pendiente"; });
+		var pagado = resultados.some(function (r) { return r.estado === "pagado" && !r.transitorio; });
+		// Falla pasajera del servidor (transitorio): no es un error final, el pago se está confirmando.
+		var confirmando = resultados.some(function (r) { return r.transitorio; });
+		var enProceso = resultados.some(function (r) { return r.estado === "pendiente" && !r.transitorio; });
 		var fallido = resultados.some(function (r) { return r.estado === "fallido"; });
 
 		if (pagado) {
 			banner("Pago confirmado. Tu paquete ya está disponible para descargar.", "ok");
+		} else if (confirmando) {
+			banner(
+				"Estamos confirmando tu pago. En unos minutos tu paquete aparecerá aquí; también puedes usar el botón de verificar.",
+				"info",
+			);
 		} else if (enProceso) {
 			banner(
 				"Tu pago está registrado pero el banco aún no lo acredita. Si pagaste en efectivo o por SPEI puede tardar de unos minutos a 3 días. Te avisaremos por correo en cuanto se active.",

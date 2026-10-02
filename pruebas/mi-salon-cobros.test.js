@@ -207,12 +207,13 @@ function ok(nombre, real, esperado) {
 		if (t === "marketplace_ordenes" && op === "select") return { data: { id: "o1", estado: "pendiente", user_id: "u1", monto_total: 100 }, error: null };
 		if (t === "marketplace_orden_items") return { data: [{ producto_id: "p1", tipo: "pdf", marketplace_productos: { tipo_paquete: "trimestre" } }], error: null };
 		if (t === "marketplace_accesos" && op === "upsert") { upsertAccesos = q.args; return { error: null }; }
+		if (t === "marketplace_ordenes" && op === "update") return { data: [{ id: "o1" }], error: null };
 		if (t === "marketplace_pedidos") return { data: [], error: null };
 		return { data: null, error: null };
 	});
 	const rTienda = await pagos_ts.procesarPago(tienda, { id: 55, external_reference: "o1", status: "approved", transaction_amount: 100, currency_id: "MXN" }, {});
-	ok("tienda aprobada: mismo camino de siempre (se agregan la lectura de mi_salon_ordenes al principio y la de sus renglones antes de marcarla pagada, R27b)", tienda.log,
-		["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_orden_items:select", "marketplace_ordenes:update", "marketplace_orden_items:select", "marketplace_accesos:upsert", "marketplace_pedidos:select", "rpc:marketplace_aplicar_precios"]);
+	ok("tienda aprobada: mismo camino de siempre (se agregan la lectura de mi_salon_ordenes al principio y la de sus renglones, R27b; R29: los accesos van ANTES de marcarla pagada)", tienda.log,
+		["mi_salon_ordenes:select", "marketplace_ordenes:select", "marketplace_orden_items:select", "marketplace_orden_items:select", "marketplace_accesos:upsert", "marketplace_ordenes:update", "marketplace_pedidos:select", "rpc:marketplace_aplicar_precios"]);
 	// R27b: una orden de la tienda SIN renglones no se marca pagada (queda pendiente, sin accesos)
 	const tiendaVacia = falso((t, op) => t === "marketplace_ordenes" && op === "select" ? { data: { id: "o1", estado: "pendiente", user_id: "u1", monto_total: 100 }, error: null } : (t === "marketplace_orden_items" ? { data: [], error: null } : { data: null, error: null }));
 	const rVacia = await pagos_ts.procesarPago(tiendaVacia, { id: 58, external_reference: "o1", status: "approved", transaction_amount: 100, currency_id: "MXN" }, {});
@@ -241,14 +242,14 @@ function ok(nombre, real, esperado) {
 	const pagoOxxo = { id: 9001, external_reference: "o2", status: "pending", status_detail: "pending_waiting_payment", transaction_amount: 199, currency_id: "MXN",
 		payment_method_id: "oxxo", payment_type_id: "ticket", transaction_details: { payment_method_reference_id: "4455667788", external_resource_url: "https://www.mercadopago.com.mx/payments/9001/ticket" } };
 	const rSalon = await pagos_ts.procesarPago(salon, pagoOxxo, {});
-	ok("orden de Mi Salón: todo en la base (mi_salon_aplicar_pago); no toca marketplace_ordenes ni accesos de la tienda", salon.log, ["mi_salon_ordenes:select", "rpc:mi_salon_aplicar_pago"]);
+	ok("orden de Mi Salón: todo en la base (mi_salon_aplicar_pago); solo LEE marketplace_ordenes (si ya esta reembolsada no corre la RPC) y no escribe ni toca accesos de la tienda", salon.log, ["mi_salon_ordenes:select", "marketplace_ordenes:select", "rpc:mi_salon_aplicar_pago"]);
 	ok("los datos del pago que llegan a la base (referencia y ficha de OXXO)", [argsMs.p_orden_id, argsMs.p_pago.id, argsMs.p_pago.status, argsMs.p_pago.referencia, argsMs.p_pago.ticket_url, rSalon.estado],
 		["o2", "9001", "pending", "4455667788", "https://www.mercadopago.com.mx/payments/9001/ticket", "pendiente"]);
-	ok("webhook repetido de Mi Salón: sin correo (ya_procesada)", await (async () => {
+	ok("webhook repetido de Mi Salón (ya_procesada): intenta apartar el correo (si la primera respuesta se perdió, sale ahora) pero el apartado ya existente lo frena: no se manda otro", await (async () => {
 		const s = falso((t) => t === "mi_salon_ordenes" ? { data: { orden_id: "o2" } } : (t === "rpc:mi_salon_aplicar_pago" ? { data: { ok: true, estado: "pagado", ya_procesada: true, accesos_creados: 0, docente_id: "u2" } } : { data: null }));
 		const r = await pagos_ts.procesarPago(s, Object.assign({}, pagoOxxo, { status: "approved" }), { resendKey: "re_x", siteUrl: "https://jissez.com" });
 		return [r.yaProcesada, s.log.includes("auth:getUserById"), s.log.includes("mi_salon_correos:upsert")];
-	})(), [true, false, false]);
+	})(), [true, true, true]);
 	ok("helpers del correo", [ms_ts.fechaLarga("2027-04-09"), ms_ts.pesos(199), ms_ts.pesos(199.5), ms_ts.nombrePeriodo({ ciclo: "2027-2028", periodo: "T1" }, "2026-2027"), ms_ts.textoCobertura([{ ciclo: "2026-2027", periodos: ["T1", "T2"] }])],
 		["9 de abril de 2027", "$199", "$199.50", "primer trimestre del ciclo 2027-2028", "T1 y T2 del ciclo 2026-2027"]);
 	const correo = ms_ts.htmlConfirmacion({ nombre: "Trimestre", monto: 199, tipo_precio: "fundador", vence: "2027-04-09", compra_tardia: true, siguiente: { ciclo: "2026-2027", periodo: "T2" },

@@ -27,7 +27,9 @@ import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import {
   buscarPagoPorOrden,
   consultarPago,
+  ErrorMpPasajero,
   procesarPago,
+  type ResultadoPago,
 } from "../_shared/pagos.ts";
 
 // Cuántas órdenes pendientes revisamos como máximo en una llamada sin
@@ -107,7 +109,9 @@ Deno.serve(async (req: Request) => {
       await admin
         .from("marketplace_ordenes")
         .update({ estado: "fallido" })
-        .eq("id", ordenIdPedida);
+        .eq("id", ordenIdPedida)
+        .neq("estado", "pagado")
+        .neq("estado", "reembolsado");
       return jsonResponse({
         resultados: [{ orden_id: ordenIdPedida, ok: true, estado: "fallido", statusMp: "cancelada" }],
       });
@@ -115,7 +119,14 @@ Deno.serve(async (req: Request) => {
 
     // ── Caso 1: viene payment_id (regreso directo desde Mercado Pago) ───────
     if (paymentIdPedido) {
-      const pago = await consultarPago(paymentIdPedido, mpToken);
+      let pago: Record<string, any> | null;
+      try {
+        pago = await consultarPago(paymentIdPedido, mpToken);
+      } catch (err) {
+        if (!(err instanceof ErrorMpPasajero)) throw err;
+        console.error("confirmar-pago: falla pasajera al consultar a Mercado Pago:", mensajeError(err));
+        return jsonResponse({ resultados: [{ ok: false, estado: "pendiente", transitorio: true, error: "Estamos confirmando tu pago" }] });
+      }
       if (!pago) {
         return jsonResponse({ error: "No se pudo consultar el pago en Mercado Pago" }, 502);
       }
@@ -124,7 +135,7 @@ Deno.serve(async (req: Request) => {
       if (!duenio) {
         return jsonResponse({ error: "Ese pago no corresponde a tu cuenta" }, 403);
       }
-      const resultado = await procesarPago(admin, pago, { siteUrl, resendKey });
+      const resultado = await procesarSinTumbar(admin, pago, { siteUrl, resendKey });
       return jsonResponse({ resultados: [{ orden_id: pago.external_reference, ...resultado }] });
     }
 
@@ -154,7 +165,16 @@ Deno.serve(async (req: Request) => {
 
     const resultados = [];
     for (const ordenId of ordenIds) {
-      const pago = await buscarPagoPorOrden(ordenId, mpToken);
+      let pago: Record<string, any> | null;
+      try {
+        pago = await buscarPagoPorOrden(ordenId, mpToken);
+      } catch (err) {
+        if (!(err instanceof ErrorMpPasajero)) throw err;
+        // Mercado Pago no respondió: no es "sin pago" (no se abandona la orden), se sigue confirmando.
+        console.error("confirmar-pago: falla pasajera al buscar el pago en Mercado Pago:", ordenId, mensajeError(err));
+        resultados.push({ orden_id: ordenId, ok: false, estado: "pendiente", transitorio: true, error: "Estamos confirmando tu pago" });
+        continue;
+      }
       if (!pago) {
         // Sin ningún pago en MP: o acaba de empezar, o se abandonó el intento.
         const abandonada = await descartarSiAbandonada(admin, ordenId);
@@ -166,7 +186,7 @@ Deno.serve(async (req: Request) => {
         });
         continue;
       }
-      const resultado = await procesarPago(admin, pago, { siteUrl, resendKey });
+      const resultado = await procesarSinTumbar(admin, pago, { siteUrl, resendKey });
       resultados.push({ orden_id: ordenId, ...resultado });
     }
 
@@ -179,6 +199,34 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+/**
+ * `procesarPago` con la falla pasajera de la base sin convertirse en un error final.
+ *
+ * Si la base no responde, `procesarPago` devuelve `transitorio: true` o LANZA (no se pudo saber si
+ * la orden es de Mi Salón). Aquí las dos cosas quedan como el mismo resultado: la orden sigue como
+ * estaba, `transitorio: true` y estado "pendiente" (o "pagado" si ya lo estaba), para que la pantalla
+ * diga "estamos confirmando tu pago" y no un error. El comprador puede volver a pulsar verificar y el
+ * webhook de Mercado Pago también reintenta; todo es idempotente.
+ */
+async function procesarSinTumbar(
+  admin: Cliente,
+  pago: Record<string, any>,
+  opts: { siteUrl?: string; resendKey?: string },
+): Promise<ResultadoPago> {
+  try {
+    return await procesarPago(admin, pago, opts);
+  } catch (err) {
+    console.error("confirmar-pago: falla pasajera (excepción):", pago?.external_reference, mensajeError(err));
+    return {
+      ok: false,
+      estado: "pendiente",
+      transitorio: true,
+      statusMp: String(pago?.status || ""),
+      error: "Estamos confirmando tu pago",
+    };
+  }
+}
 
 /**
  * Cierra los intentos de compra que se abandonaron.
